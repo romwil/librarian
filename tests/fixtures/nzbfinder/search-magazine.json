@@ -1,0 +1,21 @@
+{
+  "total": 189,
+  "user_requests": 182,
+  "user_max_requests": 20000,
+  "user_downloads": 0,
+  "user_max_downloads": 20000,
+  "oldest_request_at": "2026-09-13T06:53:53+02:00",
+  "oldest_download_at": null,
+  "results": [
+    {
+      "title": "Linux-Magazin.No.10.2026.GERMAN.HYBRID.MAGAZINE.eBook-LORENZ",
+      "details": "https://nzbfinder.ws/details/32f697e8-545d-4470-8dc8-fe1b3faa8f4b",
+      "url": "https://nzbfinder.ws/api/v2/download?id=32f697e8-545d-4470-8dc8-fe1b3faa8f4b.nzb",
+      "category": 7010,
+      "category_name": "Books > Magazines",
+      "adddate": "2026-09-10T05:44:58+02:00",
+      "postdate": "2026-09-10T05:42:43+02:00",
+      "size": 96018069
+    }
+  ]
+}

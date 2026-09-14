@@ -22,29 +22,36 @@ export default function LoginPage() {
 
   return (
     <GlassDoor
-      eyebrow="Librarian"
-      title="The foyer"
-      lede="A night reading room for the household stacks. Sign in to walk The Hall."
+      eyebrow="Household library"
+      title="The Reading Room"
+      lede="A quiet door. No covers of household titles on the glass — only lamp light and paper dust."
       footer={<Link to="/join">Have a join link?</Link>}
     >
       {error ? <p className="alert">{error}</p> : null}
       <form className="login-form" onSubmit={onSubmit}>
-        <label className="login-field">
-          Username
-          <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" required />
-        </label>
-        <label className="login-field">
-          Password
+        <div className="field">
+          <label htmlFor="login-name">Name</label>
           <input
+            id="login-name"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            autoComplete="username"
+            required
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="login-pass">Password</label>
+          <input
+            id="login-pass"
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             autoComplete="current-password"
             required
           />
-        </label>
-        <button type="submit" className="login-primary">
-          Open the door
+        </div>
+        <button type="submit" className="cta">
+          Enter
         </button>
       </form>
     </GlassDoor>

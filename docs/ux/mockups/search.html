@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Librarian — Unified search</title>
+    <link rel="stylesheet" href="reading-room.css" />
+  </head>
+  <body>
+    <nav class="mock-nav" aria-label="Mockup screens">
+      <a href="foyer.html">Foyer</a>
+      <a href="hall.html">Hall</a>
+      <a class="is-here" href="search.html">Search</a>
+      <a href="peek.html">Peek</a>
+      <a href="work.html">Work</a>
+    </nav>
+
+    <header class="topbar">
+      <a class="brand" href="hall.html">
+        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><path fill="currentColor" d="M16 3c-1.2 0-2 .8-2 2v1.2c-4.4.8-7.5 3.4-8.2 7.1-.2 1 .6 1.7 1.6 1.7h1.1c.6 4.6 3.8 7.6 7.5 8.6V26h-3c-.6 0-1 .4-1 1s.4 1 1 1h8c.6 0 1-.4 1-1s-.4-1-1-1h-3v-2.4c3.7-1 6.9-4 7.5-8.6h1.1c1 0 1.8-.7 1.6-1.7C25.5 9.6 22.4 7 18 6.2V5c0-1.2-.8-2-2-2zm0 5.2c3.5.6 5.9 2.6 6.4 5.5H9.6C10.1 10.8 12.5 8.8 16 8.2z"/></svg>
+        Librarian
+      </a>
+      <nav class="nav-links">
+        <a href="hall.html">Hall</a>
+        <a class="is-current" href="search.html">Search</a>
+        <a href="#">People</a>
+        <a href="#">Settings</a>
+      </nav>
+      <div class="topbar-end">
+        <button class="bag" data-count="2" aria-label="Review bag">👜</button>
+        <div class="avatar"></div>
+      </div>
+    </header>
+
+    <main class="search-page">
+      <form class="search-hero search-field" action="search.html">
+        <span aria-hidden="true">⌕</span>
+        <input name="q" value="dune" aria-label="Search" />
+        <kbd>/</kbd>
+      </form>
+
+      <div class="search-hero chip-row" style="justify-content:center;margin-bottom:12px">
+        <button class="chip is-on" type="button">Book</button>
+        <button class="chip" type="button">Magazine</button>
+        <button class="chip" type="button">Comic</button>
+        <button class="chip" type="button">Audiobook</button>
+        <button class="chip" type="button">Music</button>
+      </div>
+
+      <details class="advanced">
+        <summary class="kicker" style="grid-column:1/-1;cursor:pointer">Advanced — same page, not a different site</summary>
+        <div class="field"><label>Author</label><input value="Herbert" /></div>
+        <div class="field"><label>Title</label><input placeholder="Title" /></div>
+        <div class="field"><label>ISBN</label><input placeholder="978…" class="font-mono" /></div>
+        <div class="field"><label>Series</label><input value="Dune" /></div>
+        <div class="field"><label>Year</label><input placeholder="1965" /></div>
+      </details>
+
+      <div class="section-label">
+        <h2>In the stacks</h2>
+        <p class="lede" style="margin:0;color:var(--muted);font-size:var(--text-sm)">Local catalog · click cover to peek</p>
+      </div>
+      <div class="rail-track" style="padding-bottom:32px">
+        <div class="cover-unit">
+          <a class="cover" href="peek.html" style="--cloth:#3a2a18"><strong>Dune</strong><em>1965 · EPUB</em></a>
+          <div class="cover-caption">Dune</div>
+        </div>
+        <div class="cover-unit">
+          <a class="cover" href="peek.html" style="--cloth:#2a2418"><strong>Dune Messiah</strong><em>1969 · EPUB</em></a>
+          <div class="cover-caption">Dune Messiah</div>
+        </div>
+        <div class="cover-unit">
+          <a class="cover is-square" href="peek.html" style="--cloth:#3a2a18"><strong>Dune</strong><em>Audiobook</em></a>
+          <div class="cover-caption">Dune · listen</div>
+        </div>
+      </div>
+
+      <div class="section-label">
+        <h2>Beyond the shelves</h2>
+        <p class="lede" style="margin:0;color:var(--muted);font-size:var(--text-sm)">NZBFinder · Request queues SAB (op/owner). Readers file an “asked the house” slip.</p>
+      </div>
+      <div class="rail-track beyond">
+        <div class="cover-unit" style="position:relative">
+          <span class="live-chip">Request</span>
+          <a class="cover" href="peek.html" style="--cloth:#241c14"><strong>Children of Dune</strong><em>1976</em></a>
+          <div class="cover-caption">Children of Dune</div>
+        </div>
+        <div class="cover-unit" style="position:relative">
+          <span class="live-chip">Request</span>
+          <a class="cover" href="peek.html" style="--cloth:#1c1810"><strong>God Emperor</strong><em>1981</em></a>
+          <div class="cover-caption">God Emperor of Dune</div>
+        </div>
+        <div class="cover-unit" style="position:relative">
+          <span class="live-chip" style="background:var(--accent)">Queued</span>
+          <a class="cover" href="peek.html" style="--cloth:#302418"><strong>Heretics</strong><em>1984</em></a>
+          <div class="cover-caption">Heretics of Dune</div>
+        </div>
+      </div>
+    </main>
+  </body>
+</html>

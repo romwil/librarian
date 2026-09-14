@@ -44,7 +44,7 @@ export default function SettingsPage() {
 
   return (
     <div className="admin-room">
-      <p className="eyebrow">Owner</p>
+      <p className="kicker">Owner</p>
       <h1>Settings</h1>
       <p className="lede">settings.json wins. Secrets stay on the host.</p>
       {error ? <p className="alert">{error}</p> : null}
@@ -69,7 +69,7 @@ export default function SettingsPage() {
             )}
           </label>
         ))}
-        <button type="submit" className="login-primary">
+        <button type="submit" className="cta">
           Save
         </button>
       </form>

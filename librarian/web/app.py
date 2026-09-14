@@ -188,7 +188,10 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         user = getattr(request.state, "user", None) or current_user(request)
         require_role(user, "owner", "op", "reader")
         assert user is not None
-        return {"user": public_user(user)}
+        payload = {"user": public_user(user), "review_count": 0}
+        if user["role"] in ("owner", "op"):
+            payload["review_count"] = len(db.list_works(review_state="needs_review", limit=80))
+        return payload
 
     @app.get("/api/invites/validate")
     def validate_invite(token: str = ""):
@@ -289,10 +292,14 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         if work is None:
             raise HTTPException(status_code=404, detail="Work not found")
         files = db.files_for_work(work_id)
+        related = []
+        if work.get("author"):
+            related = [row for row in db.search_works(str(work["author"]), limit=8) if row.get("id") != work_id]
         return {
             "work": work,
             "files": files,
             "favorite": db.is_favorite(request.state.user["id"], work_id),
+            "related": related,
         }
 
     @app.post("/api/works/{work_id}/favorite")

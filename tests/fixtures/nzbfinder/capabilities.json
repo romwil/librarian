@@ -1,0 +1,114 @@
+{
+  "server": {
+    "title": "NZBFinder",
+    "url": "https://nzbfinder.ws"
+  },
+  "limits": {
+    "max": 100,
+    "default": 100
+  },
+  "searching": {
+    "search": {
+      "available": "yes",
+      "supported_params": "query, maxage, limit, offset, subs"
+    },
+    "tv": {
+      "available": "yes",
+      "supported_params": "tvdbid, traktid, tvmazeid, imdbid, tmdbid, season, ep, subs"
+    },
+    "movies": {
+      "available": "yes",
+      "supported_params": "id, imdbid, tmdbid, traktid, subs"
+    },
+    "books": {
+      "available": "yes",
+      "supported_params": "author, title, isbn"
+    }
+  },
+  "categories": [
+    {
+      "id": 1,
+      "name": "Other",
+      "subcategories": {
+        "10": "Misc",
+        "20": "Hashed"
+      }
+    },
+    {
+      "id": 2000,
+      "name": "Movies",
+      "subcategories": {
+        "2010": "Foreign",
+        "2030": "SD",
+        "2040": "HD",
+        "2045": "UHD",
+        "2050": "3D",
+        "2060": "BluRay",
+        "2070": "DVD",
+        "2080": "WEBDL",
+        "2090": "X265",
+        "2999": "Other"
+      }
+    },
+    {
+      "id": 3000,
+      "name": "Audio",
+      "subcategories": {
+        "3010": "MP3",
+        "3020": "Video",
+        "3030": "Audiobook",
+        "3040": "Lossless",
+        "3060": "Foreign",
+        "3999": "Other"
+      }
+    },
+    {
+      "id": 5000,
+      "name": "TV",
+      "subcategories": {
+        "5010": "WEB-DL",
+        "5020": "Foreign",
+        "5030": "SD",
+        "5040": "HD",
+        "5045": "UHD",
+        "5060": "Sport",
+        "5070": "Anime",
+        "5080": "Documentary",
+        "5090": "X265",
+        "5999": "Other"
+      }
+    },
+    {
+      "id": 6000,
+      "name": "XXX",
+      "subcategories": {
+        "6010": "DVD",
+        "6020": "WMV",
+        "6030": "XviD",
+        "6040": "x264",
+        "6041": "HD Clips",
+        "6042": "SD Clips",
+        "6045": "UHD",
+        "6046": "VR",
+        "6047": "OnlyFans",
+        "6050": "Packs",
+        "6060": "Imageset",
+        "6080": "SD",
+        "6090": "WEBDL",
+        "6999": "Other"
+      }
+    },
+    {
+      "id": 7000,
+      "name": "Books",
+      "subcategories": {
+        "7010": "Magazines",
+        "7020": "Ebook",
+        "7030": "Comics",
+        "7040": "Technical",
+        "7060": "Foreign",
+        "7999": "Other"
+      }
+    }
+  ]
+}

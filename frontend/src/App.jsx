@@ -7,6 +7,7 @@ export default function App() {
   const location = useLocation();
   const [user, setUser] = useState(undefined);
   const [features, setFeatures] = useState(null);
+  const [reviewCount, setReviewCount] = useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -21,7 +22,10 @@ export default function App() {
     api
       .me()
       .then((data) => {
-        if (alive) setUser(data.user);
+        if (alive) {
+          setUser(data.user);
+          setReviewCount(data.review_count || 0);
+        }
       })
       .catch((error) => {
         if (alive) setUser(error.status === 401 ? null : null);
@@ -39,8 +43,8 @@ export default function App() {
   }
 
   return (
-    <AppChrome user={user} features={features}>
-      <Outlet context={{ user, features, setUser }} />
+    <AppChrome user={user} features={features} reviewCount={reviewCount}>
+      <Outlet context={{ user, features, setUser, reviewCount }} />
     </AppChrome>
   );
 }

@@ -18,10 +18,12 @@ Plan: [librarian_automat_rss](file:///Users/willrompala/.cursor/plans/librarian_
 - **2026-09-14** — Roadmap + append-only `docs/build-progress.md`; README points at ROADMAP.
 - **2026-09-14** — Value tests green: 54 passed, 77% coverage (floor 70%). Ruff + scoped mypy clean. Book parse splits `Author - Title` before tidy. HTTP authz: reader 403 Settings/invites; op cannot mint `op`.
 - **2026-09-14** — `frontend/package-lock.json` + `npm run build` (SPA in `frontend/dist`, gitignored).
+- **2026-09-14** — Reading Room handoff copied to `docs/ux/reading-room.md` + `docs/ux/mockups/`. SPA `:root` is brass `#c9954a`, Literata + Source Sans 3; peek `min(44rem, 100vw - 1.5rem)`; covers 148×222 / 160 square; cover click opens peek.
+- **2026-09-14** — NZBFinder v2 fixtures copied (no live refetch): `tests/fixtures/nzbfinder/{capabilities,books-linux,search-magazine,details-linux}.json`. Confirmed no `api_token` / `apikey` in JSON. Exact `newznab_cat_to_kind` at `librarian/indexers/kind_map.py`; 33 value tests in `tests/test_kind_map.py`. Client parses v2 `results` from those fixtures.
 
 ## In progress / next
 
-- [~] Private `romwil/librarian` + push (local `d79591b` exists)
+- [x] Private `romwil/librarian` exists (`https://github.com/romwil/librarian`)
 - [ ] Automat `docker-run.sh` health smoke
 - [ ] Cover fetch / CBR→CBZ / BYO LLM identify
-- [ ] Continue rail + living Request chips + frontend unit tests
+- [ ] Continue rail data + browser QA of Hall / foyer / peek

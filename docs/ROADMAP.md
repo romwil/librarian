@@ -8,9 +8,9 @@ Living product/build checklist. Flip boxes when a slice ships. Append the story 
 | --- | --- |
 | **Date** | 2026-09-14 |
 | **Branch** | `main` |
-| **Last SHA** | `d79591b` |
-| **Green** | `54 passed`, coverage **77%** (floor 70%); ruff + scoped mypy clean; `GET /api/health` → `{status: ok}`; `frontend` Vite build succeeds. |
-| **Next** | Private `romwil/librarian` + push; Automat `docker-run.sh` smoke; cover fetch / living Request chips / Continue rail. |
+| **Last SHA** | `5e01dda` (this commit updates main) |
+| **Green** | `91 passed`, coverage **77%** (floor 70%); ruff + scoped mypy clean; frontend `5 passed` (`node --test`) + Vite build. |
+| **Next** | Automat `docker-run.sh` smoke; cover fetch / Continue rail data. |
 
 ## North star
 
@@ -44,7 +44,7 @@ A household **library for readers**, not an admin grabber and not Calibre-in-a-b
 - [x] Dockerfile, `docker-compose.yml`, `docker-run.sh`, `settings.example.json`
 - [x] pytest + ruff + scoped mypy green (`54 passed`, 77% coverage)
 - [x] `frontend/package-lock.json` + production `npm run build`
-- [~] Private GitHub `romwil/librarian` + first push
+- [x] Private GitHub `romwil/librarian` + first push
 
 ### Auth
 
@@ -61,6 +61,8 @@ A household **library for readers**, not an admin grabber and not Calibre-in-a-b
 - [x] v2 JSON client: capabilities, search, books, details, download URL
 - [x] User-Agent `Librarian/…` + `api_token` (also `apikey` alias)
 - [x] Token-stripped search fixture
+- [x] NZBFinder v2 fixtures in `tests/fixtures/nzbfinder/` (capabilities / books / magazine / details; no tokens)
+- [x] Exact `newznab_cat_to_kind` in `librarian/indexers/kind_map.py` (33 value cases)
 - [x] TV/movies/XXX categories refused at parse
 - [ ] Live capabilities ping (opt-in, not CI)
 - [ ] RSS subscriptions (phase 2)
@@ -74,7 +76,7 @@ A household **library for readers**, not an admin grabber and not Calibre-in-a-b
 
 ### Identify / organize
 
-- [x] Newznab cat → kind (7030 comic, 7010 mag, 70xx book, 3030 audiobook, 30xx music; 2/5/6xxx refuse)
+- [x] Newznab cat → kind (7030 comic, 7010 mag, 70xx book, 3030 audiobook, 3010/3040/3999 music; 2/5/6xxx refuse)
 - [x] Usenet parse: magazine `No.10.2026` → `2026-10`; comic `Series.2024.001`
 - [x] Layouts from the plan (EPUB / CBZ / incoming music / audiobook `{Author}/{Title}/`)
 - [x] `metadata.opf` + `ComicInfo.xml`
@@ -105,15 +107,16 @@ A household **library for readers**, not an admin grabber and not Calibre-in-a-b
 
 ### UX (Reading Room)
 
+- [x] Reading Room tokens landed (brass `#c9954a`, Literata + Source Sans 3; spec in `docs/ux/reading-room.md`)
 - [x] Animated foyer login + `/join?token=` (lamp dust, spines, unfinished page-turn; reduced-motion still)
-- [x] The Hall landing + hero search
-- [x] Local-first search, then Beyond the shelves
-- [x] Peek drawer then `/works/:id` (plain click peek; Open full page)
-- [x] Role-aware chrome (Review/Queue/People/Settings gated)
-- [~] Projectionist-grade work detail (hero + files + Favorite/Promote; no rails yet)
-- [ ] Continue rail
-- [ ] Living Request chips on search cards
-- [ ] Frontend unit tests (naming / filters / review copy)
+- [x] The Hall landing + hero search (“What are you looking for?”)
+- [x] Local-first search, then Beyond the shelves (kind chips + advanced drawer)
+- [x] Peek overlay `min(44rem, 100vw - 1.5rem)` with visible 148×222 cover; cover click does not navigate
+- [x] Role-aware chrome (Review is an op/owner bag badge)
+- [x] Work hero (blurred wash + chips + Favorite/Promote)
+- [x] Living Request chips after Beyond peek Request
+- [x] Frontend unit tests (cover cloth / peek click / job labels)
+- [ ] Continue rail (API still returns `[]`)
 - [ ] Browser-verified Hall / login / peek
 
 ### Automat

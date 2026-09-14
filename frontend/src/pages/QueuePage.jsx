@@ -16,7 +16,7 @@ export default function QueuePage() {
 
   return (
     <div className="admin-room">
-      <p className="eyebrow">Exceptions</p>
+      <p className="kicker">Exceptions</p>
       <h1>Queue</h1>
       <p className="lede">Living chips live on search cards. This list is for asked slips and SAB jobs.</p>
       {error ? <p className="alert">{error}</p> : null}
@@ -30,7 +30,7 @@ export default function QueuePage() {
               {job.nzo_id ? ` · ${job.nzo_id}` : ""}
             </p>
             {job.status === "asked" ? (
-              <button type="button" className="primary" onClick={() => api.confirmJob(job.id).then(reload)}>
+              <button type="button" className="cta" onClick={() => api.confirmJob(job.id).then(reload)}>
                 Queue to SAB
               </button>
             ) : null}

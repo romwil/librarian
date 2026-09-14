@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate, useOutletContext } from "react-router-dom";
 import { api } from "../api.js";
 import Rail from "../components/Rail.jsx";
 
 export default function HallPage() {
   const navigate = useNavigate();
+  const { user } = useOutletContext();
   const [hall, setHall] = useState(null);
   const [q, setQ] = useState("");
+  const owner = user?.role === "owner";
 
   useEffect(() => {
     api.hall().then(setHall).catch(() => setHall({ empty: true, areas: {} }));
@@ -19,9 +21,12 @@ export default function HallPage() {
 
   return (
     <div className="hall">
-      <section className="hero">
-        <p className="eyebrow">The Hall</p>
-        <form className="hero-search" onSubmit={onSearch}>
+      <section className="hero-search-block">
+        <p className="kicker">The Hall</p>
+        <h1>What are you looking for?</h1>
+        <p>One search. Shelves first, then the world.</p>
+        <form className="search-field" onSubmit={onSearch}>
+          <span aria-hidden="true">⌕</span>
           <label className="sr-only" htmlFor="hall-search">
             Search the stacks
           </label>
@@ -29,25 +34,32 @@ export default function HallPage() {
             id="hall-search"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Search the stacks — then the world"
+            placeholder="Author, title, ISBN, series…"
             autoFocus
           />
+          <kbd>/</kbd>
         </form>
       </section>
       {hall?.empty ? (
-        <section className="empty-house">
+        <section className="empty-cta">
           <h2>Open the stacks</h2>
-          <p>Add an indexer in Settings and the first covers will land here.</p>
+          <p className="lede">Add an indexer and the first covers will land here.</p>
+          {owner ? (
+            <Link className="cta" to="/settings">
+              Add an indexer
+            </Link>
+          ) : null}
         </section>
       ) : null}
-      <Rail title="What’s New" items={hall?.whats_new} />
+      <Rail title="Continue" kicker="In-progress reads and listens" items={hall?.continue} />
+      <Rail title="What’s New" kicker="Recently organized" items={hall?.whats_new} />
       <Rail title="Favorites" items={hall?.favorites} />
       <Rail title="Books" items={hall?.areas?.books} />
-      <Rail title="Magazines" items={hall?.areas?.magazines} />
+      <Rail title="Magazines" kicker="Issue date on the gilt caption" items={hall?.areas?.magazines} />
       <Rail title="Comics" items={hall?.areas?.comics} />
       <Rail title="Audiobooks" items={hall?.areas?.audiobooks} />
       <Rail title="Incoming Music" items={hall?.areas?.incoming_music} />
-      <Rail title="Gaps" items={hall?.gaps} empty={hall?.gaps ? undefined : undefined} />
+      <Rail title="Gaps" items={hall?.gaps} />
     </div>
   );
 }

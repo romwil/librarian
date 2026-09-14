@@ -25,15 +25,15 @@ export default function PeoplePage() {
 
   return (
     <div className="admin-room">
-      <p className="eyebrow">Household</p>
+      <p className="kicker">Household</p>
       <h1>People</h1>
       <p className="lede">Invite-only. The raw token is shown once.</p>
       {error ? <p className="alert">{error}</p> : null}
-      <div className="peek-acts">
-        <button type="button" className="primary" onClick={() => mint("reader")}>
+      <div className="cta-row">
+        <button type="button" className="cta" onClick={() => mint("reader")}>
           Invite a reader
         </button>
-        <button type="button" className="ghost" onClick={() => mint("op")}>
+        <button type="button" className="cta ghost" onClick={() => mint("op")}>
           Invite an op
         </button>
       </div>

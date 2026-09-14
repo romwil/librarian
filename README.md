@@ -56,6 +56,7 @@ Tokens never belong in git. `.env.example` keeps empty placeholders.
 - [docs/SECURITY.md](docs/SECURITY.md) — handshake allowlist, invite HMAC, session secret
 - [docs/HELP.md](docs/HELP.md) — how to use The Hall
 - [Design spec](docs/superpowers/specs/2026-09-14-librarian-design.md) — north star and UX contracts
+- [Reading Room UX](docs/ux/reading-room.md) — brass tokens, peek, covers (mockups in `docs/ux/mockups/`)
 
 ## Tests
 

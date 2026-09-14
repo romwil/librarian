@@ -66,6 +66,9 @@ def test_login_then_hall_and_favorite(tmp_path, monkeypatch):
     login = client.post("/api/auth/local/login", json={"username": "owner", "password": "password123"})
     assert login.status_code == 200
     assert login.json()["user"]["role"] == "owner"
+    me = client.get("/api/auth/me")
+    assert me.status_code == 200
+    assert me.json()["review_count"] == 0
     hall = client.get("/api/hall")
     assert hall.status_code == 200
     assert hall.json()["empty"] is True

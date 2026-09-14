@@ -77,7 +77,7 @@ UI: Gaps rail on The Hall (op/owner). Confirm chip queues NZBFinder (`cat=7030` 
 
 ## UX: the Reading Room
 
-Projectionist *structures* (hero, peek drawer, cover rails) with a different soul.
+Projectionist *structures* (hero, peek drawer, cover rails) with a different soul. Visual handoff: [docs/ux/reading-room.md](../../ux/reading-room.md).
 
 - **Foyer:** dust in a lamp shaft, spine silhouettes, unfinished page-turn. `/login` and `/join?token=` share it. Invite role is a quiet seal. `prefers-reduced-motion` = still.
 - **The Hall:** land here. Hero search. Rails: Continue, What’s New, Favorites, by area, Gaps.

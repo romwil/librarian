@@ -37,6 +37,17 @@ def _attr_map(item: Dict[str, Any]) -> Dict[str, str]:
     return attrs
 
 
+def _v2_guid(item: Dict[str, Any]) -> str:
+    details = str(item.get("details") or "")
+    if "/details/" in details:
+        return details.rsplit("/", 1)[-1]
+    url = str(item.get("url") or "")
+    if "id=" in url:
+        raw = url.split("id=", 1)[1].split("&", 1)[0]
+        return raw.removesuffix(".nzb")
+    return ""
+
+
 def normalize_item(item: Dict[str, Any]) -> Dict[str, Any]:
     attrs = _attr_map(item)
     enclosure = item.get("enclosure") or {}
@@ -49,20 +60,23 @@ def normalize_item(item: Dict[str, Any]) -> Dict[str, Any]:
     if isinstance(category, list) and category:
         category = category[0]
     cat_id = attrs.get("category") or category
-    size = attrs.get("size") or (enclosure.get("length") if isinstance(enclosure, dict) else None)
+    size = attrs.get("size") or item.get("size") or (
+        enclosure.get("length") if isinstance(enclosure, dict) else None
+    )
+    enclosure_url = enclosure.get("url") if isinstance(enclosure, dict) else None
     return {
         "title": item.get("title") or "",
-        "guid": str(guid or attrs.get("guid") or ""),
-        "link": item.get("link") or "",
-        "pub_date": item.get("pubDate") or item.get("pub_date") or "",
+        "guid": str(guid or attrs.get("guid") or _v2_guid(item) or ""),
+        "link": item.get("link") or item.get("details") or "",
+        "pub_date": item.get("pubDate") or item.get("pub_date") or item.get("postdate") or item.get("adddate") or "",
         "category": cat_id,
         "kind": kind_from_newznab(cat_id),
         "size": int(size) if str(size or "").isdigit() else None,
         "author": attrs.get("author") or item.get("author") or "",
-        "book_title": attrs.get("booktitle") or attrs.get("title") or "",
-        "isbn": attrs.get("isbn") or "",
-        "cover": attrs.get("coverurl") or attrs.get("cover") or "",
-        "download_url": (enclosure.get("url") if isinstance(enclosure, dict) else None) or item.get("link") or "",
+        "book_title": attrs.get("booktitle") or item.get("book_title") or "",
+        "isbn": attrs.get("isbn") or item.get("isbn13") or item.get("isbn10") or item.get("isbn") or "",
+        "cover": attrs.get("coverurl") or attrs.get("cover") or item.get("cover") or "",
+        "download_url": enclosure_url or item.get("url") or item.get("link") or "",
         "raw": {key: value for key, value in item.items() if key != "description"},
     }
 
@@ -72,6 +86,8 @@ def parse_search_payload(payload: Any) -> List[Dict[str, Any]]:
         return [normalize_item(item) for item in payload if isinstance(item, dict)]
     if not isinstance(payload, dict):
         return []
+    if isinstance(payload.get("results"), list):
+        return [normalize_item(item) for item in payload["results"] if isinstance(item, dict)]
     channel = payload.get("channel") or payload
     items = channel.get("item") if isinstance(channel, dict) else None
     return [normalize_item(item) for item in _as_list(items) if isinstance(item, dict)]

@@ -1,35 +1,38 @@
+import { clothFor, coverCaption, isSquareKind, jobChipLabel, shouldOpenPeek } from "../cover.js";
 import { useWorkPeek } from "./WorkPeekProvider.jsx";
 
-function shouldOpenPeek(event) {
-  return !(event.metaKey || event.ctrlKey || event.shiftKey || event.altKey);
-}
-
-export default function CoverCard({ work, href, onRequest, badge }) {
+export default function CoverCard({ work, href, onRequest, badge, beyond = false, role = "reader" }) {
   const peek = useWorkPeek();
-  const kind = work.kind || work.category || "book";
-  const square = kind === "music" || kind === "audiobook";
+  const kind = work.kind || "book";
+  const square = isSquareKind(kind);
   const title = work.title || "Untitled";
+  const status = work.job_status || badge;
+  const chip = status ? jobChipLabel(status, role) : "";
 
   function onClick(event) {
-    if (work.id && shouldOpenPeek(event)) {
-      event.preventDefault();
-      peek.openWork(work, { triggerEl: event.currentTarget });
-    }
+    if (!shouldOpenPeek(event)) return;
+    event.preventDefault();
+    peek.openWork({ ...work, beyond, job_status: status }, { triggerEl: event.currentTarget, onRequest });
   }
 
+  const classes = ["cover"];
+  if (square) classes.push("is-square");
+  if (work.progress) classes.push("is-progress");
+  if (work.gap || kind === "gap") classes.push("is-gap");
+
   return (
-    <article className={`cover-card ${square ? "cover-card--square" : ""}`}>
-      <a href={href || (work.id ? `/works/${work.id}` : "#")} className="cover-poster" onClick={onClick}>
-        <span className="cover-cloth">{title.slice(0, 1)}</span>
-        {badge ? <span className="cover-badge">{badge}</span> : null}
-      </a>
-      <p className="cover-title">{title}</p>
-      <p className="cover-meta">{work.author || work.series_name || kind}</p>
-      {onRequest && !work.id ? (
-        <button type="button" className="chip" onClick={() => onRequest(work)}>
-          Request
-        </button>
-      ) : null}
-    </article>
+    <div className="cover-unit">
+      <button
+        type="button"
+        className={classes.join(" ")}
+        style={{ "--cloth": work.cloth || clothFor(title), "--progress": `${work.progress || 0}%` }}
+        onClick={onClick}
+      >
+        <strong>{title}</strong>
+        <em>{work.author || work.series_name || kind}</em>
+        {chip ? <span className={`live-chip${status === "asked" ? " is-asked" : ""}${status === "failed" ? " is-failed" : ""}`}>{chip}</span> : null}
+      </button>
+      <p className="cover-caption">{coverCaption(work)}</p>
+    </div>
   );
 }

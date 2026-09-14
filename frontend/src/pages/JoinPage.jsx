@@ -38,31 +38,32 @@ export default function JoinPage() {
 
   return (
     <GlassDoor
-      eyebrow={invite ? role : "Join"}
-      title="Join this household"
+      eyebrow="Household library"
+      title="The Reading Room"
+      seal={invite ? role : null}
       lede="The same foyer as sign-in. Your role is sealed on the invite — you do not choose it."
       footer={<Link to="/login">Already have a key?</Link>}
     >
       {error ? <p className="alert">{error}</p> : null}
       {invite ? (
         <form className="login-form" onSubmit={onSubmit}>
-          <p className="login-help">You are joining as a {role}.</p>
-          <label className="login-field">
-            Display name
-            <input value={username} onChange={(e) => setUsername(e.target.value)} minLength={2} required />
-          </label>
-          <label className="login-field">
-            Password
+          <div className="field">
+            <label htmlFor="join-name">Name</label>
+            <input id="join-name" value={username} onChange={(e) => setUsername(e.target.value)} minLength={2} required />
+          </div>
+          <div className="field">
+            <label htmlFor="join-pass">Password</label>
             <input
+              id="join-pass"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               minLength={8}
               required
             />
-          </label>
-          <button type="submit" className="login-primary">
-            Take a shelf
+          </div>
+          <button type="submit" className="cta">
+            Enter
           </button>
         </form>
       ) : null}

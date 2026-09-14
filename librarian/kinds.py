@@ -4,17 +4,21 @@ from __future__ import annotations
 
 from typing import Optional
 
-KIND_BOOK = "book"
-KIND_MAGAZINE = "magazine"
-KIND_COMIC = "comic"
-KIND_AUDIOBOOK = "audiobook"
-KIND_MUSIC = "music"
+from librarian.indexers.kind_map import (
+    KIND_AUDIOBOOK,
+    KIND_BOOK,
+    KIND_COMIC,
+    KIND_MAGAZINE,
+    KIND_MUSIC,
+    REFUSED_FAMILIES,
+    newznab_cat_to_kind,
+)
 
 READING_KINDS = (KIND_BOOK, KIND_MAGAZINE, KIND_COMIC)
 LISTENING_KINDS = (KIND_AUDIOBOOK, KIND_MUSIC)
 ALL_KINDS = READING_KINDS + LISTENING_KINDS
 
-REFUSED_PREFIXES = (2000, 5000, 6000)
+REFUSED_PREFIXES = REFUSED_FAMILIES
 
 NEWZNAB_COMIC = 7030
 NEWZNAB_MAGAZINE = 7010
@@ -34,20 +38,7 @@ def kind_from_newznab(category: object) -> Optional[str]:
     cat = _as_int(category)
     if cat is None:
         return None
-    family = (cat // 1000) * 1000
-    if family in REFUSED_PREFIXES:
-        return None
-    if cat == NEWZNAB_COMIC:
-        return KIND_COMIC
-    if cat == NEWZNAB_MAGAZINE:
-        return KIND_MAGAZINE
-    if 7000 <= cat <= 7099:
-        return KIND_BOOK
-    if cat == NEWZNAB_AUDIOBOOK:
-        return KIND_AUDIOBOOK
-    if cat in NEWZNAB_MUSIC or family == 3000:
-        return KIND_MUSIC
-    return None
+    return newznab_cat_to_kind(cat)
 
 
 def search_category_for_kind(kind: str) -> Optional[str]:

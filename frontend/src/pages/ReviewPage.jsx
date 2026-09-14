@@ -33,7 +33,7 @@ export default function ReviewPage() {
 
   return (
     <div className="admin-room">
-      <p className="eyebrow">Bag</p>
+      <p className="kicker">Bag</p>
       <h1>Review</h1>
       <p className="lede">Unexpected items only. Happy-path ISBN books never appear here.</p>
       {error ? <p className="alert">{error}</p> : null}
@@ -45,11 +45,11 @@ export default function ReviewPage() {
             <p className="muted">
               {work.review_reason} · {work.kind}
             </p>
-            <div className="peek-acts">
-              <button type="button" className="primary" onClick={() => apply(work)}>
+            <div className="cta-row">
+              <button type="button" className="cta" onClick={() => apply(work)}>
                 Apply
               </button>
-              <button type="button" className="ghost" onClick={() => skip(work)}>
+              <button type="button" className="cta ghost" onClick={() => skip(work)}>
                 Skip
               </button>
             </div>

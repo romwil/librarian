@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Librarian Reading Room — mockup index</title>
+    <link rel="stylesheet" href="reading-room.css" />
+    <style>
+      .gallery {
+        width: min(720px, calc(100% - 48px));
+        margin: 12vh auto;
+      }
+      .gallery h1 {
+        font-family: var(--font-display);
+        font-size: clamp(2rem, 5vw, 3rem);
+        margin: 0 0 8px;
+      }
+      .gallery ol {
+        padding: 0;
+        list-style: none;
+        display: grid;
+        gap: 12px;
+      }
+      .gallery a {
+        display: block;
+        padding: 18px 20px;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: color-mix(in srgb, var(--surface) 80%, transparent);
+        color: var(--text);
+      }
+      .gallery a strong {
+        font-family: var(--font-display);
+        display: block;
+        margin-bottom: 4px;
+      }
+      .gallery a span {
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="gallery">
+      <p class="kicker">Librarian · visual handoff</p>
+      <h1>Reading Room mockups</h1>
+      <p style="color:var(--muted);max-width:46ch">
+        Stitch OAuth was unavailable (API-key 401). These HTML screens are the copy source for the SPA. Open at desktop width first, then ~390px for the tab bar.
+      </p>
+      <ol>
+        <li><a href="foyer.html"><strong>1. Login foyer</strong><span>Lamp shaft, dust, spine silhouettes, glass card. Join uses the same door.</span></a></li>
+        <li><a href="hall.html"><strong>2. The Hall</strong><span>Hero search + Continue / What’s New / Favorites / area rails / Gaps.</span></a></li>
+        <li><a href="search.html"><strong>3. Unified search</strong><span>In the stacks, then Beyond the shelves. Advanced is a drawer under the same hero.</span></a></li>
+        <li><a href="peek.html"><strong>4. Work peek</strong><span>Centered 44rem modal over The Hall. Cover stays visible (unlike Projectionist’s hidden drawer poster).</span></a></li>
+        <li><a href="work.html"><strong>5. Full work</strong><span>Blurred-cover hero, clickable chips, poster rails.</span></a></li>
+      </ol>
+    </main>
+  </body>
+</html>

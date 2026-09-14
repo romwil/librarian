@@ -1,24 +1,38 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api.js";
+import { clothFor, isSquareKind, jobChipLabel } from "../cover.js";
 
-export default function WorkPeek({ work, onClose }) {
+export default function WorkPeek({ work, onClose, onRequest }) {
   const panel = useRef(null);
+  const closeBtn = useRef(null);
   const navigate = useNavigate();
+  const [role, setRole] = useState("reader");
+  const [jobStatus, setJobStatus] = useState(work?.job_status || "");
+
+  useEffect(() => {
+    setJobStatus(work?.job_status || "");
+  }, [work]);
 
   useEffect(() => {
     if (!work) return undefined;
+    api
+      .me()
+      .then((data) => setRole(data.user?.role || "reader"))
+      .catch(() => {});
     function onKey(event) {
       if (event.key === "Escape") onClose();
     }
     window.addEventListener("keydown", onKey);
-    panel.current?.focus();
+    closeBtn.current?.focus();
     return () => window.removeEventListener("keydown", onKey);
   }, [work, onClose]);
 
   if (!work) return null;
 
   const href = work.id ? `/works/${work.id}` : null;
+  const kind = work.kind || "work";
+  const square = isSquareKind(kind);
 
   async function favorite() {
     if (!work.id) return;
@@ -26,7 +40,8 @@ export default function WorkPeek({ work, onClose }) {
   }
 
   async function request() {
-    await api.requestItem({
+    const send = onRequest || api.requestItem;
+    const result = await send({
       title: work.title,
       guid: work.guid,
       kind: work.kind,
@@ -34,53 +49,82 @@ export default function WorkPeek({ work, onClose }) {
       author: work.author,
       isbn: work.isbn,
     });
-    onClose();
+    const status = result?.job?.status || (role === "reader" ? "asked" : "queued");
+    setJobStatus(status);
   }
 
   return (
-    <div className="peek-scrim" onClick={onClose} role="presentation">
-      <div
-        className="peek-panel"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="peek-title"
-        ref={panel}
-        tabIndex={-1}
-        onClick={(event) => event.stopPropagation()}
-      >
-        <p className="eyebrow">{work.kind || "work"}</p>
-        <h2 id="peek-title">{work.title}</h2>
-        <p className="muted">{[work.author, work.series_name, work.series_index].filter(Boolean).join(" · ")}</p>
-        {work.description ? <p className="peek-blurb">{work.description}</p> : null}
-        <div className="peek-acts">
-          {href ? (
-            <Link
-              to={href}
-              className="primary"
-              onClick={(event) => {
-                if (event.metaKey || event.ctrlKey) return;
-                onClose();
-                navigate(href);
-                event.preventDefault();
-              }}
-            >
-              Open full page
-            </Link>
-          ) : (
-            <button type="button" className="primary" onClick={request}>
-              Request
-            </button>
-          )}
-          {work.id ? (
-            <button type="button" className="ghost" onClick={favorite}>
-              Favorite
-            </button>
-          ) : null}
-          <button type="button" className="ghost" onClick={onClose}>
-            Close
+    <>
+      <button type="button" className="scrim" aria-label="Close peek" onClick={onClose} />
+      <aside className="peek" role="dialog" aria-modal="true" aria-labelledby="peek-title" ref={panel}>
+        <header className="peek-head">
+          <p className="kicker">{kind}</p>
+          <button type="button" className="peek-close" aria-label="Close" ref={closeBtn} onClick={onClose}>
+            ×
           </button>
+        </header>
+        <div className="peek-body">
+          <div className="peek-layout">
+            <div
+              className={`cover${square ? " is-square" : ""}`}
+              style={{ "--cloth": work.cloth || clothFor(work.title), width: square ? 160 : 148, height: square ? 160 : 222 }}
+              aria-hidden="true"
+            >
+              <strong>{work.title}</strong>
+              <em>{work.author || kind}</em>
+            </div>
+            <div>
+              <h1 id="peek-title">{work.title}</h1>
+              <div className="chip-row">
+                {kind ? <span className="chip is-on">{kind}</span> : null}
+                {work.year ? <span className="chip">{work.year}</span> : null}
+                {work.author ? <span className="chip">{work.author}</span> : null}
+                {work.isbn ? <span className="chip font-mono">{work.isbn}</span> : null}
+              </div>
+              {work.description ? <p className="blurb">{work.description}</p> : null}
+              <div className="cta-row">
+                {href ? (
+                  <Link
+                    to={href}
+                    className="cta"
+                    onClick={(event) => {
+                      if (event.metaKey || event.ctrlKey) return;
+                      onClose();
+                      navigate(href);
+                      event.preventDefault();
+                    }}
+                  >
+                    Open
+                  </Link>
+                ) : (
+                  <button type="button" className="cta" onClick={request} disabled={Boolean(jobStatus)}>
+                    {jobChipLabel(jobStatus, role)}
+                  </button>
+                )}
+                {work.id ? (
+                  <button type="button" className="cta outline" onClick={favorite}>
+                    Favorite
+                  </button>
+                ) : null}
+              </div>
+              {href ? (
+                <p className="peek-full">
+                  <Link
+                    to={href}
+                    onClick={(event) => {
+                      if (event.metaKey || event.ctrlKey) return;
+                      onClose();
+                    }}
+                  >
+                    Open full page
+                  </Link>
+                  <span style={{ color: "var(--muted)" }}> · same-tab dismisses peek · ⌘-click keeps peek</span>
+                </p>
+              ) : null}
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
+      </aside>
+    </>
   );
 }

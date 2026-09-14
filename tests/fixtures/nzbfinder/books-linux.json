@@ -1,0 +1,39 @@
+{
+  "total": 68,
+  "user_requests": 181,
+  "user_max_requests": 20000,
+  "user_downloads": 0,
+  "user_max_downloads": 20000,
+  "oldest_request_at": "2026-09-13T06:53:53+02:00",
+  "oldest_download_at": null,
+  "results": [
+    {
+      "title": "Linux_10",
+      "details": "https://nzbfinder.ws/details/65f78bbf-023c-4e9f-99c1-93633ed9bcf5",
+      "url": "https://nzbfinder.ws/api/v2/download?id=65f78bbf-023c-4e9f-99c1-93633ed9bcf5.nzb",
+      "category": 7040,
+      "category_name": "Books > Technical",
+      "adddate": "2026-08-29T15:17:32+02:00",
+      "postdate": "2026-08-29T12:08:45+02:00",
+      "size": 23978249,
+      "author": "오주일",
+      "book_title": "리눅스(LINUX)(10분가이드 33)",
+      "isbn13": "9788980541119",
+      "isbn10": "8980541112"
+    },
+    {
+      "title": "Linux 10.26",
+      "details": "https://nzbfinder.ws/details/8601c6e7-377f-45c3-815c-08019a1dc2fc",
+      "url": "https://nzbfinder.ws/api/v2/download?id=8601c6e7-377f-45c3-815c-08019a1dc2fc.nzb",
+      "category": 7040,
+      "category_name": "Books > Technical",
+      "adddate": "2026-08-29T12:20:42+02:00",
+      "postdate": "2026-08-29T12:08:39+02:00",
+      "size": 23197319,
+      "author": "Nicolas Pons",
+      "book_title": "Linux",
+      "isbn13": "9782746031722",
+      "isbn10": "2746031728"
+    }
+  ]
+}
