@@ -37,8 +37,10 @@ Coverage is configured in `pyproject.toml` (`--cov=librarian --cov-fail-under=70
 | Kinds | `7030` → `comic`; `2000`/`5000`/`6000` → `None` |
 | Identify | `Linux-Magazin.No.10.2026` → title + `2026-10` |
 | Organize | `{Author}/{Title}/{Title}.epub` and collision → Review |
-| Gaps | owned `2026-08` + `2026-10` → missing `["2026-09"]` |
+| Gaps | owned `2026-08` + `2026-10` → missing `["2026-09"]`; audiobook parts 1+3 → `["2"]` |
 | SAB | history `Completed` → `completed`; addurl returns that `nzo_id` |
+| Covers | Open Library URL is `https://covers.openlibrary.org/b/isbn/{isbn}-L.jpg` |
+| LLM | invented ISBN dropped; `kind=unknown` → Review |
 
 Frontend unit tests for naming/filters/review copy land with the SPA polish pass.
 

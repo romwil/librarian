@@ -90,6 +90,17 @@ fi
 
 echo "Stopping existing container (if any)..."
 docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
+# Unraid can keep the *container* name reserved for tens of seconds after rm.
+# Inspect --type=container so a same-named image (librarian:latest) is not a hit.
+_wait=0
+while docker inspect --type=container "$CONTAINER_NAME" >/dev/null 2>&1; do
+  if [ "$_wait" -ge 90 ]; then
+    echo "ERROR: container ${CONTAINER_NAME} still exists after rm." >&2
+    exit 1
+  fi
+  sleep 2
+  _wait=$((_wait + 2))
+done
 
 # host.docker.internal plus optional EXTRA_HOSTS="name:ip,name:ip".
 # If the Unraid host can resolve downloader.sl, pin it so the container

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -24,8 +25,10 @@ from librarian.auth import (
     verify_password,
 )
 from librarian.config import load_merged_settings, mask_settings, merge_secret_fields, save_settings
+from librarian.convert import ALLOWED_EBOOK_FORMATS, convert_ebook, which_ebook_convert
 from librarian.db import Database
 from librarian.gaps import gap_cards, local_gaps
+from librarian.indexers.sync import ping_nzbfinder, sync_nzbfinder
 from librarian.invites import (
     create_household_invite,
     lookup_pending_invite,
@@ -35,6 +38,7 @@ from librarian.invites import (
 from librarian.jobs import confirm_asked_job, enqueue_indexer_item, poll_active_jobs, poll_job
 from librarian.nzbfinder import NZBFinderClient, NZBFinderError
 from librarian.organize import apply_review, organize_identified, promote_music
+from librarian.poller import JobPoller
 from librarian.rate_limit import enforce_rate_limit
 from librarian.sabnzbd import SABError
 from librarian.sessions import (
@@ -101,6 +105,28 @@ class SettingsPayload(BaseModel):
     household_name: Optional[str] = None
 
 
+class ProgressPayload(BaseModel):
+    position: str = ""
+    fraction: Optional[float] = None
+    finished: bool = False
+
+
+class ConvertPayload(BaseModel):
+    format: str = "epub"
+
+
+def public_work(row: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    if row is None:
+        return None
+    data = dict(row)
+    data["has_cover"] = bool(data.get("cover_path"))
+    return data
+
+
+def public_works(rows: list) -> list:
+    return [public_work(row) for row in rows if row]
+
+
 def _data_dir() -> Path:
     return Path(os.environ.get("DATA_DIR", "/config"))
 
@@ -116,8 +142,26 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
 
     db = Database(root / "librarian.db")
     seed_env_owner(db)
+    sync_nzbfinder(db, load_merged_settings(root))
 
-    app = FastAPI(title="Librarian", version=__version__, docs_url=None, redoc_url=None, openapi_url=None)
+    @asynccontextmanager
+    async def lifespan(application: FastAPI):
+        poller = JobPoller(db, lambda: load_merged_settings(root))
+        poller.start()
+        application.state.poller = poller
+        try:
+            yield
+        finally:
+            poller.stop()
+
+    app = FastAPI(
+        title="Librarian",
+        version=__version__,
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+        lifespan=lifespan,
+    )
     app.state.data_dir = root
     app.state.db = db
 
@@ -259,11 +303,11 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         if user["role"] in ("owner", "op"):
             gaps = gap_cards(local_gaps(db))
         return {
-            "whats_new": recent,
-            "favorites": favorites,
-            "areas": areas,
+            "whats_new": public_works(recent),
+            "favorites": public_works(favorites),
+            "areas": {key: public_works(value) for key, value in areas.items()},
             "gaps": gaps,
-            "continue": [],
+            "continue": db.continue_works(user["id"], limit=18),
             "owner_ready": True,
             "empty": not recent and not any(areas.values()),
         }
@@ -271,7 +315,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
     @app.get("/api/search")
     def search(request: Request, q: str = "", beyond: int = 0, kind: str = ""):
         user = request.state.user
-        local = db.search_works(q, limit=24) if q.strip() else []
+        local = public_works(db.search_works(q, limit=24) if q.strip() else [])
         indexer = []
         if beyond and q.strip():
             cfg = settings()
@@ -290,18 +334,26 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
 
     @app.get("/api/works/{work_id}")
     def work_detail(work_id: str, request: Request):
-        work = db.get_work(work_id)
+        work = public_work(db.get_work(work_id))
         if work is None:
             raise HTTPException(status_code=404, detail="Work not found")
         files = db.files_for_work(work_id)
         related = []
         if work.get("author"):
-            related = [row for row in db.search_works(str(work["author"]), limit=8) if row.get("id") != work_id]
+            related = [
+                row
+                for row in public_works(db.search_works(str(work["author"]), limit=8))
+                if row and row.get("id") != work_id
+            ]
+        progress = db.get_progress(request.state.user["id"], work_id)
         return {
             "work": work,
             "files": files,
             "favorite": db.is_favorite(request.state.user["id"], work_id),
             "related": related,
+            "progress": progress,
+            "ebook_convert": bool(which_ebook_convert()),
+            "formats": list(ALLOWED_EBOOK_FORMATS),
         }
 
     @app.post("/api/works/{work_id}/favorite")
@@ -310,6 +362,95 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="Work not found")
         on = db.toggle_favorite(request.state.user["id"], work_id)
         return {"favorite": on}
+
+    @app.post("/api/works/{work_id}/progress")
+    def touch_progress(work_id: str, payload: ProgressPayload, request: Request):
+        require_role(request.state.user, "owner", "op", "reader")
+        if db.get_work(work_id) is None:
+            raise HTTPException(status_code=404, detail="Work not found")
+        existing = db.get_progress(request.state.user["id"], work_id)
+        if payload.finished:
+            fraction = 1.0
+        elif payload.fraction is not None:
+            fraction = float(payload.fraction)
+        elif existing:
+            fraction = float(existing.get("fraction") or 0)
+        else:
+            fraction = 0.05
+        position = payload.position or (existing or {}).get("position") or ""
+        row = db.upsert_progress(
+            user_id=request.state.user["id"],
+            work_id=work_id,
+            position=str(position),
+            fraction=fraction,
+        )
+        return {"progress": row}
+
+    @app.get("/api/works/{work_id}/cover")
+    def work_cover(work_id: str, request: Request):
+        require_role(request.state.user, "owner", "op", "reader")
+        work = db.get_work(work_id)
+        if work is None:
+            raise HTTPException(status_code=404, detail="Work not found")
+        path = Path(str(work.get("cover_path") or ""))
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail="Cover not found")
+        return FileResponse(path, media_type="image/jpeg")
+
+    def _canonical_file(work_id: str) -> Path:
+        files = db.files_for_work(work_id)
+        if not files:
+            raise HTTPException(status_code=404, detail="No files")
+        return Path(str(files[0]["path"]))
+
+    @app.get("/api/works/{work_id}/download")
+    def work_download(work_id: str, request: Request, format: str = ""):
+        require_role(request.state.user, "owner", "op", "reader")
+        if db.get_work(work_id) is None:
+            raise HTTPException(status_code=404, detail="Work not found")
+        src = _canonical_file(work_id)
+        if not src.is_file():
+            raise HTTPException(status_code=404, detail="File missing")
+        fmt = (format or src.suffix.lstrip(".")).lower()
+        if format and f".{fmt}" != src.suffix.lower():
+            cache = Path(root) / "conversions" / work_id
+            try:
+                dest = convert_ebook(src, fmt, cache)
+            except ValueError as error:
+                raise HTTPException(status_code=400, detail=str(error)) from error
+            except FileNotFoundError as error:
+                raise HTTPException(status_code=422, detail=str(error)) from error
+            except RuntimeError as error:
+                raise HTTPException(status_code=502, detail=str(error)) from error
+            return FileResponse(dest, filename=dest.name)
+        return FileResponse(src, filename=src.name)
+
+    @app.post("/api/works/{work_id}/convert")
+    def work_convert(work_id: str, payload: ConvertPayload, request: Request):
+        require_role(request.state.user, "owner", "op", "reader")
+        if db.get_work(work_id) is None:
+            raise HTTPException(status_code=404, detail="Work not found")
+        src = _canonical_file(work_id)
+        cache = Path(root) / "conversions" / work_id
+        try:
+            dest = convert_ebook(src, payload.format, cache)
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        except FileNotFoundError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        except RuntimeError as error:
+            raise HTTPException(status_code=502, detail=str(error)) from error
+        return {"path": str(dest), "format": payload.format, "filename": dest.name}
+
+    @app.get("/api/indexers")
+    def list_indexers(request: Request):
+        require_role(request.state.user, "owner")
+        return {"indexers": db.list_indexers()}
+
+    @app.post("/api/indexers/ping")
+    def indexer_ping(request: Request):
+        require_role(request.state.user, "owner")
+        return ping_nzbfinder(db, settings())
 
     @app.post("/api/request")
     def request_item(payload: RequestPayload, request: Request):
@@ -354,7 +495,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
     @app.get("/api/review")
     def review_list(request: Request):
         require_role(request.state.user, "owner", "op")
-        return {"works": db.list_works(review_state="needs_review", limit=80)}
+        return {"works": public_works(db.list_works(review_state="needs_review", limit=80))}
 
     @app.post("/api/review/{work_id}/apply")
     def review_apply(work_id: str, payload: ReviewApplyPayload, request: Request):
@@ -414,6 +555,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
 
         saved = Settings.from_mapping(merged)
         save_settings(root, saved)
+        sync_nzbfinder(db, saved)
         return {"settings": mask_settings(saved)}
 
     @app.post("/api/organize/preview")

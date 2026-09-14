@@ -8,9 +8,9 @@ Living product/build checklist. Flip boxes when a slice ships. Append the story 
 | --- | --- |
 | **Date** | 2026-09-14 |
 | **Branch** | `main` |
-| **Last SHA** | pending commit (Automat kit + proxy-safe handshake) |
-| **Green** | `103 passed`, coverage **78%** (floor 70%); ruff + scoped mypy clean; frontend `5 passed` (`node --test`). |
-| **Next** | Live Automat `docker-run.sh` smoke on `:8793`; cover fetch / Continue rail data. |
+| **Last SHA** | pending commit (Phase 1 gaps) |
+| **Green** | `127 passed`, coverage **78%** (floor 70%); ruff + scoped mypy clean; frontend `5 passed` (`node --test`). |
+| **Next** | Automat `docker-run.sh` smoke on `:8793`; Hub `romwil/librarian` later. |
 
 ## North star
 
@@ -42,7 +42,7 @@ A household **library for readers**. People peruse shelves, see What’s New, op
 - [x] `AGENTS.md`, `.gitignore` (incl. `smart.map` / `projectionist` copies), `.env.example` placeholders
 - [x] README / CHANGELOG / DOCKER / TESTING / SECURITY / HELP / design spec
 - [x] Dockerfile, `docker-compose.yml`, `docker-run.sh`, `settings.example.json`
-- [x] pytest + ruff + scoped mypy green (`103 passed`, 78% coverage)
+- [x] pytest + ruff + scoped mypy green (`127 passed`, 78% coverage)
 - [x] `frontend/package-lock.json` + production `npm run build`
 - [x] Private GitHub `romwil/librarian` + first push
 
@@ -64,7 +64,7 @@ A household **library for readers**. People peruse shelves, see What’s New, op
 - [x] NZBFinder v2 fixtures in `tests/fixtures/nzbfinder/` (capabilities / books / magazine / details; no tokens)
 - [x] Exact `newznab_cat_to_kind` in `librarian/indexers/kind_map.py` (33 value cases)
 - [x] TV/movies/XXX categories refused at parse
-- [ ] Live capabilities ping (opt-in, not CI)
+- [x] Live capabilities ping (opt-in, not CI)
 - [ ] RSS subscriptions (phase 2)
 
 ### SABnzbd
@@ -72,7 +72,7 @@ A household **library for readers**. People peruse shelves, see What’s New, op
 - [x] Client for `http://downloader.sl`: addurl / queue / history
 - [x] `nzo_id` status machine: queued → downloading → extracting → organized | review | failed
 - [x] Reader Request → `asked` slip (no SAB) until op/owner confirms
-- [ ] Background poller loop in the running process (poll is on-demand / queue GET today)
+- [x] Background poller loop in the running process
 
 ### Identify / organize
 
@@ -83,27 +83,29 @@ A household **library for readers**. People peruse shelves, see What’s New, op
 - [x] Review reasons; collision / PDF-only book / CBR / no payload
 - [x] Music Promote incoming → `music_root`
 - [x] `audiobook_target` default `plex`
-- [ ] Cover fetch
-- [ ] CBR/PDF → CBZ convert
-- [ ] `ebook-convert` / on-demand formats
-- [ ] BYO LLM identify (structured JSON; never invent ISBN)
+- [x] Cover fetch (indexer URL, Open Library ISBN, CBZ page 1)
+- [x] CBR/PDF → CBZ convert (`unar` in image; `pdftoppm` when present; else Review)
+- [x] `ebook-convert` / on-demand formats (cache under `/config/conversions`; 422 if missing)
+- [x] BYO LLM identify (structured JSON; never invent ISBN)
 
 ### Catalog
 
 - [x] SQLite WAL: users, invites, works, files, jobs, shelves, Favorites
 - [x] `review_state`, `music_state`, series fields
 - [x] FTS5 local search
-- [ ] Dedicated `indexers` table (v1 is settings-backed NZBFinder)
-- [ ] Continue / in-progress reads
+- [x] Dedicated `indexers` table (NZBFinder row synced from settings)
+- [x] Continue / in-progress reads
 
 ### Gaps
 
 - [x] Local magazine `YYYY-MM` holes
 - [x] Local comic issue-number holes
 - [x] Confirm-before-queue API (`POST /api/gaps/confirm`)
-- [ ] Book series gaps (Open Library / Hardcover)
-- [ ] Audiobook parts / series
-- [ ] MusicBrainz discography / track holes
+- [ ] Book series gaps (Open Library / Hardcover) — phase 2 catalogs
+- [x] Audiobook parts (local completeness)
+- [ ] Audiobook series (catalogs, later)
+- [x] Music track-number holes (local)
+- [ ] MusicBrainz discography (phase 2)
 
 ### UX (Reading Room)
 
@@ -116,7 +118,7 @@ A household **library for readers**. People peruse shelves, see What’s New, op
 - [x] Work hero (blurred wash + chips + Favorite/Promote)
 - [x] Living Request chips after Beyond peek Request
 - [x] Frontend unit tests (cover cloth / peek click / job labels)
-- [ ] Continue rail (API still returns `[]`)
+- [x] Continue rail (progress API; Hall hides finished)
 - [ ] Browser-verified Hall / login / peek
 
 ### Automat
@@ -126,8 +128,8 @@ A household **library for readers**. People peruse shelves, see What’s New, op
 - [x] `docs/SECURITY.md` — exhaustive handshake, `LIBRARIAN_TRUST_PROXY_HEADERS` fail-closed, rate limits
 - [x] `docker-run.sh` on-host build; does not wipe config; refuses 8788/8790/8791/8792
 - [x] `rollout.sh` Hub-pull stub (fails until `romwil/librarian` exists)
-- [ ] Deployed kit at `/mnt/user/appdata/librarian` (this slice)
-- [ ] Hub `romwil/librarian` published
+- [ ] Deployed kit at `/mnt/user/appdata/librarian`
+- [ ] Hub `romwil/librarian` published (later; not this slice)
 
 ## Later phases (not v1)
 

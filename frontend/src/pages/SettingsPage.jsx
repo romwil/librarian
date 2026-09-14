@@ -12,14 +12,18 @@ const FIELDS = [
   ["audiobooks_root", "Audiobooks root"],
   ["incoming_music_root", "Incoming music"],
   ["music_root", "Plexamp music"],
-  ["audiobook_target", "Audiobook target"],
-  ["household_name", "Household name"],
+    ["audiobook_target", "Audiobook target"],
+    ["llm_base_url", "LLM base URL"],
+    ["llm_api_key", "LLM API key", true],
+    ["llm_model", "LLM model"],
+    ["household_name", "Household name"],
 ];
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState(null);
   const [saved, setSaved] = useState("");
   const [error, setError] = useState("");
+  const [ping, setPing] = useState("");
 
   useEffect(() => {
     api
@@ -49,6 +53,7 @@ export default function SettingsPage() {
       <p className="lede">settings.json wins. Secrets stay on the host.</p>
       {error ? <p className="alert">{error}</p> : null}
       {saved ? <p className="muted">{saved}</p> : null}
+      {ping ? <p className="muted">{ping}</p> : null}
       <form className="settings-form" onSubmit={onSubmit}>
         {FIELDS.map(([key, label, secret]) => (
           <div key={key} className="field">
@@ -74,9 +79,26 @@ export default function SettingsPage() {
             )}
           </div>
         ))}
-        <button type="submit" className="cta">
-          Save
-        </button>
+        <div className="cta-row">
+          <button type="submit" className="cta">
+            Save
+          </button>
+          <button
+            type="button"
+            className="cta outline"
+            onClick={async () => {
+              setPing("");
+              try {
+                const data = await api.pingIndexer();
+                setPing(data.ok ? `NZBFinder ok — ${data.server} (${data.category_count} categories)` : data.error || "Ping failed");
+              } catch (err) {
+                setPing(err.message);
+              }
+            }}
+          >
+            Ping NZBFinder
+          </button>
+        </div>
       </form>
     </div>
   );

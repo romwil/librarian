@@ -20,7 +20,7 @@ export default function HallPage() {
   }
 
   return (
-    <div className="hall">
+    <div className="hall" data-testid="hall">
       <section className="hero-search-block">
         <p className="kicker">The Hall</p>
         <h1>What are you looking for?</h1>
@@ -51,7 +51,12 @@ export default function HallPage() {
           ) : null}
         </section>
       ) : null}
-      <Rail title="Continue" kicker="In-progress reads and listens" items={hall?.continue} />
+      <Rail
+        title="Continue"
+        kicker="In-progress reads and listens"
+        items={hall?.continue}
+        empty={hall ? "Open a volume to leave a bookmark." : undefined}
+      />
       <Rail title="What’s New" kicker="Recently organized" items={hall?.whats_new} />
       <Rail title="Favorites" items={hall?.favorites} />
       <Rail title="Books" items={hall?.areas?.books} />

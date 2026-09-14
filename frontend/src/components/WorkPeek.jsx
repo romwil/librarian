@@ -32,6 +32,7 @@ export default function WorkPeek({ work, onClose, onRequest }) {
 
   const href = work.id ? `/works/${work.id}` : null;
   const kind = work.kind || "work";
+  const art = work.has_cover && work.id ? `/api/works/${work.id}/cover` : work.cover || "";
   const square = isSquareKind(kind);
 
   async function favorite() {
@@ -56,7 +57,7 @@ export default function WorkPeek({ work, onClose, onRequest }) {
   return (
     <>
       <button type="button" className="scrim" aria-label="Close peek" onClick={onClose} />
-      <aside className="peek" role="dialog" aria-modal="true" aria-labelledby="peek-title" ref={panel}>
+      <aside className="peek" role="dialog" aria-modal="true" aria-labelledby="peek-title" data-testid="peek" ref={panel}>
         <header className="peek-head">
           <p className="kicker">{kind}</p>
           <button type="button" className="peek-close" aria-label="Close" ref={closeBtn} onClick={onClose}>
@@ -66,12 +67,13 @@ export default function WorkPeek({ work, onClose, onRequest }) {
         <div className="peek-body">
           <div className="peek-layout">
             <div
-              className={`cover${square ? " is-square" : ""}`}
+              className={`cover${square ? " is-square" : ""}${art ? " has-art" : ""}`}
               style={{ "--cloth": work.cloth || clothFor(work.title), width: square ? 160 : 148, height: square ? 160 : 222 }}
               aria-hidden="true"
             >
               <strong>{work.title}</strong>
               <em>{work.author || kind}</em>
+              {art ? <img src={art} alt="" /> : null}
             </div>
             <div>
               <h1 id="peek-title">{work.title}</h1>

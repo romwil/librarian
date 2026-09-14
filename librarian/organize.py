@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import shutil
+import zipfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from librarian.config import Settings
+from librarian.convert import maybe_convert_payload
+from librarian.covers import fetch_cover
 from librarian.db import Database
 from librarian.identify import REVIEW_COLLISION, dest_layout, identify_completed
 from librarian.kinds import KIND_BOOK, KIND_COMIC, KIND_MAGAZINE, KIND_MUSIC
-from librarian.metadata import write_comicinfo, write_opf
+from librarian.llm import client_from_settings
+from librarian.metadata import comicinfo_xml, write_comicinfo, write_opf
 
 
 def _copy_into(src: Path, dest: Path) -> Path:
@@ -22,6 +26,20 @@ def _copy_into(src: Path, dest: Path) -> Path:
     return dest
 
 
+def _inject_comicinfo(cbz: Path, identity: Dict[str, Any], guid: str) -> None:
+    if cbz.suffix.lower() != ".cbz" or not cbz.is_file():
+        return
+    xml = comicinfo_xml(identity, guid=guid)
+    try:
+        with zipfile.ZipFile(cbz, "a") as archive:
+            names = {name.lower() for name in archive.namelist()}
+            if "comicinfo.xml" in names:
+                return
+            archive.writestr("ComicInfo.xml", xml)
+    except zipfile.BadZipFile:
+        return
+
+
 def organize_identified(
     db: Database,
     settings: Settings,
@@ -30,8 +48,20 @@ def organize_identified(
     indexer_item: Optional[Dict[str, Any]] = None,
     category: object = None,
     apply: bool = True,
+    llm_client: Any = None,
+    cover_transport=None,
+    convert_runner=None,
 ) -> Dict[str, Any]:
-    result = identify_completed(folder, indexer_item=indexer_item, category=category)
+    llm = llm_client if llm_client is not None else client_from_settings(settings)
+    preview = identify_completed(folder, indexer_item=indexer_item, category=category, llm_client=llm)
+    kind = str(preview["identity"].get("kind") or "")
+    convert_kwargs = {"runner": convert_runner} if convert_runner is not None else {}
+    converted = maybe_convert_payload(folder, kind, **convert_kwargs)
+    result = (
+        identify_completed(folder, indexer_item=indexer_item, category=category, llm_client=llm)
+        if converted["converted"]
+        else preview
+    )
     identity = dict(result["identity"])
     files = [Path(path) for path in result["files"]]
     if not result["auto_organize"] or not apply:
@@ -85,11 +115,22 @@ def organize_identified(
     if identity["kind"] == KIND_COMIC:
         write_comicinfo(folder_path, identity, guid=guid)
         write_opf(folder_path, identity, guid=guid)
+        for path in placed:
+            _inject_comicinfo(Path(path), identity, guid)
+
+    cover_url = str((indexer_item or {}).get("cover") or "")
+    cover = fetch_cover(
+        Path(folder_path),
+        identity,
+        indexer_cover_url=cover_url,
+        transport=cover_transport,
+    )
 
     work = db.upsert_work(
         {
             **identity,
             "folder_path": str(folder_path),
+            "cover_path": str(cover) if cover else None,
             "review_state": "none",
             "review_reason": None,
             "music_state": "incoming" if identity["kind"] == KIND_MUSIC else None,
@@ -106,7 +147,7 @@ def organize_identified(
                 "size": Path(path).stat().st_size if Path(path).exists() else 0,
             }
         )
-    return {"work": work, "identity": identity, "organized": True, "files": placed}
+    return {"work": work, "identity": identity, "organized": True, "files": placed, "cover": str(cover) if cover else None}
 
 
 def apply_review(
@@ -140,7 +181,6 @@ def apply_review(
         "guid": work.get("indexer_guid"),
         "name": folder.name,
     }
-    # Force auto-organize by writing a high-confidence identity via overrides after identify.
     result = identify_completed(folder, indexer_item=fake_item)
     result["identity"].update(merged)
     result["auto_organize"] = True
@@ -173,5 +213,14 @@ def promote_music(db: Database, settings: Settings, work_id: str) -> Dict[str, A
     if dest.exists():
         raise ValueError("Promote collision")
     shutil.move(str(folder), str(dest))
-    updated = db.upsert_work({**work, "folder_path": str(dest), "music_state": "promoted", "review_state": "none"})
+    cover = dest / "cover.jpg"
+    updated = db.upsert_work(
+        {
+            **work,
+            "folder_path": str(dest),
+            "cover_path": str(cover) if cover.is_file() else work.get("cover_path"),
+            "music_state": "promoted",
+            "review_state": "none",
+        }
+    )
     return updated

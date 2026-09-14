@@ -323,7 +323,21 @@ input {
   height: var(--rail-square);
   flex-basis: var(--rail-square);
 }
-.cover.is-progress::after {
+.cover.has-art img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+}
+.cover.has-art strong,
+.cover.has-art em {
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.85);
+}
+.cover.has-art::before {
+  z-index: 1;
+}
   content: "";
   position: absolute;
   left: 0;

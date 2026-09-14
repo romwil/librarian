@@ -90,7 +90,8 @@ Open **http://10.10.1.202:8793** on Automat LAN (not a public VIP).
 | Path | Contents |
 | --- | --- |
 | `/config/settings.json` | Roots, SAB/NZBFinder/LLM, `audiobook_target` (file mode `0600`) |
-| `/config/librarian.db` | Users, invites, works, files, jobs, shelves |
+| `/config/librarian.db` | Users, invites, works, files, jobs, shelves, progress, indexers |
+| `/config/conversions/` | On-demand format cache (`{work_id}/`) — not the library folder |
 | `/config/session_secret` | Auto-generated when env is unset (mode `0600`) |
 
 WAL-safe backup: `sqlite3 librarian.db ".backup 'librarian-YYYYMMDD.db'"` — do not copy only the `.db` file while the container is writing. Stop-then-copy the whole `config/` directory if you do not have `sqlite3` on the host.
@@ -103,7 +104,7 @@ docker start librarian
 
 ## Build caching
 
-The image is **multi-stage**: Node builds the Vite SPA, then a slim Python runtime copies `frontend/dist` and installs `.[web]`. BuildKit is required for `--mount=type=cache`. `docker-run.sh` exports `DOCKER_BUILDKIT=1`.
+The image is **multi-stage**: Node builds the Vite SPA, then a slim Python runtime copies `frontend/dist` and installs `.[web]`. Runtime extras: `unar` for CBR→CBZ. Calibre `ebook-convert` and `pdftoppm` are optional host/image add-ons — APIs fail closed (Review / 422) when they are missing. BuildKit is required for `--mount=type=cache`. `docker-run.sh` exports `DOCKER_BUILDKIT=1`.
 
 `.dockerignore` must keep host `*.egg-info`, `build/`, `dist/`, `.venv`, and `config/` out of `COPY .`.
 

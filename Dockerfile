@@ -14,7 +14,7 @@ FROM python:3.12-slim
 WORKDIR /app
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates gosu \
+    && apt-get install -y --no-install-recommends ca-certificates gosu unar \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml README.md LICENSE ./

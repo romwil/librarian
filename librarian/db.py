@@ -94,6 +94,25 @@ CREATE TABLE IF NOT EXISTS shelf_items (
     added_at REAL NOT NULL,
     PRIMARY KEY (shelf_id, work_id)
 );
+CREATE TABLE IF NOT EXISTS progress (
+    user_id TEXT NOT NULL,
+    work_id TEXT NOT NULL,
+    position TEXT,
+    fraction REAL NOT NULL DEFAULT 0,
+    updated_at REAL NOT NULL,
+    PRIMARY KEY (user_id, work_id)
+);
+CREATE TABLE IF NOT EXISTS indexers (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    base_url TEXT NOT NULL,
+    token_set INTEGER NOT NULL DEFAULT 0,
+    last_caps_at REAL,
+    last_caps_ok INTEGER,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
 CREATE VIRTUAL TABLE IF NOT EXISTS works_fts USING fts5(
     work_id UNINDEXED,
     title,
@@ -484,6 +503,20 @@ class Database:
             ).fetchall()
         return [str(row["series_name"]) for row in rows if row["series_name"]]
 
+    def files_named_for_kind(self, kind: str) -> List[Dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT f.*, w.series_name, w.title AS work_title, w.author, w.id AS work_pk
+                FROM files f
+                JOIN works w ON w.id = f.work_id
+                WHERE w.kind = ? AND w.review_state != 'needs_review'
+                ORDER BY w.title, f.filename
+                """,
+                (kind,),
+            ).fetchall()
+        return [_row_dict(row) or {} for row in rows]
+
     # --- files / jobs / shelves -----------------------------------------------
 
     def add_file(self, record: Dict[str, Any]) -> Dict[str, Any]:
@@ -668,4 +701,118 @@ class Database:
                 """,
                 (shelf["id"], int(limit)),
             ).fetchall()
+        return [_row_dict(row) or {} for row in rows]
+
+    def upsert_progress(
+        self,
+        *,
+        user_id: str,
+        work_id: str,
+        position: str = "",
+        fraction: float = 0.0,
+    ) -> Dict[str, Any]:
+        now = time.time()
+        frac = max(0.0, min(1.0, float(fraction)))
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO progress (user_id, work_id, position, fraction, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(user_id, work_id) DO UPDATE SET
+                    position = excluded.position,
+                    fraction = excluded.fraction,
+                    updated_at = excluded.updated_at
+                """,
+                (user_id, work_id, position, frac, now),
+            )
+        row = self.get_progress(user_id, work_id)
+        assert row is not None
+        return row
+
+    def get_progress(self, user_id: str, work_id: str) -> Optional[Dict[str, Any]]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM progress WHERE user_id = ? AND work_id = ?",
+                (user_id, work_id),
+            ).fetchone()
+        return _row_dict(row)
+
+    def continue_works(self, user_id: str, *, limit: int = 18) -> List[Dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT w.*, p.fraction, p.position, p.updated_at AS progress_at
+                FROM progress p
+                JOIN works w ON w.id = p.work_id
+                WHERE p.user_id = ? AND p.fraction < 1
+                ORDER BY p.updated_at DESC
+                LIMIT ?
+                """,
+                (user_id, int(limit)),
+            ).fetchall()
+        out = []
+        for row in rows:
+            data = _row_dict(row) or {}
+            data["has_cover"] = bool(data.get("cover_path"))
+            data["progress"] = int(round(float(data.get("fraction") or 0) * 100))
+            out.append(data)
+        return out
+
+    def upsert_indexer(self, indexer: Dict[str, Any]) -> Dict[str, Any]:
+        now = time.time()
+        indexer_id = str(indexer.get("id") or "nzbfinder")
+        payload = {
+            "id": indexer_id,
+            "name": indexer.get("name") or "NZBFinder",
+            "kind": indexer.get("kind") or "nzbfinder",
+            "base_url": indexer.get("base_url") or "",
+            "token_set": 1 if indexer.get("token_set") else 0,
+            "last_caps_at": indexer.get("last_caps_at"),
+            "last_caps_ok": indexer.get("last_caps_ok"),
+            "created_at": indexer.get("created_at") or now,
+            "updated_at": now,
+        }
+        with self._lock, self._connect() as conn:
+            existing = conn.execute("SELECT id FROM indexers WHERE id = ?", (indexer_id,)).fetchone()
+            if existing:
+                conn.execute(
+                    """
+                    UPDATE indexers SET
+                        name=?, kind=?, base_url=?, token_set=?, last_caps_at=?,
+                        last_caps_ok=?, updated_at=?
+                    WHERE id=?
+                    """,
+                    (
+                        payload["name"],
+                        payload["kind"],
+                        payload["base_url"],
+                        payload["token_set"],
+                        payload["last_caps_at"],
+                        payload["last_caps_ok"],
+                        payload["updated_at"],
+                        indexer_id,
+                    ),
+                )
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO indexers (
+                        id, name, kind, base_url, token_set, last_caps_at,
+                        last_caps_ok, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    tuple(payload.values()),
+                )
+        row = self.get_indexer(indexer_id)
+        assert row is not None
+        return row
+
+    def get_indexer(self, indexer_id: str) -> Optional[Dict[str, Any]]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM indexers WHERE id = ?", (indexer_id,)).fetchone()
+        return _row_dict(row)
+
+    def list_indexers(self) -> List[Dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute("SELECT * FROM indexers ORDER BY name").fetchall()
         return [_row_dict(row) or {} for row in rows]

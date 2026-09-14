@@ -96,3 +96,24 @@ def test_promote_music_moves_tree(tmp_path):
     assert not incoming.exists()
     assert promoted["music_state"] == "promoted"
     assert promoted["folder_path"] == str(dest)
+
+
+def test_loose_comic_images_convert_and_cover(tmp_path):
+    folder = tmp_path / "Saga.2024.001.Digital"
+    folder.mkdir()
+    jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 80
+    (folder / "page-01.jpg").write_bytes(jpeg)
+    (folder / "page-02.jpg").write_bytes(jpeg)
+    db = Database(tmp_path / "librarian.db")
+    result = organize_identified(db, _settings(tmp_path), folder=folder)
+    assert result["organized"] is True
+    dest = Path(result["files"][0])
+    assert dest.suffix == ".cbz"
+    assert dest.name == "Saga #1.cbz"
+    assert (dest.parent / "ComicInfo.xml").is_file()
+    assert (dest.parent / "cover.jpg").read_bytes() == jpeg
+    work = db.get_work(result["work"]["id"])
+    assert work["cover_path"] == str(dest.parent / "cover.jpg")
+    assert work["kind"] == "comic"
+    assert work["series_index"] == "1"
+

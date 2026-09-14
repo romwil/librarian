@@ -165,3 +165,17 @@ def test_invite_validate_rate_limit(tmp_path, monkeypatch):
         assert client.get("/api/invites/validate").status_code == 404
     blocked = client.get("/api/invites/validate")
     assert blocked.status_code == 429
+
+
+def test_owner_indexer_ping_without_token(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    client.post("/api/auth/local/login", json={"username": "owner", "password": "password123"})
+    ping = client.post("/api/indexers/ping")
+    assert ping.status_code == 200
+    assert ping.json()["ok"] is False
+    assert "api_token" in ping.json()["error"]
+    listed = client.get("/api/indexers")
+    assert listed.status_code == 200
+    assert listed.json()["indexers"][0]["id"] == "nzbfinder"
+    convert = client.post("/api/works/missing/convert", json={"format": "pdf"})
+    assert convert.status_code == 404

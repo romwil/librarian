@@ -14,7 +14,7 @@ Every user-facing change updates the relevant guide **and** adds a benefit-led `
 | Frontend build | `cd frontend && npm run build` | No |
 | Docker health | `./docker-run.sh` then `GET /api/health` | Owner env only |
 
-Mock NZBFinder and SABnzbd in unit tests. Live indexer/downloader pings stay opt-in and out of default CI.
+Mock NZBFinder, SABnzbd, and LLM HTTP in unit tests. Live indexer/downloader pings stay opt-in (`POST /api/indexers/ping`) and out of default CI.
 
 ## Port trap
 

@@ -244,6 +244,7 @@ def identify_completed(
     *,
     indexer_item: Optional[Dict[str, Any]] = None,
     category: object = None,
+    llm_client: Any = None,
 ) -> Dict[str, Any]:
     """Identify a completed SAB folder. Unexpected results go to Review."""
     files = list_payload_files(folder)
@@ -285,7 +286,7 @@ def identify_completed(
             identity.review_reason = identity.review_reason or REVIEW_UNKNOWN
             identity.confidence = "low"
         suffixes = {path.suffix.lower() for path in files}
-        if identity.kind == KIND_COMIC and suffixes & {".cbr"} and ".cbz" not in suffixes:
+        if identity.kind == KIND_COMIC and suffixes & {".cbr", ".pdf"} and ".cbz" not in suffixes:
             identity.review_reason = identity.review_reason or REVIEW_CONVERT
             identity.confidence = "low"
 
@@ -293,12 +294,59 @@ def identify_completed(
         identity.review_reason = identity.review_reason or REVIEW_UNKNOWN
         identity.confidence = "low"
 
+    if identity.confidence != "high" and llm_client is not None:
+        evidence = _identify_evidence(folder, indexer_item, files, identity)
+        try:
+            from librarian.llm import merge_llm_identity
+
+            parsed = llm_client.identify(evidence)
+            identity = merge_llm_identity(identity, parsed, evidence)
+        except Exception:
+            pass
+        files = list_payload_files(folder)
+        if identity.kind == KIND_BOOK:
+            suffixes = {path.suffix.lower() for path in files}
+            if suffixes == {".pdf"}:
+                identity.review_reason = identity.review_reason or REVIEW_CONVERT
+                identity.confidence = "low"
+            elif identity.isbn and identity.author and identity.title and identity.confidence == "high":
+                identity.review_reason = None
+        if identity.kind in (KIND_COMIC, KIND_MAGAZINE) and identity.series_name and identity.series_index:
+            suffixes = {path.suffix.lower() for path in files}
+            if identity.kind == KIND_COMIC and suffixes & {".cbr", ".pdf"} and ".cbz" not in suffixes:
+                identity.review_reason = REVIEW_CONVERT
+                identity.confidence = "low"
+            else:
+                identity.review_reason = None
+
     auto = identity.confidence == "high" and not identity.review_reason
     return {
         "identity": identity.as_dict(),
         "files": [str(path) for path in files],
         "auto_organize": auto,
     }
+
+
+def _identify_evidence(
+    folder: Path,
+    indexer_item: Optional[Dict[str, Any]],
+    files: Sequence[Path],
+    identity: Identity,
+) -> str:
+    item = indexer_item or {}
+    names = ", ".join(path.name for path in files)
+    return (
+        f"folder: {folder.name}\n"
+        f"files: {names}\n"
+        f"indexer_title: {item.get('title') or ''}\n"
+        f"indexer_author: {item.get('author') or ''}\n"
+        f"indexer_isbn: {item.get('isbn') or ''}\n"
+        f"parsed_title: {identity.title}\n"
+        f"parsed_author: {identity.author}\n"
+        f"parsed_kind: {identity.kind}\n"
+        f"parsed_isbn: {identity.isbn}\n"
+        f"parsed_series: {identity.series_name} {identity.series_index}\n"
+    )
 
 
 def safe_path_part(value: str, fallback: str = "Unknown") -> str:
@@ -336,7 +384,7 @@ def expected_payload_ok(kind: str, files: Sequence[Path]) -> Optional[str]:
     if not files:
         return REVIEW_NO_PAYLOAD
     suffixes = {path.suffix.lower() for path in files}
-    if kind == KIND_COMIC and suffixes & {".cbr"} and ".cbz" not in suffixes:
+    if kind == KIND_COMIC and suffixes & {".cbr", ".pdf"} and ".cbz" not in suffixes:
         return REVIEW_CONVERT
     if kind == KIND_BOOK and suffixes == {".pdf"}:
         return REVIEW_CONVERT

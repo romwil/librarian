@@ -1,0 +1,116 @@
+"""Fetch a real cover.jpg. Never invent art or a blurb."""
+
+from __future__ import annotations
+
+import zipfile
+from pathlib import Path
+from typing import Any, Mapping, Optional
+
+import httpx
+
+from librarian._version import __version__
+from librarian.identify import extract_isbn
+
+DEFAULT_USER_AGENT = f"Librarian/{__version__} (+https://github.com/romwil/librarian)"
+OPENLIB_ISBN_COVER = "https://covers.openlibrary.org/b/isbn/{isbn}-L.jpg"
+IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
+MIN_IMAGE_BYTES = 64
+
+
+def looks_like_image(data: bytes) -> bool:
+    if len(data) < MIN_IMAGE_BYTES:
+        return False
+    if data[:3] == b"\xff\xd8\xff":
+        return True
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return True
+    if data[:2] == b"BM":
+        return True
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return True
+    return False
+
+
+def cover_from_cbz(cbz: Path, dest: Path) -> Optional[Path]:
+    """First image page in a CBZ becomes cover.jpg."""
+    if not cbz.is_file():
+        return None
+    try:
+        with zipfile.ZipFile(cbz) as archive:
+            names = sorted(
+                name
+                for name in archive.namelist()
+                if not name.endswith("/") and Path(name).suffix.lower() in IMAGE_SUFFIXES
+            )
+            if not names:
+                return None
+            data = archive.read(names[0])
+    except zipfile.BadZipFile:
+        return None
+    if not looks_like_image(data):
+        return None
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(data)
+    return dest
+
+
+def download_image(
+    url: str,
+    *,
+    transport: Optional[httpx.BaseTransport] = None,
+    client: Optional[httpx.Client] = None,
+) -> bytes:
+    if not url:
+        return b""
+    own = client is None
+    http = client or httpx.Client(timeout=20.0, transport=transport, follow_redirects=True)
+    try:
+        response = http.get(
+            url,
+            headers={"User-Agent": DEFAULT_USER_AGENT, "Accept": "image/*"},
+        )
+        if response.status_code >= 400:
+            return b""
+        data = response.content or b""
+        return data if looks_like_image(data) else b""
+    except httpx.HTTPError:
+        return b""
+    finally:
+        if own:
+            http.close()
+
+
+def fetch_cover(
+    folder: Path,
+    identity: Mapping[str, Any],
+    *,
+    indexer_cover_url: str = "",
+    transport: Optional[httpx.BaseTransport] = None,
+    client: Optional[httpx.Client] = None,
+) -> Optional[Path]:
+    """Write cover.jpg from indexer URL, Open Library ISBN, or CBZ page 1."""
+    folder = Path(folder)
+    folder.mkdir(parents=True, exist_ok=True)
+    dest = folder / "cover.jpg"
+    if dest.is_file() and dest.stat().st_size >= MIN_IMAGE_BYTES:
+        return dest
+
+    urls: list[str] = []
+    cover_url = str(indexer_cover_url or identity.get("cover") or "").strip()
+    if cover_url:
+        urls.append(cover_url)
+    isbn = extract_isbn(str(identity.get("isbn") or ""))
+    if isbn:
+        urls.append(OPENLIB_ISBN_COVER.format(isbn=isbn))
+
+    for url in urls:
+        data = download_image(url, transport=transport, client=client)
+        if data:
+            dest.write_bytes(data)
+            return dest
+
+    for cbz in sorted(folder.glob("*.cbz")):
+        extracted = cover_from_cbz(cbz, dest)
+        if extracted:
+            return extracted
+    return None

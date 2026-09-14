@@ -4,6 +4,8 @@
 
 ### Highlights
 
+- **The Hall remembers where you left off.** Opening a volume plants a Continue bookmark; Finished clears it. Covers are real `cover.jpg` when we can fetch them.
+- **Identify can convert and ask the house LLM.** CBR→CBZ via `unar`, PDF-only books via `ebook-convert` when present, BYO LLM never invents an ISBN. SAB jobs poll in the running process, not only when you open Queue.
 - **Automat-ready kit.** Maintainer playbook at `docs/ops/AUTOMAT.md`, `/config` + `/data` mounts that survive recreate, and a Hub `rollout.sh` stub for later. LAN truth is `http://10.10.1.202:8793` — not a public VIP.
 - **Safe behind your reverse proxy.** `LIBRARIAN_TRUST_PROXY_HEADERS` is off unless you opt in. Spoofed `X-Forwarded-*` cannot mark cookies Secure, cannot rotate the login throttle, and cannot pretend the hop is HTTPS. Login and invite routes are rate-limited.
 
@@ -12,6 +14,9 @@
 - `docs/ops/AUTOMAT.md` runbook (kit path, first-boot env, rsync, deploy).
 - Proxy-header fail-closed (`librarian/proxy.py`) + per-IP rate limits on login / invite validate / redeem.
 - `PUID`/`PGID` 99/100 on Unraid, `extra_hosts` for `downloader.sl` when the host can resolve it, `rollout.sh` Hub pull stub.
+- Continue rail + per-user progress; cover fetch (indexer / Open Library ISBN / CBZ page 1); CBR→CBZ (`unar` in the image); on-demand `ebook-convert` cache under `/config/conversions`.
+- BYO LLM identify (structured JSON; invented ISBN dropped); background SAB poller; `indexers` table + owner **Ping NZBFinder**.
+- Local audiobook part holes and music track-number holes.
 
 ## [0.1.0] — 2026-09-14
 

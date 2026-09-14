@@ -41,9 +41,8 @@ def write_opf(folder: Path, identity: Mapping[str, Any], *, guid: str = "") -> P
     return path
 
 
-def write_comicinfo(folder: Path, identity: Mapping[str, Any], *, guid: str = "", page_count: int = 0) -> Path:
-    folder.mkdir(parents=True, exist_ok=True)
-    xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+def comicinfo_xml(identity: Mapping[str, Any], *, guid: str = "", page_count: int = 0) -> str:
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
 <ComicInfo>
   <Series>{_esc(identity.get("series_name") or identity.get("title"))}</Series>
   <Number>{_esc(identity.get("series_index"))}</Number>
@@ -55,6 +54,10 @@ def write_comicinfo(folder: Path, identity: Mapping[str, Any], *, guid: str = ""
   <Notes>indexer guid: {_esc(guid)}</Notes>
 </ComicInfo>
 """
+
+
+def write_comicinfo(folder: Path, identity: Mapping[str, Any], *, guid: str = "", page_count: int = 0) -> Path:
+    folder.mkdir(parents=True, exist_ok=True)
     path = folder / "ComicInfo.xml"
-    path.write_text(xml, encoding="utf-8")
+    path.write_text(comicinfo_xml(identity, guid=guid, page_count=page_count), encoding="utf-8")
     return path

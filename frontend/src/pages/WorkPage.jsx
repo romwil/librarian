@@ -8,11 +8,17 @@ export default function WorkPage() {
   const { user } = useOutletContext();
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
+  const [fmt, setFmt] = useState("");
 
   useEffect(() => {
     api
       .work(id)
-      .then(setData)
+      .then((payload) => {
+        setData(payload);
+        if (payload?.work?.id) {
+          api.progress(payload.work.id).catch(() => {});
+        }
+      })
       .catch((err) => setError(err.message));
   }, [id]);
 
@@ -50,6 +56,27 @@ export default function WorkPage() {
           <div className="cta-row">
             <button type="button" className="cta outline" onClick={favorite}>
               {data.favorite ? "In Favorites" : "Favorite"}
+            </button>
+            {data.files?.length ? (
+              <a className="cta" href={`/api/works/${work.id}/download${fmt ? `?format=${encodeURIComponent(fmt)}` : ""}`}>
+                Download
+              </a>
+            ) : null}
+            {data.ebook_convert && work.kind === "book" ? (
+              <label className="field" style={{ minWidth: "8rem" }}>
+                <span className="sr-only">Download format</span>
+                <select value={fmt} onChange={(e) => setFmt(e.target.value)} aria-label="Download format">
+                  <option value="">Original</option>
+                  {(data.formats || []).map((item) => (
+                    <option key={item} value={item}>
+                      {item.toUpperCase()}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+            <button type="button" className="cta ghost" onClick={() => api.progress(work.id, { finished: true })}>
+              Finished
             </button>
             {op && work.kind === "music" && work.music_state === "incoming" ? (
               <button type="button" className="cta ghost" onClick={promote}>

@@ -45,4 +45,8 @@ export const api = {
   saveSettings: (body) => request("/settings", { method: "PUT", body: JSON.stringify(body) }),
   people: () => request("/people"),
   promote: (id) => request(`/music/${id}/promote`, { method: "POST" }),
+  pingIndexer: () => request("/indexers/ping", { method: "POST" }),
+  indexers: () => request("/indexers"),
+  progress: (id, body = {}) => request(`/works/${id}/progress`, { method: "POST", body: JSON.stringify(body) }),
+  convert: (id, format) => request(`/works/${id}/convert`, { method: "POST", body: JSON.stringify({ format }) }),
 };

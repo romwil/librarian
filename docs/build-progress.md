@@ -22,10 +22,11 @@ Plan: [librarian_automat_rss](file:///Users/willrompala/.cursor/plans/librarian_
 - **2026-09-14** — NZBFinder v2 fixtures copied (no live refetch): `tests/fixtures/nzbfinder/{capabilities,books-linux,search-magazine,details-linux}.json`. Confirmed no `api_token` / `apikey` in JSON. Exact `newznab_cat_to_kind` at `librarian/indexers/kind_map.py`; 33 value tests in `tests/test_kind_map.py`. Client parses v2 `results` from those fixtures.
 - **2026-09-14** — CSS: standalone `.muted { color: var(--muted); }`; Settings labels use `.field` like login (dropped leftover `login-field`).
 - **2026-09-14** — CSS: standalone `.muted { color: var(--muted) }`; Settings uses login `.field` (dropped leftover `login-field`).
+- **2026-09-14** — Phase 1 gaps: Continue rail + progress; cover fetch; CBR→CBZ (`unar`); on-demand `ebook-convert`; BYO LLM identify (no invented ISBN); SAB background poller; `indexers` table + opt-in caps ping; local audiobook part + music track holes.
 
 ## In progress / next
 
 - [x] Private `romwil/librarian` exists (`https://github.com/romwil/librarian`)
-- [ ] Automat `docker-run.sh` health smoke (kit + proxy-safe handshake ready)
-- [ ] Cover fetch / CBR→CBZ / BYO LLM identify
-- [ ] Continue rail data + browser QA of Hall / foyer / peek
+- [ ] Automat `docker-run.sh` health smoke (kit + Phase 1 image)
+- [ ] Browser QA of Hall / foyer / peek on `:8793`
+- [ ] Hub `romwil/librarian` (later)

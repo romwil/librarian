@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { clothFor, coverCaption, isSquareKind, jobChipLabel, shouldOpenPeek } from "../cover.js";
 import { useWorkPeek } from "./WorkPeekProvider.jsx";
 
@@ -8,6 +9,8 @@ export default function CoverCard({ work, href, onRequest, badge, beyond = false
   const title = work.title || "Untitled";
   const status = work.job_status || badge;
   const chip = status ? jobChipLabel(status, role) : "";
+  const art = work.has_cover && work.id ? `/api/works/${work.id}/cover` : work.cover || "";
+  const [artFailed, setArtFailed] = useState(false);
 
   function onClick(event) {
     if (!shouldOpenPeek(event)) return;
@@ -19,6 +22,7 @@ export default function CoverCard({ work, href, onRequest, badge, beyond = false
   if (square) classes.push("is-square");
   if (work.progress) classes.push("is-progress");
   if (work.gap || kind === "gap") classes.push("is-gap");
+  if (art && !artFailed) classes.push("has-art");
 
   return (
     <div className="cover-unit">
@@ -30,6 +34,7 @@ export default function CoverCard({ work, href, onRequest, badge, beyond = false
       >
         <strong>{title}</strong>
         <em>{work.author || work.series_name || kind}</em>
+        {art && !artFailed ? <img src={art} alt="" onError={() => setArtFailed(true)} /> : null}
         {chip ? <span className={`live-chip${status === "asked" ? " is-asked" : ""}${status === "failed" ? " is-failed" : ""}`}>{chip}</span> : null}
       </button>
       <p className="cover-caption">{coverCaption(work)}</p>
