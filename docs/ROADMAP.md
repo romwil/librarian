@@ -8,7 +8,7 @@ Living product/build checklist. Flip boxes when a slice ships. Append the story 
 | --- | --- |
 | **Date** | 2026-09-14 |
 | **Branch** | `main` |
-| **Last SHA** | pending commit (Phase 1 gaps) |
+| **Last SHA** | `bbb9bef` |
 | **Green** | `127 passed`, coverage **78%** (floor 70%); ruff + scoped mypy clean; frontend `5 passed` (`node --test`). |
 | **Next** | Automat `docker-run.sh` smoke on `:8793`; Hub `romwil/librarian` later. |
 
