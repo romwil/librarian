@@ -8,9 +8,9 @@ Living product/build checklist. Flip boxes when a slice ships. Append the story 
 | --- | --- |
 | **Date** | 2026-09-14 |
 | **Branch** | `main` |
-| **Last SHA** | repo `12d6f6f` · Automat image `8db903a` |
-| **Green** | `127 passed`, coverage **78%** (floor 70%); ruff + scoped mypy clean; frontend `5 passed` + `npm run build`; LAN foyer `:8793/login` + local Hall/peek verified. |
-| **Next** | Rebuild Automat to current `main` (Phase 1 not in the running image yet); Hub `romwil/librarian` later. |
+| **Last SHA** | repo `86ac87f` · Automat image `86ac87f` |
+| **Green** | `127 passed`, coverage **78%** (floor 70%); ruff + scoped mypy clean; frontend `5 passed` + `npm run build`; LAN `http://10.10.1.202:8793/api/health` → `ok`. |
+| **Next** | Hub `romwil/librarian` later. |
 
 ## North star
 
@@ -128,8 +128,8 @@ A household **library for readers**. People peruse shelves, see What’s New, op
 - [x] `docs/SECURITY.md` — exhaustive handshake, `LIBRARIAN_TRUST_PROXY_HEADERS` fail-closed, rate limits
 - [x] `docker-run.sh` on-host build; does not wipe config; refuses 8788/8790/8791/8792
 - [x] `rollout.sh` Hub-pull stub (fails until `romwil/librarian` exists)
-- [x] Deployed kit at `/mnt/user/appdata/librarian` (container `librarian`, image rev `8db903a`, `:8793`)
-- [ ] Rebuild Automat image to current `main` (Phase 1 landed after this smoke)
+- [x] Deployed kit at `/mnt/user/appdata/librarian` (container `librarian`, `:8793`)
+- [x] Rebuild Automat image to current `main` (`86ac87f`; `/config` kept)
 - [ ] Hub `romwil/librarian` published (later; not this slice)
 
 ## Later phases (not v1)

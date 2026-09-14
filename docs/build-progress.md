@@ -26,11 +26,12 @@ Plan: [librarian_automat_rss](file:///Users/willrompala/.cursor/plans/librarian_
 - **2026-09-14** `8db903a` — Automat playbook (`docs/ops/AUTOMAT.md`), proxy-header fail-closed (`LIBRARIAN_TRUST_PROXY_HEADERS` default off), auth/invite rate limits, PUID/PGID 99/100, live `docker-run.sh` on `http://10.10.1.202:8793`. GitHub About filled; repo stays private.
 - **2026-09-14** — Identify: comic/magazine `review_reason` clears only after a successful high-confidence LLM; extra files stay Review. Convert: `pdf_to_cbz` matches pdftoppm JPEGs by literal prefix so Usenet `[brackets]` convert instead of globbing as a character class.
 - **2026-09-14** `12d6f6f` — Restored `.cover.is-progress::after` (broken CSS brace blocked `npm run build`). Browser-verified Automat foyer + local Hall/peek.
+- **2026-09-14** — Automat `docker-run.sh` rebuilt `librarian` to **`86ac87f`**. Health ok on `:8793`. `./config` kept. Projectionist `:8788` and Smart Map `:8790` stayed up.
 
 ## In progress / next
 
 - [x] Private `romwil/librarian` exists (`https://github.com/romwil/librarian`)
-- [x] Automat `docker-run.sh` health smoke — `8db903a` on `:8793`, owner seed ok, `/config`+`/data` mounted. Phase 1 is on `main` but not in the running image yet.
+- [x] Automat `docker-run.sh` health smoke — `86ac87f` on `:8793`, `/config`+`/data` mounted
 - [x] Browser QA: Automat foyer (`data-testid=foyer`, lamp shaft, page-turn, dust). Local Hall: Continue empty copy, Dune cover opens peek without leaving `/`; Esc dismisses peek.
-- [ ] Rebuild Automat image to current `main`
+- [x] Rebuild Automat image to current `main` (`86ac87f`)
 - [ ] Hub `romwil/librarian` (later)
