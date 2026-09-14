@@ -23,10 +23,11 @@ Plan: [librarian_automat_rss](file:///Users/willrompala/.cursor/plans/librarian_
 - **2026-09-14** — CSS: standalone `.muted { color: var(--muted); }`; Settings labels use `.field` like login (dropped leftover `login-field`).
 - **2026-09-14** — CSS: standalone `.muted { color: var(--muted) }`; Settings uses login `.field` (dropped leftover `login-field`).
 - **2026-09-14** `bbb9bef` — Phase 1 gaps: Continue rail + progress; cover fetch; CBR→CBZ (`unar`); on-demand `ebook-convert`; BYO LLM identify (no invented ISBN); SAB background poller; `indexers` table + opt-in caps ping; local audiobook part + music track holes.
+- **2026-09-14** `8db903a` — Automat playbook (`docs/ops/AUTOMAT.md`), proxy-header fail-closed (`LIBRARIAN_TRUST_PROXY_HEADERS` default off), auth/invite rate limits, PUID/PGID 99/100, live `docker-run.sh` on `http://10.10.1.202:8793`. GitHub About filled; repo stays private.
 
 ## In progress / next
 
 - [x] Private `romwil/librarian` exists (`https://github.com/romwil/librarian`)
-- [ ] Automat `docker-run.sh` health smoke (kit + Phase 1 image)
+- [x] Automat `docker-run.sh` health smoke — `8db903a` on `:8793`, owner seed ok, `/config`+`/data` mounted. Phase 1 (`10538fc`) is on `main` but not in the running image yet.
 - [ ] Browser QA of Hall / foyer / peek on `:8793`
 - [ ] Hub `romwil/librarian` (later)
