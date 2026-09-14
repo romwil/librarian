@@ -8,8 +8,8 @@ Living product/build checklist. Flip boxes when a slice ships. Append the story 
 | --- | --- |
 | **Date** | 2026-09-14 |
 | **Branch** | `main` |
-| **Last SHA** | repo `86ac87f` · Automat image `86ac87f` |
-| **Green** | `127 passed`, coverage **78%** (floor 70%); ruff + scoped mypy clean; frontend `5 passed` + `npm run build`; LAN `http://10.10.1.202:8793/api/health` → `ok`. |
+| **Last SHA** | repo `1d7f18a` · Automat image `1d7f18a` |
+| **Green** | `135 passed`, coverage **79%** (floor 70%); ruff + scoped mypy clean; frontend `5 passed` + `npm run build`; LAN `http://10.10.1.202:8793/api/health` → `ok`. |
 | **Next** | Hub `romwil/librarian` later. |
 
 ## North star
@@ -42,7 +42,7 @@ A household **library for readers**. People peruse shelves, see What’s New, op
 - [x] `AGENTS.md`, `.gitignore` (incl. `smart.map` / `projectionist` copies), `.env.example` placeholders
 - [x] README / CHANGELOG / DOCKER / TESTING / SECURITY / HELP / design spec
 - [x] Dockerfile, `docker-compose.yml`, `docker-run.sh`, `settings.example.json`
-- [x] pytest + ruff + scoped mypy green (`127 passed`, 78% coverage)
+- [x] pytest + ruff + scoped mypy green (`135 passed`, 79% coverage)
 - [x] `frontend/package-lock.json` + production `npm run build`
 - [x] Private GitHub `romwil/librarian` + first push
 
@@ -129,7 +129,7 @@ A household **library for readers**. People peruse shelves, see What’s New, op
 - [x] `docker-run.sh` on-host build; does not wipe config; refuses 8788/8790/8791/8792
 - [x] `rollout.sh` Hub-pull stub (fails until `romwil/librarian` exists)
 - [x] Deployed kit at `/mnt/user/appdata/librarian` (container `librarian`, `:8793`)
-- [x] Rebuild Automat image to current `main` (`86ac87f`; `/config` kept)
+- [x] Rebuild Automat image to current `main` (`1d7f18a`; identify/convert Review fixes; `/config` kept)
 - [ ] Hub `romwil/librarian` published (later; not this slice)
 
 ## Later phases (not v1)
