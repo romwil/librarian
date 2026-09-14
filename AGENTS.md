@@ -35,9 +35,10 @@ When checking the live Automat Unraid stack, use LAN hosts — **not** a public 
 | Smart Map | `:8790` |
 | Lobby / QA Lobby | `:8791` / `:8792` |
 
-**Never bind Librarian to 8788, 8790, 8791, or 8792.** Kit: `/mnt/user/appdata/librarian`.
+**Never bind Librarian to 8788, 8790, 8791, or 8792.** Kit: `/mnt/user/appdata/librarian`
+(`config/` → `/config`, `/mnt/user/data` → `/data`). Playbook: [docs/ops/AUTOMAT.md](docs/ops/AUTOMAT.md).
 On-host build now (`./docker-run.sh`); Hub `romwil/librarian` + pull-only `rollout.sh` later.
-Do not treat public DNS as version truth.
+Do not treat public DNS as version truth. `LIBRARIAN_TRUST_PROXY_HEADERS` is opt-in (default off).
 
 ### Secrets
 NZBFinder / SAB / session tokens live in `.env` or `/config/settings.json` only.

@@ -72,7 +72,10 @@ def verify_password(password: str, stored_hash: str) -> bool:
 
 
 def is_public_handshake(method: str, path: str) -> bool:
-    return (method.upper(), path) in PUBLIC_HANDSHAKE_EXACT
+    cleaned = (path or "").split("?", 1)[0]
+    if len(cleaned) > 1:
+        cleaned = cleaned.rstrip("/")
+    return (str(method or "GET").upper(), cleaned) in PUBLIC_HANDSHAKE_EXACT
 
 
 def resolve_owner_credentials() -> tuple[str, str]:
@@ -148,8 +151,22 @@ def seed_env_owner(db: Database) -> Optional[str]:
     return user_id
 
 
-def set_session_cookie(response: Any, user_id: str, *, secure: bool = False, session_epoch: int = 0) -> None:
+def cookie_should_be_secure(request: Any = None) -> bool:
+    from librarian.proxy import request_is_trusted_https
+
+    return request_is_trusted_https(request)
+
+
+def set_session_cookie(
+    response: Any,
+    user_id: str,
+    *,
+    request: Any = None,
+    secure: Optional[bool] = None,
+    session_epoch: int = 0,
+) -> None:
     token = create_session_token(user_id, session_epoch=session_epoch)
+    use_secure = cookie_should_be_secure(request) if secure is None else bool(secure)
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
         value=token,
@@ -157,12 +174,16 @@ def set_session_cookie(response: Any, user_id: str, *, secure: bool = False, ses
         samesite="lax",
         max_age=DEFAULT_TTL_SECONDS,
         path="/",
-        secure=secure,
+        secure=use_secure,
     )
 
 
-def clear_session_cookie(response: Any) -> None:
-    response.delete_cookie(SESSION_COOKIE_NAME, path="/")
+def clear_session_cookie(response: Any, request: Any = None) -> None:
+    response.delete_cookie(
+        key=SESSION_COOKIE_NAME,
+        path="/",
+        secure=cookie_should_be_secure(request),
+    )
 
 
 def user_from_request(request: Any, db: Database) -> Optional[Dict[str, Any]]:

@@ -35,6 +35,7 @@ from librarian.invites import (
 from librarian.jobs import confirm_asked_job, enqueue_indexer_item, poll_active_jobs, poll_job
 from librarian.nzbfinder import NZBFinderClient, NZBFinderError
 from librarian.organize import apply_review, organize_identified, promote_music
+from librarian.rate_limit import enforce_rate_limit
 from librarian.sabnzbd import SABError
 from librarian.sessions import (
     ensure_session_secret,
@@ -134,8 +135,6 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             return await call_next(request)
         if is_public_handshake(method, path):
             return await call_next(request)
-        if path == "/api/health" or path == "/api/features":
-            return await call_next(request)
         if not has_real_owner(db) and path.startswith("/api/"):
             return JSONResponse({"detail": "Owner has not been seeded"}, status_code=503)
         user = current_user(request)
@@ -161,6 +160,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
 
     @app.post("/api/auth/local/login")
     def login(payload: LoginPayload, request: Request):
+        enforce_rate_limit(request, bucket="auth_local_login", limit=10, window_seconds=60)
         if not has_real_owner(db):
             raise HTTPException(status_code=503, detail="Owner has not been seeded")
         user = db.get_user_by_display_name(payload.username)
@@ -172,15 +172,15 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         set_session_cookie(
             response,
             user["id"],
-            secure=request.url.scheme == "https",
+            request=request,
             session_epoch=int(user.get("session_epoch") or 0),
         )
         return response
 
     @app.post("/api/auth/logout")
-    def logout():
+    def logout(request: Request):
         response = JSONResponse({"ok": True})
-        clear_session_cookie(response)
+        clear_session_cookie(response, request=request)
         return response
 
     @app.get("/api/auth/me")
@@ -194,7 +194,8 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         return payload
 
     @app.get("/api/invites/validate")
-    def validate_invite(token: str = ""):
+    def validate_invite(request: Request, token: str = ""):
+        enforce_rate_limit(request, bucket="invite_validate", limit=30, window_seconds=60)
         try:
             invite = lookup_pending_invite(db, token)
         except ValueError as error:
@@ -203,6 +204,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
 
     @app.post("/api/invites/redeem/local")
     def redeem(payload: RedeemPayload, request: Request):
+        enforce_rate_limit(request, bucket="invite_redeem_local", limit=10, window_seconds=60)
         try:
             result = redeem_local_invite(
                 db, raw_token=payload.token, username=payload.username, password=payload.password
@@ -215,7 +217,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         set_session_cookie(
             response,
             user["id"],
-            secure=request.url.scheme == "https",
+            request=request,
             session_epoch=int(user.get("session_epoch") or 0),
         )
         return response

@@ -51,23 +51,28 @@ export default function SettingsPage() {
       {saved ? <p className="muted">{saved}</p> : null}
       <form className="settings-form" onSubmit={onSubmit}>
         {FIELDS.map(([key, label, secret]) => (
-          <label key={key} className="login-field">
-            {label}
+          <div key={key} className="field">
+            <label htmlFor={`setting-${key}`}>{label}</label>
             {key === "audiobook_target" ? (
-              <select value={settings[key] || "plex"} onChange={(e) => setSettings({ ...settings, [key]: e.target.value })}>
+              <select
+                id={`setting-${key}`}
+                value={settings[key] || "plex"}
+                onChange={(e) => setSettings({ ...settings, [key]: e.target.value })}
+              >
                 <option value="plex">Plex Audiobooks</option>
                 <option value="audiobookshelf">Audiobookshelf</option>
                 <option value="librarian_only">Librarian only</option>
               </select>
             ) : (
               <input
+                id={`setting-${key}`}
                 type={secret ? "password" : "text"}
                 value={settings[key] || ""}
                 placeholder={secret && settings[`${key}_set`] ? "saved" : ""}
                 onChange={(e) => setSettings({ ...settings, [key]: e.target.value })}
               />
             )}
-          </label>
+          </div>
         ))}
         <button type="submit" className="cta">
           Save

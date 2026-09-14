@@ -95,4 +95,6 @@ files = [
     "librarian/invites.py",
     "librarian/kinds.py",
     "librarian/gaps.py",
+    "librarian/proxy.py",
+    "librarian/rate_limit.py",
 ]

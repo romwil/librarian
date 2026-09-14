@@ -45,4 +45,5 @@ Frontend unit tests for naming/filters/review copy land with the SPA polish pass
 ## Related
 
 - Playwright / docs gate: [docs/TESTING.md](docs/TESTING.md)
-- Handshake allowlist: [docs/SECURITY.md](docs/SECURITY.md)
+- Handshake allowlist + proxy fail-closed: [docs/SECURITY.md](docs/SECURITY.md)
+- Automat kit: [docs/ops/AUTOMAT.md](docs/ops/AUTOMAT.md)

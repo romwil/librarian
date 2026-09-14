@@ -1,6 +1,6 @@
 # Librarian
 
-A household **library for readers** on Automat — books, magazines, comics (CBZ), audiobooks, and incoming music. People peruse shelves, see What’s New, open a work, and request what’s missing. It is not Calibre-in-a-browser and not an admin grabber.
+A household **library for readers** on Automat — books, magazines, comics (CBZ), audiobooks, and incoming music. People peruse shelves, see What’s New, open a work, and request what’s missing.
 
 **Port 8793.** Automat already uses 8788 (Projectionist), 8790 (Smart Map), 8791/8792 (Lobby). Never collide those.
 
@@ -31,14 +31,14 @@ Frontend hot reload: `cd frontend && npm run dev` (proxies `/api` to `:8793`).
 
 ## Docker / Automat
 
-See [docs/DOCKER.md](docs/DOCKER.md). Kit path: `/mnt/user/appdata/librarian`.
+See [docs/DOCKER.md](docs/DOCKER.md) and the maintainer playbook [docs/ops/AUTOMAT.md](docs/ops/AUTOMAT.md). Kit path: `/mnt/user/appdata/librarian`. LAN check: `http://10.10.1.202:8793`. Never treat public DNS as version truth.
 
 ```bash
 cp .env.example .env
 ./docker-run.sh
 ```
 
-Volumes: `/config` (SQLite WAL + settings.json) and `/data` (media). settings.json wins over env.
+Volumes: `/config` (SQLite WAL + settings.json) and `/data` (media). settings.json wins over env. `docker-run.sh` does not wipe `./config`.
 
 ## Retriever and indexer
 
@@ -51,9 +51,10 @@ Tokens never belong in git. `.env.example` keeps empty placeholders.
 
 - **[docs/ROADMAP.md](docs/ROADMAP.md)** — permanent build roadmap and status
 - [docs/build-progress.md](docs/build-progress.md) — append-only shipped log
-- [docs/DOCKER.md](docs/DOCKER.md) — Automat volumes and ports
+- [docs/ops/AUTOMAT.md](docs/ops/AUTOMAT.md) — Automat kit, LAN hosts, first-boot env
+- [docs/DOCKER.md](docs/DOCKER.md) — volumes, PUID/PGID, extra_hosts
 - [docs/TESTING.md](docs/TESTING.md) / [TESTING.md](TESTING.md) — value-based tests
-- [docs/SECURITY.md](docs/SECURITY.md) — handshake allowlist, invite HMAC, session secret
+- [docs/SECURITY.md](docs/SECURITY.md) — handshake allowlist, proxy trust, invite HMAC
 - [docs/HELP.md](docs/HELP.md) — how to use The Hall
 - [Design spec](docs/superpowers/specs/2026-09-14-librarian-design.md) — north star and UX contracts
 - [Reading Room UX](docs/ux/reading-room.md) — brass tokens, peek, covers (mockups in `docs/ux/mockups/`)

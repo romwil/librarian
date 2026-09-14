@@ -1,6 +1,8 @@
 from fastapi.testclient import TestClient
 
-from librarian.sessions import clear_session_secret_cache
+from librarian.auth import PUBLIC_HANDSHAKE_EXACT, is_public_handshake
+from librarian.rate_limit import clear_rate_limits
+from librarian.sessions import SESSION_COOKIE_NAME, clear_session_secret_cache
 from librarian.web.app import create_app
 
 
@@ -9,7 +11,24 @@ def _client(tmp_path, monkeypatch):
     monkeypatch.setenv("LIBRARIAN_OWNER_USERNAME", "owner")
     monkeypatch.setenv("LIBRARIAN_OWNER_PASSWORD", "password123")
     clear_session_secret_cache()
+    clear_rate_limits()
     return TestClient(create_app(tmp_path))
+
+
+def test_public_handshake_exact_is_exhaustive():
+    assert PUBLIC_HANDSHAKE_EXACT == {
+        ("GET", "/api/health"),
+        ("GET", "/api/features"),
+        ("GET", "/api/invites/validate"),
+        ("POST", "/api/invites/redeem/local"),
+        ("POST", "/api/auth/local/login"),
+        ("POST", "/api/auth/logout"),
+    }
+    assert is_public_handshake("GET", "/api/health?x=1") is True
+    assert is_public_handshake("GET", "/api/auth/me") is False
+    assert is_public_handshake("POST", "/api/auth/local/register") is False
+    assert is_public_handshake("GET", "/api/auth/") is False
+    assert is_public_handshake("GET", "/api/hall") is False
 
 
 def test_reader_forbidden_on_settings_and_invite_op(tmp_path, monkeypatch):
@@ -56,9 +75,12 @@ def test_unauthenticated_handshake_only(tmp_path, monkeypatch):
     client.cookies.clear()
     assert client.get("/api/health").status_code == 200
     assert client.get("/api/features").status_code == 200
+    assert client.get("/api/invites/validate").status_code == 404
+    assert client.post("/api/auth/logout").status_code == 200
     assert client.get("/api/hall").status_code == 401
     assert client.get("/api/search", params={"q": "dune"}).status_code == 401
     assert client.get("/api/auth/me").status_code == 401
+    assert client.post("/api/auth/local/register", json={"username": "x", "password": "password123"}).status_code == 401
 
 
 def test_login_then_hall_and_favorite(tmp_path, monkeypatch):
@@ -66,6 +88,11 @@ def test_login_then_hall_and_favorite(tmp_path, monkeypatch):
     login = client.post("/api/auth/local/login", json={"username": "owner", "password": "password123"})
     assert login.status_code == 200
     assert login.json()["user"]["role"] == "owner"
+    set_cookie = login.headers.get("set-cookie", "")
+    assert f"{SESSION_COOKIE_NAME}=" in set_cookie
+    assert "HttpOnly" in set_cookie
+    assert "Lax" in set_cookie or "lax" in set_cookie.lower()
+    assert "Secure" not in set_cookie
     me = client.get("/api/auth/me")
     assert me.status_code == 200
     assert me.json()["review_count"] == 0
@@ -86,3 +113,55 @@ def test_login_then_hall_and_favorite(tmp_path, monkeypatch):
     search = client.get("/api/search", params={"q": "Dune"})
     assert search.status_code == 200
     assert [row["title"] for row in search.json()["local"]] == ["Dune"]
+
+
+def test_secure_cookie_ignored_without_trusted_proxy(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    resp = client.post(
+        "/api/auth/local/login",
+        json={"username": "owner", "password": "password123"},
+        headers={"X-Forwarded-Proto": "https", "X-Forwarded-For": "198.51.100.20"},
+    )
+    assert resp.status_code == 200
+    set_cookie = resp.headers.get("set-cookie", "")
+    assert f"{SESSION_COOKIE_NAME}=" in set_cookie
+    assert "Secure" not in set_cookie
+
+
+def test_secure_cookie_when_proxy_is_trusted(tmp_path, monkeypatch):
+    monkeypatch.setenv("LIBRARIAN_TRUST_PROXY_HEADERS", "1")
+    client = _client(tmp_path, monkeypatch)
+    resp = client.post(
+        "/api/auth/local/login",
+        json={"username": "owner", "password": "password123"},
+        headers={"X-Forwarded-Proto": "https"},
+    )
+    assert resp.status_code == 200
+    set_cookie = resp.headers.get("set-cookie", "")
+    assert f"{SESSION_COOKIE_NAME}=" in set_cookie
+    assert "Secure" in set_cookie
+
+
+def test_spoofed_xff_cannot_bypass_login_rate_limit(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    for i in range(11):
+        client.post(
+            "/api/auth/local/login",
+            json={"username": "nobody", "password": f"wrong-{i}"},
+            headers={"X-Forwarded-For": f"198.51.100.{i}"},
+        )
+    blocked = client.post(
+        "/api/auth/local/login",
+        json={"username": "nobody", "password": "wrong-final"},
+        headers={"X-Forwarded-For": "198.51.100.99"},
+    )
+    assert blocked.status_code == 429
+    assert "retry-after" in {k.lower() for k in blocked.headers}
+
+
+def test_invite_validate_rate_limit(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    for _ in range(30):
+        assert client.get("/api/invites/validate").status_code == 404
+    blocked = client.get("/api/invites/validate")
+    assert blocked.status_code == 429

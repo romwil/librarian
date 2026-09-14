@@ -8,13 +8,13 @@ Living product/build checklist. Flip boxes when a slice ships. Append the story 
 | --- | --- |
 | **Date** | 2026-09-14 |
 | **Branch** | `main` |
-| **Last SHA** | `5e01dda` (this commit updates main) |
-| **Green** | `91 passed`, coverage **77%** (floor 70%); ruff + scoped mypy clean; frontend `5 passed` (`node --test`) + Vite build. |
-| **Next** | Automat `docker-run.sh` smoke; cover fetch / Continue rail data. |
+| **Last SHA** | pending commit (Automat kit + proxy-safe handshake) |
+| **Green** | `103 passed`, coverage **78%** (floor 70%); ruff + scoped mypy clean; frontend `5 passed` (`node --test`). |
+| **Next** | Live Automat `docker-run.sh` smoke on `:8793`; cover fetch / Continue rail data. |
 
 ## North star
 
-A household **library for readers**, not an admin grabber and not Calibre-in-a-browser. People peruse shelves, see What’s New, open a book or issue, and request what’s missing. Books, magazines, and comics (CBZ, Newznab `7030`) share first-tier rank. Audiobooks and music are first-tier listening — music Promotes to Plexamp; audiobooks never do.
+A household **library for readers**. People peruse shelves, see What’s New, open a book or issue, and request what’s missing. Books, magazines, and comics (CBZ, Newznab `7030`) share first-tier rank. Audiobooks and music are first-tier listening — music Promotes to Plexamp; audiobooks never do.
 
 ## Locked decisions
 
@@ -42,7 +42,7 @@ A household **library for readers**, not an admin grabber and not Calibre-in-a-b
 - [x] `AGENTS.md`, `.gitignore` (incl. `smart.map` / `projectionist` copies), `.env.example` placeholders
 - [x] README / CHANGELOG / DOCKER / TESTING / SECURITY / HELP / design spec
 - [x] Dockerfile, `docker-compose.yml`, `docker-run.sh`, `settings.example.json`
-- [x] pytest + ruff + scoped mypy green (`54 passed`, 77% coverage)
+- [x] pytest + ruff + scoped mypy green (`103 passed`, 78% coverage)
 - [x] `frontend/package-lock.json` + production `npm run build`
 - [x] Private GitHub `romwil/librarian` + first push
 
@@ -121,10 +121,13 @@ A household **library for readers**, not an admin grabber and not Calibre-in-a-b
 
 ### Automat
 
-- [x] `docs/DOCKER.md` — `/config` + `/data`, port 8793, env owner
+- [x] `docs/DOCKER.md` — `/config` + `/data`, port 8793, env owner, PUID/PGID, extra_hosts
+- [x] `docs/ops/AUTOMAT.md` — LAN truth `:8793`, kit path, first-boot env, rsync
+- [x] `docs/SECURITY.md` — exhaustive handshake, `LIBRARIAN_TRUST_PROXY_HEADERS` fail-closed, rate limits
 - [x] `docker-run.sh` on-host build; does not wipe config; refuses 8788/8790/8791/8792
-- [ ] Deployed kit at `/mnt/user/appdata/librarian`
-- [ ] Hub `romwil/librarian` + pull-only `rollout.sh`
+- [x] `rollout.sh` Hub-pull stub (fails until `romwil/librarian` exists)
+- [ ] Deployed kit at `/mnt/user/appdata/librarian` (this slice)
+- [ ] Hub `romwil/librarian` published
 
 ## Later phases (not v1)
 

@@ -20,10 +20,12 @@ Plan: [librarian_automat_rss](file:///Users/willrompala/.cursor/plans/librarian_
 - **2026-09-14** — `frontend/package-lock.json` + `npm run build` (SPA in `frontend/dist`, gitignored).
 - **2026-09-14** — Reading Room handoff copied to `docs/ux/reading-room.md` + `docs/ux/mockups/`. SPA `:root` is brass `#c9954a`, Literata + Source Sans 3; peek `min(44rem, 100vw - 1.5rem)`; covers 148×222 / 160 square; cover click opens peek.
 - **2026-09-14** — NZBFinder v2 fixtures copied (no live refetch): `tests/fixtures/nzbfinder/{capabilities,books-linux,search-magazine,details-linux}.json`. Confirmed no `api_token` / `apikey` in JSON. Exact `newznab_cat_to_kind` at `librarian/indexers/kind_map.py`; 33 value tests in `tests/test_kind_map.py`. Client parses v2 `results` from those fixtures.
+- **2026-09-14** — CSS: standalone `.muted { color: var(--muted); }`; Settings labels use `.field` like login (dropped leftover `login-field`).
+- **2026-09-14** — CSS: standalone `.muted { color: var(--muted) }`; Settings uses login `.field` (dropped leftover `login-field`).
 
 ## In progress / next
 
 - [x] Private `romwil/librarian` exists (`https://github.com/romwil/librarian`)
-- [ ] Automat `docker-run.sh` health smoke
+- [ ] Automat `docker-run.sh` health smoke (kit + proxy-safe handshake ready)
 - [ ] Cover fetch / CBR→CBZ / BYO LLM identify
 - [ ] Continue rail data + browser QA of Hall / foyer / peek

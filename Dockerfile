@@ -36,7 +36,7 @@ ENV DATA_DIR=/config
 ENV PORT=8793
 
 EXPOSE 8793
-VOLUME ["/config"]
+VOLUME ["/config", "/data"]
 
 COPY scripts/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
