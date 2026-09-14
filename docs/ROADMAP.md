@@ -8,7 +8,7 @@ Living product/build checklist. Flip boxes when a slice ships. Append the story 
 | --- | --- |
 | **Date** | 2026-09-14 |
 | **Branch** | `main` |
-| **Last SHA** | pending (CSS + browser QA) · Automat image `8db903a` |
+| **Last SHA** | repo `12d6f6f` · Automat image `8db903a` |
 | **Green** | `127 passed`, coverage **78%** (floor 70%); ruff + scoped mypy clean; frontend `5 passed` + `npm run build`; LAN foyer `:8793/login` + local Hall/peek verified. |
 | **Next** | Rebuild Automat to current `main` (Phase 1 not in the running image yet); Hub `romwil/librarian` later. |
 
