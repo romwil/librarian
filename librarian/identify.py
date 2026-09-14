@@ -254,9 +254,7 @@ def identify_completed(
         identity.confidence = "low"
         return {"identity": identity.as_dict(), "files": [], "auto_organize": False}
 
-    extra = len(files) > 1 and not all(
-        _AUDIO_PART.search(path.name) or path.suffix.lower() in {".mp3", ".m4b", ".flac"} for path in files
-    )
+    extra = _unexpected_extra_files(files)
     if indexer_item:
         identity = identity_from_indexer({**indexer_item, "category": category or indexer_item.get("category")})
     else:
@@ -303,21 +301,8 @@ def identify_completed(
             identity = merge_llm_identity(identity, parsed, evidence)
         except Exception:
             pass
-        files = list_payload_files(folder)
-        if identity.kind == KIND_BOOK:
-            suffixes = {path.suffix.lower() for path in files}
-            if suffixes == {".pdf"}:
-                identity.review_reason = identity.review_reason or REVIEW_CONVERT
-                identity.confidence = "low"
-            elif identity.isbn and identity.author and identity.title and identity.confidence == "high":
-                identity.review_reason = None
-        if identity.kind in (KIND_COMIC, KIND_MAGAZINE) and identity.series_name and identity.series_index:
-            suffixes = {path.suffix.lower() for path in files}
-            if identity.kind == KIND_COMIC and suffixes & {".cbr", ".pdf"} and ".cbz" not in suffixes:
-                identity.review_reason = REVIEW_CONVERT
-                identity.confidence = "low"
-            else:
-                identity.review_reason = None
+        else:
+            files = _apply_post_llm_review(identity, folder)
 
     auto = identity.confidence == "high" and not identity.review_reason
     return {
@@ -325,6 +310,42 @@ def identify_completed(
         "files": [str(path) for path in files],
         "auto_organize": auto,
     }
+
+
+def _unexpected_extra_files(files: Sequence[Path]) -> bool:
+    return len(files) > 1 and not all(
+        _AUDIO_PART.search(path.name) or path.suffix.lower() in {".mp3", ".m4b", ".flac"} for path in files
+    )
+
+
+def _apply_post_llm_review(identity: Identity, folder: Path) -> List[Path]:
+    """Folder hygiene after a successful LLM identity. Never auto-organize extra files."""
+    files = list_payload_files(folder)
+    extra = _unexpected_extra_files(files)
+    if extra and identity.kind not in (KIND_MUSIC, KIND_AUDIOBOOK, KIND_MAGAZINE):
+        identity.review_reason = REVIEW_EXTRA
+        identity.confidence = "low"
+    if identity.kind == KIND_BOOK:
+        suffixes = {path.suffix.lower() for path in files}
+        if suffixes == {".pdf"}:
+            identity.review_reason = identity.review_reason or REVIEW_CONVERT
+            identity.confidence = "low"
+        elif (
+            identity.isbn
+            and identity.author
+            and identity.title
+            and identity.confidence == "high"
+            and identity.review_reason != REVIEW_EXTRA
+        ):
+            identity.review_reason = None
+    if identity.kind in (KIND_COMIC, KIND_MAGAZINE) and identity.series_name and identity.series_index:
+        suffixes = {path.suffix.lower() for path in files}
+        if identity.kind == KIND_COMIC and suffixes & {".cbr", ".pdf"} and ".cbz" not in suffixes:
+            identity.review_reason = identity.review_reason or REVIEW_CONVERT
+            identity.confidence = "low"
+        elif identity.confidence == "high" and identity.review_reason != REVIEW_EXTRA:
+            identity.review_reason = None
+    return files
 
 
 def _identify_evidence(

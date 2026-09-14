@@ -4,6 +4,19 @@ from librarian.config import Settings
 from librarian.identify import dest_layout, identify_completed, parse_usenet_name
 
 
+class _RaiseLLM:
+    def identify(self, evidence: str):
+        raise RuntimeError("llm unavailable")
+
+
+class _StubLLM:
+    def __init__(self, payload):
+        self.payload = payload
+
+    def identify(self, evidence: str):
+        return self.payload
+
+
 def test_magazine_no_10_2026():
     identity = parse_usenet_name("Linux-Magazin.No.10.2026.eBook-GROUP", category=7010)
     assert identity.kind == "magazine"
@@ -53,6 +66,119 @@ def test_identify_pdf_only_book_goes_to_review(tmp_path):
     result = identify_completed(folder, category=7020)
     assert result["auto_organize"] is False
     assert result["identity"]["review_reason"] == "convert_failed"
+
+
+def test_comic_extra_files_llm_failure_keeps_extra_files(tmp_path):
+    folder = tmp_path / "Saga.2012.001.Digital"
+    folder.mkdir()
+    (folder / "saga-1.cbz").write_bytes(b"cbz")
+    (folder / "bonus.cbz").write_bytes(b"cbz")
+    result = identify_completed(folder, category=7030, llm_client=_RaiseLLM())
+    assert result["auto_organize"] is False
+    assert result["identity"]["review_reason"] == "extra_files"
+    assert result["identity"]["confidence"] == "low"
+    assert result["identity"]["series_name"] == "Saga"
+    assert result["identity"]["series_index"] == "1"
+
+
+def test_comic_extra_files_high_llm_still_needs_review(tmp_path):
+    folder = tmp_path / "Saga.2012.001.Digital"
+    folder.mkdir()
+    (folder / "saga-1.cbz").write_bytes(b"cbz")
+    (folder / "bonus.cbz").write_bytes(b"cbz")
+    result = identify_completed(
+        folder,
+        category=7030,
+        llm_client=_StubLLM(
+            {
+                "kind": "comic",
+                "title": "Saga #1",
+                "series": "Saga",
+                "issue": "1",
+                "confidence": 0.95,
+                "rationale": "series parse",
+            }
+        ),
+    )
+    assert result["auto_organize"] is False
+    assert result["identity"]["review_reason"] == "extra_files"
+    assert result["identity"]["series_name"] == "Saga"
+    assert result["identity"]["series_index"] == "1"
+
+
+def test_comic_low_confidence_llm_keeps_review_reason(tmp_path):
+    folder = tmp_path / "Mystery.Release"
+    folder.mkdir()
+    (folder / "issue.cbz").write_bytes(b"cbz")
+    result = identify_completed(
+        folder,
+        category=7030,
+        llm_client=_StubLLM(
+            {
+                "kind": "comic",
+                "title": "Saga #1",
+                "series": "Saga",
+                "issue": "1",
+                "confidence": 0.4,
+                "rationale": "guess",
+            }
+        ),
+    )
+    assert result["auto_organize"] is False
+    assert result["identity"]["review_reason"] == "unknown_identity"
+    assert result["identity"]["confidence"] == "low"
+    assert result["identity"]["series_name"] == "Saga"
+    assert result["identity"]["series_index"] == "1"
+
+
+def test_comic_high_llm_auto_organizes_clean_folder(tmp_path):
+    folder = tmp_path / "Mystery.Release"
+    folder.mkdir()
+    (folder / "issue.cbz").write_bytes(b"cbz")
+    result = identify_completed(
+        folder,
+        category=7030,
+        llm_client=_StubLLM(
+            {
+                "kind": "comic",
+                "title": "Saga #1",
+                "series": "Saga",
+                "issue": "1",
+                "confidence": 0.95,
+                "rationale": "series parse",
+            }
+        ),
+    )
+    assert result["auto_organize"] is True
+    assert result["identity"]["review_reason"] is None
+    assert result["identity"]["confidence"] == "high"
+    assert result["identity"]["series_name"] == "Saga"
+    assert result["identity"]["series_index"] == "1"
+
+
+def test_magazine_low_confidence_llm_keeps_review_reason(tmp_path):
+    folder = tmp_path / "Mystery.Release"
+    folder.mkdir()
+    (folder / "issue.pdf").write_bytes(b"%PDF")
+    result = identify_completed(
+        folder,
+        category=7010,
+        llm_client=_StubLLM(
+            {
+                "kind": "magazine",
+                "title": "Linux Magazin",
+                "series": "Linux Magazin",
+                "issue": "2026-10",
+                "confidence": 0.4,
+                "rationale": "guess",
+            }
+        ),
+    )
+    assert result["auto_organize"] is False
+    assert result["identity"]["review_reason"] == "unknown_identity"
+    assert result["identity"]["confidence"] == "low"
+    assert result["identity"]["series_name"] == "Linux Magazin"
+    assert result["identity"]["series_index"] == "2026-10"
 
 
 def test_dest_layout_book_and_comic():

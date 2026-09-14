@@ -4,9 +4,11 @@ from types import SimpleNamespace
 
 from librarian.convert import (
     ALLOWED_EBOOK_FORMATS,
+    collect_pdftoppm_jpegs,
     convert_ebook,
     images_to_cbz,
     maybe_convert_payload,
+    pdf_to_cbz,
     pdf_to_epub,
 )
 
@@ -63,6 +65,57 @@ def test_cbr_without_unar_stays_unconverted(tmp_path, monkeypatch):
     result = maybe_convert_payload(folder, "comic")
     assert result["converted"] is False
     assert not list(folder.glob("*.cbz"))
+
+
+def test_collect_pdftoppm_jpegs_treats_brackets_as_literal(tmp_path):
+    prefix = ".librarian-pdf-Comic.[2024].[Group]"
+    jpeg = b"\xff\xd8\xff" + b"\x00" * 20
+    page1 = tmp_path / f"{prefix}-1.jpg"
+    page2 = tmp_path / f"{prefix}-2.jpg"
+    decoy = tmp_path / "other-1.jpg"
+    page1.write_bytes(jpeg)
+    page2.write_bytes(jpeg)
+    decoy.write_bytes(jpeg)
+    assert collect_pdftoppm_jpegs(tmp_path, prefix) == [page1, page2]
+    assert list(tmp_path.glob(f"{prefix}*.jpg")) == []
+
+
+def test_pdf_to_cbz_bracketed_usenet_name(tmp_path):
+    src = tmp_path / "Comic.[2024].[Group].pdf"
+    src.write_bytes(b"%PDF")
+    jpeg = b"\xff\xd8\xff" + b"\x00" * 20
+
+    def runner(argv, timeout=180):
+        prefix = Path(argv[3])
+        (prefix.parent / f"{prefix.name}-1.jpg").write_bytes(jpeg)
+        (prefix.parent / f"{prefix.name}-2.jpg").write_bytes(jpeg)
+        return SimpleNamespace(returncode=0)
+
+    dest = pdf_to_cbz(src, runner=runner, pdftoppm="/usr/bin/pdftoppm")
+    assert dest == tmp_path / "Comic.[2024].[Group].cbz"
+    assert src.is_file()
+    with zipfile.ZipFile(dest) as archive:
+        assert archive.namelist() == [
+            ".librarian-pdf-Comic.[2024].[Group]-1.jpg",
+            ".librarian-pdf-Comic.[2024].[Group]-2.jpg",
+        ]
+    assert [path.name for path in tmp_path.iterdir() if path.suffix.lower() == ".jpg"] == []
+
+
+def test_pdf_to_cbz_deletes_jpegs_when_pdftoppm_fails(tmp_path):
+    src = tmp_path / "Comic.[2024].[Group].pdf"
+    src.write_bytes(b"%PDF")
+    jpeg = b"\xff\xd8\xff" + b"\x00" * 20
+
+    def runner(argv, timeout=180):
+        prefix = Path(argv[3])
+        (prefix.parent / f"{prefix.name}-1.jpg").write_bytes(jpeg)
+        return SimpleNamespace(returncode=1)
+
+    dest = pdf_to_cbz(src, runner=runner, pdftoppm="/usr/bin/pdftoppm")
+    assert dest is None
+    assert not (tmp_path / "Comic.[2024].[Group].cbz").exists()
+    assert [path.name for path in tmp_path.iterdir() if path.suffix.lower() == ".jpg"] == []
 
 
 def test_pdf_book_convert_uses_ebook_convert(tmp_path):

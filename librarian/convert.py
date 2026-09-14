@@ -53,6 +53,27 @@ def loose_images(folder: Path) -> List[Path]:
     return found
 
 
+def collect_pdftoppm_jpegs(folder: Path, prefix_name: str) -> List[Path]:
+    """Collect pdftoppm JPEG pages. prefix_name is matched literally (not as a glob)."""
+    folder = Path(folder)
+    if not folder.is_dir():
+        return []
+    found: List[Path] = []
+    for path in folder.iterdir():
+        if (
+            path.is_file()
+            and path.name.startswith(prefix_name)
+            and path.suffix.lower() == ".jpg"
+        ):
+            found.append(path)
+    return sorted(found)
+
+
+def _unlink_pages(pages: Sequence[Path]) -> None:
+    for page in pages:
+        page.unlink(missing_ok=True)
+
+
 def images_to_cbz(images: Sequence[Path], dest: Path) -> Path:
     """Zip page images into a CBZ. Exact namelist is the sorted basenames."""
     dest = Path(dest)
@@ -114,19 +135,22 @@ def pdf_to_cbz(
     if not tool:
         return None
     prefix = src.parent / f".librarian-pdf-{src.stem}"
+    pages: List[Path] = []
     try:
-        completed = runner([tool, "-jpeg", str(src), str(prefix)], timeout=180)
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    if int(getattr(completed, "returncode", 1) or 0) != 0:
-        return None
-    pages = sorted(src.parent.glob(f"{prefix.name}*.jpg"))
-    if not pages:
-        return None
-    images_to_cbz(pages, dest)
-    for page in pages:
-        page.unlink(missing_ok=True)
-    return dest if dest.is_file() else None
+        try:
+            completed = runner([tool, "-jpeg", str(src), str(prefix)], timeout=180)
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        if int(getattr(completed, "returncode", 1) or 0) != 0:
+            return None
+        pages = collect_pdftoppm_jpegs(src.parent, prefix.name)
+        if not pages:
+            return None
+        images_to_cbz(pages, dest)
+        return dest if dest.is_file() else None
+    finally:
+        leftover = pages or collect_pdftoppm_jpegs(src.parent, prefix.name)
+        _unlink_pages(leftover)
 
 
 def pdf_to_epub(
