@@ -8,9 +8,9 @@ Living product/build checklist. Flip boxes when a slice ships. Append the story 
 | --- | --- |
 | **Date** | 2026-09-14 |
 | **Branch** | `main` |
-| **Last SHA** | repo `10538fc` · Automat image `8db903a` |
-| **Green** | `127 passed`, coverage **78%** (floor 70%); ruff + scoped mypy clean; frontend `5 passed`; LAN `http://10.10.1.202:8793/api/health` → `ok`. |
-| **Next** | Rebuild Automat to `10538fc` (Phase 1 not in the running image yet); Hub `romwil/librarian` later. |
+| **Last SHA** | pending (CSS + browser QA) · Automat image `8db903a` |
+| **Green** | `127 passed`, coverage **78%** (floor 70%); ruff + scoped mypy clean; frontend `5 passed` + `npm run build`; LAN foyer `:8793/login` + local Hall/peek verified. |
+| **Next** | Rebuild Automat to current `main` (Phase 1 not in the running image yet); Hub `romwil/librarian` later. |
 
 ## North star
 
@@ -119,7 +119,7 @@ A household **library for readers**. People peruse shelves, see What’s New, op
 - [x] Living Request chips after Beyond peek Request
 - [x] Frontend unit tests (cover cloth / peek click / job labels)
 - [x] Continue rail (progress API; Hall hides finished)
-- [ ] Browser-verified Hall / login / peek
+- [x] Browser-verified Hall / login / peek (Automat foyer; local Hall cover → peek, Esc keeps `/`)
 
 ### Automat
 

@@ -338,6 +338,7 @@ input {
 .cover.has-art::before {
   z-index: 1;
 }
+.cover.is-progress::after {
   content: "";
   position: absolute;
   left: 0;
