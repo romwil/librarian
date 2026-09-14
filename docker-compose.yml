@@ -1,0 +1,36 @@
+services:
+  librarian:
+    build:
+      context: .
+      args:
+        BUILD_DATE: "${BUILD_DATE:-unknown}"
+        VCS_REF: "${VCS_REF:-unknown}"
+    image: librarian:latest
+    container_name: librarian
+    restart: unless-stopped
+    ports:
+      - "${HOST_PORT:-8793}:8793"
+    env_file:
+      - .env
+    environment:
+      DATA_DIR: /config
+      PORT: "8793"
+      TZ: ${TZ:-America/New_York}
+      LIBRARIAN_OWNER_USERNAME: ${LIBRARIAN_OWNER_USERNAME:-owner}
+      LIBRARIAN_OWNER_PASSWORD: ${LIBRARIAN_OWNER_PASSWORD:-}
+      LIBRARIAN_SESSION_SECRET: ${LIBRARIAN_SESSION_SECRET:-}
+      SABNZBD_URL: ${SABNZBD_URL:-http://downloader.sl}
+      SABNZBD_API_KEY: ${SABNZBD_API_KEY:-}
+      NZBFINDER_URL: ${NZBFINDER_URL:-https://nzbfinder.ws}
+      NZBFINDER_API_TOKEN: ${NZBFINDER_API_TOKEN:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ${CONFIG_PATH:-./config}:/config
+      - ${DATA_HOST:-/mnt/user/data}:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8793/api/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s

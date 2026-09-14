@@ -1,0 +1,17 @@
+{
+  "sabnzbd_url": "http://downloader.sl",
+  "sabnzbd_api_key": "",
+  "nzbfinder_url": "https://nzbfinder.ws",
+  "nzbfinder_api_token": "",
+  "books_root": "/data/media/books",
+  "magazines_root": "/data/media/magazines",
+  "comics_root": "/data/media/comics",
+  "audiobooks_root": "/data/media/audiobooks",
+  "incoming_music_root": "/data/media/incoming-music",
+  "music_root": "/data/media/music",
+  "audiobook_target": "plex",
+  "llm_base_url": "",
+  "llm_api_key": "",
+  "llm_model": "gpt-4o-mini",
+  "household_name": "The Hall"
+}

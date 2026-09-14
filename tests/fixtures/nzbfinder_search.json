@@ -1,0 +1,45 @@
+{
+  "channel": {
+    "title": "NZBFinder fixture",
+    "item": [
+      {
+        "title": "Linux Magazin No.10 2026",
+        "guid": "guid-linux-mag-2026-10",
+        "link": "https://example.test/nzb/linux-mag",
+        "pubDate": "Sun, 01 Sep 2026 00:00:00 +0000",
+        "enclosure": {
+          "@attributes": {
+            "url": "https://example.test/nzb/linux-mag.nzb",
+            "length": "123456"
+          }
+        },
+        "attr": [
+          { "@attributes": { "name": "category", "value": "7010" } },
+          { "@attributes": { "name": "size", "value": "123456" } }
+        ]
+      },
+      {
+        "title": "Saga 001 2012",
+        "guid": "guid-saga-001",
+        "link": "https://example.test/nzb/saga-001",
+        "enclosure": {
+          "@attributes": {
+            "url": "https://example.test/nzb/saga-001.nzb",
+            "length": "89000"
+          }
+        },
+        "attr": [
+          { "@attributes": { "name": "category", "value": "7030" } }
+        ]
+      },
+      {
+        "title": "Some Movie 2024",
+        "guid": "guid-movie",
+        "link": "https://example.test/nzb/movie",
+        "attr": [
+          { "@attributes": { "name": "category", "value": "2000" } }
+        ]
+      }
+    ]
+  }
+}
