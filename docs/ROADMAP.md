@@ -8,7 +8,7 @@ Living product/build checklist. Flip boxes when a slice ships. Append the story 
 | --- | --- |
 | **Date** | 2026-09-14 |
 | **Branch** | `main` |
-| **Last SHA** | first local commit (SHA recorded in build-progress after push) |
+| **Last SHA** | `d79591b` |
 | **Green** | `54 passed`, coverage **77%** (floor 70%); ruff + scoped mypy clean; `GET /api/health` → `{status: ok}`; `frontend` Vite build succeeds. |
 | **Next** | Private `romwil/librarian` + push; Automat `docker-run.sh` smoke; cover fetch / living Request chips / Continue rail. |
 
@@ -44,7 +44,7 @@ A household **library for readers**, not an admin grabber and not Calibre-in-a-b
 - [x] Dockerfile, `docker-compose.yml`, `docker-run.sh`, `settings.example.json`
 - [x] pytest + ruff + scoped mypy green (`54 passed`, 77% coverage)
 - [x] `frontend/package-lock.json` + production `npm run build`
-- [ ] Private GitHub `romwil/librarian` + first push
+- [~] Private GitHub `romwil/librarian` + first push
 
 ### Auth
 

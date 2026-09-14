@@ -6,7 +6,7 @@ Plan: [librarian_automat_rss](file:///Users/willrompala/.cursor/plans/librarian_
 
 ## Shipped
 
-- **2026-09-14** — First tree: FastAPI + Vite kit on **8793**, SQLite WAL, settings.json wins, AGENTS/CHANGELOG/DOCKER/TESTING/SECURITY/HELP/design spec. `.gitignore` blocks `smart.map` / `projectionist` copies. `.env.example` has empty SAB/NZBFinder placeholders only.
+- **2026-09-14** `d79591b` — First tree: FastAPI + Vite kit on **8793**, SQLite WAL, settings.json wins, AGENTS/CHANGELOG/DOCKER/TESTING/SECURITY/HELP/design spec. `.gitignore` blocks `smart.map` / `projectionist` copies. `.env.example` has empty SAB/NZBFinder placeholders only.
 - **2026-09-14** — Auth: owner/op/reader, `seed_env_owner`, HMAC invites (hash at rest, fail-closed parse, one-tx redeem), exhaustive public handshake, session secret refuse-default.
 - **2026-09-14** — NZBFinder v2 JSON client (caps/search/books/details/download URL, User-Agent + `api_token`) with token-stripped fixture. TV/movies/XXX dropped.
 - **2026-09-14** — SABnzbd addurl/queue/history + `nzo_id` status machine. Reader Request is an `asked` slip.
@@ -21,7 +21,7 @@ Plan: [librarian_automat_rss](file:///Users/willrompala/.cursor/plans/librarian_
 
 ## In progress / next
 
-- [ ] Commit + private `romwil/librarian` + push
+- [~] Private `romwil/librarian` + push (local `d79591b` exists)
 - [ ] Automat `docker-run.sh` health smoke
 - [ ] Cover fetch / CBR→CBZ / BYO LLM identify
 - [ ] Continue rail + living Request chips + frontend unit tests
