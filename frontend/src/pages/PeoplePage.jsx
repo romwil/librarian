@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
+import { humanError } from "../copy.js";
 
 export default function PeoplePage() {
   const [users, setUsers] = useState([]);
@@ -10,7 +11,7 @@ export default function PeoplePage() {
     api
       .people()
       .then((data) => setUsers(data.users || []))
-      .catch((err) => setError(err.message));
+      .catch((err) => setError(humanError(err)));
   }, []);
 
   async function mint(role) {
@@ -19,7 +20,7 @@ export default function PeoplePage() {
       const minted = await api.mintInvite(role);
       setLink(minted.join_url || minted.join_path);
     } catch (err) {
-      setError(err.message);
+      setError(humanError(err));
     }
   }
 

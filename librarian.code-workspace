@@ -8,6 +8,9 @@
 		},
 		{
 			"path": "../projectionist"
+		},
+		{
+			"path": "../../../../Volumes/appdata/librarian"
 		}
 	]
 }

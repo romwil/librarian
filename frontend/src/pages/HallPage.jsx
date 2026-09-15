@@ -2,17 +2,36 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useOutletContext } from "react-router-dom";
 import { api } from "../api.js";
 import Rail from "../components/Rail.jsx";
+import { emptyHallCopy, humanError, setupComplete } from "../copy.js";
 
 export default function HallPage() {
   const navigate = useNavigate();
   const { user } = useOutletContext();
   const [hall, setHall] = useState(null);
+  const [configured, setConfigured] = useState(false);
+  const [loadError, setLoadError] = useState("");
   const [q, setQ] = useState("");
   const owner = user?.role === "owner";
+  const empty = emptyHallCopy({ owner, configured });
 
   useEffect(() => {
-    api.hall().then(setHall).catch(() => setHall({ empty: true, areas: {} }));
-  }, []);
+    api
+      .hall()
+      .then((data) => {
+        setHall(data);
+        setLoadError("");
+      })
+      .catch((err) => {
+        setHall({ empty: true, areas: {} });
+        setLoadError(humanError(err));
+      });
+    if (owner) {
+      api
+        .settings()
+        .then((data) => setConfigured(setupComplete(data.settings)))
+        .catch(() => setConfigured(false));
+    }
+  }, [owner]);
 
   function onSearch(event) {
     event.preventDefault();
@@ -40,13 +59,14 @@ export default function HallPage() {
           <kbd>/</kbd>
         </form>
       </section>
+      {loadError ? <p className="alert hall-alert">{loadError}</p> : null}
       {hall?.empty ? (
         <section className="empty-cta">
-          <h2>Open the stacks</h2>
-          <p className="lede">Add an indexer and the first covers will land here.</p>
+          <h2>{empty.title}</h2>
+          <p className="lede">{empty.lede}</p>
           {owner ? (
             <Link className="cta" to="/settings">
-              Add an indexer
+              {configured ? "Open Settings" : "Add an indexer"}
             </Link>
           ) : null}
         </section>
@@ -61,9 +81,9 @@ export default function HallPage() {
       <Rail title="Favorites" items={hall?.favorites} />
       <Rail title="Books" items={hall?.areas?.books} />
       <Rail title="Magazines" kicker="Issue date on the gilt caption" items={hall?.areas?.magazines} />
-      <Rail title="Comics" items={hall?.areas?.comics} />
-      <Rail title="Audiobooks" items={hall?.areas?.audiobooks} />
-      <Rail title="Incoming Music" items={hall?.areas?.incoming_music} />
+      <Rail title="Comics" kicker="Series and issue, square-ish" items={hall?.areas?.comics} />
+      <Rail title="Audiobooks" kicker="Listen — not a book spine" items={hall?.areas?.audiobooks} />
+      <Rail title="Incoming Music" kicker="Promote lives in peek" items={hall?.areas?.incoming_music} />
       <Rail title="Gaps" items={hall?.gaps} />
     </div>
   );

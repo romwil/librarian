@@ -79,6 +79,15 @@ def test_collect_pdftoppm_jpegs_treats_brackets_as_literal(tmp_path):
     assert collect_pdftoppm_jpegs(tmp_path, prefix) == [page1, page2]
     assert list(tmp_path.glob(f"{prefix}*.jpg")) == []
 
+    stem = "Comic.[2024].[Group]"
+    dummy_pdf = tmp_path / f"{stem}.pdf"
+    stem_page = tmp_path / f"{stem}-1.jpg"
+    dummy_pdf.write_bytes(b"%PDF")
+    stem_page.write_bytes(jpeg)
+    assert dummy_pdf.is_file()
+    assert collect_pdftoppm_jpegs(tmp_path, stem) == [stem_page]
+    assert list(tmp_path.glob(f"{stem}*.jpg")) == []
+
 
 def test_pdf_to_cbz_bracketed_usenet_name(tmp_path):
     src = tmp_path / "Comic.[2024].[Group].pdf"

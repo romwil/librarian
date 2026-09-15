@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional
 
 from librarian.config import Settings
 from librarian.db import Database
+from librarian.identify import resolve_storage_path
 from librarian.nzbfinder import NZBFinderClient
 from librarian.organize import organize_identified
 from librarian.sabnzbd import SABClient
@@ -97,7 +98,8 @@ def poll_job(
         updated = db.update_job(job_id, status="failed", error=str(snapshot.get("sab_status") or "Failed"))
         return updated or job
     if status == "completed":
-        storage = Path(str(snapshot.get("storage") or job.get("storage_path") or ""))
+        raw = Path(str(snapshot.get("storage") or job.get("storage_path") or ""))
+        storage = resolve_storage_path(raw, settings.complete_root)
         db.update_job(job_id, status="identifying", storage_path=str(storage))
         organized = organize_identified(
             db,

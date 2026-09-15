@@ -28,6 +28,9 @@ Plan: [librarian_automat_rss](file:///Users/willrompala/.cursor/plans/librarian_
 - **2026-09-14** `12d6f6f` — Restored `.cover.is-progress::after` (broken CSS brace blocked `npm run build`). Browser-verified Automat foyer + local Hall/peek.
 - **2026-09-14** — Automat `docker-run.sh` rebuilt `librarian` to **`86ac87f`**. Health ok on `:8793`. `./config` kept. Projectionist `:8788` and Smart Map `:8790` stayed up.
 - **2026-09-14** — Second Automat rebuild to **`1d7f18a`** (identify/convert Review fixes). Health ok on `:8793`. `./config` kept.
+- **2026-09-14** — Convert: `pdf_to_cbz` unlinks leftover pdftoppm JPEGs in a `finally` if rasterize succeeds but zip/convert fails.
+- **2026-09-15** — Review: identify form (title/author/ISBN/kind/folder) always shown; `no_payload` is missing files at SAB storage (often `/downloads` on Unraid vs laptop). Apply uses identity; 400 if still no files. Optional `complete_root` remaps `/downloads`.
+- **2026-09-15** — Reading Room UX pass: kind-skinned covers (book/magazine/comic/audiobook/music), clamped gilt overlay, search status + beyond callout, `?` field help, Settings four-step wizard, Review bagging tickets. Hall stays open while configured.
 
 ## In progress / next
 

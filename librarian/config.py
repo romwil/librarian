@@ -23,6 +23,7 @@ ENV_TO_FIELD = {
     "AUDIOBOOKS_ROOT": "audiobooks_root",
     "INCOMING_MUSIC_ROOT": "incoming_music_root",
     "MUSIC_ROOT": "music_root",
+    "COMPLETE_ROOT": "complete_root",
     "AUDIOBOOK_TARGET": "audiobook_target",
     "LLM_BASE_URL": "llm_base_url",
     "LLM_API_KEY": "llm_api_key",
@@ -80,6 +81,7 @@ class Settings:
     audiobooks_root: str = "/data/media/audiobooks"
     incoming_music_root: str = "/data/media/incoming-music"
     music_root: str = "/data/media/music"
+    complete_root: str = ""
     audiobook_target: str = "plex"
     llm_base_url: str = ""
     llm_api_key: str = ""

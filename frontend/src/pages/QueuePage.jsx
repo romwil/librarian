@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
+import { emptyQueueCopy, humanError } from "../copy.js";
 
 export default function QueuePage() {
   const [jobs, setJobs] = useState([]);
@@ -9,7 +10,7 @@ export default function QueuePage() {
     api
       .queue()
       .then((data) => setJobs(data.jobs || []))
-      .catch((err) => setError(err.message));
+      .catch((err) => setError(humanError(err)));
   }
 
   useEffect(reload, []);
@@ -20,7 +21,7 @@ export default function QueuePage() {
       <h1>Queue</h1>
       <p className="lede">Living chips live on search cards. This list is for asked slips and SAB jobs.</p>
       {error ? <p className="alert">{error}</p> : null}
-      {!jobs.length ? <p className="muted">Nothing in flight.</p> : null}
+      {!jobs.length ? <p className="empty-note">{emptyQueueCopy()}</p> : null}
       <ul className="stack">
         {jobs.map((job) => (
           <li key={job.id} className="card">
@@ -30,7 +31,16 @@ export default function QueuePage() {
               {job.nzo_id ? ` · ${job.nzo_id}` : ""}
             </p>
             {job.status === "asked" ? (
-              <button type="button" className="cta" onClick={() => api.confirmJob(job.id).then(reload)}>
+              <button
+                type="button"
+                className="cta"
+                onClick={() =>
+                  api
+                    .confirmJob(job.id)
+                    .then(reload)
+                    .catch((err) => setError(humanError(err)))
+                }
+              >
                 Queue to SAB
               </button>
             ) : null}

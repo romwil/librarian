@@ -36,8 +36,9 @@ def test_sync_and_ping_indexers_table(tmp_path):
     )
 
     def handler(request: httpx.Request) -> httpx.Response:
-        assert "t=caps" in str(request.url)
+        assert "/api/v2/capabilities" in str(request.url)
         assert "api_token=tok" in str(request.url)
+        assert "t=caps" not in str(request.url)
         return httpx.Response(200, json=fixture)
 
     from librarian.nzbfinder import NZBFinderClient

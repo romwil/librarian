@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Union
 
 from librarian.kinds import (
     KIND_AUDIOBOOK,
@@ -237,6 +237,33 @@ def list_payload_files(folder: Path) -> List[Path]:
         if path.suffix.lower() in MEDIA_EXTENSIONS:
             found.append(path)
     return found
+
+
+def usable_folder(folder: Optional[Union[Path, str]]) -> bool:
+    """True when a path is a real location, not empty / cwd (Path(''))."""
+    text = str(folder or "").strip()
+    return bool(text) and text not in {".", str(Path())}
+
+
+def resolve_storage_path(storage: Path, complete_root: str = "") -> Path:
+    """Map a SAB container path (often /downloads/...) onto a directory this process can read."""
+    if not usable_folder(storage):
+        return storage
+    if storage.exists():
+        return storage
+    root = str(complete_root or "").strip()
+    if not root:
+        return storage
+    root_path = Path(root)
+    parts = storage.parts[1:] if storage.parts and storage.parts[0] == "/" else storage.parts
+    if not parts:
+        return storage
+    without_mount = Path(*parts[1:]) if len(parts) > 1 else Path(parts[0])
+    candidates = [root_path / without_mount, root_path / Path(*parts), root_path / storage.name]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
 
 
 def identify_completed(

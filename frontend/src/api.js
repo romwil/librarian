@@ -1,3 +1,5 @@
+import { detailText } from "./copy.js";
+
 const API = "/api";
 
 async function request(path, options = {}) {
@@ -9,7 +11,7 @@ async function request(path, options = {}) {
   if (response.status === 204) return null;
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const error = new Error(data.detail || response.statusText);
+    const error = new Error(detailText(data.detail) || response.statusText);
     error.status = response.status;
     error.payload = data;
     throw error;

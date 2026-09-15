@@ -1,7 +1,12 @@
 from pathlib import Path
 
 from librarian.config import Settings
-from librarian.identify import dest_layout, identify_completed, parse_usenet_name
+from librarian.identify import (
+    dest_layout,
+    identify_completed,
+    parse_usenet_name,
+    resolve_storage_path,
+)
 
 
 class _RaiseLLM:
@@ -57,6 +62,20 @@ def test_identify_no_payload_review(tmp_path):
     assert result["auto_organize"] is False
     assert result["identity"]["review_reason"] == "no_payload"
     assert result["files"] == []
+
+
+def test_resolve_storage_path_maps_downloads_prefix(tmp_path):
+    host = tmp_path / "downloads" / "books" / "Christine - Stephen King"
+    host.mkdir(parents=True)
+    epub = host / "Christine - Stephen King.epub"
+    epub.write_bytes(b"epub")
+    mapped = resolve_storage_path(
+        Path("/downloads/books/Christine - Stephen King/Christine - Stephen King.epub"),
+        str(tmp_path / "downloads"),
+    )
+    assert mapped == epub
+    missing = resolve_storage_path(Path("/downloads/books/Missing"), str(tmp_path / "downloads"))
+    assert missing == tmp_path / "downloads" / "books" / "Missing"
 
 
 def test_identify_pdf_only_book_goes_to_review(tmp_path):

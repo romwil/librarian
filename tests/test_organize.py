@@ -1,8 +1,15 @@
 from pathlib import Path
 
+import pytest
+
 from librarian.config import Settings
 from librarian.db import Database
-from librarian.organize import organize_identified, promote_music
+from librarian.organize import (
+    MISSING_FOLDER_APPLY_ERROR,
+    apply_review,
+    organize_identified,
+    promote_music,
+)
 
 
 def _settings(tmp_path: Path) -> Settings:
@@ -116,4 +123,97 @@ def test_loose_comic_images_convert_and_cover(tmp_path):
     assert work["cover_path"] == str(dest.parent / "cover.jpg")
     assert work["kind"] == "comic"
     assert work["series_index"] == "1"
+
+
+def test_review_persists_source_folder_and_apply_uses_identity(tmp_path):
+    folder = tmp_path / "complete" / "Mystery.Release"
+    folder.mkdir(parents=True)
+    (folder / "book.epub").write_bytes(b"epub")
+    db = Database(tmp_path / "librarian.db")
+    parked = organize_identified(db, _settings(tmp_path), folder=folder, apply=False)
+    assert parked["organized"] is False
+    assert parked["work"]["folder_path"] == str(folder)
+    result = apply_review(
+        db,
+        _settings(tmp_path),
+        work_id=parked["work"]["id"],
+        folder=folder,
+        identity_overrides={
+            "title": "Christine",
+            "author": "Stephen King",
+            "isbn": "9780670800000",
+            "kind": "book",
+        },
+    )
+    assert result["organized"] is True
+    stored = db.get_work(parked["work"]["id"])
+    assert stored["title"] == "Christine"
+    assert stored["author"] == "Stephen King"
+    assert stored["review_state"] == "none"
+    dest = Path(result["files"][0])
+    assert dest.parent.name == "Christine"
+    assert dest.parent.parent.name == "Stephen King"
+
+
+def test_apply_review_no_payload_raises(tmp_path):
+    folder = tmp_path / "empty"
+    folder.mkdir()
+    db = Database(tmp_path / "librarian.db")
+    parked = organize_identified(
+        db,
+        _settings(tmp_path),
+        folder=folder,
+        indexer_item={"title": "Mystery", "category": 7020},
+    )
+    assert parked["work"]["review_reason"] == "no_payload"
+    assert parked["work"]["folder_path"] == str(folder)
+    with pytest.raises(ValueError, match="cannot invent"):
+        apply_review(
+            db,
+            _settings(tmp_path),
+            work_id=parked["work"]["id"],
+            folder=folder,
+            identity_overrides={"title": "Nope", "kind": "book"},
+        )
+
+
+def test_apply_review_empty_folder_does_not_scan_cwd(tmp_path):
+    db = Database(tmp_path / "librarian.db")
+    work = db.upsert_work(
+        {"kind": "book", "title": "Mystery", "review_state": "needs_review", "review_reason": "no_payload"}
+    )
+    with pytest.raises(ValueError, match="No complete folder"):
+        apply_review(db, _settings(tmp_path), work_id=work["id"], folder=Path(""), identity_overrides={})
+    assert MISSING_FOLDER_APPLY_ERROR
+
+
+def test_apply_review_complete_root_remap(tmp_path):
+    host = tmp_path / "downloads" / "books" / "King"
+    host.mkdir(parents=True)
+    (host / "book.epub").write_bytes(b"epub")
+    db = Database(tmp_path / "librarian.db")
+    work = db.upsert_work(
+        {
+            "kind": "book",
+            "title": "Christine",
+            "author": "King",
+            "isbn": "9780670800000",
+            "review_state": "needs_review",
+            "review_reason": "no_payload",
+            "folder_path": "/downloads/books/King",
+        }
+    )
+    settings = _settings(tmp_path)
+    settings.complete_root = str(tmp_path / "downloads")
+    result = apply_review(
+        db,
+        settings,
+        work_id=work["id"],
+        folder=Path("/downloads/books/King"),
+        identity_overrides={"title": "Christine", "author": "King", "isbn": "9780670800000", "kind": "book"},
+    )
+    assert result["organized"] is True
+    stored = db.get_work(work["id"])
+    assert stored["review_state"] == "none"
+    assert Path(result["files"][0]).parent.name == "Christine"
 

@@ -120,6 +120,7 @@ A household **library for readers**. People peruse shelves, see What’s New, op
 - [x] Frontend unit tests (cover cloth / peek click / job labels)
 - [x] Continue rail (progress API; Hall hides finished)
 - [x] Browser-verified Hall / login / peek (Automat foyer; local Hall cover → peek, Esc keeps `/`)
+- [x] Kind-skinned covers, search “searched X · N on shelves · M beyond”, `?` field help, Settings wizard, Review tickets
 
 ### Automat
 

@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api.js";
+import { FieldLabel } from "../components/FieldHelp.jsx";
 import GlassDoor from "../components/GlassDoor.jsx";
+import { FIELD_HELP, humanError } from "../copy.js";
 
 export default function JoinPage() {
   const [params] = useSearchParams();
@@ -14,13 +16,13 @@ export default function JoinPage() {
 
   useEffect(() => {
     if (!token) {
-      setError("Invite not found");
+      setError(humanError("Invite not found", "join"));
       return;
     }
     api
       .validateInvite(token)
       .then((data) => setInvite(data.invite))
-      .catch((err) => setError(err.message || "Invite not found"));
+      .catch((err) => setError(humanError(err, "join")));
   }, [token]);
 
   async function onSubmit(event) {
@@ -30,7 +32,7 @@ export default function JoinPage() {
       await api.redeem(token, username, password);
       navigate("/");
     } catch (err) {
-      setError(err.message || "Could not join");
+      setError(humanError(err, "join"));
     }
   }
 
@@ -48,11 +50,11 @@ export default function JoinPage() {
       {invite ? (
         <form className="login-form" onSubmit={onSubmit}>
           <div className="field">
-            <label htmlFor="join-name">Name</label>
+            <FieldLabel htmlFor="join-name" label="Name" help={FIELD_HELP.joinName} />
             <input id="join-name" value={username} onChange={(e) => setUsername(e.target.value)} minLength={2} required />
           </div>
           <div className="field">
-            <label htmlFor="join-pass">Password</label>
+            <FieldLabel htmlFor="join-pass" label="Password" help={FIELD_HELP.joinPassword} />
             <input
               id="join-pass"
               type="password"

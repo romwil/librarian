@@ -11,7 +11,14 @@ from librarian.config import Settings
 from librarian.convert import maybe_convert_payload
 from librarian.covers import fetch_cover
 from librarian.db import Database
-from librarian.identify import REVIEW_COLLISION, dest_layout, identify_completed
+from librarian.identify import (
+    REVIEW_COLLISION,
+    REVIEW_NO_PAYLOAD,
+    dest_layout,
+    identify_completed,
+    resolve_storage_path,
+    usable_folder,
+)
 from librarian.kinds import KIND_BOOK, KIND_COMIC, KIND_MAGAZINE, KIND_MUSIC
 from librarian.llm import client_from_settings
 from librarian.metadata import comicinfo_xml, write_comicinfo, write_opf
@@ -40,6 +47,29 @@ def _inject_comicinfo(cbz: Path, identity: Dict[str, Any], guid: str) -> None:
         return
 
 
+NO_PAYLOAD_APPLY_ERROR = (
+    "No payload files at this path. Librarian cannot invent an EPUB/CBZ. "
+    "Point the folder at a complete directory this process can read, "
+    "set SAB complete root to map /downloads, or Skip."
+)
+MISSING_FOLDER_APPLY_ERROR = (
+    "No complete folder. Enter the SAB storage path this Librarian can read, "
+    "set SAB complete root, or Skip."
+)
+
+
+def _source_folder_value(folder: Path) -> Optional[str]:
+    return str(folder) if usable_folder(folder) else None
+
+
+def _merge_identity(identity: Dict[str, Any], overrides: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    merged = dict(identity)
+    for key, value in (overrides or {}).items():
+        if value is not None:
+            merged[key] = value
+    return merged
+
+
 def organize_identified(
     db: Database,
     settings: Settings,
@@ -51,10 +81,12 @@ def organize_identified(
     llm_client: Any = None,
     cover_transport=None,
     convert_runner=None,
+    identity_overrides: Optional[Dict[str, Any]] = None,
+    force: bool = False,
 ) -> Dict[str, Any]:
     llm = llm_client if llm_client is not None else client_from_settings(settings)
     preview = identify_completed(folder, indexer_item=indexer_item, category=category, llm_client=llm)
-    kind = str(preview["identity"].get("kind") or "")
+    kind = str((identity_overrides or {}).get("kind") or preview["identity"].get("kind") or "")
     convert_kwargs = {"runner": convert_runner} if convert_runner is not None else {}
     converted = maybe_convert_payload(folder, kind, **convert_kwargs)
     result = (
@@ -62,12 +94,24 @@ def organize_identified(
         if converted["converted"]
         else preview
     )
-    identity = dict(result["identity"])
+    identity = _merge_identity(dict(result["identity"]), identity_overrides)
     files = [Path(path) for path in result["files"]]
+    if force:
+        if files:
+            identity["confidence"] = "high"
+            identity["review_reason"] = None
+            result["auto_organize"] = True
+        else:
+            identity["review_reason"] = REVIEW_NO_PAYLOAD
+            identity["confidence"] = "low"
+            result["auto_organize"] = False
+    result["identity"] = identity
+    source_folder = _source_folder_value(folder)
     if not result["auto_organize"] or not apply:
         work = db.upsert_work(
             {
                 **identity,
+                "folder_path": source_folder,
                 "review_state": "needs_review" if identity.get("review_reason") or not result["auto_organize"] else "none",
                 "review_reason": identity.get("review_reason"),
                 "music_state": "incoming" if identity.get("kind") == KIND_MUSIC else None,
@@ -87,6 +131,7 @@ def organize_identified(
                 work = db.upsert_work(
                     {
                         **identity,
+                        "folder_path": source_folder,
                         "review_state": "needs_review",
                         "review_reason": REVIEW_COLLISION,
                         "indexer_guid": (indexer_item or {}).get("guid"),
@@ -101,6 +146,7 @@ def organize_identified(
         work = db.upsert_work(
             {
                 **identity,
+                "folder_path": source_folder,
                 "review_state": "needs_review",
                 "review_reason": REVIEW_COLLISION,
                 "indexer_guid": (indexer_item or {}).get("guid"),
@@ -161,7 +207,12 @@ def apply_review(
     work = db.get_work(work_id)
     if work is None:
         raise ValueError("Work not found")
+    source = folder if usable_folder(folder) else Path(str(work.get("folder_path") or ""))
+    if not usable_folder(source):
+        raise ValueError(MISSING_FOLDER_APPLY_ERROR)
+    resolved = resolve_storage_path(source, settings.complete_root)
     merged = {
+        "id": work["id"],
         "title": work.get("title"),
         "author": work.get("author"),
         "kind": work.get("kind"),
@@ -174,23 +225,29 @@ def apply_review(
         "review_reason": None,
     }
     fake_item = {
-        "title": merged["title"],
+        "title": merged.get("title"),
         "author": merged.get("author"),
         "isbn": merged.get("isbn"),
         "category": None,
         "guid": work.get("indexer_guid"),
-        "name": folder.name,
+        "name": resolved.name,
     }
-    result = identify_completed(folder, indexer_item=fake_item)
-    result["identity"].update(merged)
-    result["auto_organize"] = True
-    return organize_identified(
+    result = organize_identified(
         db,
         settings,
-        folder=folder,
+        folder=resolved,
         indexer_item=fake_item,
         apply=True,
+        identity_overrides=merged,
+        force=True,
     )
+    if not result["organized"]:
+        reason = result.get("identity", {}).get("review_reason") or result["work"].get("review_reason")
+        if reason == REVIEW_NO_PAYLOAD:
+            raise ValueError(NO_PAYLOAD_APPLY_ERROR)
+        if reason == REVIEW_COLLISION:
+            raise ValueError("A file already exists at the library destination.")
+    return result
 
 
 def promote_music(db: Database, settings: Settings, work_id: str) -> Dict[str, Any]:

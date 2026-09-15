@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api.js";
+import { FieldLabel } from "../components/FieldHelp.jsx";
 import GlassDoor from "../components/GlassDoor.jsx";
+import { FIELD_HELP, humanError } from "../copy.js";
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -16,7 +18,7 @@ export default function LoginPage() {
       await api.login(username, password);
       navigate("/");
     } catch (err) {
-      setError(err.message || "Could not sign in");
+      setError(humanError(err, "login"));
     }
   }
 
@@ -30,7 +32,7 @@ export default function LoginPage() {
       {error ? <p className="alert">{error}</p> : null}
       <form className="login-form" onSubmit={onSubmit}>
         <div className="field">
-          <label htmlFor="login-name">Name</label>
+          <FieldLabel htmlFor="login-name" label="Name" help={FIELD_HELP.loginName} />
           <input
             id="login-name"
             value={username}
@@ -40,7 +42,7 @@ export default function LoginPage() {
           />
         </div>
         <div className="field">
-          <label htmlFor="login-pass">Password</label>
+          <FieldLabel htmlFor="login-pass" label="Password" help={FIELD_HELP.loginPassword} />
           <input
             id="login-pass"
             type="password"

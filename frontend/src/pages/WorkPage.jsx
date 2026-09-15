@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useOutletContext, useParams } from "react-router-dom";
 import { api } from "../api.js";
+import { humanError } from "../copy.js";
 import Rail from "../components/Rail.jsx";
 
 export default function WorkPage() {
@@ -19,10 +20,16 @@ export default function WorkPage() {
           api.progress(payload.work.id).catch(() => {});
         }
       })
-      .catch((err) => setError(err.message));
+      .catch((err) => setError(humanError(err)));
   }, [id]);
 
-  if (error) return <p className="alert">{error}</p>;
+  if (error) {
+    return (
+      <div className="admin-room">
+        <p className="alert">{error}</p>
+      </div>
+    );
+  }
   if (!data) return <p className="lede" style={{ padding: "var(--space-8) var(--gutter)" }}>Opening the volume…</p>;
 
   const work = data.work;

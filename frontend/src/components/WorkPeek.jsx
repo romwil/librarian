@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api.js";
-import { clothFor, isSquareKind, jobChipLabel } from "../cover.js";
+import { clothFor, coverClassNames, coverOverlay, jobChipLabel } from "../cover.js";
+import { humanError } from "../copy.js";
 
 export default function WorkPeek({ work, onClose, onRequest }) {
   const panel = useRef(null);
@@ -9,9 +10,13 @@ export default function WorkPeek({ work, onClose, onRequest }) {
   const navigate = useNavigate();
   const [role, setRole] = useState("reader");
   const [jobStatus, setJobStatus] = useState(work?.job_status || "");
+  const [error, setError] = useState("");
+  const [artFailed, setArtFailed] = useState(false);
 
   useEffect(() => {
     setJobStatus(work?.job_status || "");
+    setError("");
+    setArtFailed(false);
   }, [work]);
 
   useEffect(() => {
@@ -33,25 +38,35 @@ export default function WorkPeek({ work, onClose, onRequest }) {
   const href = work.id ? `/works/${work.id}` : null;
   const kind = work.kind || "work";
   const art = work.has_cover && work.id ? `/api/works/${work.id}/cover` : work.cover || "";
-  const square = isSquareKind(kind);
+  const hasArt = Boolean(art) && !artFailed;
+  const overlay = coverOverlay(work);
 
   async function favorite() {
     if (!work.id) return;
-    await api.favorite(work.id);
+    try {
+      await api.favorite(work.id);
+    } catch (err) {
+      setError(humanError(err));
+    }
   }
 
   async function request() {
-    const send = onRequest || api.requestItem;
-    const result = await send({
-      title: work.title,
-      guid: work.guid,
-      kind: work.kind,
-      download_url: work.download_url,
-      author: work.author,
-      isbn: work.isbn,
-    });
-    const status = result?.job?.status || (role === "reader" ? "asked" : "queued");
-    setJobStatus(status);
+    setError("");
+    try {
+      const send = onRequest || api.requestItem;
+      const result = await send({
+        title: work.title,
+        guid: work.guid,
+        kind: work.kind,
+        download_url: work.download_url,
+        author: work.author,
+        isbn: work.isbn,
+      });
+      const status = result?.job?.status || (role === "reader" ? "asked" : "queued");
+      setJobStatus(status);
+    } catch (err) {
+      setError(humanError(err));
+    }
   }
 
   return (
@@ -67,15 +82,19 @@ export default function WorkPeek({ work, onClose, onRequest }) {
         <div className="peek-body">
           <div className="peek-layout">
             <div
-              className={`cover${square ? " is-square" : ""}${art ? " has-art" : ""}`}
-              style={{ "--cloth": work.cloth || clothFor(work.title), width: square ? 160 : 148, height: square ? 160 : 222 }}
+              className={coverClassNames(work, { art: hasArt })}
+              style={{ "--cloth": work.cloth || clothFor(work.title) }}
               aria-hidden="true"
             >
-              <strong>{work.title}</strong>
-              <em>{work.author || kind}</em>
-              {art ? <img src={art} alt="" /> : null}
+              <span className="cover-meta">
+                <strong>{overlay.title}</strong>
+                <em>{overlay.byline}</em>
+              </span>
+              {overlay.chip ? <span className="cover-chip">{overlay.chip}</span> : null}
+              {kind === "audiobook" ? <span className="cover-wave" aria-hidden="true" /> : null}
+              {hasArt ? <img src={art} alt="" onError={() => setArtFailed(true)} /> : null}
             </div>
-            <div>
+            <div className="peek-copy">
               <h1 id="peek-title">{work.title}</h1>
               <div className="chip-row">
                 {kind ? <span className="chip is-on">{kind}</span> : null}
@@ -84,6 +103,7 @@ export default function WorkPeek({ work, onClose, onRequest }) {
                 {work.isbn ? <span className="chip font-mono">{work.isbn}</span> : null}
               </div>
               {work.description ? <p className="blurb">{work.description}</p> : null}
+              {error ? <p className="alert">{error}</p> : null}
               <div className="cta-row">
                 {href ? (
                   <Link
@@ -120,7 +140,7 @@ export default function WorkPeek({ work, onClose, onRequest }) {
                   >
                     Open full page
                   </Link>
-                  <span style={{ color: "var(--muted)" }}> · same-tab dismisses peek · ⌘-click keeps peek</span>
+                  <span className="muted"> · same-tab dismisses peek · ⌘-click keeps peek</span>
                 </p>
               ) : null}
             </div>

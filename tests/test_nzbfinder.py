@@ -26,19 +26,23 @@ def test_client_sends_user_agent_and_api_token():
     def handler(request: httpx.Request) -> httpx.Response:
         captured["ua"] = request.headers["user-agent"]
         captured["url"] = str(request.url)
-        return httpx.Response(200, json=json.loads(FIXTURE.read_text(encoding="utf-8")))
+        return httpx.Response(200, json=json.loads((V2 / "search-magazine.json").read_text(encoding="utf-8")))
 
     transport = httpx.MockTransport(handler)
     client = NZBFinderClient("https://nzbfinder.example", "fixture-token", transport=transport)
     results = client.search("linux", kind="magazine")
     assert captured["ua"].startswith("Librarian/")
+    assert "Automat" in captured["ua"]
+    assert "/api/v2/search" in captured["url"]
+    assert "query=linux" in captured["url"]
     assert "api_token=fixture-token" in captured["url"]
-    assert "t=search" in captured["url"]
-    assert [item["kind"] for item in results] == ["magazine", "comic"]
+    assert "t=search" not in captured["url"]
+    assert [item["kind"] for item in results] == ["magazine"]
     url = client.download_url("guid-linux-mag-2026-10")
-    assert url.startswith("https://nzbfinder.example/api?")
-    assert "t=get" in url
+    assert url.startswith("https://nzbfinder.example/api/v2/download?")
+    assert "id=guid-linux-mag-2026-10" in url
     assert "api_token=fixture-token" in url
+    assert "t=get" not in url
 
 
 def test_client_requires_token():
@@ -69,6 +73,64 @@ def test_v2_magazine_and_details_fixtures():
     details = parse_search_payload(json.loads((V2 / "details-linux.json").read_text(encoding="utf-8")))
     assert details[0]["guid"] == "65f78bbf-023c-4e9f-99c1-93633ed9bcf5"
     assert details[0]["kind"] == "book"
+
+
+def test_client_books_hits_v2_path():
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        return httpx.Response(200, json=json.loads((V2 / "books-linux.json").read_text(encoding="utf-8")))
+
+    client = NZBFinderClient("nzbfinder.example", "fixture-token", transport=httpx.MockTransport(handler))
+    results = client.books(title="linux", limit=2)
+    assert captured["url"].startswith("https://nzbfinder.example/api/v2/books?")
+    assert "title=linux" in captured["url"]
+    assert "t=book" not in captured["url"]
+    assert [item["kind"] for item in results] == ["book", "book"]
+
+
+def test_client_xml_payload_is_specific_error():
+    xml = '<?xml version="1.0"?><rss version="2.0"><channel><title>NZBFinder</title></channel></rss>'
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=xml, headers={"content-type": "text/xml; charset=utf-8"})
+
+    client = NZBFinderClient("https://nzbfinder.example", "tok", transport=httpx.MockTransport(handler))
+    try:
+        client.search("stephen king")
+        raise AssertionError("expected NZBFinderError")
+    except NZBFinderError as error:
+        message = str(error)
+        assert "XML" in message
+        assert "non-JSON" not in message or "XML" in message
+        assert "401" not in message
+
+
+def test_client_html_login_and_401_are_specific():
+    def html_handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            content="<!DOCTYPE html><html><body>Login</body></html>",
+            headers={"content-type": "text/html; charset=utf-8"},
+        )
+
+    html_client = NZBFinderClient("https://nzbfinder.example", "tok", transport=httpx.MockTransport(html_handler))
+    try:
+        html_client.search("king")
+        raise AssertionError("expected NZBFinderError")
+    except NZBFinderError as error:
+        assert "HTML" in str(error)
+
+    def unauthorized(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(401, json={"error": "Unauthenticated."})
+
+    auth_client = NZBFinderClient("https://nzbfinder.example", "bad", transport=httpx.MockTransport(unauthorized))
+    try:
+        auth_client.search("king")
+        raise AssertionError("expected NZBFinderError")
+    except NZBFinderError as error:
+        assert "401" in str(error)
 
 
 def test_v2_capabilities_fixture_matches_kind_map():

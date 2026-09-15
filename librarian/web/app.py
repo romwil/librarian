@@ -98,6 +98,7 @@ class SettingsPayload(BaseModel):
     audiobooks_root: Optional[str] = None
     incoming_music_root: Optional[str] = None
     music_root: Optional[str] = None
+    complete_root: Optional[str] = None
     audiobook_target: Optional[str] = None
     llm_base_url: Optional[str] = None
     llm_api_key: Optional[str] = None
@@ -317,9 +318,12 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         user = request.state.user
         local = public_works(db.search_works(q, limit=24) if q.strip() else [])
         indexer = []
+        beyond_error = None
         if beyond and q.strip():
             cfg = settings()
-            if cfg.nzbfinder_api_token:
+            if not str(cfg.nzbfinder_api_token or "").strip():
+                beyond_error = "NZBFinder api_token is not configured"
+            else:
                 try:
                     client = NZBFinderClient(cfg.nzbfinder_url, cfg.nzbfinder_api_token)
                     if kind in ("book", "magazine") or not kind:
@@ -329,8 +333,14 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
                     if kind == "comic":
                         indexer = client.search(q, kind="comic")
                 except NZBFinderError as error:
-                    raise HTTPException(status_code=502, detail=str(error)) from error
-        return {"q": q, "local": local, "beyond": indexer, "can_request": user["role"] in ("owner", "op", "reader")}
+                    beyond_error = str(error)
+        return {
+            "q": q,
+            "local": local,
+            "beyond": indexer,
+            "beyond_error": beyond_error,
+            "can_request": user["role"] in ("owner", "op", "reader"),
+        }
 
     @app.get("/api/works/{work_id}")
     def work_detail(work_id: str, request: Request):
@@ -495,7 +505,19 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
     @app.get("/api/review")
     def review_list(request: Request):
         require_role(request.state.user, "owner", "op")
-        return {"works": public_works(db.list_works(review_state="needs_review", limit=80))}
+        works = public_works(db.list_works(review_state="needs_review", limit=80))
+        jobs_by_work: Dict[str, Any] = {}
+        for job in db.list_jobs(limit=200):
+            work_id = job.get("work_id")
+            if work_id and work_id not in jobs_by_work:
+                jobs_by_work[work_id] = job
+        for work in works:
+            job = jobs_by_work.get(work["id"]) if work else None
+            storage = str((job or {}).get("storage_path") or "")
+            work["storage_path"] = storage or None
+            if not work.get("folder_path") and storage:
+                work["folder_path"] = storage
+        return {"works": works}
 
     @app.post("/api/review/{work_id}/apply")
     def review_apply(work_id: str, payload: ReviewApplyPayload, request: Request):
@@ -503,7 +525,8 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         work = db.get_work(work_id)
         if work is None:
             raise HTTPException(status_code=404, detail="Work not found")
-        folder = Path(payload.folder or work.get("folder_path") or "")
+        raw = str(payload.folder or work.get("folder_path") or "").strip()
+        folder = Path(raw) if raw else Path()
         overrides = payload.model_dump(exclude_none=True)
         overrides.pop("folder", None)
         try:

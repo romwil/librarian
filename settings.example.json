@@ -9,6 +9,7 @@
   "audiobooks_root": "/data/media/audiobooks",
   "incoming_music_root": "/data/media/incoming-music",
   "music_root": "/data/media/music",
+  "complete_root": "",
   "audiobook_target": "plex",
   "llm_base_url": "",
   "llm_api_key": "",

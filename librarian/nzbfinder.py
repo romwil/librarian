@@ -10,11 +10,45 @@ import httpx
 from librarian._version import __version__
 from librarian.kinds import kind_from_newznab, search_category_for_kind
 
-DEFAULT_USER_AGENT = f"Librarian/{__version__} (+https://github.com/romwil/librarian)"
+_UA_VERSION = ".".join(str(__version__).split(".")[:2]) or "0.1"
+DEFAULT_USER_AGENT = f"Librarian/{_UA_VERSION} (Automat; +https://github.com/romwil/librarian)"
 
 
 class NZBFinderError(RuntimeError):
     """Indexer HTTP or payload failure."""
+
+
+def normalize_nzbfinder_url(base_url: str) -> str:
+    """Require https:// (NZBFinder is HTTPS). Strip a trailing /api or /api/v2."""
+    raw = str(base_url or "").strip()
+    if not raw:
+        return ""
+    if "://" not in raw:
+        raw = f"https://{raw}"
+    raw = raw.rstrip("/")
+    lowered = raw.lower()
+    for suffix in ("/api/v2", "/api"):
+        if lowered.endswith(suffix):
+            raw = raw[: -len(suffix)].rstrip("/")
+            break
+    return raw
+
+
+def describe_nzbfinder_response(response: httpx.Response) -> str:
+    """Turn a non-JSON (or error) body into a specific message. Never include tokens."""
+    status = response.status_code
+    ctype = (response.headers.get("content-type") or "").split(";")[0].strip().lower()
+    body = response.text or ""
+    head = body.lstrip()[:48].lower()
+    if status == 401:
+        return "NZBFinder HTTP 401 (invalid or missing api_token)"
+    if "html" in ctype or head.startswith("<!doctype") or head.startswith("<html"):
+        return f"NZBFinder HTTP {status} returned HTML (login page or wrong URL), not JSON"
+    if "xml" in ctype or head.startswith("<?xml") or "<rss" in head or "<error" in body[:200].lower():
+        return f"NZBFinder HTTP {status} returned XML Newznab (use /api/v2/), not JSON"
+    if ctype and "json" not in ctype:
+        return f"NZBFinder HTTP {status} returned non-JSON ({ctype})"
+    return f"NZBFinder HTTP {status} returned non-JSON"
 
 
 def _as_list(value: Any) -> List[Any]:
@@ -102,7 +136,7 @@ class NZBFinderClient:
         user_agent: str = DEFAULT_USER_AGENT,
         transport: Optional[httpx.BaseTransport] = None,
     ) -> None:
-        self.base_url = str(base_url or "").rstrip("/")
+        self.base_url = normalize_nzbfinder_url(base_url)
         self.api_token = str(api_token or "").strip()
         self.user_agent = user_agent
         self._client = httpx.Client(timeout=30.0, transport=transport, follow_redirects=True)
@@ -113,26 +147,37 @@ class NZBFinderClient:
     def _params(self, extra: Dict[str, Any]) -> Dict[str, Any]:
         if not self.api_token:
             raise NZBFinderError("NZBFinder api_token is not configured")
-        params = {"o": "json", "api_token": self.api_token, "apikey": self.api_token}
+        params = {"api_token": self.api_token, "apikey": self.api_token}
         params.update({key: value for key, value in extra.items() if value not in (None, "")})
         return params
 
-    def _get(self, extra: Dict[str, Any]) -> Any:
-        url = f"{self.base_url}/api"
+    def _error_from_response(self, response: httpx.Response) -> NZBFinderError:
+        try:
+            payload = response.json()
+        except ValueError:
+            return NZBFinderError(describe_nzbfinder_response(response))
+        if isinstance(payload, dict):
+            detail = payload.get("error") or payload.get("message")
+            if detail:
+                return NZBFinderError(f"NZBFinder HTTP {response.status_code}: {detail}")
+        return NZBFinderError(describe_nzbfinder_response(response))
+
+    def _get(self, path: str, extra: Optional[Dict[str, Any]] = None) -> Any:
+        url = urljoin(self.base_url + "/", f"api/v2/{path.lstrip('/')}")
         headers = {"User-Agent": self.user_agent, "Accept": "application/json"}
         try:
-            response = self._client.get(url, params=self._params(extra), headers=headers)
+            response = self._client.get(url, params=self._params(extra or {}), headers=headers)
         except httpx.HTTPError as error:
             raise NZBFinderError(str(error)) from error
         if response.status_code >= 400:
-            raise NZBFinderError(f"NZBFinder HTTP {response.status_code}")
+            raise self._error_from_response(response)
         try:
             return response.json()
         except ValueError as error:
-            raise NZBFinderError("NZBFinder returned non-JSON") from error
+            raise NZBFinderError(describe_nzbfinder_response(response)) from error
 
     def capabilities(self) -> Any:
-        return self._get({"t": "caps"})
+        return self._get("capabilities")
 
     def search(
         self,
@@ -145,7 +190,8 @@ class NZBFinderClient:
     ) -> List[Dict[str, Any]]:
         category = cat or (search_category_for_kind(kind) if kind else None)
         payload = self._get(
-            {"t": "search", "q": query, "cat": category, "limit": limit, "offset": offset, "extended": 1}
+            "search",
+            {"query": query, "cat": category, "limit": limit, "offset": offset},
         )
         return [item for item in parse_search_payload(payload) if item.get("kind")]
 
@@ -159,20 +205,18 @@ class NZBFinderClient:
         limit: int = 25,
     ) -> List[Dict[str, Any]]:
         payload = self._get(
+            "books",
             {
-                "t": "book",
-                "q": query,
-                "title": title,
+                "title": title or query,
                 "author": author,
-                "cat": cat or "7000",
+                "cat": cat,
                 "limit": limit,
-                "extended": 1,
-            }
+            },
         )
         return [item for item in parse_search_payload(payload) if item.get("kind")]
 
     def details(self, guid: str) -> Dict[str, Any]:
-        payload = self._get({"t": "details", "id": guid, "extended": 1})
+        payload = self._get("details", {"id": guid})
         items = parse_search_payload(payload)
         if items:
             return items[0]
@@ -183,5 +227,6 @@ class NZBFinderClient:
     def download_url(self, guid: str) -> str:
         if not self.api_token:
             raise NZBFinderError("NZBFinder api_token is not configured")
-        query = urlencode({"t": "get", "id": guid, "api_token": self.api_token, "apikey": self.api_token})
-        return urljoin(self.base_url + "/", f"api?{query}")
+        nzb_id = guid if str(guid).endswith(".nzb") else f"{guid}.nzb"
+        query = urlencode({"id": nzb_id, "api_token": self.api_token, "apikey": self.api_token})
+        return urljoin(self.base_url + "/", f"api/v2/download?{query}")
