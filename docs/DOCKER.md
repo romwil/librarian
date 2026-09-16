@@ -57,7 +57,7 @@ On first boot `seed_env_owner` reads:
 
 Rotating the env password on restart updates the **same** username’s hash (Unraid lockout recovery). It never clobbers a different existing owner. The container serves `/api/health` before an owner exists; library APIs return 503 until one is seeded.
 
-`settings.json` wins for keys already saved in the UI. Env fills missing keys. Blank secrets still take env until you save a key.
+`settings.json` wins for keys already saved in the UI. Env fills missing keys. Blank secrets still take env until you save a key. `docker-run.sh` also passes optional `HARDCOVER_API_TOKEN`, `COMICVINE_API_KEY`, `AUDIOBOOKSHELF_URL`, `AUDIOBOOKSHELF_API_TOKEN`, `RADARR_URL`, `RADARR_API_KEY`, `SONARR_URL`, `SONARR_API_KEY`, and `SHOW_EXTRA_CATEGORIES` from `.env` (names only — never log values).
 
 ## Unraid (no Compose)
 
@@ -104,9 +104,23 @@ docker start librarian
 
 ## Build caching
 
-The image is **multi-stage**: Node builds the Vite SPA, then a slim Python runtime copies `frontend/dist` and installs `.[web]`. Runtime extras: `unar` for CBR→CBZ. Calibre `ebook-convert` and `pdftoppm` are optional host/image add-ons — APIs fail closed (Review / 422) when they are missing. BuildKit is required for `--mount=type=cache`. `docker-run.sh` exports `DOCKER_BUILDKIT=1`.
+The image is **multi-stage**. Node builds the Vite SPA; a slim Python runtime copies `frontend/dist` and installs `.[web]`. Runtime extras: `unar` for CBR→CBZ. Calibre `ebook-convert` and `pdftoppm` are optional host/image add-ons — APIs fail closed (Review / 422) when they are missing.
 
-`.dockerignore` must keep host `*.egg-info`, `build/`, `dist/`, `.venv`, and `config/` out of `COPY .`.
+**There is no host-side `npm run build` on the Unraid path.** `docker-run.sh` only `docker build`s (BuildKit on). Compose uses the same Dockerfile. Adding SPA packages (`foliate-js`, …) or Python extras in `pyproject.toml` rebuilds those dep layers once; edits under `librarian/` or `frontend/src` reuse them.
+
+| Layer / mount | Stays warm when | Busts when |
+|---|---|---|
+| apt (`ca-certificates`, `gosu`, `unar`) | App and lockfiles change | Dockerfile apt list changes |
+| Frontend `npm ci` | `librarian/` or `frontend/src` changes | `frontend/package.json` / lock change |
+| BuildKit npm cache (`/root/.npm`) | Download cache across builds | Builder prune |
+| Python extras (`pip install ".[web]"` on a stub package) | `librarian/`, `frontend/src`, README, or LICENSE change | `pyproject.toml` extras / deps change |
+| BuildKit pip cache (`/root/.cache/pip`) | Wheel cache across builds | Builder prune |
+| `npm run build` + `pip install --no-deps` | Dep manifests unchanged | Frontend tree or `librarian/` source change |
+| Identity (`ARG` / `LABEL` / `/app/.build-info`) | Declared **after** apt/pip so stamps do not reinstall deps | Every rebuild (intentional) |
+
+BuildKit is required for `--mount=type=cache`. `docker-run.sh` exports `DOCKER_BUILDKIT=1`. Docker 23+ and Compose v2 enable it by default.
+
+`.dockerignore` keeps host `*.egg-info`, `build/`, `dist/`, `.venv`, `config/`, and frontend unit tests out of the context so test-only edits do not rebuild the SPA.
 
 ## Related documentation
 

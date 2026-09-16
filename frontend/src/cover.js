@@ -60,18 +60,62 @@ export function coverClassNames(work, { art = false } = {}) {
   return classes.filter(Boolean).join(" ");
 }
 
+export const JOB_HOUSEHOLD = {
+  asked: "Asked",
+  queued: "On the way",
+  downloading: "On the way",
+  extracting: "On the way",
+  identifying: "On the way",
+  organized: "Arrived",
+  review: "Needs you",
+  failed: "Failed",
+};
+
+const JOB_SAB_HINT = {
+  queued: "Queued",
+  downloading: "Downloading",
+  extracting: "Extracting",
+  identifying: "Identifying",
+};
+
+export function jobHouseholdLabel(status) {
+  return JOB_HOUSEHOLD[status] || "";
+}
+
+export function isInboundJob(status) {
+  return jobHouseholdLabel(status) === "On the way";
+}
+
 export function jobChipLabel(status, role = "reader") {
-  const map = {
-    asked: "Asked",
-    queued: "Queued",
-    downloading: "Downloading",
-    extracting: "Extracting",
-    organized: "Open",
-    review: "Review",
-    failed: "Failed",
-  };
-  if (status && map[status]) return map[status];
-  return role === "reader" ? "Ask the house" : "Request";
+  return jobHouseholdLabel(status) || (role === "reader" ? "Ask the house" : "Request");
+}
+
+export function jobChipTone(status) {
+  const label = jobHouseholdLabel(status);
+  if (label === "Asked") return "is-asked";
+  if (label === "Failed") return "is-failed";
+  if (label === "Needs you") return "is-review";
+  if (label === "On the way") return "is-transit";
+  if (label === "Arrived") return "is-arrived";
+  return "";
+}
+
+export function jobQueueDetail(job = {}) {
+  const payload = job.payload && typeof job.payload === "object" ? job.payload : {};
+  const ingestSource = String(payload.source || "").trim();
+  const path = String(job.storage_path || payload.path || "").trim();
+  if (ingestSource === "ingest" || ingestSource === "watch") {
+    const fail = String(job.error || "").trim();
+    return [fail, path].filter(Boolean).join(" · ");
+  }
+  const nzo = String(job.nzo_id || "").trim();
+  const sab = String(job.sab_status || "").trim();
+  const fail = String(job.error || "").trim();
+  if (job.status === "asked") return "Asked slip";
+  if (job.status === "failed" && fail) return [fail, nzo].filter(Boolean).join(" · ");
+  if (sab) return [sab, nzo].filter(Boolean).join(" · ");
+  const hint = String(fail || JOB_SAB_HINT[job.status] || "").trim();
+  return [hint, nzo].filter(Boolean).join(" · ");
 }
 
 export function coverOverlay(work) {

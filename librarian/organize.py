@@ -16,6 +16,8 @@ from librarian.identify import (
     REVIEW_NO_PAYLOAD,
     dest_layout,
     identify_completed,
+    list_payload_files,
+    music_state_for_folder,
     resolve_storage_path,
     usable_folder,
 )
@@ -24,12 +26,15 @@ from librarian.llm import client_from_settings
 from librarian.metadata import comicinfo_xml, write_comicinfo, write_opf
 
 
-def _copy_into(src: Path, dest: Path) -> Path:
+def _copy_into(src: Path, dest: Path, *, move: bool = False) -> Path:
     dest.parent.mkdir(parents=True, exist_ok=True)
     if dest.exists() and dest.resolve() != src.resolve():
         raise FileExistsError(str(dest))
     if dest.resolve() != src.resolve():
-        shutil.copy2(src, dest)
+        if move:
+            shutil.move(str(src), str(dest))
+        else:
+            shutil.copy2(src, dest)
     return dest
 
 
@@ -83,17 +88,24 @@ def organize_identified(
     convert_runner=None,
     identity_overrides: Optional[Dict[str, Any]] = None,
     force: bool = False,
+    move_source: bool = False,
+    catalog_lookup: Any = None,
+    catalog_transport: Any = None,
 ) -> Dict[str, Any]:
     llm = llm_client if llm_client is not None else client_from_settings(settings)
-    preview = identify_completed(folder, indexer_item=indexer_item, category=category, llm_client=llm)
+    identify_kwargs = {
+        "indexer_item": indexer_item,
+        "category": category,
+        "llm_client": llm,
+        "settings": settings,
+        "catalog_lookup": catalog_lookup,
+        "catalog_transport": catalog_transport,
+    }
+    preview = identify_completed(folder, **identify_kwargs)
     kind = str((identity_overrides or {}).get("kind") or preview["identity"].get("kind") or "")
     convert_kwargs = {"runner": convert_runner} if convert_runner is not None else {}
     converted = maybe_convert_payload(folder, kind, **convert_kwargs)
-    result = (
-        identify_completed(folder, indexer_item=indexer_item, category=category, llm_client=llm)
-        if converted["converted"]
-        else preview
-    )
+    result = identify_completed(folder, **identify_kwargs) if converted["converted"] else preview
     identity = _merge_identity(dict(result["identity"]), identity_overrides)
     files = [Path(path) for path in result["files"]]
     if force:
@@ -114,7 +126,11 @@ def organize_identified(
                 "folder_path": source_folder,
                 "review_state": "needs_review" if identity.get("review_reason") or not result["auto_organize"] else "none",
                 "review_reason": identity.get("review_reason"),
-                "music_state": "incoming" if identity.get("kind") == KIND_MUSIC else None,
+                "music_state": (
+                    music_state_for_folder(settings, Path(source_folder))
+                    if identity.get("kind") == KIND_MUSIC and source_folder
+                    else ("incoming" if identity.get("kind") == KIND_MUSIC else None)
+                ),
                 "indexer_guid": (indexer_item or {}).get("guid"),
             }
         )
@@ -124,7 +140,7 @@ def organize_identified(
     folder_path = None
     try:
         for src in files:
-            dest = dest_layout(identity, settings, filename=src.name)
+            dest = dest_layout(identity, settings, filename=src.name, source=src)
             if dest.exists() and dest.resolve() != src.resolve():
                 identity["review_reason"] = REVIEW_COLLISION
                 identity["confidence"] = "low"
@@ -138,7 +154,7 @@ def organize_identified(
                     }
                 )
                 return {"work": work, "identity": identity, "organized": False, "files": [str(p) for p in files]}
-            written = _copy_into(src, dest)
+            written = _copy_into(src, dest, move=move_source)
             placed.append(str(written))
             folder_path = written.parent
     except FileExistsError:
@@ -156,6 +172,9 @@ def organize_identified(
 
     assert folder_path is not None
     guid = str((indexer_item or {}).get("guid") or "")
+    existing = db.get_work_by_folder_path(str(folder_path))
+    if existing:
+        identity["id"] = existing["id"]
     if identity["kind"] in (KIND_BOOK, KIND_MAGAZINE):
         write_opf(folder_path, identity, guid=guid)
     if identity["kind"] == KIND_COMIC:
@@ -179,12 +198,18 @@ def organize_identified(
             "cover_path": str(cover) if cover else None,
             "review_state": "none",
             "review_reason": None,
-            "music_state": "incoming" if identity["kind"] == KIND_MUSIC else None,
+            "music_state": (
+                existing.get("music_state")
+                if existing and existing.get("music_state")
+                else music_state_for_folder(settings, Path(folder_path))
+            )
+            if identity["kind"] == KIND_MUSIC
+            else None,
             "indexer_guid": guid or None,
         }
     )
     for path in placed:
-        db.add_file(
+        db.upsert_file(
             {
                 "work_id": work["id"],
                 "path": path,
@@ -193,7 +218,34 @@ def organize_identified(
                 "size": Path(path).stat().st_size if Path(path).exists() else 0,
             }
         )
+    if move_source:
+        _cleanup_moved_source(folder, placed)
     return {"work": work, "identity": identity, "organized": True, "files": placed, "cover": str(cover) if cover else None}
+
+
+def _cleanup_moved_source(source: Path, placed: List[str]) -> None:
+    """Remove an ingest/watch source after a confident move. Leave it on collision."""
+    if not source.exists():
+        return
+    try:
+        source_key = str(source.resolve())
+    except OSError:
+        source_key = str(source)
+    placed_keys = set()
+    for path in placed:
+        try:
+            placed_keys.add(str(Path(path).resolve()))
+        except OSError:
+            placed_keys.add(str(path))
+    prefix = source_key.rstrip("/") + "/"
+    if any(key == source_key or key.startswith(prefix) for key in placed_keys):
+        return
+    if source.is_file():
+        if source_key not in placed_keys:
+            source.unlink(missing_ok=True)
+        return
+    if source.is_dir() and not list_payload_files(source):
+        shutil.rmtree(source, ignore_errors=True)
 
 
 def apply_review(
@@ -270,12 +322,16 @@ def promote_music(db: Database, settings: Settings, work_id: str) -> Dict[str, A
     if dest.exists():
         raise ValueError("Promote collision")
     shutil.move(str(folder), str(dest))
+    db.relocate_work_files(work_id, str(folder), str(dest))
     cover = dest / "cover.jpg"
+    old_cover = str(work.get("cover_path") or "")
+    if old_cover.startswith(str(folder)):
+        old_cover = str(dest / Path(old_cover).relative_to(folder))
     updated = db.upsert_work(
         {
             **work,
             "folder_path": str(dest),
-            "cover_path": str(cover) if cover.is_file() else work.get("cover_path"),
+            "cover_path": str(cover) if cover.is_file() else old_cover or work.get("cover_path"),
             "music_state": "promoted",
             "review_state": "none",
         }

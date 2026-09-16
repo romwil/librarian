@@ -14,5 +14,19 @@
   "llm_base_url": "",
   "llm_api_key": "",
   "llm_model": "gpt-4o-mini",
-  "household_name": "The Hall"
+  "household_name": "The Hall",
+  "hardcover_api_token": "",
+  "comicvine_api_key": "",
+  "watch_root": "",
+  "watch_enabled": false,
+  "extra_indexers": [],
+  "audiobookshelf_url": "",
+  "audiobookshelf_api_token": "",
+  "show_extra_categories": false,
+  "radarr_url": "",
+  "radarr_api_key": "",
+  "sonarr_url": "",
+  "sonarr_api_key": "",
+  "sab_movie_category": "movies",
+  "sab_tv_category": "tv"
 }

@@ -1,15 +1,22 @@
 import { useEffect, useState } from "react";
-import { Link, useOutletContext, useParams } from "react-router-dom";
+import { Link, useOutletContext, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api.js";
-import { humanError } from "../copy.js";
+import { isInboundJob } from "../cover.js";
+import { canPromoteIncomingMusic, humanError, peekMediaNote } from "../copy.js";
+import { canReadInApp } from "../reader.js";
 import Rail from "../components/Rail.jsx";
+import Reader from "../components/Reader.jsx";
 
 export default function WorkPage() {
   const { id } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useOutletContext();
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [fmt, setFmt] = useState("");
+  const [enriching, setEnriching] = useState(false);
+  const [enrichNote, setEnrichNote] = useState("");
+  const [reading, setReading] = useState(false);
 
   useEffect(() => {
     api
@@ -23,6 +30,21 @@ export default function WorkPage() {
       .catch((err) => setError(humanError(err)));
   }, [id]);
 
+  useEffect(() => {
+    if (!data) return;
+    const readable = canReadInApp(data.work, data.files) || Boolean(data.can_read);
+    if (searchParams.get("read") === "1" && readable) setReading(true);
+  }, [searchParams, data]);
+
+  function closeReader() {
+    setReading(false);
+    if (searchParams.get("read")) {
+      const next = new URLSearchParams(searchParams);
+      next.delete("read");
+      setSearchParams(next, { replace: true });
+    }
+  }
+
   if (error) {
     return (
       <div className="admin-room">
@@ -33,7 +55,8 @@ export default function WorkPage() {
   if (!data) return <p className="lede" style={{ padding: "var(--space-8) var(--gutter)" }}>Opening the volume…</p>;
 
   const work = data.work;
-  const op = user.role === "owner" || user.role === "op";
+  const canRead = canReadInApp(work, data.files) || Boolean(data.can_read);
+  const mediaNote = peekMediaNote(work, { canDownload: Boolean(data.can_download), ready: true });
 
   async function favorite() {
     const next = await api.favorite(work.id);
@@ -41,13 +64,14 @@ export default function WorkPage() {
   }
 
   async function promote() {
-    const next = await api.promote(work.id);
-    setData({ ...data, work: next.work });
+    await api.promote(work.id);
+    const payload = await api.work(work.id);
+    setData(payload);
   }
 
   return (
     <article>
-      <section className="work-hero">
+      <section className={`work-hero${data.can_download ? "" : " is-bare"}`}>
         <div className="work-hero-art" aria-hidden="true" />
         <div className="work-hero-scrim" aria-hidden="true" />
         <div className="work-hero-inner">
@@ -56,16 +80,45 @@ export default function WorkPage() {
             {work.year ? <span className="chip">{work.year}</span> : null}
             {work.author ? <span className="chip">{work.author}</span> : null}
             {work.isbn ? <span className="chip font-mono">{work.isbn}</span> : null}
+            {work.review_state === "needs_review" ? <span className="chip">Review</span> : null}
+            {work.music_state === "incoming" ? <span className="chip">Incoming</span> : null}
+            {isInboundJob(work.job_status) ? <span className="chip">On the way</span> : null}
+            {data.file_count > 1 ? <span className="chip">{data.file_count} files</span> : null}
             {data.favorite ? <span className="chip is-on">Favorites</span> : null}
+            {work.abs_item_id ? <span className="chip">On the player</span> : null}
           </div>
           <h1>{work.title}</h1>
           <p className="work-sub">{[work.author, work.year, work.series_name, work.series_index].filter(Boolean).join(" · ")}</p>
-          <div className="cta-row">
-            <button type="button" className="cta outline" onClick={favorite}>
+          {mediaNote ? (
+            <p className="lede work-media-note" data-testid="work-media-note">
+              {mediaNote}
+            </p>
+          ) : null}
+          <div className="cta-row compact">
+            <button type="button" className="cta outline compact" onClick={favorite}>
               {data.favorite ? "In Favorites" : "Favorite"}
             </button>
-            {data.files?.length ? (
-              <a className="cta" href={`/api/works/${work.id}/download${fmt ? `?format=${encodeURIComponent(fmt)}` : ""}`}>
+            {canRead ? (
+              <button type="button" className="cta compact" onClick={() => setReading(true)} data-testid="work-open">
+                Open
+              </button>
+            ) : data.can_download ? (
+              <a
+                className="cta compact"
+                href={`/api/works/${work.id}/download?inline=1${fmt ? `&format=${encodeURIComponent(fmt)}` : ""}`}
+                target="_blank"
+                rel="noreferrer"
+                data-testid="work-open"
+              >
+                Open
+              </a>
+            ) : null}
+            {data.can_download ? (
+              <a
+                className="cta outline compact"
+                href={`/api/works/${work.id}/download${fmt ? `?format=${encodeURIComponent(fmt)}` : ""}`}
+                data-testid="work-download"
+              >
                 Download
               </a>
             ) : null}
@@ -82,21 +135,72 @@ export default function WorkPage() {
                 </select>
               </label>
             ) : null}
-            <button type="button" className="cta ghost" onClick={() => api.progress(work.id, { finished: true })}>
-              Finished
-            </button>
-            {op && work.kind === "music" && work.music_state === "incoming" ? (
-              <button type="button" className="cta ghost" onClick={promote}>
+            {work.kind !== "music" ? (
+              <button type="button" className="cta ghost compact" onClick={() => api.progress(work.id, { finished: true })}>
+                Finished
+              </button>
+            ) : null}
+            {canPromoteIncomingMusic(work, user.role) ? (
+              <button type="button" className="cta ghost compact" onClick={promote}>
                 Promote to Plexamp
               </button>
             ) : null}
-            <Link className="cta ghost" to="/">
+            {work.review_state === "needs_review" ? (
+              <Link className="cta ghost compact" to="/review">
+                Open Review
+              </Link>
+            ) : null}
+            <Link className="cta ghost compact" to="/">
               Back to The Hall
             </Link>
           </div>
         </div>
       </section>
       <div className="work-body">
+        {user?.role === "owner" && (work.kind === "book" || work.kind === "audiobook") ? (
+          <section className="work-meta">
+            <h2 className="kicker">Catalog</h2>
+            {work.series_name ? (
+              <p className="muted">
+                Series · {[work.series_name, work.series_index].filter(Boolean).join(" ")}
+              </p>
+            ) : null}
+            <div className="cta-row compact">
+              <button
+                type="button"
+                className="cta outline compact"
+                disabled={enriching}
+                onClick={async () => {
+                  setEnrichNote("");
+                  setEnriching(true);
+                  try {
+                    const result = await api.enrichWork(work.id);
+                    const payload = await api.work(work.id);
+                    setData(payload);
+                    setEnrichNote(
+                      result.updated
+                        ? `Filled from ${result.source || "Open Library"}`
+                        : "Already as complete as Hardcover and Open Library allow",
+                    );
+                  } catch (err) {
+                    setEnrichNote(humanError(err));
+                  } finally {
+                    setEnriching(false);
+                  }
+                }}
+              >
+                {enriching ? "Enriching…" : "Enrich"}
+              </button>
+            </div>
+            {enrichNote ? <p className="muted">{enrichNote}</p> : null}
+          </section>
+        ) : work.series_name ? (
+          <section className="work-meta">
+            <p className="muted">
+              Series · {[work.series_name, work.series_index].filter(Boolean).join(" ")}
+            </p>
+          </section>
+        ) : null}
         {work.description ? (
           <section className="synopsis">
             <h2>Description</h2>
@@ -115,6 +219,9 @@ export default function WorkPage() {
         ) : null}
       </div>
       <Rail title={work.author ? `More by ${work.author}` : "More on this shelf"} items={data.related} />
+      {reading && canRead ? (
+        <Reader work={work} files={data.files} progress={data.progress} onClose={closeReader} />
+      ) : null}
     </article>
   );
 }

@@ -103,6 +103,10 @@ SABNZBD_URL=http://downloader.sl
 SABNZBD_API_KEY=
 NZBFINDER_URL=https://nzbfinder.ws
 NZBFINDER_API_TOKEN=
+HARDCOVER_API_TOKEN=
+COMICVINE_API_KEY=
+AUDIOBOOKSHELF_URL=
+AUDIOBOOKSHELF_API_TOKEN=
 ```
 
 Leave `LIBRARIAN_TRUST_PROXY_HEADERS` **unset** until a trusted TLS proxy is in front.
@@ -131,4 +135,5 @@ Do **not** stop Projectionist (`:8788`) or Smart Map (`:8790`) while deploying L
 
 - [DOCKER.md](../DOCKER.md) — volumes, PUID/PGID, extra_hosts
 - [SECURITY.md](../SECURITY.md) — handshake, proxy trust, cookies
+- [automat-media-contract.md](../automat-media-contract.md) — shared `/data/media` roots with Smart Map
 - [AGENTS.md](../../AGENTS.md) — boot / test / LAN table

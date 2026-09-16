@@ -1,4 +1,8 @@
-"""Newznab category → Librarian kind. TV/movies/XXX are refused."""
+"""Newznab category → Librarian kind.
+
+TV/movies/XXX stay off the shelves. Discover/Find may map them to extra kinds
+when the owner opts into Show categories — they never become Hall works.
+"""
 
 from __future__ import annotations
 
@@ -18,12 +22,21 @@ READING_KINDS = (KIND_BOOK, KIND_MAGAZINE, KIND_COMIC)
 LISTENING_KINDS = (KIND_AUDIOBOOK, KIND_MUSIC)
 ALL_KINDS = READING_KINDS + LISTENING_KINDS
 
+KIND_MOVIE = "movie"
+KIND_TV = "tv"
+KIND_XXX = "xxx"
+EXTRA_KINDS = (KIND_MOVIE, KIND_TV, KIND_XXX)
+REQUEST_KINDS = ALL_KINDS + EXTRA_KINDS
+
 REFUSED_PREFIXES = REFUSED_FAMILIES
 
 NEWZNAB_COMIC = 7030
 NEWZNAB_MAGAZINE = 7010
 NEWZNAB_AUDIOBOOK = 3030
 NEWZNAB_MUSIC = (3010, 3040, 3999)
+NEWZNAB_MOVIE = 2000
+NEWZNAB_TV = 5000
+NEWZNAB_XXX = 6000
 
 
 def _as_int(value: object) -> Optional[int]:
@@ -33,12 +46,52 @@ def _as_int(value: object) -> Optional[int]:
         return None
 
 
-def kind_from_newznab(category: object) -> Optional[str]:
-    """Map a Newznab category id to a Librarian kind, or None if refused/unknown."""
+def kind_from_newznab(category: object, *, extra: bool = False) -> Optional[str]:
+    """Map a Newznab category id to a kind, or None if refused/unknown.
+
+    ``extra=True`` maps movie/TV/XXX families for Discover/Find. Identify still
+    uses kind_map, which refuses those families.
+    """
     cat = _as_int(category)
     if cat is None:
         return None
-    return newznab_cat_to_kind(cat)
+    mapped = newznab_cat_to_kind(cat)
+    if mapped:
+        return mapped
+    if not extra:
+        return None
+    family = (cat // 1000) * 1000
+    if family == NEWZNAB_MOVIE:
+        return KIND_MOVIE
+    if family == NEWZNAB_TV:
+        return KIND_TV
+    if family == NEWZNAB_XXX:
+        return KIND_XXX
+    return None
+
+
+def kind_from_caps_cat(cat: object, *, parent: object = None, extra: bool = False) -> Optional[str]:
+    """Kind for a capabilities-tree category. Parent 7000 'Other' is still a book."""
+    mapped = kind_from_newznab(cat, extra=extra)
+    if mapped:
+        return mapped
+    cat_int = _as_int(cat)
+    parent_int = _as_int(parent)
+    if cat_int is None:
+        return None
+    family = (cat_int // 1000) * 1000
+    parent_family = ((parent_int or family) // 1000) * 1000
+    if family in REFUSED_FAMILIES or parent_family in REFUSED_FAMILIES:
+        if extra:
+            return kind_from_newznab(cat_int, extra=True) or kind_from_newznab(parent_family, extra=True)
+        return None
+    if parent_family == 7000 or family == 7000:
+        if cat_int == NEWZNAB_COMIC:
+            return KIND_COMIC
+        if cat_int == NEWZNAB_MAGAZINE:
+            return KIND_MAGAZINE
+        return KIND_BOOK
+    return None
 
 
 def search_category_for_kind(kind: str) -> Optional[str]:
@@ -52,6 +105,12 @@ def search_category_for_kind(kind: str) -> Optional[str]:
         return str(NEWZNAB_AUDIOBOOK)
     if kind == KIND_MUSIC:
         return "3000"
+    if kind == KIND_MOVIE:
+        return str(NEWZNAB_MOVIE)
+    if kind == KIND_TV:
+        return str(NEWZNAB_TV)
+    if kind == KIND_XXX:
+        return str(NEWZNAB_XXX)
     return None
 
 

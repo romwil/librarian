@@ -27,6 +27,6 @@ def newznab_cat_to_kind(cat: int) -> str | None:
         return KIND_BOOK
     if cat == 3030:
         return KIND_AUDIOBOOK
-    if cat in (3010, 3040, 3999):
+    if cat in (3000, 3010, 3040, 3999):
         return KIND_MUSIC
     return None

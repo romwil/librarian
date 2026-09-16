@@ -85,7 +85,8 @@ def test_promote_music_moves_tree(tmp_path):
     settings = _settings(tmp_path)
     incoming = Path(settings.incoming_music_root) / "Miles" / "Kind of Blue"
     incoming.mkdir(parents=True)
-    (incoming / "track.flac").write_bytes(b"flac")
+    track = incoming / "track.flac"
+    track.write_bytes(b"flac")
     db = Database(tmp_path / "librarian.db")
     work = db.upsert_work(
         {
@@ -96,6 +97,15 @@ def test_promote_music_moves_tree(tmp_path):
             "music_state": "incoming",
         }
     )
+    db.add_file(
+        {
+            "work_id": work["id"],
+            "path": str(track),
+            "filename": track.name,
+            "kind": "music",
+            "size": 4,
+        }
+    )
     promoted = promote_music(db, settings, work["id"])
     dest = Path(settings.music_root) / "Miles" / "Kind of Blue"
     assert dest.is_dir()
@@ -103,6 +113,9 @@ def test_promote_music_moves_tree(tmp_path):
     assert not incoming.exists()
     assert promoted["music_state"] == "promoted"
     assert promoted["folder_path"] == str(dest)
+    stored = db.files_for_work(work["id"])
+    assert stored[0]["path"] == str(dest / "track.flac")
+    assert Path(stored[0]["path"]).is_file()
 
 
 def test_loose_comic_images_convert_and_cover(tmp_path):
@@ -216,4 +229,216 @@ def test_apply_review_complete_root_remap(tmp_path):
     stored = db.get_work(work["id"])
     assert stored["review_state"] == "none"
     assert Path(result["files"][0]).parent.name == "Christine"
+
+
+def _flac_with_tags(path: Path, tags: dict[str, str]) -> None:
+    comments = []
+    for key, value in tags.items():
+        raw = f"{key}={value}".encode("utf-8")
+        comments.append(len(raw).to_bytes(4, "little") + raw)
+    vendor = b"librarian"
+    body = len(vendor).to_bytes(4, "little") + vendor
+    body += len(comments).to_bytes(4, "little") + b"".join(comments)
+    header = bytes([0x80 | 4]) + len(body).to_bytes(3, "big")
+    path.write_bytes(b"fLaC" + header + body)
+
+
+def _epub_with_isbn(path: Path, *, isbn: str, title: str = "", creator: str = "") -> None:
+    from zipfile import ZipFile
+
+    opf = f"""<?xml version="1.0"?>
+<package xmlns="http://www.idpf.org/2007/opf" unique-identifier="id" version="2.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:title>{title}</dc:title>
+    <dc:creator>{creator}</dc:creator>
+    <dc:identifier id="id">urn:isbn:{isbn}</dc:identifier>
+  </metadata>
+</package>
+"""
+    with ZipFile(path, "w") as archive:
+        archive.writestr("mimetype", "application/epub+zip")
+        archive.writestr(
+            "META-INF/container.xml",
+            """<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>
+""",
+        )
+        archive.writestr("OEBPS/content.opf", opf)
+
+
+def test_organize_epub_opf_isbn_uses_catalog_title_not_filename(tmp_path):
+    folder = tmp_path / "Herbert-Dune-ebook-GROUP"
+    folder.mkdir()
+    _epub_with_isbn(folder / "dump.epub", isbn="9780441172719", creator="Herbert")
+
+    def catalog_lookup(identity):
+        assert identity.isbn == "9780441172719"
+        return {"title": "Dune", "author": "Frank Herbert"}
+
+    db = Database(tmp_path / "librarian.db")
+    result = organize_identified(
+        db,
+        _settings(tmp_path),
+        folder=folder,
+        catalog_lookup=catalog_lookup,
+    )
+    assert result["organized"] is True
+    dest = Path(result["files"][0])
+    assert dest.parent.name == "Dune"
+    assert dest.parent.parent.name == "Herbert"
+    assert dest.name == "Dune.epub"
+    assert dest.is_relative_to(Path(_settings(tmp_path).books_root)) or str(_settings(tmp_path).books_root) in str(dest)
+
+
+def test_organize_cbz_comicinfo_layout(tmp_path):
+    from zipfile import ZipFile
+
+    folder = tmp_path / "complete" / "random-comic-dump"
+    folder.mkdir(parents=True)
+    with ZipFile(folder / "dump.cbz", "w") as archive:
+        archive.writestr("page-01.jpg", b"\xff\xd8\xff\xe0" + b"\x00" * 80)
+        archive.writestr(
+            "ComicInfo.xml",
+            """<?xml version="1.0"?><ComicInfo><Series>Saga</Series><Number>54</Number><Year>2018</Year></ComicInfo>""",
+        )
+    db = Database(tmp_path / "librarian.db")
+    result = organize_identified(db, _settings(tmp_path), folder=folder)
+    assert result["organized"] is True
+    dest = Path(result["files"][0])
+    assert dest.parent.parent.name == "Saga"
+    assert dest.parent.name == "54"
+    assert dest.name == "Saga #54.cbz"
+    assert (dest.parent / "ComicInfo.xml").is_file()
+
+
+def test_organize_flac_album_from_tags(tmp_path):
+    folder = tmp_path / "complete" / "VA-Dump.Name-202"
+    folder.mkdir(parents=True)
+    tags = {"ALBUM": "Kind of Blue", "ALBUMARTIST": "Miles Davis", "ARTIST": "Miles Davis"}
+    _flac_with_tags(folder / "01 So What.flac", {**tags, "TITLE": "So What", "TRACKNUMBER": "1"})
+    _flac_with_tags(folder / "02 Freddie.flac", {**tags, "TITLE": "Freddie Freeloader", "TRACKNUMBER": "2"})
+    db = Database(tmp_path / "librarian.db")
+    result = organize_identified(db, _settings(tmp_path), folder=folder)
+    assert result["organized"] is True
+    dests = [Path(path) for path in result["files"]]
+    album = dests[0].parent
+    assert album.name == "Kind of Blue"
+    assert album.parent.name == "Miles Davis"
+    assert album.parent.parent == Path(_settings(tmp_path).incoming_music_root)
+    assert {path.name for path in dests} == {"01 - So What.flac", "02 - Freddie Freeloader.flac"}
+    work = db.get_work(result["work"]["id"])
+    assert work["title"] == "Kind of Blue"
+    assert work["kind"] == "music"
+    assert work["music_state"] == "incoming"
+
+
+def test_organize_single_track_joins_existing_incoming_album(tmp_path):
+    settings = _settings(tmp_path)
+    album = Path(settings.incoming_music_root) / "Miles Davis" / "Kind of Blue"
+    album.mkdir(parents=True)
+    existing_track = album / "01 So What.flac"
+    _flac_with_tags(
+        existing_track,
+        {
+            "ALBUM": "Kind of Blue",
+            "ALBUMARTIST": "Miles Davis",
+            "TITLE": "So What",
+            "TRACKNUMBER": "1",
+        },
+    )
+    db = Database(tmp_path / "librarian.db")
+    existing = db.upsert_work(
+        {
+            "kind": "music",
+            "title": "Kind of Blue",
+            "author": "Miles Davis",
+            "series_name": "Kind of Blue",
+            "folder_path": str(album),
+            "music_state": "incoming",
+        }
+    )
+    dump = tmp_path / "complete" / "single-track-dump"
+    dump.mkdir(parents=True)
+    _flac_with_tags(
+        dump / "track.flac",
+        {
+            "ALBUM": "Kind of Blue",
+            "ALBUMARTIST": "Miles Davis",
+            "TITLE": "Freddie Freeloader",
+            "TRACKNUMBER": "2",
+        },
+    )
+    result = organize_identified(db, settings, folder=dump)
+    assert result["organized"] is True
+    dest = Path(result["files"][0])
+    assert dest.parent == album
+    assert dest.name == "02 - Freddie Freeloader.flac"
+    assert dest.is_file()
+    assert existing_track.is_file()
+    assert result["work"]["id"] == existing["id"]
+    assert db.get_work(existing["id"])["title"] == "Kind of Blue"
+
+
+def test_organize_sought_title_wins_over_dump_folder(tmp_path):
+    folder = tmp_path / "complete" / "Herbert-Dune-1977-ebook-GROUP"
+    folder.mkdir(parents=True)
+    (folder / "dump.epub").write_bytes(b"epub")
+    db = Database(tmp_path / "librarian.db")
+    result = organize_identified(
+        db,
+        _settings(tmp_path),
+        folder=folder,
+        indexer_item={
+            "title": "Herbert-Dune-1977-ebook-GROUP",
+            "kind": "book",
+            "sought": {"kind": "book", "title": "Dune", "author": "Herbert", "isbn": "9780441172719"},
+            "selected": {"title": "Herbert-Dune-1977-ebook-GROUP"},
+            "retrieved": {"book_title": "Dune", "isbn": "9780441172719"},
+        },
+    )
+    assert result["organized"] is True
+    dest = Path(result["files"][0])
+    assert dest.parent.name == "Dune"
+    assert dest.name == "Dune.epub"
+    assert result["work"]["title"] == "Dune"
+
+
+def test_organize_title_only_stays_review_without_invented_isbn(tmp_path):
+    folder = tmp_path / "complete" / "A Mysterious Novel"
+    folder.mkdir(parents=True)
+    (folder / "book.epub").write_bytes(b"epub")
+    db = Database(tmp_path / "librarian.db")
+    result = organize_identified(db, _settings(tmp_path), folder=folder)
+    assert result["organized"] is False
+    assert result["identity"]["isbn"] in ("", None)
+    assert result["work"]["review_state"] == "needs_review"
+    assert result["work"]["isbn"] in ("", None)
+
+
+def test_organize_audiobook_tags_never_music_root(tmp_path):
+    folder = tmp_path / "complete" / "audio-dump"
+    folder.mkdir(parents=True)
+    _flac_with_tags(
+        folder / "part01.flac",
+        {
+            "ALBUM": "The Left Hand of Darkness",
+            "ALBUMARTIST": "Le Guin",
+            "TITLE": "Chapter 1",
+            "GENRE": "Audiobook",
+            "MEDIA": "Audiobook",
+        },
+    )
+    db = Database(tmp_path / "librarian.db")
+    settings = _settings(tmp_path)
+    result = organize_identified(db, settings, folder=folder)
+    assert result["organized"] is True
+    dest = Path(result["files"][0])
+    assert dest.is_relative_to(Path(settings.audiobooks_root))
+    assert not dest.is_relative_to(Path(settings.music_root))
+    assert not dest.is_relative_to(Path(settings.incoming_music_root))
+    assert result["work"]["kind"] == "audiobook"
 

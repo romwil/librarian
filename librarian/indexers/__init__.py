@@ -1,4 +1,4 @@
-"""Indexer adapters. First host is NZBFinder Newznab v2 JSON."""
+"""Indexer adapters. NZBFinder plus extra Newznab v2 hosts."""
 
 from librarian.indexers.kind_map import newznab_cat_to_kind
 

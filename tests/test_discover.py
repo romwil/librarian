@@ -1,0 +1,419 @@
+import json
+from pathlib import Path
+
+import httpx
+from fastapi.testclient import TestClient
+
+from librarian.arr import expect_on_arr, sab_category_for_kind
+from librarian.config import Settings, mask_settings, save_settings
+from librarian.indexers.discover import category_feeds, clear_discover_cache, public_discover_hit
+from librarian.jobs import enqueue_indexer_item
+from librarian.kinds import kind_from_newznab
+from librarian.nzbfinder import NZBFinderError
+from librarian.rate_limit import clear_rate_limits
+from librarian.sessions import clear_session_secret_cache
+from librarian.web.app import create_app
+
+CAPS = json.loads((Path(__file__).parent / "fixtures" / "nzbfinder" / "capabilities.json").read_text())
+COMIC_HIT = {
+    "title": "Saga 001",
+    "kind": "comic",
+    "guid": "g-saga",
+    "category": 7030,
+    "category_name": "Comics",
+    "download_url": "https://nzbfinder.example/api/v2/download?id=g-saga.nzb&api_token=secret",
+}
+TV_HIT = {
+    "title": "Some Show S01E01",
+    "guid": "g-tv",
+    "category": 5000,
+    "download_url": "https://example.test/show.nzb",
+}
+MOVIE_HIT = {
+    "title": "Dune.2021",
+    "guid": "g-dune-movie",
+    "category": 2040,
+    "tmdb_id": 438631,
+    "download_url": "https://example.test/dune.nzb",
+}
+
+
+def _client(tmp_path, monkeypatch, **settings_fields):
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("LIBRARIAN_OWNER_USERNAME", "owner")
+    monkeypatch.setenv("LIBRARIAN_OWNER_PASSWORD", "password123")
+    if settings_fields:
+        save_settings(tmp_path, Settings(**settings_fields))
+    clear_session_secret_cache()
+    clear_rate_limits()
+    clear_discover_cache()
+    return TestClient(create_app(tmp_path))
+
+
+def _login(client, username="owner", password="password123"):
+    resp = client.post("/api/auth/local/login", json={"username": username, "password": password})
+    assert resp.status_code == 200
+    return resp
+
+
+def _patch_discover_client(monkeypatch, *, latest=None, caps=None):
+    monkeypatch.setattr(
+        "librarian.nzbfinder.NZBFinderClient.capabilities",
+        caps or (lambda self: CAPS),
+    )
+
+    def fake_latest(self, cat, *, limit=25, path="search"):
+        if latest:
+            return latest(self, cat)
+        return []
+
+    monkeypatch.setattr("librarian.nzbfinder.NZBFinderClient.latest", fake_latest)
+    monkeypatch.setattr(
+        "librarian.nzbfinder.NZBFinderClient.fetch_rss_category",
+        lambda self, cat, *, limit=25: (_ for _ in ()).throw(NZBFinderError(f"{self.label} HTTP 502")),
+    )
+
+
+def test_discover_requires_auth(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    client.cookies.clear()
+    assert client.get("/api/discover").status_code == 401
+    hidden = {row["id"] for row in category_feeds(CAPS, extra=False)}
+    assert "7030" in hidden
+    assert "7010" in hidden
+    assert "7020" in hidden
+    assert "7999" in hidden
+    assert "3030" in hidden
+    assert "3010" in hidden
+    assert "2000" not in hidden
+    assert "2040" not in hidden
+    assert "5000" not in hidden
+    assert "5040" not in hidden
+    assert "6000" not in hidden
+    shown = {row["id"]: row["kind"] for row in category_feeds(CAPS, extra=True)}
+    assert shown["2040"] == "movie"
+    assert shown["5040"] == "tv"
+    assert shown["6030"] == "xxx"
+    assert shown["7030"] == "comic"
+
+
+def test_discover_hit_strips_token_and_drops_tv_when_extra_off():
+    host = {"id": "nzbfinder", "name": "NZBFinder"}
+    feed = {"id": "7030", "name": "Comics", "kind": "comic"}
+    comic = public_discover_hit(COMIC_HIT, host=host, feed=feed, extra=False)
+    assert comic is not None
+    assert comic["kind"] == "comic"
+    assert "secret" not in comic["download_url"]
+    assert public_discover_hit(TV_HIT, host=host, feed=feed, extra=False) is None
+    movie = public_discover_hit(MOVIE_HIT, host=host, feed={"id": "2040", "name": "HD", "kind": "movie"}, extra=True)
+    assert movie is not None
+    assert movie["kind"] == "movie"
+
+
+def test_discover_comic_drops_tv_and_keeps_7030(tmp_path, monkeypatch):
+    monkeypatch.setenv("NZBFINDER_API_TOKEN", "tok")
+    client = _client(tmp_path, monkeypatch, nzbfinder_api_token="tok")
+    _login(client)
+
+    def latest(self, cat):
+        assert str(cat) == "7030"
+        return [COMIC_HIT, TV_HIT]
+
+    _patch_discover_client(monkeypatch, latest=latest)
+    resp = client.get("/api/discover", params={"kind": "comic"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert [row["guid"] for row in body["items"]] == ["g-saga"]
+    assert all(row["kind"] == "comic" for row in body["items"])
+    assert "5000" not in {row["id"] for row in body["categories"]}
+    assert "secret" not in json.dumps(body)
+
+
+def test_discover_extra_host_502_keeps_nzbfinder(tmp_path, monkeypatch):
+    monkeypatch.setenv("NZBFINDER_API_TOKEN", "tok")
+    client = _client(
+        tmp_path,
+        monkeypatch,
+        nzbfinder_api_token="tok",
+        extra_indexers=[
+            {
+                "id": "extra1",
+                "name": "Extra",
+                "url": "https://extra.example",
+                "api_token": "extra-tok",
+                "enabled": True,
+            }
+        ],
+    )
+    _login(client)
+
+    def latest(self, cat):
+        if "extra.example" in self.base_url:
+            raise NZBFinderError("Extra HTTP 502 returned non-JSON")
+        return [COMIC_HIT]
+
+    _patch_discover_client(monkeypatch, latest=latest)
+    resp = client.get("/api/discover", params={"kind": "comic"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert [row["title"] for row in body["items"]] == ["Saga 001"]
+    assert body["items"][0]["host_name"] == "NZBFinder"
+    assert "502" in (body["beyond_error"] or "")
+
+
+def test_discover_flag_off_hides_movie_feed(tmp_path, monkeypatch):
+    monkeypatch.setenv("NZBFINDER_API_TOKEN", "tok")
+    client = _client(tmp_path, monkeypatch, nzbfinder_api_token="tok", show_extra_categories=False)
+    _login(client)
+
+    def latest(self, cat):
+        return [MOVIE_HIT, COMIC_HIT]
+
+    _patch_discover_client(monkeypatch, latest=latest)
+    resp = client.get("/api/discover")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["show_extra_categories"] is False
+    kinds = {row["kind"] for row in body["items"]}
+    ids = {row["id"] for row in body["categories"]}
+    assert "movie" not in kinds
+    assert "2040" not in ids
+    assert "2000" not in ids
+
+
+def test_discover_flag_on_includes_movie_feed(tmp_path, monkeypatch):
+    monkeypatch.setenv("NZBFINDER_API_TOKEN", "tok")
+    client = _client(tmp_path, monkeypatch, nzbfinder_api_token="tok", show_extra_categories=True)
+    _login(client)
+
+    def latest(self, cat):
+        if str(cat) in {"2040", "2000"} or str(cat).startswith("20"):
+            return [MOVIE_HIT]
+        return []
+
+    _patch_discover_client(monkeypatch, latest=latest)
+    resp = client.get("/api/discover", params={"kind": "movie"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["show_extra_categories"] is True
+    assert [row["kind"] for row in body["items"]] == ["movie"]
+    assert any(row["id"] == "2040" for row in body["categories"])
+
+
+def test_reader_can_view_discover_and_request_is_asked(tmp_path, monkeypatch):
+    monkeypatch.setenv("NZBFINDER_API_TOKEN", "tok")
+    client = _client(tmp_path, monkeypatch, nzbfinder_api_token="tok")
+    _login(client)
+    minted = client.post("/api/invites", json={"role": "reader"})
+    token = minted.json()["token"]
+    client.post("/api/auth/logout")
+    client.cookies.clear()
+    assert (
+        client.post(
+            "/api/invites/redeem/local",
+            json={"token": token, "username": "reader1", "password": "password123"},
+        ).status_code
+        == 200
+    )
+    _patch_discover_client(monkeypatch, latest=lambda self, cat: [COMIC_HIT])
+    listed = client.get("/api/discover", params={"kind": "comic"})
+    assert listed.status_code == 200
+    asked = client.post(
+        "/api/request",
+        json={"title": "Saga 001", "guid": "g-saga", "kind": "comic", "download_url": "https://example.test/saga.nzb"},
+    )
+    assert asked.status_code == 200
+    assert asked.json()["job"]["status"] == "asked"
+
+
+def _quiet_nzb():
+    return httpx.MockTransport(lambda request: httpx.Response(200, json={}))
+
+
+def test_movie_request_queues_sab_and_tells_radarr(tmp_path, monkeypatch):
+    from librarian.db import Database
+    from librarian.nzbfinder import NZBFinderClient
+    from librarian.sabnzbd import SABClient
+
+    sab_cats = []
+    arr_calls = []
+
+    def sab_handler(request: httpx.Request) -> httpx.Response:
+        params = dict(request.url.params)
+        if params.get("mode") == "addurl":
+            sab_cats.append(params.get("cat"))
+            return httpx.Response(200, json={"nzo_ids": ["SABnzbd_nzo_movie"]})
+        return httpx.Response(200, json={"queue": {"slots": []}})
+
+    def expect(settings, kind, item, **kwargs):
+        arr_calls.append((kind, item.get("tmdb_id") or (item.get("selected") or {}).get("tmdb_id")))
+        return {"service": "radarr", "arr_id": 9, "tmdb_id": 438631}
+
+    monkeypatch.setattr("librarian.jobs.expect_on_arr", expect)
+    db = Database(tmp_path / "librarian.db")
+    settings = Settings(
+        sabnzbd_api_key="sab",
+        nzbfinder_api_token="tok",
+        show_extra_categories=True,
+        radarr_url="http://radarr.example",
+        radarr_api_key="radarr-secret",
+    )
+    job = enqueue_indexer_item(
+        db,
+        settings,
+        item={
+            "title": "Dune",
+            "guid": "g-dune-movie",
+            "kind": "movie",
+            "category": 2040,
+            "tmdb_id": 438631,
+            "download_url": "https://example.test/dune.nzb",
+        },
+        requested_by="owner-1",
+        role="owner",
+        sab=SABClient("http://downloader.sl", "sab", transport=httpx.MockTransport(sab_handler)),
+        nzb=NZBFinderClient("https://nzbfinder.example", "tok", transport=_quiet_nzb()),
+    )
+    assert job["status"] == "queued"
+    assert job["nzo_id"] == "SABnzbd_nzo_movie"
+    assert sab_cats == ["movies"]
+    assert arr_calls == [("movie", 438631)]
+    assert job["payload"]["arr"]["service"] == "radarr"
+
+
+def test_radarr_expect_adds_without_movies_search():
+    commands = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        commands.append(f"{request.method} {request.url.path}")
+        path = request.url.path
+        if path.endswith("/qualityprofile"):
+            return httpx.Response(200, json=[{"id": 1}])
+        if path.endswith("/rootfolder"):
+            return httpx.Response(200, json=[{"path": "/media/movies"}])
+        if "/movie/lookup/tmdb" in path:
+            return httpx.Response(200, json={"tmdbId": 438631, "title": "Dune"})
+        if path.endswith("/movie") and request.method == "GET":
+            return httpx.Response(200, json=[])
+        if path.endswith("/movie") and request.method == "POST":
+            body = json.loads(request.content.decode())
+            assert body["addOptions"]["searchForMovie"] is False
+            assert body["rootFolderPath"] == "/media/movies"
+            return httpx.Response(200, json={"id": 9, "tmdbId": 438631, "title": "Dune"})
+        if path.endswith("/command"):
+            body = json.loads(request.content.decode())
+            commands.append(body.get("name"))
+            return httpx.Response(200, json={"name": body.get("name")})
+        return httpx.Response(404, json={})
+
+    settings = Settings(radarr_url="http://radarr.example", radarr_api_key="radarr-secret")
+    result = expect_on_arr(
+        settings,
+        "movie",
+        {"title": "Dune", "tmdb_id": 438631},
+        transport=httpx.MockTransport(handler),
+    )
+    assert result["service"] == "radarr"
+    assert result["arr_id"] == 9
+    assert "POST /api/v3/command" not in commands
+    assert "MoviesSearch" not in commands
+
+
+def test_xxx_request_is_sab_only_no_arr(tmp_path, monkeypatch):
+    from librarian.db import Database
+    from librarian.nzbfinder import NZBFinderClient
+    from librarian.sabnzbd import SABClient
+
+    arr_hits = []
+    sab_cats = []
+
+    def sab_handler(request: httpx.Request) -> httpx.Response:
+        params = dict(request.url.params)
+        if params.get("mode") == "addurl":
+            sab_cats.append(params.get("cat") or "")
+            return httpx.Response(200, json={"nzo_ids": ["SABnzbd_nzo_xxx"]})
+        return httpx.Response(200, json={"queue": {"slots": []}})
+
+    def boom(*args, **kwargs):
+        arr_hits.append("called")
+        raise AssertionError("arr should not be called for XXX")
+
+    monkeypatch.setattr("librarian.jobs.expect_on_arr", boom)
+    db = Database(tmp_path / "librarian.db")
+    job = enqueue_indexer_item(
+        db,
+        Settings(sabnzbd_api_key="sab", nzbfinder_api_token="tok", show_extra_categories=True),
+        item={
+            "title": "Clip",
+            "guid": "g-xxx",
+            "kind": "xxx",
+            "category": 6030,
+            "download_url": "https://example.test/x.nzb",
+        },
+        requested_by="owner-1",
+        role="owner",
+        sab=SABClient("http://downloader.sl", "sab", transport=httpx.MockTransport(sab_handler)),
+        nzb=NZBFinderClient("https://nzbfinder.example", "tok", transport=_quiet_nzb()),
+    )
+    assert job["status"] == "queued"
+    assert job["nzo_id"] == "SABnzbd_nzo_xxx"
+    assert sab_cats == [""]
+    assert arr_hits == []
+    assert job["payload"].get("arr") == {"service": None}
+
+
+def test_movie_request_without_arr_token_still_sabs_and_needs_you(tmp_path):
+    from librarian.db import Database
+    from librarian.nzbfinder import NZBFinderClient
+    from librarian.sabnzbd import SABClient
+
+    def sab_handler(request: httpx.Request) -> httpx.Response:
+        if dict(request.url.params).get("mode") == "addurl":
+            return httpx.Response(200, json={"nzo_ids": ["SABnzbd_nzo_movie"]})
+        return httpx.Response(200, json={"queue": {"slots": []}})
+
+    db = Database(tmp_path / "librarian.db")
+    job = enqueue_indexer_item(
+        db,
+        Settings(sabnzbd_api_key="sab", nzbfinder_api_token="tok", show_extra_categories=True),
+        item={
+            "title": "Dune",
+            "guid": "g-dune-movie",
+            "kind": "movie",
+            "category": 2040,
+            "download_url": "https://example.test/dune.nzb",
+        },
+        requested_by="owner-1",
+        role="owner",
+        sab=SABClient("http://downloader.sl", "sab", transport=httpx.MockTransport(sab_handler)),
+        nzb=NZBFinderClient("https://nzbfinder.example", "tok", transport=_quiet_nzb()),
+    )
+    assert job["nzo_id"] == "SABnzbd_nzo_movie"
+    assert job["status"] == "review"
+    assert "Radarr" in (job.get("error") or "")
+    assert job["payload"].get("arr") is None
+
+
+def test_sab_category_names():
+    settings = Settings(sab_movie_category="radarr", sab_tv_category="sonarr")
+    assert sab_category_for_kind(settings, "movie") == "radarr"
+    assert sab_category_for_kind(settings, "tv") == "sonarr"
+    assert sab_category_for_kind(settings, "xxx") == ""
+    assert sab_category_for_kind(settings, "book") == ""
+
+
+def test_kind_extra_mapping_stays_off_identify_path():
+    assert kind_from_newznab(2040) is None
+    assert kind_from_newznab(2040, extra=True) == "movie"
+    assert kind_from_newznab(5040, extra=True) == "tv"
+    assert kind_from_newznab(6030, extra=True) == "xxx"
+    assert kind_from_newznab(7030, extra=True) == "comic"
+
+
+def test_mask_settings_hides_arr_keys():
+    masked = mask_settings(Settings(radarr_api_key="radarr-secret", sonarr_api_key="sonarr-secret"))
+    assert masked["radarr_api_key"] == ""
+    assert masked["radarr_api_key_set"] is True
+    assert masked["sonarr_api_key"] == ""
+    assert "radarr-secret" not in json.dumps(masked)
+    assert "sonarr-secret" not in json.dumps(masked)

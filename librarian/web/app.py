@@ -5,14 +5,16 @@ from __future__ import annotations
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from starlette.background import BackgroundTask
 
 from librarian import __version__
+from librarian.audiobookshelf import abs_match_counts, match_audiobooks
 from librarian.auth import (
     clear_session_cookie,
     has_real_owner,
@@ -27,8 +29,20 @@ from librarian.auth import (
 from librarian.config import load_merged_settings, mask_settings, merge_secret_fields, save_settings
 from librarian.convert import ALLOWED_EBOOK_FORMATS, convert_ebook, which_ebook_convert
 from librarian.db import Database
-from librarian.gaps import gap_cards, local_gaps
+from librarian.enrich import enrich_library, enrich_work
+from librarian.gaps import catalog_gaps, gap_cards
+from librarian.goodreads import MAX_GOODREADS_BYTES, import_goodreads_csv
+from librarian.indexers.discover import discover_beyond
+from librarian.indexers.hosts import search_beyond
 from librarian.indexers.sync import ping_nzbfinder, sync_nzbfinder
+from librarian.ingest import (
+    PathDenied,
+    confined_path,
+    enqueue_ingest,
+    list_dir,
+    poll_watch_folder,
+    validate_watch_root,
+)
 from librarian.invites import (
     create_household_invite,
     lookup_pending_invite,
@@ -36,11 +50,23 @@ from librarian.invites import (
     redeem_local_invite,
 )
 from librarian.jobs import confirm_asked_job, enqueue_indexer_item, poll_active_jobs, poll_job
-from librarian.nzbfinder import NZBFinderClient, NZBFinderError
+from librarian.kinds import ALL_KINDS, EXTRA_KINDS
+from librarian.nzbfinder import NZBFinderError
 from librarian.organize import apply_review, organize_identified, promote_music
 from librarian.poller import JobPoller
 from librarian.rate_limit import enforce_rate_limit
+from librarian.rss import create_rss_feed, poll_rss_feeds, public_rss_feed, update_rss_feed
 from librarian.sabnzbd import SABError
+from librarian.scan import scan_library
+from librarian.serve import (
+    can_read_work,
+    existing_file_paths,
+    is_inline_media,
+    media_type_for,
+    primary_reading_path,
+    safe_filename,
+    zip_files,
+)
 from librarian.sessions import (
     ensure_session_secret,
     has_usable_session_secret,
@@ -71,9 +97,23 @@ class RequestPayload(BaseModel):
     guid: str = ""
     kind: Optional[str] = None
     download_url: str = ""
-    category: Optional[str] = None
+    category: Optional[Any] = None
     author: str = ""
     isbn: str = ""
+    q: str = ""
+    series: str = ""
+    issue: str = ""
+    artist: str = ""
+    album: str = ""
+    year: str = ""
+    size: Optional[int] = None
+    cover: str = ""
+    book_title: str = ""
+    poster: str = ""
+    category_name: str = ""
+    sought: Optional[Dict[str, Any]] = None
+    selected: Optional[Dict[str, Any]] = None
+    retrieved: Optional[Dict[str, Any]] = None
 
 
 class ReviewApplyPayload(BaseModel):
@@ -85,6 +125,21 @@ class ReviewApplyPayload(BaseModel):
     year: Optional[int] = None
     isbn: Optional[str] = None
     folder: Optional[str] = None
+
+
+class ExtraIndexerPayload(BaseModel):
+    id: Optional[str] = None
+    name: Optional[str] = None
+    url: Optional[str] = None
+    api_token: Optional[str] = None
+    enabled: Optional[bool] = True
+
+
+class RssFeedPayload(BaseModel):
+    name: Optional[str] = None
+    url: Optional[str] = None
+    kind: Optional[str] = None
+    enabled: Optional[bool] = None
 
 
 class SettingsPayload(BaseModel):
@@ -104,6 +159,24 @@ class SettingsPayload(BaseModel):
     llm_api_key: Optional[str] = None
     llm_model: Optional[str] = None
     household_name: Optional[str] = None
+    hardcover_api_token: Optional[str] = None
+    comicvine_api_key: Optional[str] = None
+    watch_root: Optional[str] = None
+    watch_enabled: Optional[bool] = None
+    extra_indexers: Optional[List[ExtraIndexerPayload]] = None
+    audiobookshelf_url: Optional[str] = None
+    audiobookshelf_api_token: Optional[str] = None
+    show_extra_categories: Optional[bool] = None
+    radarr_url: Optional[str] = None
+    radarr_api_key: Optional[str] = None
+    sonarr_url: Optional[str] = None
+    sonarr_api_key: Optional[str] = None
+    sab_movie_category: Optional[str] = None
+    sab_tv_category: Optional[str] = None
+
+
+class IngestPayload(BaseModel):
+    path: str
 
 
 class ProgressPayload(BaseModel):
@@ -201,6 +274,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             "session_secret_ok": has_usable_session_secret(root),
             "auth_methods": ["local"],
             "version": __version__,
+            "show_extra_categories": bool(cfg.show_extra_categories),
         }
 
     @app.post("/api/auth/local/login")
@@ -302,7 +376,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         }
         gaps = []
         if user["role"] in ("owner", "op"):
-            gaps = gap_cards(local_gaps(db))
+            gaps = gap_cards(catalog_gaps(db, settings()))
         return {
             "whats_new": public_works(recent),
             "favorites": public_works(favorites),
@@ -314,26 +388,46 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         }
 
     @app.get("/api/search")
-    def search(request: Request, q: str = "", beyond: int = 0, kind: str = ""):
+    def search(
+        request: Request,
+        q: str = "",
+        beyond: int = 0,
+        kind: str = "",
+        title: str = "",
+        author: str = "",
+        isbn: str = "",
+        series: str = "",
+        issue: str = "",
+        artist: str = "",
+        album: str = "",
+        year: str = "",
+    ):
         user = request.state.user
-        local = public_works(db.search_works(q, limit=24) if q.strip() else [])
+        local_kind = kind if kind in ALL_KINDS else None
+        local_q = q.strip()
+        local = public_works(db.search_works(local_q, limit=24, kind=local_kind) if local_q else [])
         indexer = []
         beyond_error = None
-        if beyond and q.strip():
-            cfg = settings()
-            if not str(cfg.nzbfinder_api_token or "").strip():
-                beyond_error = "NZBFinder api_token is not configured"
-            else:
-                try:
-                    client = NZBFinderClient(cfg.nzbfinder_url, cfg.nzbfinder_api_token)
-                    if kind in ("book", "magazine") or not kind:
-                        indexer = client.books(query=q, title=q)
-                    else:
-                        indexer = client.search(q, kind=kind or None)
-                    if kind == "comic":
-                        indexer = client.search(q, kind="comic")
-                except NZBFinderError as error:
-                    beyond_error = str(error)
+        sought = {
+            "kind": kind,
+            "q": q,
+            "title": title,
+            "author": author,
+            "isbn": isbn,
+            "series": series,
+            "issue": issue,
+            "artist": artist,
+            "album": album,
+            "year": year,
+        }
+        has_beyond_query = bool(beyond) and any(
+            str(sought[key] or "").strip() for key in sought if key != "kind"
+        )
+        extra_on = bool(settings().show_extra_categories)
+        if kind in EXTRA_KINDS and not extra_on:
+            indexer, beyond_error = [], None
+        elif has_beyond_query:
+            indexer, beyond_error = search_beyond(settings(), **sought)
         return {
             "q": q,
             "local": local,
@@ -342,12 +436,27 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             "can_request": user["role"] in ("owner", "op", "reader"),
         }
 
+    @app.get("/api/discover")
+    def discover(request: Request, kind: str = "", cat: str = ""):
+        cfg = settings()
+        items, categories, beyond_error = discover_beyond(cfg, kind=kind, cat=cat)
+        return {
+            "kind": kind,
+            "cat": cat,
+            "items": items,
+            "categories": categories,
+            "beyond_error": beyond_error,
+            "show_extra_categories": bool(cfg.show_extra_categories),
+            "can_request": request.state.user["role"] in ("owner", "op", "reader"),
+        }
+
     @app.get("/api/works/{work_id}")
     def work_detail(work_id: str, request: Request):
         work = public_work(db.get_work(work_id))
         if work is None:
             raise HTTPException(status_code=404, detail="Work not found")
         files = db.files_for_work(work_id)
+        on_disk = existing_file_paths(files)
         related = []
         if work.get("author"):
             related = [
@@ -359,6 +468,10 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         return {
             "work": work,
             "files": files,
+            "file_count": len(on_disk),
+            "can_open": bool(on_disk),
+            "can_download": bool(on_disk),
+            "can_read": can_read_work(str(work.get("kind") or ""), on_disk),
             "favorite": db.is_favorite(request.state.user["id"], work_id),
             "related": related,
             "progress": progress,
@@ -407,33 +520,61 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="Cover not found")
         return FileResponse(path, media_type="image/jpeg")
 
+    def _files_on_disk(work_id: str) -> List[Path]:
+        return existing_file_paths(db.files_for_work(work_id))
+
     def _canonical_file(work_id: str) -> Path:
-        files = db.files_for_work(work_id)
-        if not files:
-            raise HTTPException(status_code=404, detail="No files")
-        return Path(str(files[0]["path"]))
+        on_disk = _files_on_disk(work_id)
+        if not on_disk:
+            raise HTTPException(status_code=404, detail="File missing")
+        return primary_reading_path(on_disk) or on_disk[0]
+
+    def _unlink(path: str) -> None:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
 
     @app.get("/api/works/{work_id}/download")
-    def work_download(work_id: str, request: Request, format: str = ""):
+    def work_download(work_id: str, request: Request, format: str = "", inline: int = 0):
         require_role(request.state.user, "owner", "op", "reader")
-        if db.get_work(work_id) is None:
+        work = db.get_work(work_id)
+        if work is None:
             raise HTTPException(status_code=404, detail="Work not found")
-        src = _canonical_file(work_id)
-        if not src.is_file():
+        on_disk = _files_on_disk(work_id)
+        if not on_disk:
             raise HTTPException(status_code=404, detail="File missing")
-        fmt = (format or src.suffix.lstrip(".")).lower()
-        if format and f".{fmt}" != src.suffix.lower():
-            cache = Path(root) / "conversions" / work_id
-            try:
-                dest = convert_ebook(src, fmt, cache)
-            except ValueError as error:
-                raise HTTPException(status_code=400, detail=str(error)) from error
-            except FileNotFoundError as error:
-                raise HTTPException(status_code=422, detail=str(error)) from error
-            except RuntimeError as error:
-                raise HTTPException(status_code=502, detail=str(error)) from error
-            return FileResponse(dest, filename=dest.name)
-        return FileResponse(src, filename=src.name)
+        src = primary_reading_path(on_disk) or on_disk[0]
+        if format:
+            fmt = format.lower()
+            if f".{fmt}" != src.suffix.lower():
+                cache = Path(root) / "conversions" / work_id
+                try:
+                    dest = convert_ebook(src, fmt, cache)
+                except ValueError as error:
+                    raise HTTPException(status_code=400, detail=str(error)) from error
+                except FileNotFoundError as error:
+                    raise HTTPException(status_code=422, detail=str(error)) from error
+                except RuntimeError as error:
+                    raise HTTPException(status_code=502, detail=str(error)) from error
+                return FileResponse(dest, filename=dest.name)
+        want_inline = bool(inline) and is_inline_media(src)
+        if want_inline or len(on_disk) == 1:
+            disposition = "inline" if want_inline else "attachment"
+            return FileResponse(
+                src,
+                filename=src.name,
+                media_type=media_type_for(src),
+                content_disposition_type=disposition,
+            )
+        zip_path = zip_files(on_disk)
+        zip_name = f"{safe_filename(str(work.get('title') or 'volume'))}.zip"
+        return FileResponse(
+            zip_path,
+            filename=zip_name,
+            media_type="application/zip",
+            background=BackgroundTask(_unlink, str(zip_path)),
+        )
 
     @app.post("/api/works/{work_id}/convert")
     def work_convert(work_id: str, payload: ConvertPayload, request: Request):
@@ -467,6 +608,9 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         user = request.state.user
         require_role(user, "owner", "op", "reader")
         item = payload.model_dump()
+        kind = str(item.get("kind") or (item.get("selected") or {}).get("kind") or "")
+        if kind in EXTRA_KINDS and not settings().show_extra_categories:
+            raise HTTPException(status_code=400, detail="Show categories is off")
         try:
             job = enqueue_indexer_item(
                 db, settings(), item=item, requested_by=user["id"], role=user["role"]
@@ -478,8 +622,14 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
     @app.get("/api/queue")
     def queue(request: Request):
         require_role(request.state.user, "owner", "op")
+        cfg = settings()
+        poll_watch_folder(db, cfg)
         try:
-            poll_active_jobs(db, settings())
+            poll_rss_feeds(db, cfg)
+        except Exception:
+            pass
+        try:
+            poll_active_jobs(db, cfg)
         except SABError:
             pass
         return {"jobs": db.list_jobs()}
@@ -547,7 +697,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
     @app.get("/api/gaps")
     def gaps(request: Request):
         require_role(request.state.user, "owner", "op")
-        rows = local_gaps(db)
+        rows = catalog_gaps(db, settings())
         return {"series": rows, "cards": gap_cards(rows)}
 
     @app.post("/api/gaps/confirm")
@@ -567,19 +717,127 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
     @app.get("/api/settings")
     def get_settings(request: Request):
         require_role(request.state.user, "owner")
-        return {"settings": mask_settings(settings())}
+        return {"settings": mask_settings(settings()), "abs_match": abs_match_counts(db)}
 
     @app.put("/api/settings")
     def put_settings(payload: SettingsPayload, request: Request):
         require_role(request.state.user, "owner")
         incoming = {key: value for key, value in payload.model_dump().items() if value is not None}
+        if "extra_indexers" in incoming:
+            incoming["extra_indexers"] = [
+                row if isinstance(row, dict) else dict(row)
+                for row in incoming["extra_indexers"]
+            ]
         merged = merge_secret_fields(incoming, settings())
         from librarian.config import Settings
 
         saved = Settings.from_mapping(merged)
+        watch_error = validate_watch_root(str(saved.watch_root or ""), saved)
+        if watch_error:
+            raise HTTPException(status_code=400, detail=watch_error)
         save_settings(root, saved)
         sync_nzbfinder(db, saved)
-        return {"settings": mask_settings(saved)}
+        return {"settings": mask_settings(saved), "abs_match": abs_match_counts(db)}
+
+    @app.post("/api/settings/abs-match")
+    def abs_match_settings(request: Request):
+        require_role(request.state.user, "owner")
+        return match_audiobooks(db, settings(), force=True)
+
+    @app.get("/api/rss")
+    def rss_list(request: Request):
+        require_role(request.state.user, "owner", "op")
+        return {"feeds": [public_rss_feed(row) for row in db.list_rss_feeds()]}
+
+    @app.post("/api/rss")
+    def rss_create(payload: RssFeedPayload, request: Request):
+        require_role(request.state.user, "owner", "op")
+        try:
+            feed = create_rss_feed(db, payload.model_dump())
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        return {"feed": feed}
+
+    @app.put("/api/rss/{feed_id}")
+    def rss_update(feed_id: str, payload: RssFeedPayload, request: Request):
+        require_role(request.state.user, "owner", "op")
+        try:
+            feed = update_rss_feed(db, feed_id, payload.model_dump(exclude_unset=True))
+        except ValueError as error:
+            status = 404 if str(error) == "RSS feed not found" else 400
+            raise HTTPException(status_code=status, detail=str(error)) from error
+        return {"feed": feed}
+
+    @app.delete("/api/rss/{feed_id}")
+    def rss_delete(feed_id: str, request: Request):
+        require_role(request.state.user, "owner", "op")
+        if db.get_rss_feed(feed_id) is None:
+            raise HTTPException(status_code=404, detail="RSS feed not found")
+        db.delete_rss_feed(feed_id)
+        return {"ok": True}
+
+    @app.post("/api/rss/poll")
+    def rss_poll(request: Request):
+        require_role(request.state.user, "owner", "op")
+        created = poll_rss_feeds(db, settings())
+        return {"created": created, "feeds": [public_rss_feed(row) for row in db.list_rss_feeds()]}
+
+    @app.post("/api/settings/scan")
+    def scan_settings(request: Request):
+        require_role(request.state.user, "owner")
+        return scan_library(db, settings())
+
+    @app.get("/api/fs")
+    def fs_list(request: Request, path: str = ""):
+        require_role(request.state.user, "owner", "op")
+        try:
+            return list_dir(path)
+        except PathDenied as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.post("/api/ingest")
+    def ingest_path(payload: IngestPayload, request: Request):
+        require_role(request.state.user, "owner", "op")
+        try:
+            target = confined_path(payload.path, must_exist=True)
+            job = enqueue_ingest(
+                db,
+                settings(),
+                path=target,
+                requested_by=request.state.user["id"],
+                source="ingest",
+            )
+        except PathDenied as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        return {"job": job}
+
+    @app.post("/api/settings/enrich")
+    def enrich_settings(request: Request):
+        require_role(request.state.user, "owner")
+        return enrich_library(db, settings(), data_dir=root)
+
+    @app.post("/api/works/{work_id}/enrich")
+    def work_enrich(work_id: str, request: Request):
+        require_role(request.state.user, "owner")
+        try:
+            result = enrich_work(db, settings(), work_id, data_dir=root)
+        except ValueError as error:
+            detail = str(error)
+            status = 404 if detail == "Work not found" else 400
+            raise HTTPException(status_code=status, detail=detail) from error
+        return result
+
+    @app.post("/api/settings/goodreads")
+    async def goodreads_settings(request: Request, file: UploadFile = File(...)):
+        require_role(request.state.user, "owner")
+        raw = await file.read()
+        if len(raw) > MAX_GOODREADS_BYTES:
+            raise HTTPException(status_code=400, detail="Goodreads CSV is too large")
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError as error:
+            raise HTTPException(status_code=400, detail="Goodreads CSV must be UTF-8") from error
+        return import_goodreads_csv(db, request.state.user["id"], text)
 
     @app.post("/api/organize/preview")
     def organize_preview(folder: str, request: Request, guid: str = "", title: str = ""):

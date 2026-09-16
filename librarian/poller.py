@@ -1,4 +1,4 @@
-"""Background SAB job poller. On-demand GET /api/queue still works."""
+"""Background job poller (SAB + ingest/watch + RSS + ABS match). On-demand GET /api/queue still works."""
 
 from __future__ import annotations
 
@@ -45,13 +45,30 @@ class JobPoller:
 
     def tick(self) -> int:
         settings = self.settings_fn()
-        if not str(settings.sabnzbd_api_key or "").strip():
-            return 0
+        count = 0
         try:
-            return poll_active_jobs(self.db, settings, sab=self.sab)
+            from librarian.ingest import poll_watch_folder
+
+            count += poll_watch_folder(self.db, settings)
+        except Exception:
+            logger.exception("Watch poller tick failed")
+        try:
+            from librarian.rss import poll_rss_feeds
+
+            count += poll_rss_feeds(self.db, settings)
+        except Exception:
+            logger.exception("RSS poller tick failed")
+        try:
+            from librarian.audiobookshelf import match_audiobooks
+
+            match_audiobooks(self.db, settings)
+        except Exception:
+            logger.exception("ABS match tick failed")
+        try:
+            return count + poll_active_jobs(self.db, settings, sab=self.sab)
         except SABError as error:
             logger.info("SAB poll skipped: %s", error)
-            return 0
+            return count
 
     def _loop(self) -> None:
         while not self._stop.wait(self.interval):

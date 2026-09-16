@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS works (
     genre TEXT,
     cover_path TEXT,
     folder_path TEXT,
+    abs_item_id TEXT,
     review_state TEXT NOT NULL DEFAULT 'none',
     review_reason TEXT,
     music_state TEXT,
@@ -77,6 +78,10 @@ CREATE TABLE IF NOT EXISTS jobs (
     requested_by TEXT,
     storage_path TEXT,
     error TEXT,
+    sab_status TEXT,
+    nzo_name TEXT,
+    percent TEXT,
+    bytes INTEGER,
     payload_json TEXT,
     created_at REAL NOT NULL,
     updated_at REAL NOT NULL
@@ -124,6 +129,18 @@ CREATE INDEX IF NOT EXISTS idx_works_kind ON works(kind);
 CREATE INDEX IF NOT EXISTS idx_works_review ON works(review_state);
 CREATE INDEX IF NOT EXISTS idx_jobs_nzo ON jobs(nzo_id);
 CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
+CREATE TABLE IF NOT EXISTS rss_feeds (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    url TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    last_guid TEXT,
+    last_error TEXT,
+    last_poll_at REAL,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
 """
 
 
@@ -159,6 +176,33 @@ def _fts_query(q: str) -> str:
     return " AND ".join(f'"{token}"' for token in tokens)
 
 
+JOB_EXTRA_COLUMNS = {
+    "sab_status": "TEXT",
+    "nzo_name": "TEXT",
+    "percent": "TEXT",
+    "bytes": "INTEGER",
+}
+
+
+WORK_EXTRA_COLUMNS = {
+    "abs_item_id": "TEXT",
+}
+
+
+def _ensure_job_columns(conn: sqlite3.Connection) -> None:
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(jobs)").fetchall()}
+    for name, decl in JOB_EXTRA_COLUMNS.items():
+        if name not in existing:
+            conn.execute(f"ALTER TABLE jobs ADD COLUMN {name} {decl}")
+
+
+def _ensure_work_columns(conn: sqlite3.Connection) -> None:
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(works)").fetchall()}
+    for name, decl in WORK_EXTRA_COLUMNS.items():
+        if name not in existing:
+            conn.execute(f"ALTER TABLE works ADD COLUMN {name} {decl}")
+
+
 class Database:
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
@@ -166,6 +210,8 @@ class Database:
         self._lock = threading.Lock()
         with self._connect() as conn:
             conn.executescript(SCHEMA)
+            _ensure_job_columns(conn)
+            _ensure_work_columns(conn)
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path, timeout=SQLITE_BUSY_TIMEOUT_MS / 1000)
@@ -362,6 +408,7 @@ class Database:
             "genre": work.get("genre"),
             "cover_path": work.get("cover_path"),
             "folder_path": work.get("folder_path"),
+            "abs_item_id": work.get("abs_item_id"),
             "review_state": work.get("review_state") or "none",
             "review_reason": work.get("review_reason"),
             "music_state": work.get("music_state"),
@@ -370,15 +417,17 @@ class Database:
             "updated_at": now,
         }
         with self._lock, self._connect() as conn:
-            existing = conn.execute("SELECT id FROM works WHERE id = ?", (work_id,)).fetchone()
+            existing = conn.execute("SELECT abs_item_id FROM works WHERE id = ?", (work_id,)).fetchone()
             if existing:
+                if "abs_item_id" not in work:
+                    payload["abs_item_id"] = existing["abs_item_id"]
                 conn.execute(
                     """
                     UPDATE works SET
                         kind=?, title=?, author=?, series_name=?, series_index=?, year=?,
                         isbn=?, mbid=?, description=?, publisher=?, genre=?, cover_path=?,
-                        folder_path=?, review_state=?, review_reason=?, music_state=?,
-                        indexer_guid=?, updated_at=?
+                        folder_path=?, abs_item_id=?, review_state=?, review_reason=?,
+                        music_state=?, indexer_guid=?, updated_at=?
                     WHERE id=?
                     """,
                     (
@@ -395,6 +444,7 @@ class Database:
                         payload["genre"],
                         payload["cover_path"],
                         payload["folder_path"],
+                        payload["abs_item_id"],
                         payload["review_state"],
                         payload["review_reason"],
                         payload["music_state"],
@@ -409,9 +459,10 @@ class Database:
                     """
                     INSERT INTO works (
                         id, kind, title, author, series_name, series_index, year, isbn, mbid,
-                        description, publisher, genre, cover_path, folder_path, review_state,
-                        review_reason, music_state, indexer_guid, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        description, publisher, genre, cover_path, folder_path, abs_item_id,
+                        review_state, review_reason, music_state, indexer_guid, created_at,
+                        updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     tuple(payload.values()),
                 )
@@ -435,6 +486,122 @@ class Database:
     def get_work(self, work_id: str) -> Optional[Dict[str, Any]]:
         with self._connect() as conn:
             row = conn.execute("SELECT * FROM works WHERE id = ?", (work_id,)).fetchone()
+        return _row_dict(row)
+
+    def get_work_by_folder_path(self, folder_path: str) -> Optional[Dict[str, Any]]:
+        text = str(folder_path or "").rstrip("/")
+        if not text:
+            return None
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM works WHERE folder_path = ?", (text,)).fetchone()
+            if row is None and text != str(folder_path or ""):
+                row = conn.execute(
+                    "SELECT * FROM works WHERE folder_path = ?",
+                    (str(folder_path),),
+                ).fetchone()
+        return _row_dict(row)
+
+    def get_work_by_isbn(self, isbn: str) -> Optional[Dict[str, Any]]:
+        digits = re.sub(r"[^0-9Xx]", "", isbn or "").upper()
+        if not digits:
+            return None
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT * FROM works
+                WHERE kind = 'book' AND isbn IS NOT NULL AND isbn != ''
+                  AND replace(replace(upper(isbn), '-', ''), ' ', '') = ?
+                ORDER BY updated_at DESC
+                LIMIT 1
+                """,
+                (digits,),
+            ).fetchone()
+        return _row_dict(row)
+
+    def get_work_by_series_issue(
+        self, *, kind: str, series_name: str, series_index: str
+    ) -> Optional[Dict[str, Any]]:
+        series = (series_name or "").strip()
+        index = str(series_index or "").strip()
+        if not series or not index:
+            return None
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT * FROM works
+                WHERE kind = ? AND lower(series_name) = lower(?) AND lower(series_index) = lower(?)
+                ORDER BY updated_at DESC
+                LIMIT 1
+                """,
+                (kind, series, index),
+            ).fetchone()
+        return _row_dict(row)
+
+    def get_work_by_kind_title(
+        self,
+        *,
+        kind: str,
+        title: str,
+        author: str = "",
+        music_state: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        name = (title or "").strip()
+        if not name:
+            return None
+        clauses = ["kind = ?", "lower(title) = lower(?)", "lower(coalesce(author, '')) = lower(?)"]
+        args: List[Any] = [kind, name, (author or "").strip()]
+        if music_state:
+            clauses.append("music_state = ?")
+            args.append(music_state)
+        sql = f"SELECT * FROM works WHERE {' AND '.join(clauses)} ORDER BY updated_at DESC LIMIT 1"
+        with self._connect() as conn:
+            row = conn.execute(sql, args).fetchone()
+        return _row_dict(row)
+
+    def find_work_conflict(
+        self,
+        *,
+        kind: str,
+        folder_path: str,
+        isbn: str = "",
+        series_name: str = "",
+        series_index: str = "",
+        title: str = "",
+        author: str = "",
+        music_state: Optional[str] = None,
+        exclude_id: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Another work with the same identity living at a different folder."""
+        folder = str(folder_path or "").rstrip("/")
+        clauses = ["kind = ?", "folder_path IS NOT NULL", "folder_path != ''", "rtrim(folder_path, '/') != ?"]
+        args: List[Any] = [kind, folder]
+        identity_clauses: List[str] = []
+        identity_args: List[Any] = []
+        digits = re.sub(r"[^0-9Xx]", "", isbn or "").upper()
+        if kind == "book" and digits:
+            identity_clauses.append("isbn IS NOT NULL AND isbn != '' AND replace(replace(upper(isbn), '-', ''), ' ', '') = ?")
+            identity_args.append(digits)
+        if series_name and series_index:
+            identity_clauses.append("(lower(series_name) = lower(?) AND lower(series_index) = lower(?))")
+            identity_args.extend([series_name, str(series_index)])
+        if title:
+            title_sql = "lower(title) = lower(?) AND lower(coalesce(author, '')) = lower(?)"
+            title_args: List[Any] = [title, (author or "").strip()]
+            if music_state:
+                title_sql += " AND music_state = ?"
+                title_args.append(music_state)
+            identity_clauses.append(f"({title_sql})")
+            identity_args.extend(title_args)
+        if not identity_clauses:
+            return None
+        clauses.append("(" + " OR ".join(identity_clauses) + ")")
+        args.extend(identity_args)
+        if exclude_id:
+            clauses.append("id != ?")
+            args.append(exclude_id)
+        sql = f"SELECT * FROM works WHERE {' AND '.join(clauses)} ORDER BY updated_at DESC LIMIT 1"
+        with self._connect() as conn:
+            row = conn.execute(sql, args).fetchone()
         return _row_dict(row)
 
     def list_works(
@@ -462,20 +629,26 @@ class Database:
             rows = conn.execute(sql, args).fetchall()
         return [_row_dict(row) or {} for row in rows]
 
-    def search_works(self, query: str, *, limit: int = 24) -> List[Dict[str, Any]]:
+    def search_works(self, query: str, *, limit: int = 24, kind: Optional[str] = None) -> List[Dict[str, Any]]:
         match = _fts_query(query)
         if not match:
             return []
+        kind_sql = ""
+        args: List[Any] = [match]
+        if kind:
+            kind_sql = " AND w.kind = ?"
+            args.append(kind)
+        args.append(int(limit))
         with self._connect() as conn:
             rows = conn.execute(
-                """
+                f"""
                 SELECT w.* FROM works_fts f
                 JOIN works w ON w.id = f.work_id
-                WHERE works_fts MATCH ?
+                WHERE works_fts MATCH ?{kind_sql}
                 ORDER BY rank
                 LIMIT ?
                 """,
-                (match, int(limit)),
+                args,
             ).fetchall()
         return [_row_dict(row) or {} for row in rows]
 
@@ -545,6 +718,34 @@ class Database:
             row = conn.execute("SELECT * FROM files WHERE id = ?", (file_id,)).fetchone()
         return _row_dict(row)
 
+    def get_file_by_path(self, path: str) -> Optional[Dict[str, Any]]:
+        text = str(path or "")
+        if not text:
+            return None
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM files WHERE path = ?", (text,)).fetchone()
+        return _row_dict(row)
+
+    def upsert_file(self, record: Dict[str, Any]) -> Dict[str, Any]:
+        existing = self.get_file_by_path(record["path"])
+        if existing is None:
+            return self.add_file(record)
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """
+                UPDATE files SET work_id = ?, filename = ?, kind = ?, size = ?
+                WHERE id = ?
+                """,
+                (
+                    record.get("work_id") or existing.get("work_id"),
+                    record.get("filename") or existing.get("filename"),
+                    record.get("kind") or existing.get("kind"),
+                    record["size"] if record.get("size") is not None else existing.get("size"),
+                    existing["id"],
+                ),
+            )
+        return self.get_file(str(existing["id"])) or {}
+
     def files_for_work(self, work_id: str) -> List[Dict[str, Any]]:
         with self._connect() as conn:
             rows = conn.execute(
@@ -552,6 +753,23 @@ class Database:
                 (work_id,),
             ).fetchall()
         return [_row_dict(row) or {} for row in rows]
+
+    def relocate_work_files(self, work_id: str, src_folder: str, dest_folder: str) -> int:
+        """Rewrite stored file paths after a folder move (music promote)."""
+        src = str(src_folder).rstrip("/")
+        dest = str(dest_folder).rstrip("/")
+        if not src or src == dest:
+            return 0
+        prefix = src + "/"
+        updated = 0
+        with self._lock, self._connect() as conn:
+            rows = conn.execute("SELECT id, path FROM files WHERE work_id = ?", (work_id,)).fetchall()
+            for row in rows:
+                old = str(row["path"] or "")
+                if old == src or old.startswith(prefix):
+                    conn.execute("UPDATE files SET path = ? WHERE id = ?", (dest + old[len(src) :], row["id"]))
+                    updated += 1
+        return updated
 
     def create_job(self, job: Dict[str, Any]) -> Dict[str, Any]:
         now = time.time()
@@ -561,8 +779,9 @@ class Database:
                 """
                 INSERT INTO jobs (
                     id, work_id, nzo_id, status, indexer_guid, title, kind,
-                    requested_by, storage_path, error, payload_json, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    requested_by, storage_path, error, sab_status, nzo_name,
+                    percent, bytes, payload_json, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     job_id,
@@ -575,6 +794,10 @@ class Database:
                     job.get("requested_by"),
                     job.get("storage_path"),
                     job.get("error"),
+                    job.get("sab_status"),
+                    job.get("nzo_name"),
+                    job.get("percent"),
+                    job.get("bytes"),
                     _dumps(job.get("payload") or {}),
                     now,
                     now,
@@ -600,6 +823,25 @@ class Database:
             data["payload"] = _loads(data.pop("payload_json", None), {})
         return data
 
+    def get_job_by_indexer_guid(self, guid: str) -> Optional[Dict[str, Any]]:
+        text = str(guid or "").strip()
+        if not text:
+            return None
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT * FROM jobs
+                WHERE indexer_guid = ?
+                ORDER BY updated_at DESC
+                LIMIT 1
+                """,
+                (text,),
+            ).fetchone()
+        data = _row_dict(row)
+        if data is not None:
+            data["payload"] = _loads(data.pop("payload_json", None), {})
+        return data
+
     def update_job(self, job_id: str, **fields: Any) -> Optional[Dict[str, Any]]:
         allowed = {
             "work_id",
@@ -609,6 +851,10 @@ class Database:
             "error",
             "title",
             "kind",
+            "sab_status",
+            "nzo_name",
+            "percent",
+            "bytes",
         }
         updates = {key: value for key, value in fields.items() if key in allowed}
         if "payload" in fields:
@@ -623,6 +869,25 @@ class Database:
                 (*updates.values(), job_id),
             )
         return self.get_job(job_id)
+
+    def get_job_by_storage_path(self, path: str) -> Optional[Dict[str, Any]]:
+        text = str(path or "").rstrip("/")
+        if not text:
+            return None
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT * FROM jobs
+                WHERE storage_path = ? OR storage_path = ?
+                ORDER BY updated_at DESC
+                LIMIT 1
+                """,
+                (text, text + "/"),
+            ).fetchone()
+        data = _row_dict(row)
+        if data is not None:
+            data["payload"] = _loads(data.pop("payload_json", None), {})
+        return data
 
     def list_jobs(self, *, statuses: Optional[Iterable[str]] = None, limit: int = 80) -> List[Dict[str, Any]]:
         if statuses:
@@ -658,6 +923,18 @@ class Database:
                 (shelf_id, FAVORITES_SHELF, user_id, now),
             )
         return {"id": shelf_id, "name": FAVORITES_SHELF, "owner_user_id": user_id, "created_at": now}
+
+    def add_favorite(self, user_id: str, work_id: str) -> bool:
+        """Put a work on Favorites. Idempotent — does not un-favorite."""
+        if self.is_favorite(user_id, work_id):
+            return False
+        shelf = self.favorites_shelf(user_id)
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO shelf_items (shelf_id, work_id, added_at) VALUES (?, ?, ?)",
+                (shelf["id"], work_id, time.time()),
+            )
+        return True
 
     def toggle_favorite(self, user_id: str, work_id: str) -> bool:
         shelf = self.favorites_shelf(user_id)
@@ -816,3 +1093,77 @@ class Database:
         with self._connect() as conn:
             rows = conn.execute("SELECT * FROM indexers ORDER BY name").fetchall()
         return [_row_dict(row) or {} for row in rows]
+
+    def list_rss_feeds(self) -> List[Dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute("SELECT * FROM rss_feeds ORDER BY created_at").fetchall()
+        return [_row_dict(row) or {} for row in rows]
+
+    def get_rss_feed(self, feed_id: str) -> Optional[Dict[str, Any]]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM rss_feeds WHERE id = ?", (feed_id,)).fetchone()
+        return _row_dict(row)
+
+    def upsert_rss_feed(self, feed: Dict[str, Any]) -> Dict[str, Any]:
+        now = time.time()
+        feed_id = str(feed.get("id") or uuid.uuid4().hex)
+        payload = {
+            "id": feed_id,
+            "name": str(feed.get("name") or "RSS").strip() or "RSS",
+            "url": str(feed.get("url") or "").strip(),
+            "kind": str(feed.get("kind") or "book").strip() or "book",
+            "enabled": 1 if feed.get("enabled", True) else 0,
+            "last_guid": feed.get("last_guid"),
+            "last_error": feed.get("last_error"),
+            "last_poll_at": feed.get("last_poll_at"),
+            "created_at": feed.get("created_at") or now,
+            "updated_at": now,
+        }
+        with self._lock, self._connect() as conn:
+            existing = conn.execute(
+                "SELECT last_guid, last_error, last_poll_at FROM rss_feeds WHERE id = ?",
+                (feed_id,),
+            ).fetchone()
+            if existing:
+                if "last_guid" not in feed:
+                    payload["last_guid"] = existing["last_guid"]
+                if "last_error" not in feed:
+                    payload["last_error"] = existing["last_error"]
+                if "last_poll_at" not in feed:
+                    payload["last_poll_at"] = existing["last_poll_at"]
+                conn.execute(
+                    """
+                    UPDATE rss_feeds SET
+                        name=?, url=?, kind=?, enabled=?, last_guid=?, last_error=?,
+                        last_poll_at=?, updated_at=?
+                    WHERE id=?
+                    """,
+                    (
+                        payload["name"],
+                        payload["url"],
+                        payload["kind"],
+                        payload["enabled"],
+                        payload["last_guid"],
+                        payload["last_error"],
+                        payload["last_poll_at"],
+                        payload["updated_at"],
+                        feed_id,
+                    ),
+                )
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO rss_feeds (
+                        id, name, url, kind, enabled, last_guid, last_error,
+                        last_poll_at, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    tuple(payload.values()),
+                )
+        row = self.get_rss_feed(feed_id)
+        assert row is not None
+        return row
+
+    def delete_rss_feed(self, feed_id: str) -> None:
+        with self._lock, self._connect() as conn:
+            conn.execute("DELETE FROM rss_feeds WHERE id = ?", (feed_id,))

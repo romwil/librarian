@@ -14,7 +14,7 @@ export default function AppChrome({ user, features, reviewCount = 0, children })
       const tag = String(event.target?.tagName || "").toLowerCase();
       if (tag === "input" || tag === "textarea" || event.target?.isContentEditable) return;
       event.preventDefault();
-      const field = document.getElementById("hall-search");
+      const field = document.getElementById("hall-search") || document.getElementById("find-search");
       if (field) {
         field.focus();
         return;

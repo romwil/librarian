@@ -83,9 +83,10 @@ def test_client_books_hits_v2_path():
         return httpx.Response(200, json=json.loads((V2 / "books-linux.json").read_text(encoding="utf-8")))
 
     client = NZBFinderClient("nzbfinder.example", "fixture-token", transport=httpx.MockTransport(handler))
-    results = client.books(title="linux", limit=2)
+    results = client.books(title="linux", isbn="9788980541119", limit=2)
     assert captured["url"].startswith("https://nzbfinder.example/api/v2/books?")
     assert "title=linux" in captured["url"]
+    assert "isbn=9788980541119" in captured["url"]
     assert "t=book" not in captured["url"]
     assert [item["kind"] for item in results] == ["book", "book"]
 

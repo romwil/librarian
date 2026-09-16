@@ -37,9 +37,12 @@ Coverage is configured in `pyproject.toml` (`--cov=librarian --cov-fail-under=70
 | Kinds | `7030` → `comic`; `2000`/`5000`/`6000` → `None` |
 | Identify | `Linux-Magazin.No.10.2026` → title + `2026-10` |
 | Organize | `{Author}/{Title}/{Title}.epub` and collision → Review |
-| Gaps | owned `2026-08` + `2026-10` → missing `["2026-09"]`; audiobook parts 1+3 → `["2"]` |
+| Gaps | owned `2026-08` + `2026-10` → missing `["2026-09"]`; audiobook parts 1+3 → `["2"]`; Dune 1+3 vs Hardcover 1–3 → missing `"2"`; Comic Vine issues past local min/max; MusicBrainz track 4 when owned 1+3 |
+| Find extras | extra host 502 still returns NZBFinder hits + `beyond_error`; RSS new guid once, TV `5000` refused; ABS ISBN match; no ABS token → no HTTP |
 | SAB | history `Completed` → `completed`; addurl returns that `nzo_id` |
 | Covers | Open Library URL is `https://covers.openlibrary.org/b/isbn/{isbn}-L.jpg` |
+| Enrich | Hardcover then Open Library fills description/series/year/cover; title lookup does not write ISBN |
+| Goodreads CSV | ISBN13 `="978…"` matches catalog ISBN-10/13 onto Favorites; missing ISBN skipped |
 | LLM | invented ISBN dropped; `kind=unknown` → Review |
 
 Frontend unit tests for naming/filters/review copy land with the SPA polish pass.

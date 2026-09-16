@@ -1,4 +1,4 @@
-"""SABnzbd client for http://downloader.sl — addurl, queue, history."""
+"""SABnzbd client for http://downloader.sl — addurl, queue, history, get_files."""
 
 from __future__ import annotations
 
@@ -8,15 +8,16 @@ import httpx
 
 QUEUE_STATUSES = {
     "Queued": "queued",
-    "Downloading": "downloading",
     "Paused": "queued",
+    "Propagating": "queued",
+    "Downloading": "downloading",
     "Fetching": "downloading",
+    "Running": "downloading",
     "QuickCheck": "extracting",
     "Verifying": "extracting",
     "Repairing": "extracting",
     "Extracting": "extracting",
     "Moving": "extracting",
-    "Running": "downloading",
 }
 
 HISTORY_STATUSES = {
@@ -39,13 +40,93 @@ def map_sab_status(status: str, *, history: bool = False) -> str:
         return "completed"
     if lowered in {"failed", "failure"}:
         return "failed"
-    if lowered in {"extracting", "verifying", "repairing", "moving"}:
+    if lowered in {"extracting", "verifying", "repairing", "moving", "quickcheck"}:
         return "extracting"
     if lowered in {"downloading", "fetching", "running"}:
         return "downloading"
-    if lowered in {"queued", "paused", "idle"}:
+    if lowered in {"queued", "paused", "idle", "propagating"}:
         return "queued"
     return "queued" if not history else "failed"
+
+
+def _intish(value: Any) -> Optional[int]:
+    if value in (None, ""):
+        return None
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _stage_fail_message(slot: Dict[str, Any]) -> str:
+    action = str(slot.get("action_line") or "").strip()
+    lowered = action.lower()
+    if action and any(token in lowered for token in ("fail", "error", "abort")):
+        return action
+    for stage in slot.get("stage_log") or []:
+        if not isinstance(stage, dict):
+            continue
+        name = str(stage.get("name") or "")
+        for line in stage.get("actions") or []:
+            text = str(line or "")
+            blob = f"{name} {text}".lower()
+            if name.lower() in {"unpack", "repair"} and any(
+                token in blob for token in ("fail", "error", "abort", "damaged")
+            ):
+                return str(text).strip() or f"{name} failed"
+    return ""
+
+
+def _slot_fail_message(slot: Dict[str, Any]) -> str:
+    return str(slot.get("fail_message") or "").strip() or _stage_fail_message(slot)
+
+
+def _slot_bytes(slot: Dict[str, Any]) -> Optional[int]:
+    for key in ("bytes", "downloaded", "sizebytes"):
+        parsed = _intish(slot.get(key))
+        if parsed is not None:
+            return parsed
+    mb = _intish(slot.get("mb"))
+    if mb is not None:
+        return mb * 1024 * 1024
+    return None
+
+
+def _slot_percent(slot: Dict[str, Any]) -> Optional[str]:
+    raw = slot.get("percentage")
+    if raw not in (None, ""):
+        return str(raw)
+    mb = _intish(slot.get("mb"))
+    left = _intish(slot.get("mbleft"))
+    if mb and left is not None and mb > 0:
+        done = max(0, min(100, int(round(100 * (mb - left) / mb))))
+        return str(done)
+    return None
+
+
+def snapshot_from_slot(slot: Dict[str, Any], *, nzo_id: str, history: bool) -> Dict[str, Any]:
+    raw_status = str(slot.get("status") or "")
+    mapped = map_sab_status(raw_status, history=history)
+    explicit_fail = str(slot.get("fail_message") or "").strip()
+    fail_message = _slot_fail_message(slot)
+    if history and explicit_fail and mapped == "completed":
+        mapped = "failed"
+    name = slot.get("filename") or slot.get("name") or slot.get("nzb_name") or ""
+    storage = slot.get("storage") or slot.get("path") or ""
+    return {
+        "nzo_id": nzo_id,
+        "status": mapped,
+        "sab_status": raw_status or ("Failed" if mapped == "failed" else ""),
+        "fail_message": fail_message,
+        "storage": storage,
+        "path": slot.get("path") or "",
+        "name": str(name or ""),
+        "percentage": _slot_percent(slot),
+        "bytes": _slot_bytes(slot),
+        "files": [],
+        "where": "history" if history else "queue",
+        "raw": slot,
+    }
 
 
 class SABClient:
@@ -81,6 +162,9 @@ class SABClient:
             raise SABError("SABnzbd returned non-JSON") from error
         if not isinstance(payload, dict):
             raise SABError("SABnzbd returned an unexpected payload")
+        error = payload.get("error")
+        if error:
+            raise SABError(str(error))
         return payload
 
     def addurl(self, nzb_url: str, *, nzbname: str = "", cat: str = "") -> str:
@@ -108,35 +192,37 @@ class SABClient:
         slots = history.get("slots") if isinstance(history, dict) else []
         return list(slots or [])
 
+    def get_files(self, nzo_id: str) -> List[Dict[str, Any]]:
+        """Documented `mode=get_files&value=nzo_id` — NZB articles while the job is in queue."""
+        payload = self._call("get_files", value=nzo_id)
+        files = payload.get("files")
+        if isinstance(files, list):
+            return list(files)
+        return []
+
     def job_status(self, nzo_id: str) -> Dict[str, Any]:
         for slot in self.queue(nzo_id):
             if str(slot.get("nzo_id") or "") == nzo_id:
-                return {
-                    "nzo_id": nzo_id,
-                    "status": map_sab_status(str(slot.get("status") or ""), history=False),
-                    "sab_status": slot.get("status"),
-                    "storage": slot.get("storage") or slot.get("path") or "",
-                    "name": slot.get("filename") or slot.get("name") or "",
-                    "where": "queue",
-                    "raw": slot,
-                }
+                snap = snapshot_from_slot(slot, nzo_id=nzo_id, history=False)
+                try:
+                    snap["files"] = self.get_files(nzo_id)
+                except SABError:
+                    snap["files"] = []
+                return snap
         for slot in self.history(nzo_id):
             if str(slot.get("nzo_id") or "") == nzo_id:
-                return {
-                    "nzo_id": nzo_id,
-                    "status": map_sab_status(str(slot.get("status") or ""), history=True),
-                    "sab_status": slot.get("status"),
-                    "storage": slot.get("storage") or slot.get("path") or "",
-                    "name": slot.get("name") or slot.get("nzb_name") or "",
-                    "where": "history",
-                    "raw": slot,
-                }
+                return snapshot_from_slot(slot, nzo_id=nzo_id, history=True)
         return {
             "nzo_id": nzo_id,
             "status": "queued",
             "sab_status": "Unknown",
+            "fail_message": "",
             "storage": "",
+            "path": "",
             "name": "",
+            "percentage": None,
+            "bytes": None,
+            "files": [],
             "where": "missing",
             "raw": {},
         }

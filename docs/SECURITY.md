@@ -67,7 +67,7 @@ SPA ──no session──► /login (foyer) or /join?token=
 | **S2** | Critical | Session secret fell back to a public default. | Forge `librarian_session` cookies for any `user_id`. | **Mitigated** | Public `librarian-dev-session-secret` refuses to start; empty env auto-generates under `/config/session_secret` (0600). Still set `LIBRARIAN_SESSION_SECRET` in production. |
 | **S3** | Critical | App binds `0.0.0.0:8793` in Docker. | Reach the control plane from any host interface / accidental WAN map. | **Open** | Do not port-forward bare 8793; put TLS on a reverse proxy and set proxy trust only there. |
 | **S9** | Medium | Session cookie `Secure` from spoofed proto. | Weaker cookie story; CSRF edge cases on a “HTTPS” lie. | **Mitigated** | `Secure` only on socket HTTPS or trusted forwarded proto. |
-| **S11** | Medium | Settings JSON stores indexer / SAB keys in plaintext under `/config`. | Read volume / backup → fleet credentials. | **Mitigated** | File mode `0600` on every save. Restrict who can mount `/config`. |
+| **S11** | Medium | Settings JSON stores indexer / SAB / Hardcover keys in plaintext under `/config`. | Read volume / backup → fleet credentials. | **Mitigated** | File mode `0600` on every save. Restrict who can mount `/config`. |
 | **S13** | Low | Image historically ran as root. | Container breakout has root inside the image. | **Mitigated** | Entrypoint `chown`s `/config` and drops via `gosu` to `PUID`/`PGID` (Unraid 99/100). |
 | **S14** | High | Rate limiter trusted `X-Forwarded-For` on a direct LAN bind. | Rotate spoofed IPs to bypass login / invite throttles. | **Mitigated** | Ignore forwarded headers unless `LIBRARIAN_TRUST_PROXY_HEADERS=1`. |
 | **S15** | Medium | FastAPI `/docs` / OpenAPI without auth. | Map mutate endpoints from the LAN. | **Mitigated** | Docs disabled (`docs_url=None`). |
@@ -79,7 +79,7 @@ SPA ──no session──► /login (foyer) or /join?token=
 2. Set **`LIBRARIAN_TRUST_PROXY_HEADERS=1` only behind that trusted proxy.** Untrusted `X-Forwarded-*` is ignored for client IP, rate limits, `Secure` cookies, and any “this is HTTPS” decision.
 3. Set **`LIBRARIAN_SESSION_SECRET`** to a long random value (or accept auto-generated secret under Config). Invite HMACs use this secret. Never commit it. The public development default is refused.
 4. Set **`LIBRARIAN_OWNER_PASSWORD`** (≥ 8) in the Unraid template / `.env`. Do not log it.
-5. Keep NZBFinder / SAB keys out of git and out of backups you share. `settings.json` is `0600`.
+5. Keep NZBFinder / SAB / Hardcover / Comic Vine keys out of git and out of backups you share. `settings.json` is `0600`.
 6. Restrict who can mount/read the `/config` volume (session secret + recovery).
 7. Automat LAN hosts: [ops/AUTOMAT.md](ops/AUTOMAT.md). Never treat public DNS as version truth.
 
@@ -98,6 +98,9 @@ WAL-safe database backup steps live in [DOCKER.md](DOCKER.md).
 | NZBFinder | `nzbfinder_api_token` | Settings or env; never in git |
 | SABnzbd | `sabnzbd_api_key` | Settings or env |
 | LLM | `llm_api_key` | Optional |
+| Hardcover | `hardcover_api_token` | Optional GraphQL token; Settings or `HARDCOVER_API_TOKEN` |
+| Comic Vine | `comicvine_api_key` | Optional; Settings or `COMICVINE_API_KEY`. Needed for comic issue lists beyond local holes |
+| Audiobookshelf | `audiobookshelf_api_token` | Optional; Settings or `AUDIOBOOKSHELF_API_TOKEN` |
 
 **Honest limits.** Rotating a key here does not retroactively scrub it from old container logs, shell history, or prior backups.
 

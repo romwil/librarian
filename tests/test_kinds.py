@@ -7,6 +7,7 @@ def test_newznab_category_values():
     assert kind_from_newznab(7020) == "book"
     assert kind_from_newznab(3030) == "audiobook"
     assert kind_from_newznab(3010) == "music"
+    assert kind_from_newznab(3000) == "music"
     assert kind_from_newznab(2000) is None
     assert kind_from_newznab(5000) is None
     assert kind_from_newznab(6000) is None
@@ -17,4 +18,11 @@ def test_search_category_for_kind():
     assert search_category_for_kind("comic") == "7030"
     assert search_category_for_kind("magazine") == "7010"
     assert search_category_for_kind("book") == "7000"
-    assert search_category_for_kind("tv") is None
+    assert search_category_for_kind("audiobook") == "3030"
+    assert search_category_for_kind("music") == "3000"
+    assert search_category_for_kind("movie") == "2000"
+    assert search_category_for_kind("tv") == "5000"
+    assert search_category_for_kind("xxx") == "6000"
+    assert search_category_for_kind("nope") is None
+    assert kind_from_newznab(2000) is None
+    assert kind_from_newznab(2000, extra=True) == "movie"

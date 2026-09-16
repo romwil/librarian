@@ -31,8 +31,18 @@ export const api = {
     request("/invites/redeem/local", { method: "POST", body: JSON.stringify({ token, username, password }) }),
   mintInvite: (role) => request("/invites", { method: "POST", body: JSON.stringify({ role }) }),
   hall: () => request("/hall"),
-  search: (q, { beyond = false, kind = "" } = {}) =>
-    request(`/search?q=${encodeURIComponent(q)}&beyond=${beyond ? 1 : 0}&kind=${encodeURIComponent(kind)}`),
+  search: (q, extras = {}) => {
+    const { beyond = false, kind = "", title, author, isbn, series, issue, artist, album, year } = extras;
+    const params = new URLSearchParams();
+    if (q) params.set("q", q);
+    if (beyond) params.set("beyond", "1");
+    if (kind) params.set("kind", kind);
+    const fields = { title, author, isbn, series, issue, artist, album, year };
+    for (const [key, value] of Object.entries(fields)) {
+      if (value) params.set(key, value);
+    }
+    return request(`/search?${params.toString()}`);
+  },
   work: (id) => request(`/works/${id}`),
   favorite: (id) => request(`/works/${id}/favorite`, { method: "POST" }),
   requestItem: (item) => request("/request", { method: "POST", body: JSON.stringify(item) }),
@@ -48,7 +58,43 @@ export const api = {
   people: () => request("/people"),
   promote: (id) => request(`/music/${id}/promote`, { method: "POST" }),
   pingIndexer: () => request("/indexers/ping", { method: "POST" }),
+  absMatch: () => request("/settings/abs-match", { method: "POST" }),
+  rssFeeds: () => request("/rss"),
+  saveRss: (body) => request("/rss", { method: "POST", body: JSON.stringify(body) }),
+  updateRss: (id, body) => request(`/rss/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  deleteRss: (id) => request(`/rss/${id}`, { method: "DELETE" }),
+  pollRss: () => request("/rss/poll", { method: "POST" }),
+  discover: (extras = {}) => {
+    const params = new URLSearchParams();
+    if (extras.kind) params.set("kind", extras.kind);
+    if (extras.cat) params.set("cat", extras.cat);
+    const qs = params.toString();
+    return request(`/discover${qs ? `?${qs}` : ""}`);
+  },
+  scanShelves: () => request("/settings/scan", { method: "POST" }),
+  enrichShelves: () => request("/settings/enrich", { method: "POST" }),
+  enrichWork: (id) => request(`/works/${id}/enrich`, { method: "POST" }),
+  importGoodreads: (file) => {
+    const body = new FormData();
+    body.append("file", file);
+    return fetch(`${API}/settings/goodreads`, {
+      method: "POST",
+      credentials: "include",
+      body,
+    }).then(async (response) => {
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const error = new Error(detailText(data.detail) || response.statusText);
+        error.status = response.status;
+        error.payload = data;
+        throw error;
+      }
+      return data;
+    });
+  },
   indexers: () => request("/indexers"),
   progress: (id, body = {}) => request(`/works/${id}/progress`, { method: "POST", body: JSON.stringify(body) }),
   convert: (id, format) => request(`/works/${id}/convert`, { method: "POST", body: JSON.stringify({ format }) }),
+  fs: (path = "") => request(`/fs?path=${encodeURIComponent(path || "")}`),
+  ingest: (path) => request("/ingest", { method: "POST", body: JSON.stringify({ path }) }),
 };

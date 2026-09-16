@@ -3,6 +3,7 @@ import { Link, useNavigate, useOutletContext } from "react-router-dom";
 import { api } from "../api.js";
 import Rail from "../components/Rail.jsx";
 import { emptyHallCopy, humanError, setupComplete } from "../copy.js";
+import AddToLibrary from "../components/AddToLibrary.jsx";
 
 export default function HallPage() {
   const navigate = useNavigate();
@@ -12,6 +13,7 @@ export default function HallPage() {
   const [loadError, setLoadError] = useState("");
   const [q, setQ] = useState("");
   const owner = user?.role === "owner";
+  const keeper = owner || user?.role === "op";
   const empty = emptyHallCopy({ owner, configured });
 
   useEffect(() => {
@@ -43,7 +45,7 @@ export default function HallPage() {
       <section className="hero-search-block">
         <p className="kicker">The Hall</p>
         <h1>What are you looking for?</h1>
-        <p>One search. Shelves first, then the world.</p>
+        <p>Search the stacks.</p>
         <form className="search-field" onSubmit={onSearch}>
           <span aria-hidden="true">⌕</span>
           <label className="sr-only" htmlFor="hall-search">
@@ -71,6 +73,7 @@ export default function HallPage() {
           ) : null}
         </section>
       ) : null}
+      {keeper ? <AddToLibrary compact /> : null}
       <Rail
         title="Continue"
         kicker="In-progress reads and listens"
@@ -84,7 +87,11 @@ export default function HallPage() {
       <Rail title="Comics" kicker="Series and issue, square-ish" items={hall?.areas?.comics} />
       <Rail title="Audiobooks" kicker="Listen — not a book spine" items={hall?.areas?.audiobooks} />
       <Rail title="Incoming Music" kicker="Promote lives in peek" items={hall?.areas?.incoming_music} />
-      <Rail title="Gaps" items={hall?.gaps} />
+      <Rail
+        title="Gaps"
+        kicker="Find this hole beyond the shelves"
+        items={(hall?.gaps || []).map((item) => ({ ...item, gap: true }))}
+      />
     </div>
   );
 }

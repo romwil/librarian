@@ -47,7 +47,11 @@ for _env_key in \
   LIBRARIAN_OWNER_USERNAME LIBRARIAN_OWNER_PASSWORD LIBRARIAN_SESSION_SECRET \
   LIBRARIAN_TRUST_PROXY_HEADERS \
   SABNZBD_URL SABNZBD_API_KEY NZBFINDER_URL NZBFINDER_API_TOKEN \
-  LLM_BASE_URL LLM_API_KEY LLM_MODEL DATA_HOST
+  LLM_BASE_URL LLM_API_KEY LLM_MODEL DATA_HOST COMPLETE_ROOT \
+  HARDCOVER_API_TOKEN COMICVINE_API_KEY \
+  AUDIOBOOKSHELF_URL AUDIOBOOKSHELF_API_TOKEN \
+  SHOW_EXTRA_CATEGORIES RADARR_URL RADARR_API_KEY SONARR_URL SONARR_API_KEY \
+  SAB_MOVIE_CATEGORY SAB_TV_CATEGORY
 do
   read_env "$_env_key"
 done
@@ -71,6 +75,12 @@ if [ -z "${VCS_REF:-}" ]; then
 fi
 
 export DOCKER_BUILDKIT=1
+
+# SPA compile is in-image (Dockerfile frontend stage). This script does not
+# run host-side npm ci / npm run build. Cached across librarian/ and
+# frontend/src edits: apt, pip extras from pyproject.toml, and npm ci from
+# frontend/package.json + lock. Those layers bust only when system packages
+# or dependency manifests change (e.g. adding foliate-js).
 
 if [ "$SKIP_BUILD" = "1" ]; then
   echo "Using image ${IMAGE} (no local build)..."
@@ -147,6 +157,18 @@ docker run -d \
   -e LLM_BASE_URL="${LLM_BASE_URL:-}" \
   -e LLM_API_KEY="${LLM_API_KEY:-}" \
   -e LLM_MODEL="${LLM_MODEL:-gpt-4o-mini}" \
+  -e COMPLETE_ROOT="${COMPLETE_ROOT:-}" \
+  -e HARDCOVER_API_TOKEN="${HARDCOVER_API_TOKEN:-}" \
+  -e COMICVINE_API_KEY="${COMICVINE_API_KEY:-}" \
+  -e AUDIOBOOKSHELF_URL="${AUDIOBOOKSHELF_URL:-}" \
+  -e AUDIOBOOKSHELF_API_TOKEN="${AUDIOBOOKSHELF_API_TOKEN:-}" \
+  -e SHOW_EXTRA_CATEGORIES="${SHOW_EXTRA_CATEGORIES:-}" \
+  -e RADARR_URL="${RADARR_URL:-}" \
+  -e RADARR_API_KEY="${RADARR_API_KEY:-}" \
+  -e SONARR_URL="${SONARR_URL:-}" \
+  -e SONARR_API_KEY="${SONARR_API_KEY:-}" \
+  -e SAB_MOVIE_CATEGORY="${SAB_MOVIE_CATEGORY:-}" \
+  -e SAB_TV_CATEGORY="${SAB_TV_CATEGORY:-}" \
   -v "${CONFIG_PATH}:/config" \
   -v "${DATA_HOST}:/data" \
   "$IMAGE"

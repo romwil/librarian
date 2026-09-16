@@ -8,7 +8,10 @@ import {
   coverShapeClass,
   isLandscapeKind,
   isSquareKind,
+  isInboundJob,
   jobChipLabel,
+  jobHouseholdLabel,
+  jobQueueDetail,
   shouldOpenPeek,
 } from "./cover.js";
 
@@ -38,11 +41,40 @@ describe("reading room cover helpers", () => {
     assert.match(coverClassNames({ kind: "music", music_state: "incoming" }), /is-incoming/);
   });
 
-  it("labels living request chips", () => {
+  it("collapses living request chips to household words", () => {
     assert.equal(jobChipLabel(undefined, "reader"), "Ask the house");
     assert.equal(jobChipLabel(undefined, "owner"), "Request");
     assert.equal(jobChipLabel("asked"), "Asked");
-    assert.equal(jobChipLabel("organized"), "Open");
+    assert.equal(jobHouseholdLabel("queued"), "On the way");
+    assert.equal(jobChipLabel("downloading"), "On the way");
+    assert.equal(jobChipLabel("extracting"), "On the way");
+    assert.equal(jobChipLabel("identifying"), "On the way");
+    assert.equal(isInboundJob("extracting"), true);
+    assert.equal(jobChipLabel("organized"), "Arrived");
+    assert.equal(jobChipLabel("review"), "Needs you");
+    assert.equal(jobChipLabel("failed"), "Failed");
+  });
+
+  it("keeps SAB raw on Queue detail only", () => {
+    assert.equal(jobQueueDetail({ sab_status: "Verifying", nzo_id: "nzo_abc" }), "Verifying · nzo_abc");
+    assert.equal(jobQueueDetail({ status: "extracting", nzo_id: "nzo_abc" }), "Extracting · nzo_abc");
+    assert.equal(jobQueueDetail({ status: "asked" }), "Asked slip");
+    assert.equal(
+      jobQueueDetail({
+        status: "failed",
+        error: "Unpack did not finish; archives remain in the complete folder",
+        nzo_id: "SABnzbd_nzo_mix",
+      }),
+      "Unpack did not finish; archives remain in the complete folder · SABnzbd_nzo_mix",
+    );
+    assert.equal(
+      jobQueueDetail({
+        status: "identifying",
+        payload: { source: "ingest" },
+        storage_path: "/data/inbox/Book.epub",
+      }),
+      "/data/inbox/Book.epub",
+    );
   });
 
   it("uses issue dates and numbers as gilt captions", () => {

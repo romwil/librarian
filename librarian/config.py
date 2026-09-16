@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import asdict, dataclass, fields
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional
 
@@ -29,15 +29,49 @@ ENV_TO_FIELD = {
     "LLM_API_KEY": "llm_api_key",
     "LLM_MODEL": "llm_model",
     "HOUSEHOLD_NAME": "household_name",
+    "HARDCOVER_API_TOKEN": "hardcover_api_token",
+    "COMICVINE_API_KEY": "comicvine_api_key",
+    "WATCH_ROOT": "watch_root",
+    "WATCH_ENABLED": "watch_enabled",
+    "AUDIOBOOKSHELF_URL": "audiobookshelf_url",
+    "AUDIOBOOKSHELF_API_TOKEN": "audiobookshelf_api_token",
+    "SHOW_EXTRA_CATEGORIES": "show_extra_categories",
+    "RADARR_URL": "radarr_url",
+    "RADARR_API_KEY": "radarr_api_key",
+    "SONARR_URL": "sonarr_url",
+    "SONARR_API_KEY": "sonarr_api_key",
+    "SAB_MOVIE_CATEGORY": "sab_movie_category",
+    "SAB_TV_CATEGORY": "sab_tv_category",
 }
+
+MEDIA_ROOT_FIELDS = (
+    "books_root",
+    "magazines_root",
+    "comics_root",
+    "audiobooks_root",
+    "incoming_music_root",
+    "music_root",
+)
 
 SECRET_FIELDS = (
     "sabnzbd_api_key",
     "nzbfinder_api_token",
     "llm_api_key",
+    "hardcover_api_token",
+    "comicvine_api_key",
+    "audiobookshelf_api_token",
+    "radarr_api_key",
+    "sonarr_api_key",
 )
 
 AUDIOBOOK_TARGETS = ("plex", "audiobookshelf", "librarian_only")
+
+
+def _as_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    text = str(value or "").strip().lower()
+    return text in {"1", "true", "yes", "on"}
 
 
 def load_dotenv(path: Optional[Path] = None) -> Optional[Path]:
@@ -87,11 +121,33 @@ class Settings:
     llm_api_key: str = ""
     llm_model: str = "gpt-4o-mini"
     household_name: str = "The Hall"
+    hardcover_api_token: str = ""
+    comicvine_api_key: str = ""
+    watch_root: str = ""
+    watch_enabled: bool = False
+    extra_indexers: list = field(default_factory=list)
+    audiobookshelf_url: str = ""
+    audiobookshelf_api_token: str = ""
+    show_extra_categories: bool = False
+    radarr_url: str = ""
+    radarr_api_key: str = ""
+    sonarr_url: str = ""
+    sonarr_api_key: str = ""
+    sab_movie_category: str = "movies"
+    sab_tv_category: str = "tv"
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> "Settings":
         known = {item.name for item in fields(cls)}
         filtered = {key: data[key] for key in known if key in data}
+        if "watch_enabled" in filtered:
+            filtered["watch_enabled"] = _as_bool(filtered["watch_enabled"])
+        if "show_extra_categories" in filtered:
+            filtered["show_extra_categories"] = _as_bool(filtered["show_extra_categories"])
+        if "extra_indexers" in filtered:
+            from librarian.indexers.hosts import normalize_extra_indexers
+
+            filtered["extra_indexers"] = normalize_extra_indexers(filtered["extra_indexers"])
         settings = cls(**filtered)
         target = str(settings.audiobook_target or "plex").strip().lower()
         if target not in AUDIOBOOK_TARGETS:
@@ -133,6 +189,10 @@ def load_merged_settings(data_dir: Path) -> Settings:
         if _json_blocks_env(stored, field_name):
             continue
         merged[field_name] = os.environ[env_name]
+    if "watch_enabled" in merged:
+        merged["watch_enabled"] = _as_bool(merged["watch_enabled"])
+    if "show_extra_categories" in merged:
+        merged["show_extra_categories"] = _as_bool(merged["show_extra_categories"])
     return Settings.from_mapping(merged)
 
 
@@ -155,13 +215,21 @@ def merge_secret_fields(incoming: Mapping[str, Any], existing: Settings) -> Dict
             continue
         if key in SECRET_FIELDS and not str(value or "").strip():
             continue
+        if key == "extra_indexers":
+            from librarian.indexers.hosts import merge_extra_indexers
+
+            merged[key] = merge_extra_indexers(value, existing.extra_indexers)
+            continue
         merged[key] = value
     return merged
 
 
 def mask_settings(settings: Settings) -> Dict[str, Any]:
+    from librarian.indexers.hosts import mask_extra_indexers
+
     payload = asdict(settings)
-    for field in SECRET_FIELDS:
-        payload[f"{field}_set"] = bool(str(payload.get(field) or "").strip())
-        payload[field] = ""
+    for name in SECRET_FIELDS:
+        payload[f"{name}_set"] = bool(str(payload.get(name) or "").strip())
+        payload[name] = ""
+    payload["extra_indexers"] = mask_extra_indexers(settings.extra_indexers)
     return payload

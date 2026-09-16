@@ -9,6 +9,8 @@ def test_map_sab_status_values():
     assert map_sab_status("Completed", history=True) == "completed"
     assert map_sab_status("Failed", history=True) == "failed"
     assert map_sab_status("Queued") == "queued"
+    assert map_sab_status("Propagating") == "queued"
+    assert map_sab_status("Verifying") == "extracting"
 
 
 def test_addurl_and_job_status_nzo_id():
@@ -19,7 +21,25 @@ def test_addurl_and_job_status_nzo_id():
         if params.get("mode") == "queue":
             return httpx.Response(
                 200,
-                json={"queue": {"slots": [{"nzo_id": "SABnzbd_nzo_abc", "status": "Downloading", "filename": "Saga"}]}},
+                json={
+                    "queue": {
+                        "slots": [
+                            {
+                                "nzo_id": "SABnzbd_nzo_abc",
+                                "status": "Downloading",
+                                "filename": "Saga",
+                                "percentage": "42",
+                                "mb": "10",
+                                "mbleft": "6",
+                            }
+                        ]
+                    }
+                },
+            )
+        if params.get("mode") == "get_files":
+            return httpx.Response(
+                200,
+                json={"files": [{"filename": "saga.par2", "status": "finished"}]},
             )
         if params.get("mode") == "history":
             return httpx.Response(200, json={"history": {"slots": []}})
@@ -31,6 +51,8 @@ def test_addurl_and_job_status_nzo_id():
     snap = client.job_status(nzo)
     assert snap["status"] == "downloading"
     assert snap["where"] == "queue"
+    assert snap["percentage"] == "42"
+    assert snap["name"] == "Saga"
 
 
 def test_history_completed_storage():
@@ -58,6 +80,52 @@ def test_history_completed_storage():
     snap = client.job_status("SABnzbd_nzo_done")
     assert snap["status"] == "completed"
     assert snap["storage"] == "/data/complete/Saga"
+    assert snap["fail_message"] == ""
+
+
+def test_history_failed_exposes_fail_message():
+    def handler(request: httpx.Request) -> httpx.Response:
+        params = dict(request.url.params)
+        if params.get("mode") == "queue":
+            return httpx.Response(200, json={"queue": {"slots": []}})
+        return httpx.Response(
+            200,
+            json={
+                "history": {
+                    "slots": [
+                        {
+                            "nzo_id": "SABnzbd_nzo_bad",
+                            "status": "Failed",
+                            "fail_message": "Unpacking failed, archive is damaged",
+                            "name": "VA-Dump.Name-202",
+                            "storage": "/downloads/incomplete/VA-Dump.Name-202",
+                        }
+                    ]
+                }
+            },
+        )
+
+    client = SABClient("http://downloader.sl", "sab-key", transport=httpx.MockTransport(handler))
+    snap = client.job_status("SABnzbd_nzo_bad")
+    assert snap["status"] == "failed"
+    assert snap["fail_message"] == "Unpacking failed, archive is damaged"
+    assert snap["name"] == "VA-Dump.Name-202"
+    assert snap["where"] == "history"
+
+
+def test_get_files_uses_documented_value_param():
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        params = dict(request.url.params)
+        seen["mode"] = params.get("mode")
+        seen["value"] = params.get("value")
+        return httpx.Response(200, json={"files": [{"filename": "book.rar", "status": "finished"}]})
+
+    client = SABClient("http://downloader.sl", "sab-key", transport=httpx.MockTransport(handler))
+    files = client.get_files("SABnzbd_nzo_abc")
+    assert seen == {"mode": "get_files", "value": "SABnzbd_nzo_abc"}
+    assert files[0]["filename"] == "book.rar"
 
 
 def test_missing_key_refuses():

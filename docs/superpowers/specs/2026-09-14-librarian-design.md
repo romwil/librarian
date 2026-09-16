@@ -4,7 +4,9 @@ North-star source of truth distilled from the approved Automat plan. Implementat
 
 ## North star
 
-A household **library for readers**, not an admin grabber and not Calibre-in-a-browser. People peruse shelves, see What’s New, open a book or issue, read its metadata, download it, or add it to Favorites.
+A household **library for readers**, not an admin grabber and not Calibre-in-a-browser. The **Library** is the product: scan what’s on `/data`, enrich it, read it, then grow catalog gaps. **Find** is the quiet door after a local miss — NZBFinder, Request, SABnzbd — not a second home screen.
+
+People peruse shelves, see What’s New, open a book or issue, read its metadata, download it, or add it to Favorites.
 
 **First-tier reading:** Books, **Magazines**, **Comics** — same rank. Books are EPUB; magazines are issue folders; comics are **CBZ** (Newznab `7030`). Audiobooks and music are first-tier *listening*. Music may Promote to Plexamp. Audiobooks do not.
 
@@ -12,17 +14,17 @@ Calibre’s *features* are an advisory roadmap. Visual bar: Projectionist Explor
 
 ## Locked contracts
 
-- Retriever: SABnzbd at `http://downloader.sl`.
+- Retriever: SABnzbd at `http://downloader.sl`. Find jobs only: poll queue then history; store `nzo_id`; on Completed remap `storage` via `complete_root` and identify/organize. SAB’s Usenet filename is not the library title.
 - `/data` ← host `/mnt/user/data`. Per-media roots are Settings paths under `/data`.
 - First indexer: **NZBFinder** Newznab **v2 JSON**. Token in env/settings only. User-Agent required.
-- Music: organize into `incoming_music_root`, **Promote** → `music_root` (`/data/media/music`) for **Plexamp only**.
+- Music: organize into `incoming_music_root`, **Promote** → `music_root` (`/data/media/music`) for **Plexamp only**. Promote is that move, not a job status.
 - Audiobooks: first-class kind. Publish target `audiobook_target` default **`plex`**. Never `music_root`.
 - Comics: Newznab **`7030`**. Canonical file **CBZ**. Layout `{Series}/{Issue-or-Year}/` plus `ComicInfo.xml` + cover.
-- Gaps: owned vs expected, honest missing cards, **confirm before** SAB. Fail closed.
+- Gaps: owned vs expected, honest missing cards. **Confirm lives on Find** so SAB never fires from a shelf browse. Fail closed.
 - Auto-organize only when identify is confident. Unexpected → **Review**.
 - BYO LLM (same settings shape as Smart Map / Projectionist) may assist later. LLM never invents an ISBN.
 - Port **8793**. Never 8788 / 8790 / 8791 / 8792.
-- Auth on from first boot. Roles **owner / op / reader**. Owner seeded from Docker env. Join is invite-only.
+- Auth on from first boot. Roles **owner / op / reader**. Owner seeded from Docker env. Join is invite-only. No Plex PIN, no OIDC.
 
 ## Media layouts
 
@@ -32,8 +34,10 @@ Calibre’s *features* are an advisory roadmap. Visual bar: Projectionist Explor
 | magazine | `magazines_root` | `/data/media/magazines` | `{Title}/{Year-or-Volume}/` |
 | comic | `comics_root` | `/data/media/comics` | `{Series}/{Issue-or-Year}/{Series} #{Issue}.cbz` + ComicInfo + cover |
 | audiobook | `audiobooks_root` | `/data/media/audiobooks` | `{Author}/{Title}/` (m4b preferred) |
-| music staging | `incoming_music_root` | `/data/media/incoming-music` | `{Artist}/{Album}/{Title}.{ext}` |
+| music staging | `incoming_music_root` | `/data/media/incoming-music` | `{Artist}/{Album}/` — original filename, or `{NN} - {Title}{ext}` only with a trustworthy track tag |
 | music Plexamp | `music_root` | `/data/media/music` | same after Promote |
+
+Shared Automat `/data/media` roots and the music filename rule: [automat-media-contract.md](../../automat-media-contract.md). Do not extract a shared Python package.
 
 ### Audiobook targets
 
@@ -43,7 +47,7 @@ Calibre’s *features* are an advisory roadmap. Visual bar: Projectionist Explor
 
 Newznab cat → kind: **`7030` comic**; `7010` magazine; other `70xx` book; **`3030` audiobook**; `3010`/`3040`/`3999` music; `2000`/`5000`/`6000` refuse.
 
-Search: books form for `70xx` except comics; comics use `search` + `cat=7030`. TV/movies/XXX refused. RSS is phase 2.
+Indexer search: books form for `70xx` except comics; comics use `search` + `cat=7030`. TV/movies/XXX stay off Hall identify. RSS subscriptions (Librarian kinds only) shipped as Find extras. Extra categories may appear on Find when `show_extra_categories` is on.
 
 ## Identify / organize / Review
 
@@ -53,7 +57,7 @@ Confidence floor: ISBN + author + title (books) or series + issue (comics/mags) 
 
 Review reasons: `unknown_identity`, `low_confidence`, `unexpected_kind`, `no_payload`, `extra_files`, `convert_failed`, `collision`.
 
-Canonical files: books → EPUB; comics → CBZ; magazines → EPUB or PDF as arrived. Convert on demand later (`/config/conversions/{work_id}/`). Keep `original.*` siblings when converting.
+Canonical files: books → EPUB; comics → CBZ; magazines → EPUB or PDF as arrived. Convert on demand (`/config/conversions/{work_id}/`). Keep `original.*` siblings when converting.
 
 ## Catalog
 
@@ -63,48 +67,65 @@ Canonical files: books → EPUB; comics → CBZ; magazines → EPUB or PDF as ar
 - `works.review_state` — `none` | `needs_review` | `resolved`
 - `works.music_state` — `incoming` | `promoted`
 - Favorites = seeded personal shelf named **Favorites**
-- FTS5 on author, title, genre, description
+- FTS5 on author, title, genre, description — **Search is owned media only**
+- Scan: walk Settings roots (`books_root`, `magazines_root`, `comics_root`, `audiobooks_root`, `incoming_music_root`, `music_root`). Upsert `works` + `files` from layout + OPF/ComicInfo/tags. Idempotent; do not move files; collisions → Review. Owner “Scan the shelves” on Settings.
+
+## Household job words (Find / Queue only)
+
+Three machines share English; the UI does not. **Peek and Find chips use five words.** Keep SAB’s raw string on the Queue card’s muted line for ops (`Verifying · nzo_…`). Library pages never show job status except **On the way** if this work is still inbound.
+
+| Word | Meaning |
+| --- | --- |
+| **Asked** | Reader slip; no SAB yet |
+| **On the way** | Queued, downloading, extracting, or identifying |
+| **Arrived** | Organized; the work exists |
+| **Needs you** | Review |
+| **Failed** | SAB or identify failed |
+
+**Finished** is reading progress, not a job terminal. **Promote** moves incoming music to `music_root`. **organized** is a job terminal, not a shelf label.
 
 ## Gaps
 
-| Kind | Expected set | Local v1 |
-| --- | --- | --- |
-| magazine | issue calendar | `YYYY-MM` holes between owned min/max |
-| comic | issue list | integer holes between owned min/max |
-| book / audiobook / music | series / parts / discography | later (Open Library, Audnexus, MusicBrainz) |
+Hall **Gaps** rail stays Library (honest missing cards). **Confirm** lives on Find.
 
-UI: Gaps rail on The Hall (op/owner). Confirm chip queues NZBFinder (`cat=7030` for comics).
+| Kind | Expected set | Local holes | Remote catalogs (shipped) |
+| --- | --- | --- | --- |
+| magazine | issue calendar | `YYYY-MM` holes between owned min/max | — |
+| comic | issue list | integer holes between owned min/max | Comic Vine (or Hardcover comics if the token covers it) |
+| book / audiobook | series / parts | local completeness where we have it | Open Library + Hardcover series |
+| music | discography / tracks | track-number holes | MusicBrainz discography |
 
 ## UX: the Reading Room
 
 Projectionist *structures* (hero, peek drawer, cover rails) with a different soul. Visual handoff: [docs/ux/reading-room.md](../../ux/reading-room.md).
 
 - **Foyer:** dust in a lamp shaft, spine silhouettes, unfinished page-turn. `/login` and `/join?token=` share it. Invite role is a quiet seal. `prefers-reduced-motion` = still.
-- **The Hall:** land here. Hero search. Rails: Continue, What’s New, Favorites, by area, Gaps.
-- **One search:** local FTS first, then Beyond the shelves. Peek then full page `/works/:id`. Reader Request is an asked slip.
-- **Peek:** centered modal, Hall scroll stays put, Esc/scrim returns focus. ⌘-click keeps peek and opens a tab.
-- Chrome: lamp mark, Hall, Search; Review is an op/owner bag. Mobile bottom bar Hall / Search / Favorites / You.
+- **The Hall:** land here. Hero search (search the stacks, not “then the world”). Rails: Continue, What’s New, Favorites, by area, Gaps.
+- **Search (`/search?q=`):** local shelves only (FTS + kind chips). Peek, Open, Favorite. No Beyond rail, no Request, no SAB chips. `/search` never auto-fires Beyond.
+- **Find (not a nav tab):** After local results — including zero hits — **Find beyond the shelves** opens `/find?q=…&kind=…` (plus kind-appropriate fields). Find prepopulates that query and **runs Beyond immediately**. Find owns NZBFinder, Request, living job chips (five words), Gaps **confirm**, Queue, Review bag. Empty Find (`/find` without a query) is **Discover** — trending indexer category feeds, not a second Hall, not auto-SAB. Hall Gaps **Find this hole** deep-links the same way.
+- **Peek:** centered modal, Hall scroll stays put, Esc/scrim returns focus. ⌘-click keeps peek and opens a tab. Work/peek: Incoming / Review chips; media note when there is no file; Open/Download only when files exist; hide **Finished** on music.
+- Chrome: lamp mark, **Hall / Search / Favorites / You**. Find is not a top-level tab. Queue and Review stay op links (or Find sub-pages). Settings, People, invites stay owner chrome.
 
 ## Household auth
 
-Copy the secure parts of Projectionist invites; skip Plex PIN / OIDC in v1.
+Copy the secure parts of Projectionist invites; skip Plex PIN / OIDC in v1 and keep them **later / out**. Hardcover is a settings token (never committed), not a login provider.
 
 See [SECURITY.md](../../SECURITY.md). One owner. Last owner cannot be demoted. Public handshake is exhaustive.
 
-## OSS stack (when those phases start)
+## OSS stack
 
-- Read: **foliate-js** + optional StPageFlip on already-paginated spreads. Not v1.
-- Listen: HTML5 audio + Media Session; **music-metadata** / mutagen for chapters. Dest remains Plex/ABS.
-- Metadata: isbnlib, Open Library, MusicBrainz, ebooklib, calibre `ebook-convert` later.
+- Read: **foliate-js** for EPUB; CBZ via `comic-book.js`. Open on the work page when `can_download` and kind is book/magazine/comic. Not Calibre-web. Shipped.
+- Listen: HTML5 audio + Media Session; **music-metadata** / mutagen for chapters. Dest remains Plex/ABS. Phase 2b still owns in-app audiobook playback.
+- Metadata: isbnlib, Open Library, **Hardcover** (live token in settings), MusicBrainz, ebooklib, calibre `ebook-convert` when present. **Goodreads CSV / shelf export** import onto Favorites, matched by ISBN — not live Goodreads OAuth (the public API is effectively dead).
 - Do not vendor Calibre-web, Kavita, or Audiobookshelf as the product.
 
 ## Phased roadmap
 
-- **v1 (this repo):** kit + auth + NZBFinder + SAB + identify/organize + Review + local gaps + Reading Room SPA + Automat `docker-run.sh`
-- **Phase 2:** external gap catalogs, in-browser reader (foliate-js including CBZ), covers, RSS, more Newznab hosts, ABS API match
+- **v1 (this repo):** kit + auth + NZBFinder + SAB + identify/organize + Review + local gaps + Reading Room SPA + Automat `docker-run.sh`.
+- **Library first (landed):** scan `/data` roots; enrich (Open Library + Hardcover; Goodreads CSV); in-browser reader (foliate-js EPUB + CBZ); catalog gaps (Hardcover/OL, Comic Vine, MusicBrainz); Find extras (RSS, extra Newznab hosts, Audiobookshelf match); Search = local only; Find = post-search Beyond + Discover; five household job words.
 - **Phase 2b:** in-app audiobook player or deep-link to Plex/ABS
-- **Later:** OIDC / Plex sign-in, Goodreads/Hardcover
-- **Out of v1:** Goodreads, built-in reader, Hub publish, NZBGet, Plex/OIDC login, genre enrichment if slow
+- **Later / out:** OIDC / Plex sign-in. Hub publish. Shared Python package only if reuse is proven. Shared grab/traffic service only if two apps emit the same envelope. NZBGet, Calibre-web skin.
+- **Out of v1:** Hub publish, NZBGet, Plex/OIDC login, Movies/TV/XXX as Hall kinds, Goodreads live OAuth, genre enrichment if slow. (Scan, Hardcover/Goodreads CSV, and the built-in reader shipped in Library first.)
 
 ## Automat contract
 

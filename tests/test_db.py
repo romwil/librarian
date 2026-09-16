@@ -17,6 +17,9 @@ def test_fts_exact_titles(tmp_path):
     assert [row["title"] for row in hits] == ["Dune"]
     empty = db.search_works("zzz-no-such")
     assert empty == []
+    db.upsert_work({"kind": "music", "title": "Dune Soundtrack", "author": "Zimmer", "music_state": "incoming"})
+    assert [row["kind"] for row in db.search_works("Dune", kind="music")] == ["music"]
+    assert [row["title"] for row in db.search_works("Dune", kind="book")] == ["Dune"]
 
 
 def test_favorites_are_user_scoped(tmp_path):
@@ -36,6 +39,7 @@ def test_favorites_are_user_scoped(tmp_path):
     work = db.upsert_work({"kind": "comic", "title": "Saga #1", "series_name": "Saga", "series_index": "1"})
     assert db.toggle_favorite(owner["id"], work["id"]) is True
     assert db.is_favorite(owner["id"], work["id"]) is True
+    assert db.add_favorite(owner["id"], work["id"]) is False
     assert db.is_favorite(reader["id"], work["id"]) is False
     assert [row["title"] for row in db.favorite_works(owner["id"])] == ["Saga #1"]
     assert db.favorite_works(reader["id"]) == []

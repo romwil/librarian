@@ -9,6 +9,7 @@ import LoginPage from "./pages/LoginPage.jsx";
 import PeoplePage from "./pages/PeoplePage.jsx";
 import QueuePage from "./pages/QueuePage.jsx";
 import ReviewPage from "./pages/ReviewPage.jsx";
+import FindPage from "./pages/FindPage.jsx";
 import SearchPage from "./pages/SearchPage.jsx";
 import SettingsPage from "./pages/SettingsPage.jsx";
 import WorkPage from "./pages/WorkPage.jsx";
@@ -24,6 +25,7 @@ createRoot(document.getElementById("root")).render(
           <Route path="/" element={<App />}>
             <Route index element={<HallPage />} />
             <Route path="search" element={<SearchPage />} />
+            <Route path="find" element={<FindPage />} />
             <Route path="works/:id" element={<WorkPage />} />
             <Route path="review" element={<ReviewPage />} />
             <Route path="queue" element={<QueuePage />} />

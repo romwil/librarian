@@ -20,10 +20,13 @@ const INDEXER_COPY = [
   [/api_token is not configured/i, "Beyond the shelves needs an NZBFinder token in Settings."],
   [/invalid or missing api_token/i, "The indexer token was refused. Check NZBFinder in Settings."],
   [/returned html/i, "The indexer URL looks wrong — it sent a web page, not search results."],
-  [/xml newznab/i, "This indexer answered in the old XML dialect. Librarian needs NZBFinder v2 JSON."],
+  [/xml newznab/i, "This indexer answered in the old XML dialect. Librarian needs Newznab v2 JSON."],
   [/returned non-json/i, "The indexer answered in a format we could not read. Try again in a moment."],
+  [/^(?!.*sabnzbd).*http 5\d\d/i, "One indexer is having a moment. Other hits may still be below."],
   [/nzbfinder http 5/i, "The indexer is having a moment. Try again shortly."],
   [/nzbfinder/i, "Could not reach Beyond the shelves. Check the indexer in Settings."],
+  [/radarr is not configured/i, "Radarr needs its URL and key in Settings before a movie can be expected."],
+  [/sonarr is not configured/i, "Sonarr needs its URL and key in Settings before a show can be expected."],
 ];
 
 const SAB_COPY = [
@@ -54,7 +57,20 @@ export const FIELD_HELP = {
   llm_base_url: "Optional. BYO OpenAI-compatible endpoint for identify help.",
   llm_api_key: "Optional. Never invents an ISBN; only assists Review.",
   llm_model: "Optional model name for identify.",
+  hardcover_api_token: "Optional Hardcover GraphQL token. Fills thin books and series gaps; stays on this host.",
+  comicvine_api_key: "Optional Comic Vine key. Fills comic issue lists beyond local holes. Stays on this host.",
+  extra_indexers: "Additional Newznab v2 hosts. NZBFinder stays the first indexer. Tokens stay on this host.",
+  extra_indexer_url: "Base URL for another Newznab v2 JSON host. Same shape as NZBFinder.",
+  extra_indexer_token: "API token for this extra host. Masked after save.",
+  rss_url: "A Newznab RSS URL for this kind. New items wait as Asked slips — confirm on Queue before SAB.",
+  rss_kind: "What this feed is for. TV, movies, and XXX are refused even if the feed includes them.",
+  audiobookshelf_url: "Optional Audiobookshelf base URL. Match only — it does not replace Plex as the default listening target.",
+  audiobookshelf_api_token: "Optional Audiobookshelf API token. Masked after save. Never sent to the music library.",
+  goodreads_csv: "Goodreads export CSV. Matched by ISBN onto Favorites — no live Goodreads login.",
   household_name: "Shown quietly in the chrome. The Hall still says The Hall.",
+  watch_root: "A drop folder under /data. New top-level files and folders are identified like Add to the shelves. Not a library root, and not SAB’s complete folder.",
+  watch_enabled: "When on, Librarian checks the drop folder on the same interval as the downloader.",
+  ingest_path: "A folder or file under /data that this process can read. Not a browser upload of your whole library.",
   reviewKind: "Which shelf this item belongs on.",
   reviewTitle: "The name that will appear on the cover and in search.",
   reviewAuthor: "Author, artist, or magazine title as the byline.",
@@ -62,19 +78,39 @@ export const FIELD_HELP = {
   reviewSeries: "Series or magazine name, if this is an issue in a run.",
   reviewIndex: "Issue number, YYYY-MM for magazines, or disc/part index.",
   reviewFolder: "Folder this process can read. On Unraid, /downloads may need complete root remapped.",
-  searchKind: "Narrows both the local stacks and Beyond the shelves.",
+  searchKind: "Narrows the local stacks.",
+  findKind: "Picks the indexer form: books and magazines use title/author/ISBN; comics use series and issue; music uses artist and album.",
   searchAuthor: "Folded into the same search box — not a second app.",
   searchTitle: "Folded into the same search box.",
-  searchIsbn: "Digits help the stacks find a specific edition.",
+  searchIsbn: "Digits help the stacks find a specific edition. Librarian never invents one.",
   searchSeries: "Series name, then issues can match locally or beyond.",
+  searchIssue: "Issue number, or YYYY-MM for a magazine hole.",
+  searchArtist: "Recording artist. Not an ISBN.",
+  searchAlbum: "Album name as you want it on the shelf — not the Usenet dump name.",
   searchYear: "Publication year, if you know it.",
+  show_extra_categories:
+    "When on, Find can peruse Movies, TV, and XXX feeds the indexer actually lists. They do not land on The Hall.",
+  radarr_url: "Radarr base URL. Movies go to the downloader category Radarr watches, then Radarr is told to expect them.",
+  radarr_api_key: "Radarr API key. Masked after save. Never invents a TMDB id.",
+  sonarr_url: "Sonarr base URL. TV goes to the downloader category Sonarr watches, then Sonarr is told to expect it.",
+  sonarr_api_key: "Sonarr API key. Masked after save.",
+  sab_movie_category: "SABnzbd category Radarr watches. Default movies.",
+  sab_tv_category: "SABnzbd category Sonarr watches. Default tv.",
 };
+
+export const FIND_BEYOND_CTA = "Find beyond the shelves";
+
+export const ADD_TO_LIBRARY_LEDE =
+  "Point at a folder or file the house can see under /data. If Librarian is sure, it files the volume. If not, it waits in Review.";
+
+export const WATCH_FOLDER_LEDE =
+  "A drop folder. New top-level files and folders are identified the same way. Not a library root, and not SAB’s complete folder.";
 
 export function emptyHallCopy({ owner = false, configured = false } = {}) {
   if (configured) {
     return {
       title: "The shelves are still bare",
-      lede: "Request a volume from Search, or wait for the first organize to land.",
+      lede: "Find a volume beyond the shelves, or wait for the first organize to land.",
     };
   }
   return {
@@ -85,23 +121,58 @@ export function emptyHallCopy({ owner = false, configured = false } = {}) {
   };
 }
 
+export function peekMediaNote(work, { canDownload = false, ready = true } = {}) {
+  if (!ready || canDownload || !work?.id) return "";
+  if (work.review_reason === "no_payload" || work.review_state === "needs_review") {
+    return "Still in Review — there isn’t a file to open yet.";
+  }
+  return "This volume isn’t on the shelf as a file yet.";
+}
+
+export function canPromoteIncomingMusic(work, role) {
+  return (role === "owner" || role === "op") && work?.kind === "music" && work?.music_state === "incoming";
+}
+
 export function emptyReviewCopy() {
   return "The bagging area is empty. Happy-path books never stop here.";
 }
 
 export function emptyQueueCopy() {
-  return "Nothing in flight. Living chips live on Search cards; this list is for asked slips and SAB exceptions.";
+  return "Nothing in flight. Living chips live on Find cards; this list is for asked slips, SAB jobs, and volumes being filed.";
 }
 
-export function searchStatusLine({ q = "", kind = "", localCount = 0, beyondCount = 0, phase = "idle" } = {}) {
+export function searchStatusLine({ q = "", kind = "", localCount = 0, phase = "idle" } = {}) {
   const query = String(q || "").trim();
   if (!query) return "Type a title, author, ISBN, or series.";
   const kindBit = kind ? ` · ${kind}` : "";
   const head = `searched ${query}${kindBit}`;
   if (phase === "local") return `${head} · looking on the shelves…`;
-  if (phase === "beyond") return `${head} · ${localCount} on shelves · looking beyond…`;
-  if (phase === "beyond_error") return `${head} · ${localCount} on shelves · beyond could not be reached`;
-  return `${head} · ${localCount} on shelves · ${beyondCount} beyond`;
+  if (phase === "error") return `${head} · the shelves could not be searched`;
+  return `${head} · ${localCount} on shelves`;
+}
+
+export function findStatusLine({ q = "", kind = "", beyondCount = 0, phase = "idle" } = {}) {
+  const query = String(q || "").trim();
+  if (!query) return "Peruse trending on the indexers, or name a title to find.";
+  const kindBit = kind ? ` · ${kind}` : "";
+  const head = `finding ${query}${kindBit}`;
+  if (phase === "beyond") return `${head} · looking beyond…`;
+  if (phase === "beyond_error") return `${head} · beyond could not be reached`;
+  return `${head} · ${beyondCount} beyond`;
+}
+
+export function discoverStatusLine({ kind = "", phase = "idle", count = 0 } = {}) {
+  if (phase === "loading") return "Looking at what’s new on the indexers…";
+  if (phase === "error" && !count) return "The indexers are quiet. The note above explains why.";
+  if (!count) return "Nothing trending in this category right now.";
+  return kind ? `Trending ${kind} · ${count}` : `Trending on the indexers · ${count}`;
+}
+
+export function discoverKindNote(kind = "") {
+  if (kind === "movie") return "Movies go to the downloader, then Radarr — not The Hall.";
+  if (kind === "tv") return "TV goes to the downloader, then Sonarr — not The Hall.";
+  if (kind === "xxx") return "These go to the default download folder. Not The Hall, and not *arr.";
+  return "Trending on the indexers";
 }
 
 export function detailText(detail) {

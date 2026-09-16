@@ -8,8 +8,8 @@ A household **library for readers** on Automat — books, magazines, comics (CBZ
 
 | Role | Can |
 | --- | --- |
-| **owner** | Everything: Settings, indexers, SAB/LLM, people, invites, Review, gaps, queue, promote music |
-| **op** | Invite readers; edit / Review / confirm gaps / queue downloads |
+| **owner** | Everything: Settings, indexers, SAB/LLM/Hardcover, Goodreads CSV, scan, add-to-library / watch folder, people, invites, Review, gaps, queue, promote music |
+| **op** | Invite readers; edit / Review / confirm gaps / queue downloads; add a volume already on disk |
 | **reader** | The Hall, local search, Favorites, download. Beyond-the-shelves **Request** files an “asked the house” slip (no SAB) |
 
 Auth is on from first boot. The owner is seeded from Docker/env. New humans join only via HMAC invite.

@@ -45,6 +45,8 @@ def test_reader_forbidden_on_settings_and_invite_op(tmp_path, monkeypatch):
     assert redeemed.status_code == 200
     assert client.get("/api/settings").status_code == 403
     assert client.put("/api/settings", json={"household_name": "Nope"}).status_code == 403
+    assert client.post("/api/settings/scan").status_code == 403
+    assert client.post("/api/settings/enrich").status_code == 403
     assert client.post("/api/invites", json={"role": "reader"}).status_code == 403
     assert client.get("/api/people").status_code == 403
 

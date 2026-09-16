@@ -6,6 +6,7 @@ Plan: [librarian_automat_rss](file:///Users/willrompala/.cursor/plans/librarian_
 
 ## Shipped
 
+- **2026-09-15** — Automat media contract (`docs/automat-media-contract.md`): shared `/data/media` roots with Smart Map; music `{Artist}/{Album}/` keeps the original filename unless a trustworthy track tag exists (`NN - Title.ext`). Audiobooks never `music_root`.
 - **2026-09-14** `d79591b` — First tree: FastAPI + Vite kit on **8793**, SQLite WAL, settings.json wins, AGENTS/CHANGELOG/DOCKER/TESTING/SECURITY/HELP/design spec. `.gitignore` blocks `smart.map` / `projectionist` copies. `.env.example` has empty SAB/NZBFinder placeholders only.
 - **2026-09-14** — Auth: owner/op/reader, `seed_env_owner`, HMAC invites (hash at rest, fail-closed parse, one-tx redeem), exhaustive public handshake, session secret refuse-default.
 - **2026-09-14** — NZBFinder v2 JSON client (caps/search/books/details/download URL, User-Agent + `api_token`) with token-stripped fixture. TV/movies/XXX dropped.
@@ -31,11 +32,27 @@ Plan: [librarian_automat_rss](file:///Users/willrompala/.cursor/plans/librarian_
 - **2026-09-14** — Convert: `pdf_to_cbz` unlinks leftover pdftoppm JPEGs in a `finally` if rasterize succeeds but zip/convert fails.
 - **2026-09-15** — Review: identify form (title/author/ISBN/kind/folder) always shown; `no_payload` is missing files at SAB storage (often `/downloads` on Unraid vs laptop). Apply uses identity; 400 if still no files. Optional `complete_root` remaps `/downloads`.
 - **2026-09-15** — Reading Room UX pass: kind-skinned covers (book/magazine/comic/audiobook/music), clamped gilt overlay, search status + beyond callout, `?` field help, Settings four-step wizard, Review bagging tickets. Hall stays open while configured.
+- **2026-09-15** — Enrich: Hardcover GraphQL then Open Library fill thin books (description/series/year/cover). Goodreads CSV import matches ISBN onto Favorites; missing ISBNs create thin works. LLM still never invents an ISBN. Token `hardcover_api_token` in settings only.
+- **2026-09-15** — Catalog gaps: Hardcover then Open Library series volumes; Comic Vine issue lists (masked `comicvine_api_key`; Hardcover has no issue catalog); MusicBrainz release tracks (User-Agent + 1.1s pacing). Magazines stay local `YYYY-MM`. Hall Gaps open Find; SAB never queues from a shelf browse.
+- **2026-09-15** — Find extras: extra Newznab v2 hosts (fail closed per host, merge by guid); RSS subscriptions become Asked slips (TV/movies/XXX refused for Librarian-kind feeds); Audiobookshelf HTTP match by ISBN then author+title. SAB stays the retriever. Search stays local.
+- **2026-09-15** — Ingest: owner/op Add to the shelves (`/data` browse + paste) and Watch folder. Confident identify moves into the Settings root; unexpected → Review. Scan still does not move files. No browser OS file picker, no inotify.
+- **2026-09-15** — Search / Find split: Search is local FTS only (Hall hero + `/search`; Peek / Open / Favorite). **Find beyond the shelves** opens `/find` with `q`/kind and kind-appropriate fields, then Beyond. Find is not a nav tab. Five job words: Asked / On the way / Arrived / Needs you / Failed. SAB raw stays on Queue detail. Job payload sought / selected / retrieved — catalog title is what was asked.
+- **2026-09-15** — Scan the shelves: owner Settings walks `/data` roots into works+files. Idempotent. Does not move files. Collisions → Review. Separate from ingest/watch, which may move when identify is confident.
+- **2026-09-15** — In-browser reader: foliate-js EPUB + CBZ `comic-book.js` (and PDF) on `can_download` book/magazine/comic. Open on the work page; peek Open deep-links `?read=1`. Not Calibre-web. Audiobooks/music stay out (Phase 2b).
+- **2026-09-15** — Work/peek honesty: Incoming / Review chips, media note when there is no file, hide Finished on music. Continue bookmarks; Finished is reading progress, not a job word.
+- **2026-09-15** — Discover: empty Find shows trending indexer category feeds from capabilities (v2 search or `/rss?t=`). Not a second Hall, not auto-SAB, no HTML scrape. Owner `show_extra_categories` (default off) adds Movies/TV/XXX — SAB then Radarr/Sonarr for movies/TV, SAB folder only for XXX; no arr token still queues SAB and chips Needs you. Never Hall works.
+- **2026-09-15** — Docker layer cache: npm ci / pip extras before source. `docker-run.sh` passes HARDCOVER, COMICVINE, ABS, SHOW_EXTRA_CATEGORIES, RADARR/SONARR, SAB_MOVIE/TV_CATEGORY, COMPLETE_ROOT. Does not wipe `./config`.
+- **2026-09-15** — Identify: tags, album vs single track, Automat media contract `{Artist}/{Album}/` keeps the original filename unless a trustworthy track tag exists (`NN - Title.ext`). Audiobooks never `music_root`. Honest SAB `complete_root` remap and fail/unpack reasons.
 
-## In progress / next
+## Next / later
 
-- [x] Private `romwil/librarian` exists (`https://github.com/romwil/librarian`)
-- [x] Automat `docker-run.sh` health smoke — `86ac87f` on `:8793`, `/config`+`/data` mounted
-- [x] Browser QA: Automat foyer (`data-testid=foyer`, lamp shaft, page-turn, dust). Local Hall: Continue empty copy, Dune cover opens peek without leaving `/`; Esc dismisses peek.
-- [x] Rebuild Automat image to current `main` (`1d7f18a`)
-- [ ] Hub `romwil/librarian` (later)
+Library-first Phase 2 is landed. Do not list scan, Search/Find, job chips, Discover, ingest, or the reader here.
+
+- Hub `romwil/librarian` published (later; `rollout.sh` stays a stub)
+- In-app audiobook player or deep-link to Plex/ABS (Phase 2b)
+- Shared Python package with Smart Map — **only if** mutagen + filename agreement proves high reuse; contract first
+- Shared JSON+NZB grab/traffic service (fourth container) — **only if** two apps actually emit the same envelope; until then each app keeps its own indexer/SAB/arr client
+- OIDC / Plex sign-in (not v1, not Phase 2)
+- Blue sky: OPDS 2, highlights, TTS, barcode Review, offline PWA, kid shelf
+
+Personalized recs and HTML scrape of indexer Discover stay skipped on purpose.
