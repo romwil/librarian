@@ -141,9 +141,18 @@ export function emptyQueueCopy() {
   return "Nothing in flight. Living chips live on Find cards; this list is for asked slips, SAB jobs, and volumes being filed.";
 }
 
+export function searchIdleHint(kind = "") {
+  if (kind === "comic") return "Type a series or issue.";
+  if (kind === "music") return "Type an artist or album.";
+  if (kind === "audiobook") return "Type a title or author.";
+  if (kind === "magazine") return "Type a magazine title, author, or ISBN.";
+  if (kind === "book") return "Type a title, author, or ISBN.";
+  return "Type a title, author, ISBN, or series.";
+}
+
 export function searchStatusLine({ q = "", kind = "", localCount = 0, phase = "idle" } = {}) {
   const query = String(q || "").trim();
-  if (!query) return "Type a title, author, ISBN, or series.";
+  if (!query) return searchIdleHint(kind);
   const kindBit = kind ? ` · ${kind}` : "";
   const head = `searched ${query}${kindBit}`;
   if (phase === "local") return `${head} · looking on the shelves…`;

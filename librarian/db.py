@@ -9,7 +9,7 @@ import threading
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 SQLITE_BUSY_TIMEOUT_MS = 30000
 FAVORITES_SHELF = "Favorites"
@@ -675,6 +675,115 @@ class Database:
                 (kind,),
             ).fetchall()
         return [str(row["series_name"]) for row in rows if row["series_name"]]
+
+    def suggest_values(
+        self,
+        *,
+        field: str,
+        kind: str = "",
+        q: str = "",
+        limit: int = 24,
+    ) -> List[str]:
+        """Distinct catalog values for typeahead. Artist→author (music); album→title∪series."""
+        key = str(field or "").strip().lower()
+        kind_key = str(kind or "").strip().lower()
+        needle = re.sub(r"\s+", " ", str(q or "")).strip()
+        capped = max(1, min(int(limit or 24), 200))
+        like = f"%{needle.casefold()}%" if needle else None
+
+        bookish = ("book", "magazine", "audiobook")
+        if key == "author":
+            column = "author"
+            kinds: Optional[Tuple[str, ...]] = (kind_key,) if kind_key in bookish else bookish
+            if kind_key == "music":
+                kinds = ("music",)
+        elif key == "artist":
+            column = "author"
+            kinds = ("music",)
+        elif key == "title":
+            column = "title"
+            kinds = (kind_key,) if kind_key else None
+        elif key == "series":
+            column = "series_name"
+            kinds = (kind_key,) if kind_key else None
+        elif key == "album":
+            return self._suggest_albums(like=like, limit=capped)
+        elif key == "year":
+            return self._suggest_years(kind=kind_key, needle=needle, limit=capped)
+        else:
+            return []
+
+        clauses = [
+            f"{column} IS NOT NULL",
+            f"trim({column}) != ''",
+            "review_state != 'needs_review'",
+        ]
+        args: List[Any] = []
+        if kinds is not None:
+            placeholders = ", ".join("?" for _ in kinds)
+            clauses.append(f"kind IN ({placeholders})")
+            args.extend(kinds)
+        if like is not None:
+            clauses.append(f"lower({column}) LIKE ?")
+            args.append(like)
+        args.append(capped)
+        sql = (
+            f"SELECT DISTINCT {column} AS value FROM works "
+            f"WHERE {' AND '.join(clauses)} "
+            f"ORDER BY {column} COLLATE NOCASE LIMIT ?"
+        )
+        with self._connect() as conn:
+            rows = conn.execute(sql, args).fetchall()
+        return [str(row["value"]).strip() for row in rows if row["value"] and str(row["value"]).strip()]
+
+    def _suggest_albums(self, *, like: Optional[str], limit: int) -> List[str]:
+        clauses = ["kind = 'music'", "review_state != 'needs_review'"]
+        args: List[Any] = []
+        title_clause = "title IS NOT NULL AND trim(title) != ''"
+        series_clause = "series_name IS NOT NULL AND trim(series_name) != ''"
+        if like is not None:
+            title_clause += " AND lower(title) LIKE ?"
+            series_clause += " AND lower(series_name) LIKE ?"
+            args.extend([like, like])
+        args.append(limit)
+        sql = f"""
+            SELECT value FROM (
+                SELECT DISTINCT title AS value FROM works
+                WHERE {' AND '.join(clauses)} AND ({title_clause})
+                UNION
+                SELECT DISTINCT series_name AS value FROM works
+                WHERE {' AND '.join(clauses)} AND ({series_clause})
+            )
+            ORDER BY value COLLATE NOCASE
+            LIMIT ?
+        """
+        with self._connect() as conn:
+            rows = conn.execute(sql, args).fetchall()
+        return [str(row["value"]).strip() for row in rows if row["value"] and str(row["value"]).strip()]
+
+    def _suggest_years(self, *, kind: str, needle: str, limit: int) -> List[str]:
+        clauses = ["year IS NOT NULL", "review_state != 'needs_review'"]
+        args: List[Any] = []
+        if kind:
+            clauses.append("kind = ?")
+            args.append(kind)
+        if needle:
+            clauses.append("CAST(year AS TEXT) LIKE ?")
+            args.append(f"%{needle}%")
+        args.append(limit)
+        sql = (
+            f"SELECT DISTINCT year FROM works WHERE {' AND '.join(clauses)} "
+            f"ORDER BY year DESC LIMIT ?"
+        )
+        with self._connect() as conn:
+            rows = conn.execute(sql, args).fetchall()
+        out: List[str] = []
+        for row in rows:
+            year = row["year"]
+            if year is None:
+                continue
+            out.append(str(int(year)))
+        return out
 
     def files_named_for_kind(self, kind: str) -> List[Dict[str, Any]]:
         with self._connect() as conn:

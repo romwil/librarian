@@ -72,4 +72,55 @@ describe("QueryForm kinds", () => {
     );
     assert.equal(html.includes('value="movie"'), false);
   });
+
+  it("morphs Search advanced fields with the kind chip", async () => {
+    const QueryForm = await loadQueryForm();
+    const music = renderForm(QueryForm, { variant: "search", kind: "music" });
+    assert.match(music, /data-testid="search-advanced"/);
+    assert.match(music, /data-kind="music"/);
+    assert.match(music, />Artist</);
+    assert.match(music, />Album</);
+    assert.match(music, />Year</);
+    assert.match(music, /role="combobox"/);
+    assert.equal(music.includes(">ISBN<"), false);
+    assert.equal(music.includes(">Author<"), false);
+    assert.equal(music.includes(">Series<"), false);
+    assert.match(music, />Advanced</);
+    assert.equal(music.includes("same page"), false);
+
+    const comic = renderForm(QueryForm, { variant: "search", kind: "comic" });
+    assert.match(comic, /data-kind="comic"/);
+    assert.match(comic, />Series</);
+    assert.match(comic, />Issue</);
+    assert.equal(comic.includes(">ISBN<"), false);
+    assert.equal(comic.includes(">Artist<"), false);
+
+    const book = renderForm(QueryForm, { variant: "search", kind: "book" });
+    assert.match(book, />Title</);
+    assert.match(book, />Author</);
+    assert.match(book, />ISBN</);
+    assert.equal(book.includes(">Artist<"), false);
+
+    const audio = renderForm(QueryForm, { variant: "search", kind: "audiobook" });
+    assert.match(audio, />Title</);
+    assert.match(audio, />Author</);
+    assert.equal(audio.includes(">ISBN<"), false);
+    assert.equal(audio.includes(">Album<"), false);
+
+    const all = renderForm(QueryForm, { variant: "search", kind: "" });
+    assert.match(all, /data-kind="all"/);
+    assert.equal(all.includes(">ISBN<"), false);
+    assert.equal(all.includes(">Artist<"), false);
+  });
+
+  it("morphs Find fields the same way without the Advanced shell", async () => {
+    const QueryForm = await loadQueryForm();
+    const music = renderForm(QueryForm, { variant: "find", kind: "music" });
+    assert.match(music, /data-testid="find-fields"/);
+    assert.match(music, /data-kind="music"/);
+    assert.match(music, />Artist</);
+    assert.match(music, />Album</);
+    assert.equal(music.includes("search-advanced"), false);
+    assert.equal(music.includes(">ISBN<"), false);
+  });
 });

@@ -21,7 +21,7 @@ export const FIND_FIELDS_BY_KIND = {
   magazine: ["title", "author", "isbn", "year"],
   comic: ["series", "issue", "year"],
   music: ["artist", "album", "year"],
-  audiobook: ["title", "author", "isbn", "year"],
+  audiobook: ["title", "author"],
   movie: ["title", "year"],
   tv: ["title", "year"],
   xxx: ["title", "year"],

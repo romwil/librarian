@@ -171,6 +171,7 @@ Sequence (history): scan → enrich/Hardcover → reader → catalog gaps → RS
 - [x] **Catalog gaps:** Hardcover/OL series, Comic Vine, MusicBrainz; Hall Gaps stay Library; confirm only in Find
 - [x] **Find extras:** RSS subscriptions, additional Newznab hosts, Audiobookshelf API match (SAB client stays)
 - [x] Search / Find split + household job words + Discover + optional extra categories
+- [x] Advanced Search/Find typeahead (`GET /api/suggest` catalog-first; owner **Refresh suggestions from shelves**)
 
 ### Phase 2b
 
@@ -179,6 +180,7 @@ Sequence (history): scan → enrich/Hardcover → reader → catalog gaps → RS
 ### Later
 
 - [ ] Hub `romwil/librarian` published
+- [ ] Full MusicBrainz / Open Library dumps for typeahead (v1 is catalog + optional bounded MB from owned artists)
 - [ ] OIDC / Plex sign-in (not v1, not Phase 2)
 - [ ] Shared Python package with Smart Map: **contract first**; thin shared lib only if mutagen + filename agreement proves high reuse
 - [ ] Shared JSON+NZB **grab/traffic service** (fourth Automat container): too much now. Worthwhile as a **future refactor if two apps actually emit the same envelope** (Librarian extras + Projectionist). Until then each app keeps its own indexer/SAB/arr client

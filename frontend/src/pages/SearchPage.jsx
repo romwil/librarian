@@ -4,21 +4,22 @@ import { api } from "../api.js";
 import QueryForm from "../components/QueryForm.jsx";
 import Rail from "../components/Rail.jsx";
 import { FIND_BEYOND_CTA, FIELD_HELP, humanError, searchStatusLine } from "../copy.js";
-import { buildFindSearchParams, composeSearchQuery, findFieldsFromSearchParams, findHref } from "../find.js";
+import {
+  buildFindSearchParams,
+  composeSearchQuery,
+  emptyFindFields,
+  findFieldsFromSearchParams,
+  findHref,
+  pruneFieldsForKind,
+} from "../find.js";
 
 function fieldsFromState(draft, kind, advanced) {
-  return {
+  return pruneFieldsForKind(kind, {
+    ...emptyFindFields(),
+    ...advanced,
     q: draft,
     kind,
-    author: advanced.author,
-    title: advanced.title,
-    isbn: advanced.isbn,
-    series: advanced.series,
-    year: advanced.year,
-    issue: advanced.issue,
-    artist: advanced.artist,
-    album: advanced.album,
-  };
+  });
 }
 
 export default function SearchPage() {
@@ -28,33 +29,16 @@ export default function SearchPage() {
   const composed = composeSearchQuery(fields);
   const [draft, setDraft] = useState(fields.q);
   const [kind, setKind] = useState(fields.kind);
-  const [advanced, setAdvanced] = useState({
-    author: fields.author,
-    title: fields.title,
-    isbn: fields.isbn,
-    series: fields.series,
-    year: fields.year,
-    issue: fields.issue,
-    artist: fields.artist,
-    album: fields.album,
-  });
+  const [advanced, setAdvanced] = useState(() => fieldsFromState(fields.q, fields.kind, fields));
   const [result, setResult] = useState({ local: [] });
   const [phase, setPhase] = useState("idle");
   const [error, setError] = useState("");
 
   useEffect(() => {
-    setDraft(fields.q);
-    setKind(fields.kind);
-    setAdvanced({
-      author: fields.author,
-      title: fields.title,
-      isbn: fields.isbn,
-      series: fields.series,
-      year: fields.year,
-      issue: fields.issue,
-      artist: fields.artist,
-      album: fields.album,
-    });
+    const next = fieldsFromState(fields.q, fields.kind, fields);
+    setDraft(next.q);
+    setKind(next.kind);
+    setAdvanced(next);
   }, [fields.q, fields.kind, fields.author, fields.title, fields.isbn, fields.series, fields.year, fields.issue, fields.artist, fields.album]);
 
   useEffect(() => {
@@ -84,19 +68,25 @@ export default function SearchPage() {
     };
   }, [composed, fields.kind]);
 
-  function commitSearch(nextKind = kind) {
-    setKind(nextKind);
-    setParams(Object.fromEntries(buildFindSearchParams(fieldsFromState(draft, nextKind, advanced))));
+  function commitSearch(nextKind = kind, nextAdvanced = advanced) {
+    const next = fieldsFromState(draft, nextKind, nextAdvanced);
+    setKind(next.kind);
+    setAdvanced(next);
+    setParams(Object.fromEntries(buildFindSearchParams(next)));
   }
 
   function onKindCommit(nextKind) {
-    setKind(nextKind);
-    if (draft.trim() || composed) commitSearch(nextKind);
+    const next = fieldsFromState(draft, nextKind, advanced);
+    setKind(next.kind);
+    setAdvanced(next);
+    if (draft.trim() || composed) {
+      setParams(Object.fromEntries(buildFindSearchParams(next)));
+    }
   }
 
   const status = searchStatusLine({
     q: composed,
-    kind: fields.kind,
+    kind: composed ? fields.kind : kind,
     localCount: result.local?.length || 0,
     phase,
   });

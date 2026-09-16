@@ -43,6 +43,16 @@ export const api = {
     }
     return request(`/search?${params.toString()}`);
   },
+  suggest: ({ field, kind = "", q = "", limit = 12, signal } = {}) => {
+    const params = new URLSearchParams();
+    if (field) params.set("field", field);
+    if (kind) params.set("kind", kind);
+    if (q) params.set("q", q);
+    if (limit) params.set("limit", String(limit));
+    return request(`/suggest?${params.toString()}`, signal ? { signal } : {});
+  },
+  refreshSuggestCache: (external = false) =>
+    request(`/settings/suggest-cache${external ? "?external=1" : ""}`, { method: "POST" }),
   work: (id) => request(`/works/${id}`),
   favorite: (id) => request(`/works/${id}/favorite`, { method: "POST" }),
   requestItem: (item) => request("/request", { method: "POST", body: JSON.stringify(item) }),

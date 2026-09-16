@@ -67,6 +67,7 @@ from librarian.serve import (
     safe_filename,
     zip_files,
 )
+from librarian.suggest import SUGGEST_FIELDS, refresh_suggest_cache, suggest_items
 from librarian.sessions import (
     ensure_session_secret,
     has_usable_session_secret,
@@ -435,6 +436,21 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             "beyond_error": beyond_error,
             "can_request": user["role"] in ("owner", "op", "reader"),
         }
+
+    @app.get("/api/suggest")
+    def suggest(
+        request: Request,
+        field: str = "",
+        kind: str = "",
+        q: str = "",
+        limit: int = 12,
+    ):
+        enforce_rate_limit(request, bucket="suggest", limit=120, window_seconds=60)
+        key = str(field or "").strip().lower()
+        if key not in SUGGEST_FIELDS:
+            raise HTTPException(status_code=400, detail="Unknown suggest field")
+        items = suggest_items(db, root, field=key, kind=kind, q=q, limit=limit)
+        return {"field": key, "kind": kind, "q": q, "items": items}
 
     @app.get("/api/discover")
     def discover(request: Request, kind: str = "", cat: str = ""):
@@ -815,6 +831,11 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
     def enrich_settings(request: Request):
         require_role(request.state.user, "owner")
         return enrich_library(db, settings(), data_dir=root)
+
+    @app.post("/api/settings/suggest-cache")
+    def suggest_cache_settings(request: Request, external: int = 0):
+        require_role(request.state.user, "owner")
+        return refresh_suggest_cache(db, root, include_external=bool(external))
 
     @app.post("/api/works/{work_id}/enrich")
     def work_enrich(work_id: str, request: Request):

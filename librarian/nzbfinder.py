@@ -232,29 +232,58 @@ class NZBFinderClient:
         return [item for item in items if item.get("kind")]
 
     def latest(self, cat: str, *, limit: int = 25, path: str = "search") -> List[Dict[str, Any]]:
-        """Newest items in a category. Empty-query v2 search (Newznab latest-in-cat)."""
-        extra: Dict[str, Any] = {"cat": str(cat), "limit": limit}
-        payload = self._get(path, extra)
-        return parse_search_payload(payload)
+        """Newest items in a category (Discover latest-in-cat).
+
+        NZBFinder v2 `/search` requires a non-empty `query`, so empty latest-in-cat
+        uses category RSS. Named trending/latest/recent caps paths are still tried
+        when advertised. Never logs tokens.
+        """
+        from librarian.rss import parse_rss_xml
+
+        route = str(path or "search").strip() or "search"
+        if route not in {"search", ""}:
+            try:
+                payload = self._get(route, {"cat": str(cat), "limit": limit})
+                items = parse_search_payload(payload)
+                if items:
+                    return items
+            except NZBFinderError:
+                pass
+        return parse_rss_xml(self.fetch_rss_category(cat, limit=limit))
 
     def fetch_rss_category(self, cat: str, *, limit: int = 25) -> str:
-        """Classic Newznab `/rss?t=CAT`. Returns XML text. Never logs tokens."""
-        url = urljoin(self.base_url + "/", "rss")
+        """Category RSS XML. NZBFinder uses `/rss/category?id=`; classic Newznab
+        falls back to `/rss?t=` then `/api?t=search&cat=`. Never logs tokens."""
         headers = {
             "User-Agent": self.user_agent,
             "Accept": "application/rss+xml, application/xml, text/xml, application/json",
         }
-        try:
-            response = self._client.get(
-                url,
-                params=self._params({"t": str(cat), "num": limit, "dl": 1}),
-                headers=headers,
-            )
-        except httpx.HTTPError as error:
-            raise NZBFinderError(str(error)) from error
-        if response.status_code >= 400:
-            raise self._error_from_response(response)
-        return response.text or ""
+        attempts = (
+            ("rss/category", {"id": str(cat), "num": limit, "dl": 1}),
+            ("rss", {"t": str(cat), "num": limit, "dl": 1}),
+            ("api", {"t": "search", "cat": str(cat), "limit": limit, "dl": 1}),
+        )
+        last_error: Optional[NZBFinderError] = None
+        for path, extra in attempts:
+            url = urljoin(self.base_url + "/", path)
+            try:
+                response = self._client.get(url, params=self._params(extra), headers=headers)
+            except httpx.HTTPError as error:
+                last_error = NZBFinderError(str(error))
+                continue
+            if response.status_code >= 400:
+                last_error = self._error_from_response(response)
+                continue
+            body = response.text or ""
+            ctype = (response.headers.get("content-type") or "").split(";")[0].strip().lower()
+            head = body.lstrip()[:48].lower()
+            if "html" in ctype or head.startswith("<!doctype") or head.startswith("<html"):
+                last_error = NZBFinderError(describe_nzbfinder_response(response, self.label))
+                continue
+            return body
+        if last_error is not None:
+            raise last_error
+        raise NZBFinderError(f"{self.label} category RSS returned no feed")
 
     def books(
         self,

@@ -134,6 +134,116 @@ def test_client_html_login_and_401_are_specific():
         assert "401" in str(error)
 
 
+MAGAZINE_RSS = """<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:newznab="http://www.newznab.com/DTD/2010/feeds/attributes/">
+ <channel>
+  <title>NZBFinder</title>
+  <item>
+   <title>Linux Mag 2026-09</title>
+   <guid isPermaLink="true">https://nzbfinder.example/details/guid-linux-mag</guid>
+   <link>https://nzbfinder.example/api/v1/getnzb?id=guid-linux-mag.nzb&amp;apikey=secret</link>
+   <pubDate>Tue, 15 Sep 2026 22:01:56 +0200</pubDate>
+   <category>Books &gt; Magazines</category>
+   <enclosure url="https://nzbfinder.example/api/v1/getnzb?id=guid-linux-mag.nzb&amp;apikey=secret" length="123" type="application/x-nzb"/>
+   <newznab:attr name="category" value="7010"/>
+   <newznab:attr name="size" value="123"/>
+  </item>
+ </channel>
+</rss>
+"""
+
+
+def test_fetch_rss_category_prefers_nzbfinder_path():
+    captured = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(str(request.url))
+        path = request.url.path
+        if path.endswith("/rss/category"):
+            assert "id=7010" in str(request.url)
+            return httpx.Response(200, content=MAGAZINE_RSS, headers={"content-type": "text/xml"})
+        if path.endswith("/rss"):
+            return httpx.Response(
+                404,
+                content="<!DOCTYPE html><html><body>missing</body></html>",
+                headers={"content-type": "text/html"},
+            )
+        return httpx.Response(404, json={"message": "nope"})
+
+    client = NZBFinderClient("https://nzbfinder.example", "tok", transport=httpx.MockTransport(handler))
+    raw = client.fetch_rss_category("7010", limit=3)
+    assert "Linux Mag" in raw
+    assert any("/rss/category" in url for url in captured)
+    assert "secret" not in raw or "apikey=secret" in raw  # feed may embed link; client does not log
+    items = client.latest("7010", limit=3)
+    assert items[0]["title"] == "Linux Mag 2026-09"
+    assert items[0]["kind"] == "magazine"
+    assert items[0]["category"] in (7010, "7010", 7010)
+    # latest must not call empty-query v2 search
+    assert not any("/api/v2/search" in url for url in captured)
+
+
+def test_fetch_rss_category_falls_back_when_nzbfinder_path_404():
+    captured = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request.url.path)
+        path = request.url.path
+        if path.endswith("/rss/category"):
+            return httpx.Response(404, json={"message": "The route rss/category could not be found."})
+        if path.endswith("/rss"):
+            assert "t=7030" in str(request.url)
+            return httpx.Response(200, content=MAGAZINE_RSS.replace("7010", "7030"), headers={"content-type": "text/xml"})
+        return httpx.Response(500, json={"message": "boom"})
+
+    client = NZBFinderClient("https://classic.example", "tok", transport=httpx.MockTransport(handler))
+    raw = client.fetch_rss_category("7030")
+    assert "Linux Mag" in raw
+    assert captured[:2] == ["/rss/category", "/rss"]
+
+
+def test_fetch_rss_category_rejects_html_and_tries_next():
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/rss/category"):
+            return httpx.Response(
+                200,
+                content="<!DOCTYPE html><html><body>login</body></html>",
+                headers={"content-type": "text/html"},
+            )
+        if path.endswith("/rss"):
+            return httpx.Response(
+                404,
+                content="<!DOCTYPE html><html><body>missing</body></html>",
+                headers={"content-type": "text/html"},
+            )
+        if path.endswith("/api"):
+            return httpx.Response(200, content=MAGAZINE_RSS, headers={"content-type": "text/xml"})
+        return httpx.Response(404, json={})
+
+    client = NZBFinderClient("https://nzbfinder.example", "tok", transport=httpx.MockTransport(handler))
+    raw = client.fetch_rss_category("7010")
+    assert "<item>" in raw
+
+
+def test_empty_query_v2_is_not_used_for_latest():
+    """NZBFinder returns 400 Validation failed for empty query — Discover must not depend on it."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "/api/v2/search" in str(request.url):
+            return httpx.Response(
+                400,
+                json={"message": "Validation failed", "errors": {"query": ["required"]}},
+            )
+        if request.url.path.endswith("/rss/category"):
+            return httpx.Response(200, content=MAGAZINE_RSS, headers={"content-type": "text/xml"})
+        return httpx.Response(404, json={"message": "nope"})
+
+    client = NZBFinderClient("https://nzbfinder.example", "tok", transport=httpx.MockTransport(handler))
+    items = client.latest("7010")
+    assert [row["title"] for row in items] == ["Linux Mag 2026-09"]
+
+
 def test_v2_capabilities_fixture_matches_kind_map():
     payload = json.loads((V2 / "capabilities.json").read_text(encoding="utf-8"))
     expected = {

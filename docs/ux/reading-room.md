@@ -207,7 +207,7 @@ Build these once; every screen reuses them.
 8. **Cover rail** — section kicker optional, Literata H2, optional “See all”, horizontal track.
 9. **Peek overlay** — app-wide provider (Projectionist `TitleDetailOverlayProvider` contract). Cover click does **not** navigate. Hall/search scroll stays put.
 10. **Primary / outline / ghost CTAs** — gilt fill pill; brass outline; ghost border. Uppercase 0.04em tracking, 14px 28px padding, radius 999.
-11. **Advanced search drawer** — `<details>` under the same hero (author, title, ISBN, series, kind, year). Not a second app.
+11. **Advanced search drawer** — `<details>` under the same hero; fields **morph with kind** (books/mags → title/author/ISBN; comics → series/issue; music → artist/album/year; audiobooks → author/title). Quiet “Advanced” label — not a second app.
 12. **Empty Hall CTA** (owner only) — one beautiful card: “Open the stacks — add an indexer.” No form dump.
 13. **Mobile tab bar** — Hall / Search / Favorites / You.
 14. **Op/owner pages** — Settings, People, Review, Queue stay in the **same room** (darker lamp, same type). No admin skin.

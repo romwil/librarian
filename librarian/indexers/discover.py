@@ -1,8 +1,9 @@
 """Discover: peruse indexer category feeds from capabilities.
 
 Uses the host's category tree (not a single generic RSS per kind). Latest-in-cat
-is v2 search with no query, a named trending/latest caps path if present, or
-classic Newznab `/rss?t=`. TV/movies/XXX stay hidden unless Show categories is on.
+is a named trending/latest caps path if present, else category RSS
+(`/rss/category?id=` on NZBFinder, then classic `/rss?t=` / `/api?t=search`).
+TV/movies/XXX stay hidden unless Show categories is on. No HTML scrape.
 """
 
 from __future__ import annotations

@@ -129,6 +129,53 @@ def test_discover_comic_drops_tv_and_keeps_7030(tmp_path, monkeypatch):
     assert "secret" not in json.dumps(body)
 
 
+def test_discover_rss_category_happy_path_mocked(tmp_path, monkeypatch):
+    """Discover fills rails from /rss/category XML when caps are present (no live indexer)."""
+    from librarian.indexers.discover import discover_beyond
+
+    monkeypatch.setenv("NZBFINDER_API_TOKEN", "tok")
+    clear_discover_cache()
+    rss = """<?xml version="1.0"?>
+<rss version="2.0" xmlns:newznab="http://www.newznab.com/DTD/2010/feeds/attributes/">
+ <channel>
+  <item>
+   <title>Saga 001</title>
+   <guid>g-saga</guid>
+   <link>https://nzbfinder.example/get?id=g-saga.nzb&amp;api_token=secret</link>
+   <enclosure url="https://nzbfinder.example/get?id=g-saga.nzb&amp;api_token=secret"/>
+   <newznab:attr name="category" value="7030"/>
+  </item>
+ </channel>
+</rss>"""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/capabilities"):
+            return httpx.Response(200, json=CAPS)
+        if path.endswith("/rss/category"):
+            assert "id=" in str(request.url)
+            return httpx.Response(200, content=rss, headers={"content-type": "text/xml"})
+        if "/api/v2/search" in path or path.endswith("/search"):
+            return httpx.Response(400, json={"message": "Validation failed", "errors": {"query": ["required"]}})
+        return httpx.Response(
+            404,
+            content="<!DOCTYPE html><html><body>missing</body></html>",
+            headers={"content-type": "text/html"},
+        )
+
+    settings = Settings(nzbfinder_api_token="tok", nzbfinder_url="https://nzbfinder.example")
+    items, categories, beyond_error = discover_beyond(
+        settings,
+        kind="comic",
+        transport=httpx.MockTransport(handler),
+    )
+    assert beyond_error is None
+    assert any(row["id"] == "7030" for row in categories)
+    assert [row["title"] for row in items] == ["Saga 001"]
+    assert items[0]["kind"] == "comic"
+    assert "secret" not in json.dumps(items)
+
+
 def test_discover_extra_host_502_keeps_nzbfinder(tmp_path, monkeypatch):
     monkeypatch.setenv("NZBFINDER_API_TOKEN", "tok")
     client = _client(

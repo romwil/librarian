@@ -47,6 +47,7 @@ def test_reader_forbidden_on_settings_and_invite_op(tmp_path, monkeypatch):
     assert client.put("/api/settings", json={"household_name": "Nope"}).status_code == 403
     assert client.post("/api/settings/scan").status_code == 403
     assert client.post("/api/settings/enrich").status_code == 403
+    assert client.post("/api/settings/suggest-cache").status_code == 403
     assert client.post("/api/invites", json={"role": "reader"}).status_code == 403
     assert client.get("/api/people").status_code == 403
 
@@ -81,6 +82,7 @@ def test_unauthenticated_handshake_only(tmp_path, monkeypatch):
     assert client.post("/api/auth/logout").status_code == 200
     assert client.get("/api/hall").status_code == 401
     assert client.get("/api/search", params={"q": "dune"}).status_code == 401
+    assert client.get("/api/suggest", params={"field": "author", "q": "frank"}).status_code == 401
     assert client.get("/api/auth/me").status_code == 401
     assert client.post("/api/auth/local/register", json={"username": "x", "password": "password123"}).status_code == 401
 

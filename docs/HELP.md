@@ -14,7 +14,7 @@ Librarian is a private **reading room** for the books, magazines, comics, audiob
 
 Find can query more than NZBFinder. Extra Newznab v2 hosts live in Settings; results show a muted host name. If one host fails, the others still appear.
 
-**Discover** reads each host’s capabilities category tree (comics `7030`, magazines `7010`, other books `70xx`, audiobooks `3030`, music `3010`/`3040`/`3999`, and real subcats the indexer lists). Latest-in-category uses v2 search with no query, or classic Newznab `/rss?t=`. It does not scrape HTML and does not auto-queue SAB.
+**Discover** reads each host’s capabilities category tree (comics `7030`, magazines `7010`, other books `70xx`, audiobooks `3030`, music `3010`/`3040`/`3999`, and real subcats the indexer lists). Latest-in-category uses category RSS (`/rss/category?id=` on NZBFinder, then classic `/rss?t=` or `/api?t=search&cat=`). NZBFinder v2 search needs a real query, so Discover does not call empty-query v2. It does not scrape HTML and does not auto-queue SAB.
 
 Owners can turn on **Show categories** in Settings. Then Discover and fielded Find also offer Movies, TV, and XXX if the indexer lists those feeds. Those extra kinds never become Hall works.
 
@@ -38,9 +38,11 @@ Chrome stays Hall / Search / Favorites / You. Queue and Review are op links, not
 
 One box, owned media only. Hits are what the house already has. Cover click opens a **peek**; Open full page goes to the work. Peek, Open, Favorite — no Request and no downloader chips on Search.
 
+Advanced fields morph with the kind chip (artist/album for music, series/issue for comics, and so on). Author, title, series, artist, album, and year offer **suggestions while you type** — shelves first, then an optional owner-refreshed cache under Settings. You can always type freeform; picking a suggestion just keeps labels tidy. ISBN and issue stay plain boxes.
+
 ## Find
 
-From Search, **Find beyond the shelves** is the next step. Find talks to NZBFinder, takes Request, and shows living job chips. With no query, **Discover** shows trending feeds for the kind chip. The boxes change with the kind chip: books and magazines take title, author, and ISBN; comics take series and issue; music takes artist, album, and year; audiobooks take author and title. Request remembers what you sought and which result you picked — the downloader’s filename is not the library title.
+From Search, **Find beyond the shelves** is the next step. Find talks to NZBFinder, takes Request, and shows living job chips. With no query, **Discover** shows trending feeds for the kind chip. The boxes change with the kind chip: books and magazines take title, author, and ISBN; comics take series and issue; music takes artist, album, and year; audiobooks take author and title. The same typeahead as Search helps fill those fields. Request remembers what you sought and which result you picked — the downloader’s filename is not the library title.
 
 - Owner / op: **Request** queues SABnzbd (Librarian kinds are identified as before). Movies/TV also tell Radarr/Sonarr to expect the grab. XXX stays in SAB’s default folder.
 - Reader: **Request** files an “asked the house” slip. Nothing downloads until an owner or op confirms.
@@ -82,6 +84,8 @@ Organized folders get a real cover when we can fetch one (indexer, Open Library 
 Owners and ops can **Add to the shelves** from Settings (and a quiet Hall control). Browse `/data` or paste a path the container can see — this is not a browser upload of a whole library. If identify is sure, Librarian **moves and renames** into the proper Settings root. If not, the volume waits in Review (**Needs you**). Empty or unreadable dumps **Failed**.
 
 **Scan the shelves** is different: it walks the library roots, updates the catalog, and never moves files.
+
+Owners can **Refresh suggestions from shelves** on Settings to rebuild the typeahead seed from what’s already owned (optional MusicBrainz expansion from owned artists via `?external=1`). First boot stays light — suggestions work from the live catalog without a multi-GB dump. Full MusicBrainz / Open Library dumps remain later.
 
 A **Watch folder** (Settings) is an optional drop directory. New top-level files and folders are identified the same way, on the same in-process poll as SAB. It cannot be a library root, SAB’s complete folder, or the Smart Map inbox (`YouTubeDownload` / `YouTubeLibrary`). After a confident organize, the source is moved out so Watch does not pick it up again.
 

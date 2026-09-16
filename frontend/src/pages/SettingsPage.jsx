@@ -27,6 +27,8 @@ export default function SettingsPage() {
   const [scanning, setScanning] = useState(false);
   const [enrich, setEnrich] = useState("");
   const [enriching, setEnriching] = useState(false);
+  const [suggestNote, setSuggestNote] = useState("");
+  const [suggesting, setSuggesting] = useState(false);
   const [goodreads, setGoodreads] = useState("");
   const [importing, setImporting] = useState(false);
   const [csvFile, setCsvFile] = useState(null);
@@ -89,6 +91,7 @@ export default function SettingsPage() {
       {ping ? <p className={/ok/i.test(ping) ? "muted" : "callout"}>{ping}</p> : null}
       {scan ? <p className={/^Scanned /.test(scan) ? "muted" : "alert"}>{scan}</p> : null}
       {enrich ? <p className={/^Enriched /.test(enrich) ? "muted" : "alert"}>{enrich}</p> : null}
+      {suggestNote ? <p className={/^Suggestions /.test(suggestNote) ? "muted" : "alert"}>{suggestNote}</p> : null}
       {goodreads ? <p className={/^Imported /.test(goodreads) ? "muted" : "alert"}>{goodreads}</p> : null}
       <form className="settings-form" onSubmit={onSubmit}>
         <SetupWizard settings={settings} onChange={patch} step={step} setStep={setStep} />
@@ -407,6 +410,27 @@ export default function SettingsPage() {
             }}
           >
             {enriching ? "Enriching…" : "Enrich the shelves"}
+          </button>
+          <button
+            type="button"
+            className="cta outline"
+            disabled={suggesting}
+            onClick={async () => {
+              setSuggestNote("");
+              setSuggesting(true);
+              try {
+                const data = await api.refreshSuggestCache(false);
+                const counts = data.counts || {};
+                const total = Object.values(counts).reduce((sum, n) => sum + Number(n || 0), 0);
+                setSuggestNote(`Suggestions refreshed · ${total} labels from the shelves`);
+              } catch (err) {
+                setSuggestNote(humanError(err));
+              } finally {
+                setSuggesting(false);
+              }
+            }}
+          >
+            {suggesting ? "Refreshing…" : "Refresh suggestions from shelves"}
           </button>
         </div>
         <details className="more-settings">

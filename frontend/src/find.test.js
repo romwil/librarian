@@ -151,7 +151,7 @@ describe("Find query builder", () => {
     assert.deepEqual(visibleFindFields("magazine"), ["title", "author", "isbn", "year"]);
     assert.deepEqual(visibleFindFields("comic"), ["series", "issue", "year"]);
     assert.deepEqual(visibleFindFields("music"), ["artist", "album", "year"]);
-    assert.deepEqual(visibleFindFields("audiobook"), ["title", "author", "isbn", "year"]);
+    assert.deepEqual(visibleFindFields("audiobook"), ["title", "author"]);
     assert.deepEqual(visibleFindFields(""), []);
   });
 

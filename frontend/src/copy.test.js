@@ -42,6 +42,10 @@ describe("reading room copy", () => {
 
   it("summarizes a local search so the page is not a quiet event", () => {
     assert.equal(searchStatusLine({ q: "" }), "Type a title, author, ISBN, or series.");
+    assert.equal(searchStatusLine({ q: "", kind: "music" }), "Type an artist or album.");
+    assert.equal(searchStatusLine({ q: "", kind: "comic" }), "Type a series or issue.");
+    assert.equal(searchStatusLine({ q: "", kind: "audiobook" }), "Type a title or author.");
+    assert.equal(searchStatusLine({ q: "", kind: "book" }), "Type a title, author, or ISBN.");
     assert.match(
       searchStatusLine({ q: "stephen king", phase: "local" }),
       /searched stephen king · looking on the shelves/,

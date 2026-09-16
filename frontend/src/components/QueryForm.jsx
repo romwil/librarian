@@ -1,4 +1,5 @@
 import { FieldLabel } from "./FieldHelp.jsx";
+import TypeaheadField, { isTypeaheadField } from "./TypeaheadField.jsx";
 import { FIELD_HELP } from "../copy.js";
 import { KINDS, findPlaceholder, visibleFindFields } from "../find.js";
 
@@ -25,41 +26,63 @@ export default function QueryForm({
   placeholder,
   ariaLabel = "Search",
   kindHelp = FIELD_HELP.searchKind,
-  advancedSummary = "Advanced — same page, not a different site",
+  advancedSummary = "Advanced",
   variant = "search",
   kinds = KINDS,
 }) {
   const adv = advanced || { author: "", title: "", isbn: "", series: "", issue: "", artist: "", album: "", year: "" };
   const isFind = variant === "find";
-  const morphFields = isFind ? visibleFindFields(kind) : ["author", "title", "isbn", "series", "year"];
-  const hasAdvanced = morphFields.some((key) => adv[key]);
-  const shown = isFind ? morphFields : ["author", "title", "isbn", "series", "year"];
+  const shown = visibleFindFields(kind);
+  const hasAdvanced = shown.some((key) => adv[key]);
 
   function renderField(key) {
     const meta = FIELD_META[key];
     if (!meta) return null;
+    const fieldId = `${inputId}-${key}`;
+    const setValue = (next) => onAdvanced({ ...adv, [key]: next });
     return (
       <div className="field" key={key}>
-        <FieldLabel htmlFor={`${inputId}-${key}`} label={meta.label} help={FIELD_HELP[meta.help]} />
-        <input
-          id={`${inputId}-${key}`}
-          className={meta.mono ? "font-mono" : undefined}
-          value={adv[key] || ""}
-          onChange={(e) => onAdvanced({ ...adv, [key]: e.target.value })}
-        />
+        <FieldLabel htmlFor={fieldId} label={meta.label} help={FIELD_HELP[meta.help]} />
+        {isTypeaheadField(key) ? (
+          <TypeaheadField
+            id={fieldId}
+            field={key}
+            kind={kind}
+            value={adv[key] || ""}
+            className={meta.mono ? "font-mono" : undefined}
+            onChange={setValue}
+            onEnterSubmit={() => {
+              const form = document.getElementById(fieldId)?.form;
+              form?.requestSubmit();
+            }}
+          />
+        ) : (
+          <input
+            id={fieldId}
+            className={meta.mono ? "font-mono" : undefined}
+            value={adv[key] || ""}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                e.currentTarget.form?.requestSubmit();
+              }
+            }}
+          />
+        )}
       </div>
     );
   }
 
   return (
-    <>
-      <form
-        className="search-hero search-field"
-        onSubmit={(event) => {
-          event.preventDefault();
-          onSubmit();
-        }}
-      >
+    <form
+      className="search-compose"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit();
+      }}
+    >
+      <div className="search-hero search-field">
         <span aria-hidden="true">⌕</span>
         <input
           id={inputId}
@@ -69,8 +92,8 @@ export default function QueryForm({
           aria-label={ariaLabel}
         />
         <kbd>/</kbd>
-      </form>
-      <div className="search-hero chip-row" style={{ justifyContent: "center", marginBottom: 12 }}>
+      </div>
+      <div className="search-hero chip-row search-compose-chips">
         {kinds.map(([value, label]) => (
           <button
             key={value || "all"}
@@ -90,21 +113,27 @@ export default function QueryForm({
           </div>
         ) : null
       ) : (
-        <details className="advanced" defaultOpen={hasAdvanced}>
+        <details className="advanced" defaultOpen={hasAdvanced} data-testid="search-advanced" data-kind={kind || "all"}>
           <summary className="kicker">{advancedSummary}</summary>
-          <div className="field">
-            <FieldLabel htmlFor={`${inputId}-kind`} label="Kind" help={kindHelp} />
-            <select id={`${inputId}-kind`} value={kind} onChange={(e) => onKindCommit(e.target.value)}>
-              {kinds.map(([value, label]) => (
-                <option key={value || "any"} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
+          <div className="advanced-fields">
+            <div className="field">
+              <FieldLabel htmlFor={`${inputId}-kind`} label="Kind" help={kindHelp} />
+              <select id={`${inputId}-kind`} value={kind} onChange={(e) => onKindCommit(e.target.value)}>
+                {kinds.map(([value, label]) => (
+                  <option key={value || "any"} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {shown.map(renderField)}
           </div>
-          {shown.map(renderField)}
         </details>
       )}
-    </>
+      {/* Multiple text fields suppress implicit Enter submit; keep one real submit control. */}
+      <button type="submit" className="sr-only">
+        {isFind ? "Find" : "Search the stacks"}
+      </button>
+    </form>
   );
 }
