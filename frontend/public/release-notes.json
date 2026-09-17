@@ -1,6 +1,22 @@
 {
-  "generated_at": "2026-09-17T22:00:43Z",
+  "generated_at": "2026-09-17T22:38:56Z",
   "releases": [
+    {
+      "version": "0.2.1",
+      "date": "2026-09-17",
+      "summary": "",
+      "highlights": [
+        "**Cover cards lead with the real title.** Publisher-heavy NZB names (TOKYOPOP, IMAGE COMICS, and friends) no longer crowd out the series on Discover and Find — primary labels show the distinctive title; the raw dump stays on hover/peek."
+      ],
+      "sections": [
+        {
+          "title": "Fixed",
+          "bullets": [
+            "Demote publisher prefixes on Discover/Find cover cards (`displayTitle`) so cloth labels stay readable."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.2.0",
       "date": "2026-09-17",

@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-09-17
+
+### Highlights
+
+- **Cover cards lead with the real title.** Publisher-heavy NZB names (TOKYOPOP, IMAGE COMICS, and friends) no longer crowd out the series on Discover and Find — primary labels show the distinctive title; the raw dump stays on hover/peek.
+
+### Fixed
+
+- Demote publisher prefixes on Discover/Find cover cards (`displayTitle`) so cloth labels stay readable.
+
 ## [0.2.0] — 2026-09-17
 
 ### Highlights
