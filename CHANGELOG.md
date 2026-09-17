@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.2.3] — 2026-09-17
+
+### Fixed
+
+- **Discover/Find cover titles no longer ellipsis-truncate.** Cloth card primary titles wrap fully (cards grow with the title); cover-art frames stay fixed. Same principle as Smart Map Browse — titles you can actually read.
+
 ## [0.2.2] — 2026-09-17
 
 ### Highlights

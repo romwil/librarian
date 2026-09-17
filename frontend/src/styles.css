@@ -264,9 +264,11 @@ input {
   appearance: none;
   border: 0;
   width: var(--rail-cover-w);
-  height: var(--rail-cover-h);
+  /* Cloth titles wrap fully — grow with content; art covers lock height below. */
+  height: auto;
+  min-height: var(--rail-cover-h);
   flex: 0 0 var(--rail-cover-w);
-  max-height: var(--rail-cover-h);
+  max-height: none;
   border-radius: var(--radius);
   background:
     linear-gradient(90deg, rgba(0, 0, 0, 0.28) 0 8px, transparent 18px),
@@ -287,7 +289,6 @@ input {
   position: relative;
   overflow: hidden;
   min-width: 0;
-  min-height: 0;
   scroll-snap-align: start;
   transition: transform var(--motion), box-shadow var(--motion);
 }
@@ -308,13 +309,15 @@ input {
   min-width: 0;
 }
 .cover strong {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
+  /* Never truncate primary titles — wrap so Discover/Find remain readable. */
+  display: block;
+  overflow: visible;
   overflow-wrap: anywhere;
   word-break: break-word;
   hyphens: auto;
+  white-space: normal;
+  text-overflow: unset;
+  -webkit-line-clamp: unset;
   font-family: var(--font-display);
   font-size: 0.95rem;
   font-weight: 600;
@@ -364,26 +367,43 @@ input {
 }
 .cover.is-square {
   width: var(--rail-square);
-  height: var(--rail-square);
+  min-height: var(--rail-square);
   flex-basis: var(--rail-square);
-  max-height: var(--rail-square);
 }
 .cover.is-magazine {
   width: var(--rail-magazine-w);
-  height: var(--rail-magazine-h);
+  min-height: var(--rail-magazine-h);
   flex-basis: var(--rail-magazine-w);
-  max-height: var(--rail-magazine-h);
 }
 .cover.is-comic {
   width: var(--rail-comic);
-  height: var(--rail-comic-h);
+  min-height: var(--rail-comic-h);
   flex-basis: var(--rail-comic);
-  max-height: var(--rail-comic-h);
 }
 .cover.is-landscape {
   width: var(--rail-audio-w);
-  height: var(--rail-audio-h);
+  min-height: var(--rail-audio-h);
   flex-basis: var(--rail-audio-w);
+}
+/* Cover art keeps a fixed frame; cloth titles may grow the card. */
+.cover.has-art {
+  height: var(--rail-cover-h);
+  max-height: var(--rail-cover-h);
+}
+.cover.has-art.is-square {
+  height: var(--rail-square);
+  max-height: var(--rail-square);
+}
+.cover.has-art.is-magazine {
+  height: var(--rail-magazine-h);
+  max-height: var(--rail-magazine-h);
+}
+.cover.has-art.is-comic {
+  height: var(--rail-comic-h);
+  max-height: var(--rail-comic-h);
+}
+.cover.has-art.is-landscape {
+  height: var(--rail-audio-h);
   max-height: var(--rail-audio-h);
 }
 .cover.has-art img {
@@ -446,7 +466,6 @@ input {
   font-size: 0.82rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  -webkit-line-clamp: 2;
 }
 
 /* Comic — square-ish issue, bolder ink */
@@ -469,7 +488,6 @@ input {
   letter-spacing: -0.04em;
   text-transform: uppercase;
   font-size: 0.88rem;
-  -webkit-line-clamp: 2;
 }
 .cover-comic .cover-chip {
   font-family: var(--font-display);
@@ -509,11 +527,10 @@ input {
   opacity: 0.18;
 }
 .cover-audiobook .cover-meta {
-  max-width: 68%;
+  max-width: 74%;
   padding-bottom: 4px;
 }
 .cover-audiobook strong {
-  -webkit-line-clamp: 2;
   font-size: 0.88rem;
 }
 

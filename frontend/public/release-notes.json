@@ -1,6 +1,20 @@
 {
-  "generated_at": "2026-09-17T22:52:27Z",
+  "generated_at": "2026-09-17T23:01:32Z",
   "releases": [
+    {
+      "version": "0.2.3",
+      "date": "2026-09-17",
+      "summary": "",
+      "highlights": [],
+      "sections": [
+        {
+          "title": "Fixed",
+          "bullets": [
+            "**Discover/Find cover titles no longer ellipsis-truncate.** Cloth card primary titles wrap fully (cards grow with the title); cover-art frames stay fixed. Same principle as Smart Map Browse — titles you can actually read."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.2.2",
       "date": "2026-09-17",
