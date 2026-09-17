@@ -18,8 +18,10 @@ import {
 } from "../cover.js";
 import { canPromoteIncomingMusic, humanError, peekMediaNote } from "../copy.js";
 import { looksLikeHtml, sanitizeDescriptionHtml } from "../description.js";
-import { beyondHostName } from "../find.js";
+import { beyondHostName, findHref } from "../find.js";
+import { isIncompleteOwnedPartSet, partSetFindFields } from "../findParts.js";
 import { canOpenInlineMedia, canReadInApp, workReaderPath } from "../reader.js";
+import PlexampToast from "./PlexampToast.jsx";
 
 export default function WorkPeek({ work, onClose, onRequest }) {
   const panel = useRef(null);
@@ -30,6 +32,7 @@ export default function WorkPeek({ work, onClose, onRequest }) {
   const [artFailed, setArtFailed] = useState(false);
   const [detail, setDetail] = useState(null);
   const [promoting, setPromoting] = useState(false);
+  const [plexamp, setPlexamp] = useState(null);
 
   useEffect(() => {
     setJobStatus(work?.job_status || "");
@@ -99,6 +102,8 @@ export default function WorkPeek({ work, onClose, onRequest }) {
   const descriptionHtml = looksLikeHtml(catalog.description)
     ? sanitizeDescriptionHtml(catalog.description)
     : "";
+  const incompleteParts = isIncompleteOwnedPartSet(catalog.part_set);
+  const findMissingHref = incompleteParts ? findHref(partSetFindFields(catalog)) : "";
 
   async function favorite() {
     if (!catalog.id) return;
@@ -136,6 +141,7 @@ export default function WorkPeek({ work, onClose, onRequest }) {
     setPromoting(true);
     try {
       const next = await api.promote(catalog.id);
+      if (next?.plexamp) setPlexamp(next.plexamp);
       if (next?.work) {
         setDetail((current) => ({
           ...(current || {}),
@@ -191,6 +197,11 @@ export default function WorkPeek({ work, onClose, onRequest }) {
               <h1 id="peek-title" title={catalog.title !== displayTitle ? catalog.title : undefined}>
                 {displayTitle}
               </h1>
+              {catalog.cover_story ? (
+                <p className="cover-story" data-testid="peek-cover-story">
+                  {catalog.cover_story}
+                </p>
+              ) : null}
               <div className="chip-row peek-meta" data-testid="peek-meta">
                 {kind ? <span className="chip is-on">{kind}</span> : null}
                 {catalog.year ? <span className="chip">{catalog.year}</span> : null}
@@ -282,6 +293,19 @@ export default function WorkPeek({ work, onClose, onRequest }) {
                         Promote
                       </button>
                     ) : null}
+                    {incompleteParts ? (
+                      <Link
+                        className="cta compact"
+                        to={findMissingHref}
+                        onClick={(event) => {
+                          if (event.metaKey || event.ctrlKey) return;
+                          onClose();
+                        }}
+                        data-testid="peek-find-missing-parts"
+                      >
+                        Find missing parts
+                      </Link>
+                    ) : null}
                   </>
                 ) : onRequest ? (
                   <button type="button" className="cta compact" onClick={request} disabled={Boolean(jobStatus)}>
@@ -307,6 +331,7 @@ export default function WorkPeek({ work, onClose, onRequest }) {
           </div>
         </div>
       </aside>
+      {plexamp ? <PlexampToast handoff={plexamp} onClose={() => setPlexamp(null)} /> : null}
     </>
   );
 }

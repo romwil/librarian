@@ -443,6 +443,31 @@ def test_organize_audiobook_tags_never_music_root(tmp_path):
     assert result["work"]["kind"] == "audiobook"
 
 
+def test_organize_persists_part_set_from_nzb_title(tmp_path):
+    folder = tmp_path / "complete" / "feist-magician-p3"
+    folder.mkdir(parents=True)
+    (folder / "Magician Part 3.m4b").write_bytes(b"m4b")
+    db = Database(tmp_path / "librarian.db")
+    result = organize_identified(
+        db,
+        _settings(tmp_path),
+        folder=folder,
+        indexer_item={
+            "title": "Raymond E. Feist - Magician Part 3/5",
+            "author": "Feist",
+            "guid": "guid-part-3",
+            "name": folder.name,
+        },
+    )
+    assert result["organized"] is True
+    work = db.get_work(result["work"]["id"])
+    assert work["part_total"] == 5
+    assert work["part_style"] == "part"
+    assert work["part_base"]
+    files = db.files_for_work(work["id"])
+    assert len(files) == 1
+    assert files[0]["part"] == 3
+
 
 def test_organize_music_writes_cover_from_caa(tmp_path):
     import httpx

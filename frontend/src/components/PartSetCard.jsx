@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { beyondHostName } from "../find.js";
 import {
   defaultPartSelectionKeys,
+  finishThisSetAction,
   formatBytes,
   partBeadStates,
   partSetRequestAction,
@@ -10,6 +11,7 @@ import {
 import { jobChipLabel, jobChipTone } from "../cover.js";
 import { humanError } from "../copy.js";
 import { useWorkPeek } from "./WorkPeekProvider.jsx";
+import { api } from "../api.js";
 
 function itemKey(item) {
   return item?.guid || item?.title || "";
@@ -27,6 +29,8 @@ export default function PartSetCard({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [progress, setProgress] = useState("");
+  const [etaMinutes, setEtaMinutes] = useState(null);
+  const [collapsed, setCollapsed] = useState(false);
 
   const enriched = useMemo(
     () => ({
@@ -37,6 +41,10 @@ export default function PartSetCard({
   );
   const status = partSetStatusLine(enriched);
   const beads = useMemo(() => partBeadStates(enriched), [enriched]);
+  const finish = useMemo(
+    () => finishThisSetAction(enriched, { etaMinutes }),
+    [enriched, etaMinutes],
+  );
   const selectable = useMemo(() => {
     const listed = enriched.parts.map((row) => row.item);
     const gaps = enriched.missingItems || [];
@@ -57,10 +65,31 @@ export default function PartSetCard({
       : chase?.status === "done" && chase.queriesTried
         ? `Searched ${chase.queriesTried} quer${chase.queriesTried === 1 ? "y" : "ies"} for missing parts.`
         : "";
+  const showFinish = Boolean(finish) && (chase?.status === "done" || (enriched.missingItems || []).length > 0);
 
   useEffect(() => {
     setSelected(new Set(defaultPartSelectionKeys(set)));
   }, [set.id, set.found, set.missingItems?.length, set.complete]);
+
+  useEffect(() => {
+    if (!showFinish) {
+      setCollapsed(false);
+      return undefined;
+    }
+    setCollapsed(true);
+    let alive = true;
+    api
+      .finishEta((enriched.missingItems || []).length)
+      .then((data) => {
+        if (alive) setEtaMinutes(data.eta_minutes || null);
+      })
+      .catch(() => {
+        if (alive) setEtaMinutes(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [showFinish, enriched.missingItems?.length, set.id]);
 
   function toggle(key) {
     setSelected((prev) => {
@@ -114,10 +143,11 @@ export default function PartSetCard({
 
   return (
     <article
-      className={`part-set${chasing ? " is-chasing" : ""}`}
+      className={`part-set${chasing ? " is-chasing" : ""}${collapsed && showFinish ? " is-finish" : ""}`}
       data-testid="part-set"
       data-complete={enriched.complete ? "1" : "0"}
       data-chasing={chasing ? "1" : "0"}
+      data-finish={collapsed && showFinish ? "1" : "0"}
     >
       <header className="part-set-head">
         <div>
@@ -143,22 +173,41 @@ export default function PartSetCard({
           ) : null}
         </div>
         <div className="part-set-actions">
-          <button type="button" className="chip" onClick={selectAll} disabled={busy}>
-            Select all
-          </button>
-          <button type="button" className="chip" onClick={clearAll} disabled={busy}>
-            Clear
-          </button>
-          <button
-            type="button"
-            className={requestClass}
-            disabled={busy || !action.enabled}
-            onClick={() => requestItems(selectedItems)}
-            data-testid="part-set-request"
-            data-action-kind={action.kind}
-          >
-            {busy ? progress || "Requesting…" : action.label}
-          </button>
+          {showFinish && finish ? (
+            <button
+              type="button"
+              className="cta compact"
+              disabled={busy || !finish.enabled}
+              onClick={() => requestItems(finish.items)}
+              data-testid="part-set-finish"
+            >
+              {busy ? progress || "Requesting…" : finish.label}
+            </button>
+          ) : null}
+          {!collapsed || !showFinish ? (
+            <>
+              <button type="button" className="chip" onClick={selectAll} disabled={busy}>
+                Select all
+              </button>
+              <button type="button" className="chip" onClick={clearAll} disabled={busy}>
+                Clear
+              </button>
+              <button
+                type="button"
+                className={requestClass}
+                disabled={busy || !action.enabled}
+                onClick={() => requestItems(selectedItems)}
+                data-testid="part-set-request"
+                data-action-kind={action.kind}
+              >
+                {busy ? progress || "Requesting…" : action.label}
+              </button>
+            </>
+          ) : (
+            <button type="button" className="chip" onClick={() => setCollapsed(false)} data-testid="part-set-expand">
+              Show parts
+            </button>
+          )}
         </div>
       </header>
 
@@ -168,61 +217,63 @@ export default function PartSetCard({
         </p>
       ) : null}
 
-      <div className="part-grid" role="list">
-        {enriched.parts.map(({ part, item, alternatives }) => {
-          const key = itemKey(item);
-          const checked = selected.has(key);
-          const job = jobs[key];
-          const tone = jobChipTone(job);
-          const chip = job ? jobChipLabel(job, role) : "";
-          const size = formatBytes(item.size);
-          return (
-            <div
-              key={key}
-              className={`part-cell${checked ? " is-selected" : ""}`}
-              role="listitem"
-              tabIndex={0}
-              onKeyDown={(event) => onPartKeyDown(event, key)}
-              data-testid="part-cell"
-            >
-              <label className="part-check">
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  disabled={busy || Boolean(job)}
-                  onChange={() => toggle(key)}
-                  aria-label={`Part ${part}`}
-                />
-                <span className="part-num">{String(part).padStart(2, "0")}</span>
-              </label>
-              <button type="button" className="part-open" onClick={(event) => openPeek(item, event)}>
-                <span className="part-label">
-                  Part {part}
-                  {enriched.total ? ` / ${enriched.total}` : ""}
-                </span>
-                {size ? <span className="part-size">{size}</span> : null}
-                {alternatives?.length ? <span className="part-alts muted">+{alternatives.length} alt</span> : null}
-              </button>
-              <button
-                type="button"
-                className="part-request chip"
-                disabled={busy || Boolean(job)}
-                onClick={() => requestItems([item])}
+      {!collapsed || !showFinish ? (
+        <div className="part-grid" role="list">
+          {enriched.parts.map(({ part, item, alternatives }) => {
+            const key = itemKey(item);
+            const checked = selected.has(key);
+            const job = jobs[key];
+            const tone = jobChipTone(job);
+            const chip = job ? jobChipLabel(job, role) : "";
+            const size = formatBytes(item.size);
+            return (
+              <div
+                key={key}
+                className={`part-cell${checked ? " is-selected" : ""}`}
+                role="listitem"
+                tabIndex={0}
+                onKeyDown={(event) => onPartKeyDown(event, key)}
+                data-testid="part-cell"
               >
-                {chip || (role === "reader" ? "Ask" : "Request")}
-              </button>
-              {chip ? <span className={`live-chip part-job${tone ? ` ${tone}` : ""}`}>{chip}</span> : null}
-            </div>
-          );
-        })}
-      </div>
+                <label className="part-check">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    disabled={busy || Boolean(job)}
+                    onChange={() => toggle(key)}
+                    aria-label={`Part ${part}`}
+                  />
+                  <span className="part-num">{String(part).padStart(2, "0")}</span>
+                </label>
+                <button type="button" className="part-open" onClick={(event) => openPeek(item, event)}>
+                  <span className="part-label">
+                    Part {part}
+                    {enriched.total ? ` / ${enriched.total}` : ""}
+                  </span>
+                  {size ? <span className="part-size">{size}</span> : null}
+                  {alternatives?.length ? <span className="part-alts muted">+{alternatives.length} alt</span> : null}
+                </button>
+                <button
+                  type="button"
+                  className="part-request chip"
+                  disabled={busy || Boolean(job)}
+                  onClick={() => requestItems([item])}
+                >
+                  {chip || (role === "reader" ? "Ask" : "Request")}
+                </button>
+                {chip ? <span className={`live-chip part-job${tone ? ` ${tone}` : ""}`}>{chip}</span> : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
 
-      {action.honesty ? (
+      {action.honesty && (!collapsed || !showFinish) ? (
         <p className="part-missing muted" data-testid="part-set-honesty">
           {action.honesty}
         </p>
       ) : null}
-      {enriched.missing?.length && enriched.missing.length <= 12 ? (
+      {enriched.missing?.length && enriched.missing.length <= 12 && (!collapsed || !showFinish) ? (
         <p className="part-missing muted" data-testid="part-set-missing">
           Missing parts: {enriched.missing.join(", ")}
         </p>

@@ -134,6 +134,21 @@ describe("Find query builder", () => {
     );
   });
 
+  it("deep-links owned multipart gaps with Part n/total chase shape", () => {
+    const fields = gapFindFields({
+      kind: "audiobook",
+      gap_type: "multipart",
+      author: "Feist",
+      title: "Magician",
+      missing_index: "2",
+      part_set: { total: 5, owned: [3], style: "part", base: "Raymond E Feist Magician" },
+    });
+    assert.equal(fields.kind, "audiobook");
+    assert.match(fields.q, /Part 2\/5/);
+    assert.equal(fields.title, "Raymond E Feist Magician");
+    assert.match(findHref(fields), /Part\+2%2F5|Part\+2\/5/);
+  });
+
   it("prefills book series holes with author, year, and honest ISBN only", () => {
     assert.deepEqual(
       gapFindFields({

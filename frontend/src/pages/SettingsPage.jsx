@@ -4,7 +4,9 @@ import { FieldLabel } from "../components/FieldHelp.jsx";
 import SetupWizard from "../components/SetupWizard.jsx";
 import AddToLibrary from "../components/AddToLibrary.jsx";
 import RssPanel from "../components/RssPanel.jsx";
+import ReleaseNotesPanel from "../components/ReleaseNotesPanel.jsx";
 import { FIELD_HELP, WATCH_FOLDER_LEDE, humanError, setupComplete, setupStepComplete } from "../copy.js";
+import { fetchReleaseNotes, normalizeReleaseNotes } from "../lib/releaseNotes.js";
 
 const MORE_FIELDS = [
   ["audiobook_target", "Audiobook target"],
@@ -36,6 +38,9 @@ export default function SettingsPage() {
   const [absMatch, setAbsMatch] = useState(null);
   const [absNote, setAbsNote] = useState("");
   const [matching, setMatching] = useState(false);
+  const [releases, setReleases] = useState([]);
+  const [notesError, setNotesError] = useState("");
+  const [notesLoading, setNotesLoading] = useState(true);
 
   useEffect(() => {
     api
@@ -48,6 +53,34 @@ export default function SettingsPage() {
       })
       .catch((err) => setError(humanError(err)));
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setNotesLoading(true);
+    fetchReleaseNotes()
+      .then((payload) => {
+        if (cancelled) return;
+        setReleases(normalizeReleaseNotes(payload));
+        setNotesError("");
+        setNotesLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setReleases([]);
+        setNotesError("Could not load release notes.");
+        setNotesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (notesLoading) return;
+    if (typeof window === "undefined") return;
+    if (window.location.hash !== "#release-notes") return;
+    document.getElementById("release-notes")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [notesLoading, releases]);
 
   function patch(key, value) {
     setSettings((prev) => ({ ...prev, [key]: value }));
@@ -118,6 +151,44 @@ export default function SettingsPage() {
               />
               Watch this folder
             </label>
+          </div>
+        </details>
+        <details className="more-settings">
+          <summary className="kicker">Quiet hours</summary>
+          <p className="lede">
+            Defer unpack and convert during a household window. Review shows Queued for tonight. Owner and ops can
+            change this.
+          </p>
+          <div className="field field-check">
+            <label htmlFor="setting-quiet_hours_enabled">
+              <input
+                id="setting-quiet_hours_enabled"
+                type="checkbox"
+                checked={Boolean(settings.quiet_hours_enabled)}
+                onChange={(e) => patch("quiet_hours_enabled", e.target.checked)}
+              />
+              Enable quiet hours Organize
+            </label>
+          </div>
+          <div className="field">
+            <FieldLabel htmlFor="setting-quiet_hours_start" label="Starts" />
+            <input
+              id="setting-quiet_hours_start"
+              type="text"
+              value={settings.quiet_hours_start || "22:00"}
+              onChange={(e) => patch("quiet_hours_start", e.target.value)}
+              placeholder="22:00"
+            />
+          </div>
+          <div className="field">
+            <FieldLabel htmlFor="setting-quiet_hours_end" label="Ends" />
+            <input
+              id="setting-quiet_hours_end"
+              type="text"
+              value={settings.quiet_hours_end || "07:00"}
+              onChange={(e) => patch("quiet_hours_end", e.target.value)}
+              placeholder="07:00"
+            />
           </div>
         </details>
         <details className="more-settings">
@@ -479,6 +550,32 @@ export default function SettingsPage() {
         <RssPanel />
       </details>
       <AddToLibrary />
+      <section
+        className="more-settings settings-release-notes"
+        id="release-notes"
+        aria-labelledby="settings-release-notes-heading"
+      >
+        <p className="kicker" id="settings-release-notes-heading">
+          Release notes
+        </p>
+        <p className="lede">Full history from CHANGELOG — newest first.</p>
+        {notesError ? (
+          <p className="alert" data-testid="settings-release-notes-error">
+            {notesError}
+          </p>
+        ) : notesLoading ? (
+          <p className="muted" data-testid="settings-release-notes-loading">
+            Loading release notes…
+          </p>
+        ) : (
+          <ReleaseNotesPanel
+            releases={releases}
+            showJumpLinks
+            scrollable
+            testId="settings-release-notes"
+          />
+        )}
+      </section>
     </div>
   );
 }

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -29,8 +30,22 @@ from librarian.auth import (
 from librarian.config import load_merged_settings, mask_settings, merge_secret_fields, save_settings
 from librarian.convert import ALLOWED_EBOOK_FORMATS, convert_ebook, which_ebook_convert
 from librarian.db import Database
+from librarian.delight import (
+    WHISPER_LIST_LIMIT,
+    celebration_candidates,
+    cover_story,
+    estimate_finish_eta_minutes,
+    finish_set_label,
+    in_quiet_hours,
+    normalize_ambient,
+    plexamp_handoff,
+    rank_regrab_candidates,
+    sanitize_whisper,
+    series_ribbon,
+    tonight_shelf,
+)
 from librarian.enrich import enrich_library, enrich_work
-from librarian.gaps import catalog_gaps, gap_cards
+from librarian.gaps import catalog_gaps, gap_cards, gaps_for_series
 from librarian.goodreads import MAX_GOODREADS_BYTES, import_goodreads_csv
 from librarian.identify import diagnose_review_folder
 from librarian.indexers.discover import discover_beyond, resolve_feed_limit
@@ -62,6 +77,7 @@ from librarian.organize import (
     review_slip_actions,
     shelf_work_for_collision,
 )
+from librarian.parts import build_part_set
 from librarian.poller import JobPoller
 from librarian.rate_limit import enforce_rate_limit
 from librarian.rss import create_rss_feed, poll_rss_feeds, public_rss_feed, update_rss_feed
@@ -88,6 +104,22 @@ from librarian.sessions import (
 from librarian.suggest import SUGGEST_FIELDS, refresh_suggest_cache, suggest_items
 
 FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+
+
+def _frontend_public_file(*parts: str) -> Path | None:
+    """Resolve a Vite public asset from dist (prod) or public/ (local pre-build).
+
+    When both exist (common after generate-release-notes without a rebuild),
+    prefer the newer file so Settings stays current during local development.
+    """
+    candidates = [
+        FRONTEND_DIST.joinpath(*parts),
+        FRONTEND_DIST.parent.joinpath("public", *parts),
+    ]
+    existing = [candidate for candidate in candidates if candidate.is_file()]
+    if not existing:
+        return None
+    return max(existing, key=lambda item: item.stat().st_mtime)
 
 
 class LoginPayload(BaseModel):
@@ -187,6 +219,9 @@ class SettingsPayload(BaseModel):
     sonarr_api_key: Optional[str] = None
     sab_movie_category: Optional[str] = None
     sab_tv_category: Optional[str] = None
+    quiet_hours_enabled: Optional[bool] = None
+    quiet_hours_start: Optional[str] = None
+    quiet_hours_end: Optional[str] = None
 
 
 class IngestPayload(BaseModel):
@@ -203,11 +238,30 @@ class ConvertPayload(BaseModel):
     format: str = "epub"
 
 
+class PrefsPayload(BaseModel):
+    ambient: Optional[str] = None
+
+
+class WhisperPayload(BaseModel):
+    body: str
+
+
+class CelebrationSeenPayload(BaseModel):
+    key: str
+
+
+class FinishSetEtaPayload(BaseModel):
+    missing_count: int = 0
+
+
 def public_work(row: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     if row is None:
         return None
     data = dict(row)
     data["has_cover"] = bool(data.get("cover_path"))
+    story = cover_story(data)
+    if story:
+        data["cover_story"] = story
     return data
 
 
@@ -391,12 +445,32 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         gaps = []
         if user["role"] in ("owner", "op"):
             gaps = gap_cards(catalog_gaps(db, settings()))
+        continue_rows = db.continue_works(user["id"], limit=18)
+        surprise = None
+        if recent:
+            surprise = public_work(recent[0])
+        elif favorites:
+            surprise = public_work(favorites[0])
+        celebrations = db.unseen_celebrations(
+            user["id"],
+            celebration_candidates(
+                kind_counts=db.kind_counts(),
+                author_year_counts=db.author_year_counts(year=datetime.now().year),
+            ),
+        )
+        tonight = tonight_shelf(
+            continue_items=continue_rows,
+            gaps=gaps,
+            surprise=surprise,
+        )
         return {
             "whats_new": public_works(recent),
             "favorites": public_works(favorites),
             "areas": {key: public_works(value) for key, value in areas.items()},
             "gaps": gaps,
-            "continue": db.continue_works(user["id"], limit=18),
+            "continue": continue_rows,
+            "tonight": tonight,
+            "celebrations": celebrations,
             "owner_ready": True,
             "empty": not recent and not any(areas.values()),
         }
@@ -548,6 +622,9 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="Work not found")
         files = db.files_for_work(work_id)
         on_disk = existing_file_paths(files)
+        part_set = build_part_set(work, files)
+        if part_set:
+            work["part_set"] = part_set
         related = []
         if work.get("author"):
             related = [
@@ -556,6 +633,22 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
                 if row and row.get("id") != work_id
             ]
         progress = db.get_progress(request.state.user["id"], work_id)
+        ribbon = []
+        series_name = str(work.get("series_name") or "").strip()
+        kind = str(work.get("kind") or "")
+        if series_name and kind in ALL_KINDS:
+            card = gaps_for_series(db, kind=kind, series_name=series_name)
+            owned = card.get("owned_indexes") or [
+                str(row.get("series_index") or "")
+                for row in db.works_for_series(kind=kind, series_name=series_name)
+            ]
+            missing = card.get("missing") or card.get("series_missing") or []
+            ribbon = series_ribbon(
+                owned_indexes=owned,
+                missing_indexes=missing,
+                current=work.get("series_index"),
+            )
+        whispers = db.list_whispers(work_id, limit=WHISPER_LIST_LIMIT)
         return {
             "work": work,
             "files": annotate_work_files(files, on_disk),
@@ -568,6 +661,8 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             "progress": progress,
             "ebook_convert": bool(which_ebook_convert()),
             "formats": list(ALLOWED_EBOOK_FORMATS),
+            "series_ribbon": ribbon,
+            "whispers": whispers,
         }
 
     @app.post("/api/works/{work_id}/favorite")
@@ -576,6 +671,60 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="Work not found")
         on = db.toggle_favorite(request.state.user["id"], work_id)
         return {"favorite": on}
+
+    @app.get("/api/works/{work_id}/whispers")
+    def work_whispers(work_id: str, request: Request):
+        require_role(request.state.user, "owner", "op", "reader")
+        if db.get_work(work_id) is None:
+            raise HTTPException(status_code=404, detail="Work not found")
+        return {"whispers": db.list_whispers(work_id, limit=WHISPER_LIST_LIMIT)}
+
+    @app.post("/api/works/{work_id}/whispers")
+    def add_work_whisper(work_id: str, payload: WhisperPayload, request: Request):
+        require_role(request.state.user, "owner", "op", "reader")
+        if db.get_work(work_id) is None:
+            raise HTTPException(status_code=404, detail="Work not found")
+        body = sanitize_whisper(payload.body)
+        if not body:
+            raise HTTPException(status_code=400, detail="Whisper is empty")
+        whisper = db.add_whisper(work_id=work_id, user_id=request.state.user["id"], body=body)
+        return {"whisper": whisper, "whispers": db.list_whispers(work_id, limit=WHISPER_LIST_LIMIT)}
+
+    @app.get("/api/prefs")
+    def get_prefs(request: Request):
+        require_role(request.state.user, "owner", "op", "reader")
+        return db.get_user_prefs(request.state.user["id"])
+
+    @app.put("/api/prefs")
+    def put_prefs(payload: PrefsPayload, request: Request):
+        require_role(request.state.user, "owner", "op", "reader")
+        ambient = normalize_ambient(payload.ambient) if payload.ambient is not None else None
+        return db.set_user_prefs(request.state.user["id"], ambient=ambient)
+
+    @app.post("/api/celebrations/seen")
+    def celebration_seen(payload: CelebrationSeenPayload, request: Request):
+        require_role(request.state.user, "owner", "op", "reader")
+        key = str(payload.key or "").strip()
+        if not key:
+            raise HTTPException(status_code=400, detail="Missing celebration key")
+        db.mark_celebration_seen(request.state.user["id"], key)
+        return {"ok": True}
+
+    @app.post("/api/find/finish-eta")
+    def finish_eta(payload: FinishSetEtaPayload, request: Request):
+        require_role(request.state.user, "owner", "op", "reader")
+        minutes = estimate_finish_eta_minutes(
+            missing_count=int(payload.missing_count or 0),
+            recent_seconds=db.recent_job_durations(),
+        )
+        return {
+            "eta_minutes": minutes,
+            "label": finish_set_label(
+                missing_count=int(payload.missing_count or 0),
+                eta_minutes=minutes,
+            ),
+            "quiet_hours": in_quiet_hours(settings()),
+        }
 
     @app.post("/api/works/{work_id}/progress")
     def touch_progress(work_id: str, payload: ProgressPayload, request: Request):
@@ -883,6 +1032,39 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
 
+    @app.get("/api/review/{work_id}/regrab")
+    def review_regrab_candidates(work_id: str, request: Request):
+        require_role(request.state.user, "owner", "op")
+        work = db.get_work(work_id)
+        if work is None:
+            raise HTTPException(status_code=404, detail="Work not found")
+        fails = int(work.get("repair_fail_count") or 0)
+        if fails < 2:
+            return {"candidates": [], "repair_fail_count": fails, "ready": False}
+        q = " ".join(
+            part
+            for part in [str(work.get("title") or "").strip(), str(work.get("author") or "").strip()]
+            if part
+        )
+        hits, beyond_error = search_beyond(
+            settings(),
+            q=q,
+            kind=str(work.get("kind") or ""),
+            title=str(work.get("title") or ""),
+            author=str(work.get("author") or ""),
+        )
+        candidates = rank_regrab_candidates(
+            hits or [],
+            failed_guid=str(work.get("indexer_guid") or ""),
+            limit=3,
+        )
+        return {
+            "candidates": candidates,
+            "repair_fail_count": fails,
+            "ready": True,
+            "beyond_error": beyond_error,
+        }
+
     @app.post("/api/review/{work_id}/retry")
     def review_retry(work_id: str, request: Request):
         require_role(request.state.user, "owner", "op")
@@ -920,7 +1102,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             work = promote_music(db, settings(), work_id)
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
-        return {"work": work}
+        return {"work": work, "plexamp": plexamp_handoff(work)}
 
     @app.get("/api/settings")
     def get_settings(request: Request):
@@ -946,6 +1128,37 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         save_settings(root, saved)
         sync_nzbfinder(db, saved)
         return {"settings": mask_settings(saved), "abs_match": abs_match_counts(db)}
+
+    @app.get("/api/settings/quiet-hours")
+    def get_quiet_hours(request: Request):
+        require_role(request.state.user, "owner", "op")
+        cfg = settings()
+        return {
+            "quiet_hours_enabled": bool(cfg.quiet_hours_enabled),
+            "quiet_hours_start": cfg.quiet_hours_start,
+            "quiet_hours_end": cfg.quiet_hours_end,
+            "active_now": in_quiet_hours(cfg),
+        }
+
+    @app.put("/api/settings/quiet-hours")
+    def put_quiet_hours(payload: SettingsPayload, request: Request):
+        require_role(request.state.user, "owner", "op")
+        incoming = {
+            key: value
+            for key, value in payload.model_dump().items()
+            if value is not None and key in {"quiet_hours_enabled", "quiet_hours_start", "quiet_hours_end"}
+        }
+        merged = merge_secret_fields(incoming, settings())
+        from librarian.config import Settings
+
+        saved = Settings.from_mapping(merged)
+        save_settings(root, saved)
+        return {
+            "quiet_hours_enabled": bool(saved.quiet_hours_enabled),
+            "quiet_hours_start": saved.quiet_hours_start,
+            "quiet_hours_end": saved.quiet_hours_end,
+            "active_now": in_quiet_hours(saved),
+        }
 
     @app.post("/api/settings/abs-match")
     def abs_match_settings(request: Request):
@@ -1063,6 +1276,18 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             apply=False,
         )
         return result
+
+    @app.get("/release-notes.json")
+    def release_notes_json() -> FileResponse:
+        """Serve release notes copied into dist (Docker) or public/ (local generate)."""
+        path = _frontend_public_file("release-notes.json")
+        if path is None:
+            raise HTTPException(status_code=404, detail="Release notes not found")
+        return FileResponse(
+            path,
+            media_type="application/json",
+            headers={"Cache-Control": "public, max-age=60"},
+        )
 
     if FRONTEND_DIST.is_dir():
         assets = FRONTEND_DIST / "assets"

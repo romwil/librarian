@@ -117,7 +117,12 @@ export default function CoverCard({ work, onRequest, badge, beyond = false, role
         {host ? <span className="cover-host"> · {host}</span> : null}
       </p>
       {beads.length ? (
-        <div className="gap-beads" role="list" aria-label="Series progress" data-testid="gap-beads">
+        <div
+          className="gap-beads"
+          role="list"
+          aria-label={work.gap_type === "multipart" ? "Multipart progress" : "Series progress"}
+          data-testid="gap-beads"
+        >
           {beads.map((bead) => (
             <button
               key={bead.value}

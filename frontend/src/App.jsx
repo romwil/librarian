@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { api } from "./api.js";
 import AppChrome from "./components/AppChrome.jsx";
+import WhatsNewGate from "./components/WhatsNewGate.jsx";
 
 export default function App() {
   const location = useLocation();
@@ -44,6 +45,7 @@ export default function App() {
 
   return (
     <AppChrome user={user} features={features} reviewCount={reviewCount}>
+      <WhatsNewGate />
       <Outlet context={{ user, features, setUser, reviewCount }} />
     </AppChrome>
   );

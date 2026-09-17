@@ -5,10 +5,13 @@ import { browseHref } from "../browse.js";
 import { coverWashStyle, coverWashUrl, isInboundJob } from "../cover.js";
 import { canPromoteIncomingMusic, humanError, peekMediaNote } from "../copy.js";
 import { looksLikeHtml, sanitizeDescriptionHtml } from "../description.js";
+import { findHref } from "../find.js";
+import { isIncompleteOwnedPartSet, ownedPartSetStatusLine, partSetFindFields } from "../findParts.js";
 import { useAlbumPlayer } from "../hooks/useAlbumPlayer.js";
 import { canOpenInlineMedia, canReadInApp, workDownloadUrl } from "../reader.js";
 import Rail from "../components/Rail.jsx";
 import Reader from "../components/Reader.jsx";
+import PlexampToast from "../components/PlexampToast.jsx";
 
 export default function WorkPage() {
   const { id } = useParams();
@@ -21,6 +24,9 @@ export default function WorkPage() {
   const [enrichNote, setEnrichNote] = useState("");
   const [reading, setReading] = useState(false);
   const [readingFileId, setReadingFileId] = useState("");
+  const [whisperBody, setWhisperBody] = useState("");
+  const [whisperNote, setWhisperNote] = useState("");
+  const [plexamp, setPlexamp] = useState(null);
   const album = useAlbumPlayer({
     workId: id,
     files: data?.files || [],
@@ -87,6 +93,9 @@ export default function WorkPage() {
   const descriptionHtml = looksLikeHtml(work.description) ? sanitizeDescriptionHtml(work.description) : "";
   const washUrl = coverWashUrl(work);
   const washStyle = coverWashStyle(work);
+  const incompleteParts = isIncompleteOwnedPartSet(work.part_set);
+  const findMissingHref = incompleteParts ? findHref(partSetFindFields(work)) : "";
+  const partStatus = incompleteParts ? ownedPartSetStatusLine(work.part_set) : "";
 
   async function favorite() {
     const next = await api.favorite(work.id);
@@ -94,9 +103,22 @@ export default function WorkPage() {
   }
 
   async function promote() {
-    await api.promote(work.id);
+    const result = await api.promote(work.id);
+    if (result?.plexamp) setPlexamp(result.plexamp);
     const payload = await api.work(work.id);
     setData(payload);
+  }
+
+  async function sendWhisper(event) {
+    event.preventDefault();
+    setWhisperNote("");
+    try {
+      const result = await api.addWhisper(work.id, whisperBody);
+      setData({ ...data, whispers: result.whispers || [] });
+      setWhisperBody("");
+    } catch (err) {
+      setWhisperNote(humanError(err));
+    }
   }
 
   return (
@@ -133,6 +155,16 @@ export default function WorkPage() {
           </div>
           <h1>{work.title}</h1>
           <p className="work-sub">{[work.author, work.year, work.series_name, work.series_index].filter(Boolean).join(" · ")}</p>
+          {work.cover_story ? (
+            <p className="cover-story" data-testid="cover-story">
+              {work.cover_story}
+            </p>
+          ) : null}
+          {incompleteParts ? (
+            <p className="lede" data-testid="part-set-status">
+              Multipart · {partStatus}
+            </p>
+          ) : null}
           {mediaNote ? (
             <p className="lede work-media-note" data-testid="work-media-note">
               {mediaNote}
@@ -203,6 +235,16 @@ export default function WorkPage() {
                 Open Review
               </Link>
             ) : null}
+            {incompleteParts ? (
+              <Link
+                className="cta compact"
+                to={findMissingHref}
+                data-testid="find-missing-parts"
+                title={partStatus || undefined}
+              >
+                Find missing parts
+              </Link>
+            ) : null}
             <Link className="cta ghost compact" to="/">
               Back to The Hall
             </Link>
@@ -210,6 +252,32 @@ export default function WorkPage() {
         </div>
       </section>
       <div className="work-body">
+        {(data.series_ribbon || []).length ? (
+          <section className="series-ribbon" data-testid="series-ribbon" aria-label="Series progress">
+            <h2 className="kicker">Series spine</h2>
+            <div className="series-ribbon-track" role="list">
+              {data.series_ribbon.map((bead) => (
+                <Link
+                  key={bead.value}
+                  role="listitem"
+                  className={`series-bead is-${bead.state}`}
+                  to={
+                    bead.state === "owned"
+                      ? browseHref({ series: work.series_name })
+                      : findHref({
+                          q: `${work.series_name || ""} ${bead.value}`.trim(),
+                          kind: work.kind || "",
+                          series: work.series_name || "",
+                          issue: bead.value,
+                        })
+                  }
+                  title={bead.state === "owned" ? `Owned ${bead.value}` : `Find ${bead.value}`}
+                  aria-label={bead.state === "owned" ? `Owned ${bead.value}` : `Find missing ${bead.value}`}
+                />
+              ))}
+            </div>
+          </section>
+        ) : null}
         {user?.role === "owner" && (work.kind === "book" || work.kind === "audiobook") ? (
           <section className="work-meta">
             <h2 className="kicker">Catalog</h2>
@@ -268,6 +336,34 @@ export default function WorkPage() {
             )}
           </section>
         ) : null}
+        <section className="family-whispers" data-testid="family-whispers">
+          <h2 className="kicker">Family whispers</h2>
+          <p className="muted">A short note for the household — not a social feed.</p>
+          <ul className="whisper-list">
+            {(data.whispers || []).map((row) => (
+              <li key={row.id}>
+                <strong>{row.author_name || "Someone"}</strong>
+                <span>{row.body}</span>
+              </li>
+            ))}
+          </ul>
+          <form className="whisper-form" onSubmit={sendWhisper}>
+            <label className="sr-only" htmlFor="whisper-body">
+              Whisper
+            </label>
+            <input
+              id="whisper-body"
+              value={whisperBody}
+              onChange={(e) => setWhisperBody(e.target.value)}
+              maxLength={280}
+              placeholder="Leave a quiet note…"
+            />
+            <button type="submit" className="cta outline compact" disabled={!whisperBody.trim()}>
+              Whisper
+            </button>
+          </form>
+          {whisperNote ? <p className="alert">{whisperNote}</p> : null}
+        </section>
         {data.files?.length ? (
           <section>
             <h2 className="kicker">{work.kind === "music" ? "Tracks" : "Files"}</h2>
@@ -347,6 +443,7 @@ export default function WorkPage() {
           onClose={closeReader}
         />
       ) : null}
+      {plexamp ? <PlexampToast handoff={plexamp} onClose={() => setPlexamp(null)} /> : null}
     </article>
   );
 }

@@ -1,0 +1,76 @@
+{
+  "generated_at": "2026-09-17T22:00:43Z",
+  "releases": [
+    {
+      "version": "0.2.0",
+      "date": "2026-09-17",
+      "summary": "",
+      "highlights": [
+        "**What’s New greets you after an upgrade.** Runtime version vs last-seen opens a short modal; Settings keeps the full release-notes history (generated from this CHANGELOG).",
+        "**Multipart sets know their holes.** Catalog `part_set` tracks owned vs total; Find groups Part N/M / CDn sets, chases missing NZBs when listed, and stays honest when gaps are unlisted.",
+        "**Tonight’s shelf and quiet delight.** Continue + a quick gap + a Discover surprise; cover stories, series ribbons, celebrations, Plexamp handoff (music only), whispers, quiet hours for Review, finish-set ETA, and ambient prefs.",
+        "**Advanced Search and Find fields suggest while you type.** Author, title, series, artist, album, and year pull from the household catalog first (optional on-disk cache under `/config/suggest-cache`). Freeform typing still works; owners can refresh the seed from Settings.",
+        "**Volumes already on disk can be filed.** Owners and ops Add a `/data` folder or file — confident identify moves and renames; anything unexpected waits in Review. A Watch folder does the same for drops. Scan still only catalogs; it does not move files.",
+        "**Find asks the indexer the way Newznab expects.** Kind chips swap the form: books/magazines send title, author, and ISBN; comics search series and issue in `7030`; music uses artist and album (never a book ISBN); audiobooks stay on `3030`. Request stores what you sought, what you picked, and the metadata the indexer actually returned — not SABnzbd’s dump name.",
+        "**The downloader tells the truth.** Completed SAB jobs use the real complete folder (mapped through SAB complete root), failed unpacks say Failed with a reason, and the catalog title stays the title you asked for — not the Usenet dump name.",
+        "**Thin books get a real catalog.** Owner Enrich pulls description, series, year, and cover from Hardcover (token in Settings) then Open Library. The LLM still never invents an ISBN.",
+        "**Find can peruse what’s trending.** Empty Find is Discover: real indexer category feeds from capabilities (not a second Hall, not auto-SAB). Show categories (off by default) adds Movies/TV/XXX — those go to the downloader / *arr, never The Hall.",
+        "**Hall Gaps know the rest of the run.** Missing series volumes, comic issues, and album tracks come from Hardcover / Open Library, Comic Vine, and MusicBrainz. Clicking a hole opens Find — SAB never fires from a shelf browse.",
+        "**Goodreads shelves land on Favorites.** Upload a CSV export; rows match by ISBN. Missing books become thin works that need Find.",
+        "**The Hall remembers where you left off.** Opening a volume plants a Continue bookmark; Finished clears it. Covers are real `cover.jpg` when we can fetch them.",
+        "**Identify can convert and ask the house LLM.** CBR→CBZ via `unar`, PDF-only books via `ebook-convert` when present, BYO LLM never invents an ISBN. SAB jobs poll in the running process, not only when you open Queue.",
+        "**Automat-ready kit.** Maintainer playbook at `docs/ops/AUTOMAT.md`, `/config` + `/data` mounts that survive recreate, and a Hub `rollout.sh` stub for later. LAN truth is `http://10.10.1.202:8793` — not a public VIP.",
+        "**Safe behind your reverse proxy.** `LIBRARIAN_TRUST_PROXY_HEADERS` is off unless you opt in. Spoofed `X-Forwarded-*` cannot mark cookies Secure, cannot rotate the login throttle, and cannot pretend the hop is HTTPS. Login and invite routes are rate-limited."
+      ],
+      "sections": [
+        {
+          "title": "Added",
+          "bullets": [
+            "What’s New upgrade modal (`WhatsNewGate`) + Settings release-notes panel; `scripts/generate-release-notes.sh` → `frontend/public/release-notes.json`.",
+            "Catalog multipart `part_set` (owned / total / style / base) with Hall/Work “Find missing parts”, Review regrab hints, and Find PartSet chase (honest when NZBs are unlisted).",
+            "Part E delight: Tonight’s shelf, cover stories, series ribbons, celebration banners, Plexamp toast (music Promote), whispers, quiet hours, finish-set ETA, ambient prefs, finish-set labels.",
+            "Typeahead suggestions for Search/Find advanced fields (`GET /api/suggest`) plus owner **Refresh suggestions from shelves** (`POST /api/settings/suggest-cache`). Catalog-first; optional bounded MusicBrainz seed.",
+            "Owner/op **Add to the shelves** (`GET /api/fs`, `POST /api/ingest`) and **Watch folder** (`watch_root` / `watch_enabled`). Identify/organize when confident; Review when not. Scan does not move files.",
+            "Kind-morphing Find fields + NZBFinder v2 `books` ISBN param; job payload `sought` / `selected` / `retrieved`.",
+            "Honest SAB complete-path remap, fail/unpack reasons, and Find title/kind kept through identify.",
+            "Owner **Enrich the shelves** / work-page Enrich: Hardcover GraphQL then Open Library; covers reuse indexer URL / Open Library ISBN / CBZ page 1.",
+            "Catalog gaps: Hardcover then Open Library series volumes; Comic Vine issue lists (`comicvine_api_key`, masked); MusicBrainz track lists (User-Agent + polite rate limit). Magazines stay local `YYYY-MM`. Hall Gaps open Find; confirm stays off the shelf.",
+            "Extra Newznab v2 hosts in Settings; Find merges/dedupes by guid and keeps NZBFinder hits if another host 502s.",
+            "Find **Discover** (`GET /api/discover`): capabilities category feeds, latest-in-cat via v2 search or `/rss?t=`. Show categories (owner; `show_extra_categories`) can include Movies/TV/XXX. Movie/TV Request queues SAB then tells Radarr/Sonarr to expect; XXX is SAB default folder only.",
+            "RSS subscriptions (owner/op on Find or Settings): poll in-process; new items become **Asked** jobs for confirm — not silent SAB.",
+            "Optional Audiobookshelf URL + token (masked; env `AUDIOBOOKSHELF_API_TOKEN`). Match by ISBN then author+title; quiet **On the player** chip. Does not replace `audiobook_target` default Plex.",
+            "Owner **Import Goodreads CSV** onto Favorites, matched by ISBN-10 or ISBN-13. No Goodreads OAuth.",
+            "`hardcover_api_token` in settings.json (masked on GET; env `HARDCOVER_API_TOKEN` seeds first boot).",
+            "`comicvine_api_key` in settings.json (masked on GET; env `COMICVINE_API_KEY` seeds first boot). Hardcover does not cover issue-numbered comics.",
+            "`docs/ops/AUTOMAT.md` runbook (kit path, first-boot env, rsync, deploy).",
+            "Proxy-header fail-closed (`librarian/proxy.py`) + per-IP rate limits on login / invite validate / redeem.",
+            "`PUID`/`PGID` 99/100 on Unraid, `extra_hosts` for `downloader.sl` when the host can resolve it, `rollout.sh` Hub pull stub.",
+            "Continue rail + per-user progress; cover fetch (indexer / Open Library ISBN / CBZ page 1); CBR→CBZ (`unar` in the image); on-demand `ebook-convert` cache under `/config/conversions`.",
+            "BYO LLM identify (structured JSON; invented ISBN dropped); background SAB poller; `indexers` table + owner **Ping NZBFinder**.",
+            "Local audiobook part holes and music track-number holes."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "0.1.0",
+      "date": "2026-09-14",
+      "summary": "Initial household reading-room kit on Automat.",
+      "highlights": [
+        "**The Hall, not a grabber.** FastAPI + Vite Reading Room on port **8793**, with owner / op / reader roles and invite-only join.",
+        "**Stacks that know their kinds.** Books (EPUB), magazines, comics (CBZ + ComicInfo), audiobooks (Plex target by default), incoming music with Promote.",
+        "**Honest gaps.** Local magazine `YYYY-MM` holes and comic issue-number holes — confirm before SAB.",
+        "**Automat kit.** `/config` + `/data`, `docker-run.sh` on-host build, settings.json wins, no collision with 8788 / 8790 / 8791 / 8792."
+      ],
+      "sections": [
+        {
+          "title": "Added",
+          "bullets": [
+            "Python 3.12 package `librarian/` with SQLite WAL catalog, HMAC invites, NZBFinder v2 client, SABnzbd status machine, identify/organize, FTS search.",
+            "Docs: README, DOCKER, TESTING, SECURITY, HELP, and the 2026-09-14 design spec."
+          ]
+        }
+      ]
+    }
+  ]
+}

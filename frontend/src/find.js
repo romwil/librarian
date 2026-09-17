@@ -1,3 +1,5 @@
+import { partSetFindFields } from "./findParts.js";
+
 export const KINDS = [
   ["", "All"],
   ["book", "Book"],
@@ -204,6 +206,12 @@ export function findPlaceholder(kind) {
 }
 
 export function gapFindFields(work = {}) {
+  if (trimmed(work.gap_type) === "multipart") {
+    return pruneFieldsForKind(
+      work.kind && work.kind !== "gap" ? work.kind : "",
+      partSetFindFields(work),
+    );
+  }
   const kind = work.kind && work.kind !== "gap" ? work.kind : "";
   const series = trimmed(work.series_name);
   const issue = trimmed(work.missing_index || work.series_index);

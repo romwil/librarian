@@ -127,4 +127,14 @@ export const api = {
   convert: (id, format) => request(`/works/${id}/convert`, { method: "POST", body: JSON.stringify({ format }) }),
   fs: (path = "") => request(`/fs?path=${encodeURIComponent(path || "")}`),
   ingest: (path) => request("/ingest", { method: "POST", body: JSON.stringify({ path }) }),
+  prefs: () => request("/prefs"),
+  savePrefs: (body) => request("/prefs", { method: "PUT", body: JSON.stringify(body) }),
+  whispers: (id) => request(`/works/${id}/whispers`),
+  addWhisper: (id, body) => request(`/works/${id}/whispers`, { method: "POST", body: JSON.stringify({ body }) }),
+  celebrationSeen: (key) => request("/celebrations/seen", { method: "POST", body: JSON.stringify({ key }) }),
+  finishEta: (missingCount) =>
+    request("/find/finish-eta", { method: "POST", body: JSON.stringify({ missing_count: missingCount }) }),
+  reviewRegrab: (id) => request(`/review/${id}/regrab`),
+  quietHours: () => request("/settings/quiet-hours"),
+  saveQuietHours: (body) => request("/settings/quiet-hours", { method: "PUT", body: JSON.stringify(body) }),
 };

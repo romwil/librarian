@@ -337,6 +337,23 @@ export function partSetRequestAction(set, selectedCount = 0) {
   };
 }
 
+/** One-tap finish CTA when missing NZBs are listed after chase. */
+export function finishThisSetAction(set, { etaMinutes = null } = {}) {
+  const gapItems = set?.missingItems || [];
+  if (!gapItems.length) return null;
+  const n = gapItems.length;
+  let label = n === 1 ? "Finish this set" : `Finish this set (${n})`;
+  if (etaMinutes) label = `${label} · ~${etaMinutes} min`;
+  return {
+    kind: "finish-set",
+    style: "primary",
+    label,
+    enabled: true,
+    items: gapItems,
+    honesty: "",
+  };
+}
+
 /** Cap secondary beyond searches when chasing missing multipart NZBs. */
 export const GAP_CHASE_QUERY_CAP = 8;
 
@@ -442,4 +459,102 @@ export function partBeadStates(set) {
     beads.push({ part: i, state: have.has(i) ? "found" : "missing" });
   }
   return beads;
+}
+
+/** True when shelved work exposes part_set.total with owned.length < total. */
+export function isIncompleteOwnedPartSet(partSet = null) {
+  if (!partSet || partSet.total == null) return false;
+  const total = Number(partSet.total);
+  if (!Number.isFinite(total) || total < 2) return false;
+  const owned = (partSet.owned || []).map(Number).filter(Number.isFinite);
+  return missingParts(
+    owned.map((part) => ({ part })),
+    total,
+  ).length > 0;
+}
+
+/**
+ * Deep-link Find fields for an owned incomplete multipart (B3 → B1 chase).
+ * Prefers Part n/total (or of/cd/disc) for the first missing part so Find’s
+ * secondary chase can fill the rest.
+ */
+export function partSetFindFields(work = {}) {
+  const partSet = work.part_set || {};
+  const kind = work.kind && work.kind !== "gap" ? work.kind : "";
+  const base =
+    String(partSet.base || "").trim() ||
+    stripPartMarkers(work.title || work.series_name || "") ||
+    String(work.title || work.series_name || "").trim();
+  const total = partSet.total != null ? Number(partSet.total) : null;
+  const style = partSet.style || "part";
+  const owned = (partSet.owned || []).map(Number).filter(Number.isFinite);
+  const focusRaw = work.missing_index != null ? Number(work.missing_index) : NaN;
+  const missing = missingParts(
+    owned.map((part) => ({ part })),
+    total,
+  );
+  const focus = Number.isFinite(focusRaw) && missing.includes(focusRaw) ? focusRaw : missing[0];
+  let q = base;
+  if (base && focus != null && Number.isFinite(focus) && total) {
+    const padded = padPartNum(focus);
+    const totalPad = padPartNum(total);
+    if (style === "cd") q = `${base} CD${focus}`;
+    else if (style === "disc") q = `${base} Disc ${focus}`;
+    else if (style === "of") q = `${base} ${padded}of${totalPad}`;
+    else q = `${base} Part ${focus}/${total}`;
+  }
+  const author = String(work.author || "").trim();
+  if (kind === "music") {
+    return {
+      q,
+      kind,
+      author: "",
+      title: "",
+      isbn: "",
+      series: "",
+      issue: "",
+      artist: author,
+      album: base,
+      year: work.year == null ? "" : String(work.year),
+    };
+  }
+  if (kind === "audiobook" || kind === "book") {
+    return {
+      q,
+      kind,
+      author,
+      title: base,
+      isbn: String(work.isbn || "").trim(),
+      series: "",
+      issue: "",
+      artist: "",
+      album: "",
+      year: work.year == null ? "" : String(work.year),
+    };
+  }
+  return {
+    q,
+    kind,
+    author,
+    title: base,
+    isbn: String(work.isbn || "").trim(),
+    series: "",
+    issue: "",
+    artist: "",
+    album: "",
+    year: work.year == null ? "" : String(work.year),
+  };
+}
+
+/** Hall gap card → Find: multipart uses chase-shaped query; series gaps unchanged. */
+export function ownedPartSetStatusLine(partSet = null) {
+  if (!partSet || partSet.total == null) return "";
+  const total = Number(partSet.total);
+  const owned = (partSet.owned || []).map(Number).filter(Number.isFinite);
+  const missing = missingParts(
+    owned.map((part) => ({ part })),
+    total,
+  );
+  if (!missing.length) return `${owned.length}/${total} · complete`;
+  return `${owned.length}/${total} · incomplete · missing ${missing.length}`;
 }

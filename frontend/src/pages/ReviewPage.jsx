@@ -27,6 +27,9 @@ export default function ReviewPage() {
   const [busy, setBusy] = useState({});
   const [bulkNote, setBulkNote] = useState("");
   const [error, setError] = useState("");
+  const [regrabs, setRegrabs] = useState({});
+  const [quiet, setQuiet] = useState(null);
+  const [quietNote, setQuietNote] = useState("");
   const focusRef = useRef(null);
 
   function reload() {
@@ -56,9 +59,27 @@ export default function ReviewPage() {
   useEffect(reload, []);
 
   useEffect(() => {
+    api
+      .quietHours()
+      .then(setQuiet)
+      .catch(() => setQuiet(null));
+  }, []);
+
+  useEffect(() => {
     if (!focusId || !works.length) return;
     focusRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [focusId, works]);
+
+  async function saveQuiet(patch) {
+    setQuietNote("");
+    try {
+      const next = await api.saveQuietHours({ ...(quiet || {}), ...patch });
+      setQuiet(next);
+      setQuietNote("Quiet hours saved.");
+    } catch (err) {
+      setQuietNote(humanError(err));
+    }
+  }
 
   function patch(workId, key, value) {
     setDrafts((prev) => ({
@@ -126,6 +147,37 @@ export default function ReviewPage() {
     }
   }
 
+  async function loadRegrab(work) {
+    setWorkBusy(work.id, true);
+    setErrors((prev) => ({ ...prev, [work.id]: "" }));
+    try {
+      const data = await api.reviewRegrab(work.id);
+      setRegrabs((prev) => ({ ...prev, [work.id]: data }));
+    } catch (err) {
+      setErrors((prev) => ({ ...prev, [work.id]: humanError(err) }));
+    } finally {
+      setWorkBusy(work.id, false);
+    }
+  }
+
+  async function requestRegrab(work, candidate) {
+    setWorkBusy(work.id, true);
+    try {
+      await api.requestItem({
+        title: candidate.title || candidate.name || work.title,
+        guid: candidate.guid,
+        kind: work.kind || candidate.kind,
+        download_url: candidate.download_url,
+        author: work.author || candidate.author,
+      });
+      reload();
+    } catch (err) {
+      setErrors((prev) => ({ ...prev, [work.id]: humanError(err) }));
+    } finally {
+      setWorkBusy(work.id, false);
+    }
+  }
+
   async function bulkAction(kind) {
     const stuck = unpackStuckWorks(works).filter((work) => {
       const actions = reviewActionsFromWork(work);
@@ -160,6 +212,43 @@ export default function ReviewPage() {
         Slips are downloads organize could not finish filing. Happy-path ISBN books never appear here. Apply files a
         ticket once the folder has readable media — Skip dismisses without shelving.
       </p>
+      {quiet ? (
+        <details className="more-settings" data-testid="review-quiet-hours">
+          <summary className="kicker">Quiet hours</summary>
+          <p className="muted">
+            {quiet.active_now ? "Active now — new unpacks wait for tonight." : "Inactive — Organize runs normally."}
+          </p>
+          <div className="field field-check">
+            <label>
+              <input
+                type="checkbox"
+                checked={Boolean(quiet.quiet_hours_enabled)}
+                onChange={(e) => saveQuiet({ quiet_hours_enabled: e.target.checked })}
+              />
+              Defer unpack / convert
+            </label>
+          </div>
+          <div className="cta-row compact">
+            <label className="field">
+              <span className="sr-only">Starts</span>
+              <input
+                value={quiet.quiet_hours_start || "22:00"}
+                onChange={(e) => setQuiet({ ...quiet, quiet_hours_start: e.target.value })}
+                onBlur={() => saveQuiet({ quiet_hours_start: quiet.quiet_hours_start })}
+              />
+            </label>
+            <label className="field">
+              <span className="sr-only">Ends</span>
+              <input
+                value={quiet.quiet_hours_end || "07:00"}
+                onChange={(e) => setQuiet({ ...quiet, quiet_hours_end: e.target.value })}
+                onBlur={() => saveQuiet({ quiet_hours_end: quiet.quiet_hours_end })}
+              />
+            </label>
+          </div>
+          {quietNote ? <p className="muted">{quietNote}</p> : null}
+        </details>
+      ) : null}
       {error ? <p className="alert">{error}</p> : null}
       {unpackCount ? (
         <div className="cta-row review-bulk" data-testid="review-bulk">
@@ -211,6 +300,11 @@ export default function ReviewPage() {
                 <span className="seal">{draft.kind || work.kind}</span>
               </header>
               <strong className="ticket-title">{draft.title || work.title || "Untitled"}</strong>
+              {actions.quietHours ? (
+                <p className="chip is-on" data-testid="quiet-hours-chip">
+                  Queued for tonight
+                </p>
+              ) : null}
               <p className="lede" data-testid="review-reason-copy">
                 {reviewReasonCopy(reason)}
               </p>
@@ -263,7 +357,7 @@ export default function ReviewPage() {
                   </Link>
                 </p>
               ) : null}
-              {(actions.canRepair || actions.canRetry || actions.canRequestNew) && (
+              {(actions.canRepair || actions.canRetry || actions.canRequestNew || actions.canRegrab) && (
                 <div className="cta-row ticket-recovery" data-testid="review-recovery">
                   {actions.canRepair ? (
                     <button
@@ -287,6 +381,17 @@ export default function ReviewPage() {
                       Retry
                     </button>
                   ) : null}
+                  {actions.canRegrab ? (
+                    <button
+                      type="button"
+                      className="cta outline compact"
+                      disabled={workBusy}
+                      onClick={() => loadRegrab(work)}
+                      data-testid="review-regrab"
+                    >
+                      Smart re-grab
+                    </button>
+                  ) : null}
                   {actions.canRequestNew ? (
                     <Link
                       className="cta outline compact"
@@ -298,6 +403,23 @@ export default function ReviewPage() {
                   ) : null}
                 </div>
               )}
+              {regrabs[work.id]?.candidates?.length ? (
+                <ul className="regrab-list" data-testid="regrab-candidates">
+                  {regrabs[work.id].candidates.map((candidate) => (
+                    <li key={candidate.guid || candidate.title}>
+                      <span>{candidate.diff || candidate.title}</span>
+                      <button
+                        type="button"
+                        className="cta compact outline"
+                        disabled={workBusy}
+                        onClick={() => requestRegrab(work, candidate)}
+                      >
+                        Ask for this
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
               <form
                 className="identify-form"
                 onSubmit={(event) => {

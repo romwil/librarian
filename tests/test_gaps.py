@@ -74,6 +74,52 @@ def test_local_audiobook_and_music_gaps(tmp_path):
     assert any(card["title"] == "Kind of Blue 2" and card["gap_type"] == "music_tracks" for card in cards)
 
 
+def test_multipart_owned_gaps_vs_part_total(tmp_path):
+    """B3: owned holes use part_set.total — not series_index and not min/max-only file holes."""
+    from librarian.gaps import multipart_owned_gaps
+
+    db = Database(tmp_path / "librarian.db")
+    work = db.upsert_work(
+        {
+            "kind": "audiobook",
+            "title": "Magician",
+            "author": "Feist",
+            "part_total": 5,
+            "part_style": "part",
+            "part_base": "Raymond E Feist Magician",
+        }
+    )
+    db.add_file(
+        {
+            "work_id": work["id"],
+            "path": "/a/Magician Part 3.m4b",
+            "filename": "Magician Part 3.m4b",
+            "kind": "audiobook",
+            "part": 3,
+        }
+    )
+    db.add_file(
+        {
+            "work_id": work["id"],
+            "path": "/a/Magician Part 5.m4b",
+            "filename": "Magician Part 5.m4b",
+            "kind": "audiobook",
+            "part": 5,
+        }
+    )
+    rails = multipart_owned_gaps(db)
+    assert len(rails) == 1
+    assert rails[0]["gap_type"] == "multipart"
+    assert rails[0]["missing"] == ["1", "2", "4"]
+    assert rails[0]["owned_indexes"] == ["3", "5"]
+    assert rails[0]["part_set"]["total"] == 5
+    cards = gap_cards(rails)
+    assert any(card["gap_type"] == "multipart" and card["missing_index"] == "1" for card in cards)
+    assert all(card.get("part_set", {}).get("total") == 5 for card in cards if card.get("gap_type") == "multipart")
+    # Distinct from comic series_index gaps.
+    assert all(card.get("gap_type") != "comic_issue" for card in cards)
+
+
 def _dune_series_payload():
     return {
         "id": 7,

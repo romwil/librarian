@@ -15,6 +15,7 @@ from librarian.hardcover import HardcoverClient, HardcoverError
 from librarian.kinds import KIND_AUDIOBOOK, KIND_BOOK, KIND_COMIC, KIND_MAGAZINE, KIND_MUSIC
 from librarian.musicbrainz import MusicBrainzClient
 from librarian.openlibrary import OpenLibraryClient
+from librarian.parts import build_part_set, missing_parts, part_set_incomplete
 
 _MONTH = re.compile(r"^(?P<year>\d{4})-(?P<month>0[1-9]|1[0-2])$")
 _INT = re.compile(r"^(\d+)$")
@@ -194,6 +195,41 @@ def _file_gaps(db: Database, kind: str, hole_fn, label: str) -> List[Dict[str, A
     return rails
 
 
+def multipart_owned_gaps(db: Database) -> List[Dict[str, Any]]:
+    """Owned Usenet multipart holes when part_set.total is known (not series_index gaps)."""
+    rails: List[Dict[str, Any]] = []
+    for work in db.works_with_part_total():
+        files = db.files_for_work(str(work["id"]))
+        part_set = build_part_set(work, files)
+        if not part_set_incomplete(part_set):
+            continue
+        assert part_set is not None
+        missing = missing_parts(
+            part_set.get("owned") or [],
+            part_set["total"],
+            origin=part_set.get("origin"),
+        )
+        if not missing:
+            continue
+        base = str(part_set.get("base") or work.get("title") or "").strip()
+        rails.append(
+            {
+                "kind": work["kind"],
+                "series_name": base,
+                "owned": [str(work["id"])],
+                "owned_indexes": [str(n) for n in (part_set.get("owned") or [])],
+                "missing": [str(n) for n in missing],
+                "author": str(work.get("author") or "").strip(),
+                "provenance": "local",
+                "gap_type": "multipart",
+                "part_set": part_set,
+                "work_id": str(work["id"]),
+                "title": str(work.get("title") or base),
+            }
+        )
+    return rails
+
+
 def local_gaps(db: Database) -> List[Dict[str, Any]]:
     rails: List[Dict[str, Any]] = []
     for kind in (KIND_MAGAZINE, KIND_COMIC):
@@ -203,6 +239,7 @@ def local_gaps(db: Database) -> List[Dict[str, Any]]:
                 rails.append(card)
     rails.extend(_file_gaps(db, KIND_AUDIOBOOK, audiobook_part_holes, "audiobook_parts"))
     rails.extend(_file_gaps(db, KIND_MUSIC, music_track_holes, "music_tracks"))
+    rails.extend(multipart_owned_gaps(db))
     return rails
 
 
@@ -572,6 +609,10 @@ def gap_cards(rows: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
             }
             if row.get("gap_type"):
                 card["gap_type"] = row["gap_type"]
+            if row.get("part_set"):
+                card["part_set"] = dict(row["part_set"])
+            if row.get("work_id"):
+                card["work_id"] = str(row["work_id"])
             if author:
                 card["author"] = author
             if year not in (None, ""):

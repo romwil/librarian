@@ -3,6 +3,8 @@ import { Link, useNavigate, useOutletContext } from "react-router-dom";
 import { api } from "../api.js";
 import { browseHref } from "../browse.js";
 import Rail from "../components/Rail.jsx";
+import TonightShelf from "../components/TonightShelf.jsx";
+import CelebrationBanner from "../components/CelebrationBanner.jsx";
 import { DISCOVER_CTA, emptyHallCopy, humanError, setupComplete } from "../copy.js";
 import { discoverHref } from "../find.js";
 import AddToLibrary from "../components/AddToLibrary.jsx";
@@ -69,6 +71,7 @@ export default function HallPage() {
         </p>
       </section>
       {loadError ? <p className="alert hall-alert">{loadError}</p> : null}
+      <CelebrationBanner items={hall?.celebrations || []} />
       {hall?.empty ? (
         <section className="empty-cta hall-empty" data-testid="hall-empty">
           <p className="empty-illustration" aria-hidden="true">
@@ -84,6 +87,7 @@ export default function HallPage() {
         </section>
       ) : null}
       {keeper ? <AddToLibrary compact /> : null}
+      <TonightShelf tonight={hall?.tonight} role={user?.role} />
       <Rail
         title="Continue"
         kicker="In-progress reads and listens"

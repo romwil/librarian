@@ -9,7 +9,7 @@ import threading
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 SQLITE_BUSY_TIMEOUT_MS = 30000
 FAVORITES_SHELF = "Favorites"
@@ -59,6 +59,10 @@ CREATE TABLE IF NOT EXISTS works (
     review_reason TEXT,
     music_state TEXT,
     indexer_guid TEXT,
+    part_total INTEGER,
+    part_style TEXT,
+    part_base TEXT,
+    part_origin INTEGER,
     created_at REAL NOT NULL,
     updated_at REAL NOT NULL
 );
@@ -69,6 +73,7 @@ CREATE TABLE IF NOT EXISTS files (
     filename TEXT NOT NULL,
     kind TEXT,
     size INTEGER,
+    part INTEGER,
     created_at REAL NOT NULL
 );
 CREATE TABLE IF NOT EXISTS jobs (
@@ -148,6 +153,26 @@ CREATE TABLE IF NOT EXISTS rss_feeds (
     created_at REAL NOT NULL,
     updated_at REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS user_prefs (
+    user_id TEXT PRIMARY KEY,
+    ambient TEXT NOT NULL DEFAULT 'off',
+    prefs_json TEXT,
+    updated_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS whispers (
+    id TEXT PRIMARY KEY,
+    work_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    body TEXT NOT NULL,
+    created_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_whispers_work ON whispers(work_id, created_at DESC);
+CREATE TABLE IF NOT EXISTS celebrations_seen (
+    user_id TEXT NOT NULL,
+    celebration_key TEXT NOT NULL,
+    seen_at REAL NOT NULL,
+    PRIMARY KEY (user_id, celebration_key)
+);
 """
 
 
@@ -197,6 +222,15 @@ WORK_EXTRA_COLUMNS = {
     "llm_blurb": "TEXT",
     "atmosphere_path": "TEXT",
     "art_attribution": "TEXT",
+    "part_total": "INTEGER",
+    "part_style": "TEXT",
+    "part_base": "TEXT",
+    "part_origin": "INTEGER",
+    "repair_fail_count": "INTEGER",
+}
+
+FILE_EXTRA_COLUMNS = {
+    "part": "INTEGER",
 }
 
 
@@ -214,6 +248,13 @@ def _ensure_work_columns(conn: sqlite3.Connection) -> None:
             conn.execute(f"ALTER TABLE works ADD COLUMN {name} {decl}")
 
 
+def _ensure_file_columns(conn: sqlite3.Connection) -> None:
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(files)").fetchall()}
+    for name, decl in FILE_EXTRA_COLUMNS.items():
+        if name not in existing:
+            conn.execute(f"ALTER TABLE files ADD COLUMN {name} {decl}")
+
+
 class Database:
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
@@ -223,6 +264,7 @@ class Database:
             conn.executescript(SCHEMA)
             _ensure_job_columns(conn)
             _ensure_work_columns(conn)
+            _ensure_file_columns(conn)
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path, timeout=SQLITE_BUSY_TIMEOUT_MS / 1000)
@@ -428,6 +470,11 @@ class Database:
             "review_reason": work.get("review_reason"),
             "music_state": work.get("music_state"),
             "indexer_guid": work.get("indexer_guid"),
+            "part_total": work.get("part_total"),
+            "part_style": work.get("part_style"),
+            "part_base": work.get("part_base"),
+            "part_origin": work.get("part_origin"),
+            "repair_fail_count": work.get("repair_fail_count"),
             "created_at": work.get("created_at") or now,
             "updated_at": now,
         }
@@ -437,6 +484,11 @@ class Database:
             "llm_blurb",
             "atmosphere_path",
             "art_attribution",
+            "part_total",
+            "part_style",
+            "part_base",
+            "part_origin",
+            "repair_fail_count",
         )
         with self._lock, self._connect() as conn:
             existing = conn.execute("SELECT * FROM works WHERE id = ?", (work_id,)).fetchone()
@@ -444,6 +496,13 @@ class Database:
                 for key in preserve:
                     if key not in work:
                         payload[key] = existing[key]
+                # Keep the larger known multipart total when re-organizing another part.
+                if (
+                    "part_total" in work
+                    and existing["part_total"] is not None
+                    and payload["part_total"] is not None
+                ):
+                    payload["part_total"] = max(int(existing["part_total"]), int(payload["part_total"]))
                 conn.execute(
                     """
                     UPDATE works SET
@@ -451,7 +510,8 @@ class Database:
                         isbn=?, mbid=?, description=?, publisher=?, genre=?, cover_path=?,
                         folder_path=?, abs_item_id=?, synopsis_source=?, llm_blurb=?,
                         atmosphere_path=?, art_attribution=?, review_state=?, review_reason=?,
-                        music_state=?, indexer_guid=?, updated_at=?
+                        music_state=?, indexer_guid=?, part_total=?, part_style=?, part_base=?,
+                        part_origin=?, repair_fail_count=?, updated_at=?
                     WHERE id=?
                     """,
                     (
@@ -477,6 +537,11 @@ class Database:
                         payload["review_reason"],
                         payload["music_state"],
                         payload["indexer_guid"],
+                        payload["part_total"],
+                        payload["part_style"],
+                        payload["part_base"],
+                        payload["part_origin"],
+                        payload["repair_fail_count"],
                         payload["updated_at"],
                         work_id,
                     ),
@@ -489,9 +554,9 @@ class Database:
                         id, kind, title, author, series_name, series_index, year, isbn, mbid,
                         description, publisher, genre, cover_path, folder_path, abs_item_id,
                         synopsis_source, llm_blurb, atmosphere_path, art_attribution,
-                        review_state, review_reason, music_state, indexer_guid, created_at,
-                        updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        review_state, review_reason, music_state, indexer_guid, part_total,
+                        part_style, part_base, part_origin, repair_fail_count, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         payload["id"],
@@ -517,6 +582,11 @@ class Database:
                         payload["review_reason"],
                         payload["music_state"],
                         payload["indexer_guid"],
+                        payload["part_total"],
+                        payload["part_style"],
+                        payload["part_base"],
+                        payload["part_origin"],
+                        payload["repair_fail_count"],
                         payload["created_at"],
                         payload["updated_at"],
                     ),
@@ -537,6 +607,20 @@ class Database:
         row = self.get_work(work_id)
         assert row is not None
         return row
+
+    def works_with_part_total(self, *, limit: int = 500) -> List[Dict[str, Any]]:
+        """Shelved works that declare a multipart total (B3 owned holes)."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM works
+                WHERE part_total IS NOT NULL AND part_total >= 2
+                ORDER BY updated_at DESC
+                LIMIT ?
+                """,
+                (int(limit),),
+            ).fetchall()
+        return [_row_dict(row) or {} for row in rows]
 
     def get_work(self, work_id: str) -> Optional[Dict[str, Any]]:
         with self._connect() as conn:
@@ -1116,8 +1200,8 @@ class Database:
         with self._lock, self._connect() as conn:
             conn.execute(
                 """
-                INSERT INTO files (id, work_id, path, filename, kind, size, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO files (id, work_id, path, filename, kind, size, part, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     file_id,
@@ -1126,6 +1210,7 @@ class Database:
                     record["filename"],
                     record.get("kind"),
                     record.get("size"),
+                    record.get("part"),
                     now,
                 ),
             )
@@ -1149,9 +1234,10 @@ class Database:
         if existing is None:
             return self.add_file(record)
         with self._lock, self._connect() as conn:
+            part = record["part"] if "part" in record else existing.get("part")
             conn.execute(
                 """
-                UPDATE files SET work_id = ?, filename = ?, kind = ?, size = ?
+                UPDATE files SET work_id = ?, filename = ?, kind = ?, size = ?, part = ?
                 WHERE id = ?
                 """,
                 (
@@ -1159,6 +1245,7 @@ class Database:
                     record.get("filename") or existing.get("filename"),
                     record.get("kind") or existing.get("kind"),
                     record["size"] if record.get("size") is not None else existing.get("size"),
+                    part,
                     existing["id"],
                 ),
             )
@@ -1585,3 +1672,151 @@ class Database:
     def delete_rss_feed(self, feed_id: str) -> None:
         with self._lock, self._connect() as conn:
             conn.execute("DELETE FROM rss_feeds WHERE id = ?", (feed_id,))
+
+    # --- delight prefs / whispers / celebrations ------------------------------
+
+    def get_user_prefs(self, user_id: str) -> Dict[str, Any]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM user_prefs WHERE user_id = ?", (user_id,)).fetchone()
+        data = _row_dict(row)
+        if data is None:
+            return {"user_id": user_id, "ambient": "off", "prefs": {}}
+        return {
+            "user_id": user_id,
+            "ambient": str(data.get("ambient") or "off"),
+            "prefs": _loads(data.get("prefs_json"), default={}) or {},
+            "updated_at": data.get("updated_at"),
+        }
+
+    def set_user_prefs(
+        self,
+        user_id: str,
+        *,
+        ambient: Optional[str] = None,
+        prefs: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        current = self.get_user_prefs(user_id)
+        next_ambient = ambient if ambient is not None else current.get("ambient") or "off"
+        next_prefs = dict(current.get("prefs") or {})
+        if prefs is not None:
+            next_prefs.update(prefs)
+        now = time.time()
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO user_prefs (user_id, ambient, prefs_json, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    ambient=excluded.ambient,
+                    prefs_json=excluded.prefs_json,
+                    updated_at=excluded.updated_at
+                """,
+                (user_id, next_ambient, _dumps(next_prefs), now),
+            )
+        return self.get_user_prefs(user_id)
+
+    def list_whispers(self, work_id: str, *, limit: int = 40) -> List[Dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT w.*, u.display_name AS author_name
+                FROM whispers w
+                LEFT JOIN users u ON u.id = w.user_id
+                WHERE w.work_id = ?
+                ORDER BY w.created_at DESC
+                LIMIT ?
+                """,
+                (work_id, int(limit)),
+            ).fetchall()
+        return [_row_dict(row) or {} for row in rows]
+
+    def add_whisper(self, *, work_id: str, user_id: str, body: str) -> Dict[str, Any]:
+        whisper_id = uuid.uuid4().hex
+        now = time.time()
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO whispers (id, work_id, user_id, body, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (whisper_id, work_id, user_id, body, now),
+            )
+        rows = self.list_whispers(work_id, limit=1)
+        return rows[0] if rows else {"id": whisper_id, "work_id": work_id, "user_id": user_id, "body": body, "created_at": now}
+
+    def kind_counts(self) -> Dict[str, int]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT kind, COUNT(*) AS n FROM works
+                WHERE review_state IS NULL OR review_state IN ('none', 'resolved', '')
+                GROUP BY kind
+                """
+            ).fetchall()
+        return {str(row["kind"]): int(row["n"]) for row in rows}
+
+    def author_year_counts(self, *, year: int, min_count: int = 3, limit: int = 5) -> List[Dict[str, Any]]:
+        start = time.mktime(time.strptime(f"{int(year)}-01-01", "%Y-%m-%d"))
+        end = time.mktime(time.strptime(f"{int(year) + 1}-01-01", "%Y-%m-%d"))
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT author, COUNT(*) AS n
+                FROM works
+                WHERE author IS NOT NULL AND TRIM(author) != ''
+                  AND created_at >= ? AND created_at < ?
+                GROUP BY author
+                HAVING n >= ?
+                ORDER BY n DESC
+                LIMIT ?
+                """,
+                (start, end, int(min_count), int(limit)),
+            ).fetchall()
+        return [{"author": row["author"], "count": int(row["n"]), "year": int(year)} for row in rows]
+
+    def unseen_celebrations(self, user_id: str, candidates: Sequence[Dict[str, str]]) -> List[Dict[str, str]]:
+        if not candidates:
+            return []
+        keys = [str(row.get("key") or "") for row in candidates if row.get("key")]
+        with self._connect() as conn:
+            seen = {
+                row[0]
+                for row in conn.execute(
+                    f"SELECT celebration_key FROM celebrations_seen WHERE user_id = ? AND celebration_key IN ({','.join('?' for _ in keys)})",
+                    (user_id, *keys),
+                ).fetchall()
+            }
+        return [row for row in candidates if str(row.get("key") or "") not in seen]
+
+    def mark_celebration_seen(self, user_id: str, celebration_key: str) -> None:
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO celebrations_seen (user_id, celebration_key, seen_at)
+                VALUES (?, ?, ?)
+                """,
+                (user_id, celebration_key, time.time()),
+            )
+
+    def recent_job_durations(self, *, limit: int = 12) -> List[float]:
+        """Seconds between job created_at and updated_at for finished-ish slips."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT created_at, updated_at FROM jobs
+                WHERE status IN ('complete', 'arrived', 'done', 'finished')
+                  AND updated_at > created_at
+                ORDER BY updated_at DESC
+                LIMIT ?
+                """,
+                (int(limit),),
+            ).fetchall()
+        out: List[float] = []
+        for row in rows:
+            try:
+                delta = float(row["updated_at"]) - float(row["created_at"])
+            except (TypeError, ValueError):
+                continue
+            if delta > 0:
+                out.append(delta)
+        return out

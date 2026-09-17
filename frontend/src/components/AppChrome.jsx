@@ -9,6 +9,7 @@ export default function AppChrome({ user, features, reviewCount = 0, children })
   const owner = user.role === "owner";
   const prevCount = useRef(reviewCount);
   const [pulse, setPulse] = useState(false);
+  const [ambient, setAmbient] = useState("off");
 
   useEffect(() => {
     if (reviewCount > prevCount.current) {
@@ -20,6 +21,13 @@ export default function AppChrome({ user, features, reviewCount = 0, children })
     prevCount.current = reviewCount;
     return undefined;
   }, [reviewCount]);
+
+  useEffect(() => {
+    api
+      .prefs()
+      .then((data) => setAmbient(data.ambient || "off"))
+      .catch(() => setAmbient("off"));
+  }, [user?.id]);
 
   useEffect(() => {
     function onKey(event) {
@@ -43,12 +51,25 @@ export default function AppChrome({ user, features, reviewCount = 0, children })
     navigate("/login");
   }
 
+  async function cycleAmbient() {
+    const order = ["off", "paper", "lamp"];
+    const next = order[(order.indexOf(ambient) + 1) % order.length];
+    setAmbient(next);
+    try {
+      await api.savePrefs({ ambient: next });
+    } catch {
+      /* keep local */
+    }
+  }
+
   const bagTitle = reviewCount
     ? `Review bag — ${reviewCount} slip${reviewCount === 1 ? "" : "s"} waiting`
     : "Review bag — empty";
+  const ambientLabel =
+    ambient === "paper" ? "Paper ambient on" : ambient === "lamp" ? "Lamp wash on" : "Ambient off";
 
   return (
-    <div className="room">
+    <div className={`room ambient-${ambient}`} data-ambient={ambient}>
       <header className="topbar">
         <NavLink to="/" className="brand" end>
           <LampMark />
@@ -86,6 +107,16 @@ export default function AppChrome({ user, features, reviewCount = 0, children })
           ) : null}
         </nav>
         <div className="topbar-end">
+          <button
+            type="button"
+            className="cta ghost compact ambient-toggle"
+            onClick={cycleAmbient}
+            title={ambientLabel}
+            aria-label={ambientLabel}
+            data-testid="ambient-toggle"
+          >
+            Lamp
+          </button>
           {op ? (
             <NavLink
               to="/review"

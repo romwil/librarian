@@ -136,6 +136,9 @@ class Settings:
     sab_movie_category: str = "movies"
     sab_tv_category: str = "tv"
     music_write_tags: bool = False
+    quiet_hours_enabled: bool = False
+    quiet_hours_start: str = "22:00"
+    quiet_hours_end: str = "07:00"
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> "Settings":
@@ -147,6 +150,8 @@ class Settings:
             filtered["show_extra_categories"] = _as_bool(filtered["show_extra_categories"])
         if "music_write_tags" in filtered:
             filtered["music_write_tags"] = _as_bool(filtered["music_write_tags"])
+        if "quiet_hours_enabled" in filtered:
+            filtered["quiet_hours_enabled"] = _as_bool(filtered["quiet_hours_enabled"])
         if "extra_indexers" in filtered:
             from librarian.indexers.hosts import normalize_extra_indexers
 
@@ -198,6 +203,8 @@ def load_merged_settings(data_dir: Path) -> Settings:
         merged["show_extra_categories"] = _as_bool(merged["show_extra_categories"])
     if "music_write_tags" in merged:
         merged["music_write_tags"] = _as_bool(merged["music_write_tags"])
+    if "quiet_hours_enabled" in merged:
+        merged["quiet_hours_enabled"] = _as_bool(merged["quiet_hours_enabled"])
     return Settings.from_mapping(merged)
 
 

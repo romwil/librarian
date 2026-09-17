@@ -11,6 +11,7 @@ from librarian.config import Settings
 from librarian.convert import maybe_convert_payload, maybe_par2_repair, maybe_unpack_archives
 from librarian.covers import ensure_music_cover, fetch_cover
 from librarian.db import Database
+from librarian.delight import REVIEW_QUIET_HOURS, in_quiet_hours
 from librarian.identify import (
     REVIEW_COLLISION,
     REVIEW_MISSING_FOLDER,
@@ -28,6 +29,7 @@ from librarian.identify import (
 from librarian.kinds import KIND_BOOK, KIND_COMIC, KIND_MAGAZINE, KIND_MUSIC
 from librarian.llm import client_from_settings
 from librarian.metadata import apply_audio_tags_in_folder, comicinfo_xml, write_comicinfo, write_opf
+from librarian.parts import infer_part_fields, merge_part_fields_for_work, part_for_filename
 
 
 def _copy_into(src: Path, dest: Path, *, move: bool = False) -> Path:
@@ -73,6 +75,35 @@ COLLISION_APPLY_ERROR = (
     "Apply will not overwrite. Change title, author, series, or folder so the "
     "destination path is free, or Skip to keep what is on the shelf."
 )
+
+
+def _part_fields_for_organize(
+    *,
+    identity: Dict[str, Any],
+    indexer_item: Optional[Dict[str, Any]],
+    filenames: List[str],
+    existing: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Persist multipart total/style/base from NZB title and/or payload filenames."""
+    base_work = {**(existing or {}), **identity}
+    return merge_part_fields_for_work(
+        work=base_work,
+        indexer_item=indexer_item,
+        filenames=filenames,
+    )
+
+
+def _file_part_index(
+    *,
+    filename: str,
+    indexer_item: Optional[Dict[str, Any]],
+    filenames: List[str],
+) -> Optional[int]:
+    titles = []
+    if indexer_item:
+        titles.extend([indexer_item.get("title"), indexer_item.get("name")])
+    inferred = infer_part_fields(titles=titles, filenames=filenames)
+    return part_for_filename(filename, inferred.get("file_parts") or {})
 
 
 def shelf_work_for_collision(db: Database, work: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -126,17 +157,21 @@ def review_find_query(work: Dict[str, Any]) -> str:
 
 
 def review_slip_actions(work: Dict[str, Any], diagnosis: Dict[str, Any]) -> Dict[str, Any]:
-    """Flags for Review CTAs: Repair / Retry / Request new version."""
+    """Flags for Review CTAs: Repair / Retry / Request new version / re-grab."""
     problem = str(diagnosis.get("problem") or work.get("review_reason") or "")
     par2_count = int(diagnosis.get("par2_count") or 0)
     folder_hint = str(
         diagnosis.get("resolved_path") or diagnosis.get("path") or work.get("folder_path") or ""
     )
     can_retry = problem != REVIEW_MISSING_FOLDER and usable_folder(folder_hint)
+    fails = int(work.get("repair_fail_count") or 0)
     return {
         "can_repair": problem == REVIEW_UNPACK_STUCK and par2_count > 0,
         "can_retry": can_retry,
         "find_query": review_find_query(work),
+        "quiet_hours": problem == REVIEW_QUIET_HOURS,
+        "can_regrab": fails >= 2 and problem == REVIEW_UNPACK_STUCK,
+        "repair_fail_count": fails,
     }
 
 
@@ -167,7 +202,37 @@ def organize_identified(
         "catalog_transport": catalog_transport,
     }
     convert_kwargs = {"runner": convert_runner} if convert_runner is not None else {}
+    quiet = (not force) and in_quiet_hours(settings)
     # SAB often leaves damaged rar/7z; when stuck, par2 then unar before identify.
+    # Quiet hours defer heavy unpack/convert — park for tonight.
+    if quiet:
+        parked = {
+            "kind": str((identity_overrides or {}).get("kind") or (indexer_item or {}).get("kind") or "book"),
+            "title": str(
+                (identity_overrides or {}).get("title")
+                or (indexer_item or {}).get("title")
+                or folder.name
+            ),
+            "author": (identity_overrides or {}).get("author") or (indexer_item or {}).get("author"),
+            "folder_path": str(folder),
+            "indexer_guid": (indexer_item or {}).get("guid") or (indexer_item or {}).get("indexer_guid"),
+            "review_state": "needs_review",
+            "review_reason": REVIEW_QUIET_HOURS,
+            "confidence": "low",
+        }
+        if identity_overrides:
+            parked.update({k: v for k, v in identity_overrides.items() if v is not None})
+        work = db.upsert_work(parked)
+        return {
+            "organized": False,
+            "work": work,
+            "identity": parked,
+            "files": [],
+            "auto_organize": False,
+            "quiet_hours": True,
+            "unpacked": {"unpacked": False},
+            "converted": {"converted": False},
+        }
     if inspect_complete_folder(folder).get("problem") == REVIEW_UNPACK_STUCK:
         maybe_par2_repair(folder, **convert_kwargs)
     unpacked = maybe_unpack_archives(folder, **convert_kwargs)
@@ -195,10 +260,17 @@ def organize_identified(
             result["auto_organize"] = False
     result["identity"] = identity
     source_folder = _source_folder_value(folder)
+    payload_names = [path.name for path in files]
+    part_fields = _part_fields_for_organize(
+        identity=identity,
+        indexer_item=indexer_item,
+        filenames=payload_names,
+    )
     if not result["auto_organize"] or not apply:
         work = db.upsert_work(
             {
                 **identity,
+                **part_fields,
                 "folder_path": source_folder,
                 "review_state": "needs_review" if identity.get("review_reason") or not result["auto_organize"] else "none",
                 "review_reason": identity.get("review_reason"),
@@ -223,6 +295,7 @@ def organize_identified(
                 work = db.upsert_work(
                     {
                         **identity,
+                        **part_fields,
                         "folder_path": source_folder,
                         "review_state": "needs_review",
                         "review_reason": REVIEW_COLLISION,
@@ -238,6 +311,7 @@ def organize_identified(
         work = db.upsert_work(
             {
                 **identity,
+                **part_fields,
                 "folder_path": source_folder,
                 "review_state": "needs_review",
                 "review_reason": REVIEW_COLLISION,
@@ -251,6 +325,12 @@ def organize_identified(
     existing = db.get_work_by_folder_path(str(folder_path))
     if existing:
         identity["id"] = existing["id"]
+        part_fields = _part_fields_for_organize(
+            identity=identity,
+            indexer_item=indexer_item,
+            filenames=payload_names + [Path(path).name for path in placed],
+            existing=existing,
+        )
     if identity["kind"] in (KIND_BOOK, KIND_MAGAZINE):
         write_opf(folder_path, identity, guid=guid)
     if identity["kind"] == KIND_COMIC:
@@ -284,6 +364,7 @@ def organize_identified(
     work = db.upsert_work(
         {
             **identity,
+            **part_fields,
             "folder_path": str(folder_path),
             "cover_path": str(cover) if cover else None,
             "review_state": "none",
@@ -298,14 +379,21 @@ def organize_identified(
             "indexer_guid": guid or None,
         }
     )
+    placed_names = [Path(path).name for path in placed]
     for path in placed:
+        name = Path(path).name
         db.upsert_file(
             {
                 "work_id": work["id"],
                 "path": path,
-                "filename": Path(path).name,
+                "filename": name,
                 "kind": identity["kind"],
                 "size": Path(path).stat().st_size if Path(path).exists() else 0,
+                "part": _file_part_index(
+                    filename=name,
+                    indexer_item=indexer_item,
+                    filenames=payload_names + placed_names,
+                ),
             }
         )
     if move_source:
@@ -417,12 +505,28 @@ def repair_review(
     diagnosis = diagnose_review_folder(resolved, settings.complete_root)
     problem = diagnosis.get("problem")
     updated = work
-    if problem:
+    fails = int(work.get("repair_fail_count") or 0)
+    if problem == REVIEW_UNPACK_STUCK:
+        fails += 1
+        updated = db.upsert_work(
+            {
+                **work,
+                "review_reason": REVIEW_UNPACK_STUCK,
+                "folder_path": str(resolved),
+                "repair_fail_count": fails,
+            }
+        )
+    elif problem:
         if str(work.get("review_reason") or "") != problem:
             updated = db.upsert_work({**work, "review_reason": problem, "folder_path": str(resolved)})
     elif str(work.get("review_reason") or "") == REVIEW_UNPACK_STUCK:
         updated = db.upsert_work(
-            {**work, "review_reason": "unknown_identity", "folder_path": str(resolved)}
+            {
+                **work,
+                "review_reason": "unknown_identity",
+                "folder_path": str(resolved),
+                "repair_fail_count": 0,
+            }
         )
     actions = review_slip_actions(updated, diagnosis)
     return {

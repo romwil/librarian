@@ -7,16 +7,20 @@ import {
   formatBytes,
   GAP_CHASE_QUERY_CAP,
   groupBeyondItems,
+  isIncompleteOwnedPartSet,
   mergeBeyondHits,
   missingParts,
   normalizePartBase,
+  ownedPartSetStatusLine,
   parsePartMarker,
   partBeadStates,
   partIndexOrigin,
+  partSetFindFields,
   partSetFingerprint,
   partSetRequestAction,
   partSetStatusLine,
   stripPartMarkers,
+  finishThisSetAction,
 } from "./findParts.js";
 
 describe("multipart Find parsing", () => {
@@ -365,5 +369,48 @@ describe("multipart gap chase", () => {
       beads.map((b) => b.state),
       ["found", "missing", "found", "missing"],
     );
+  });
+});
+
+describe("owned multipart holes (B3)", () => {
+  it("detects incomplete owned part_set and builds Find chase deep-link", () => {
+    const partSet = { total: 5, owned: [3, 5], style: "part", base: "Raymond E Feist Magician" };
+    assert.equal(isIncompleteOwnedPartSet(partSet), true);
+    assert.equal(isIncompleteOwnedPartSet({ total: 5, owned: [1, 2, 3, 4, 5] }), false);
+    assert.match(ownedPartSetStatusLine(partSet), /2\/5 · incomplete/);
+    const fields = partSetFindFields({
+      kind: "audiobook",
+      author: "Feist",
+      title: "Magician",
+      part_set: partSet,
+    });
+    assert.equal(fields.kind, "audiobook");
+    assert.equal(fields.title, "Raymond E Feist Magician");
+    assert.match(fields.q, /Part 1\/5/);
+    const focused = partSetFindFields({
+      kind: "audiobook",
+      part_set: partSet,
+      missing_index: "4",
+    });
+    assert.match(focused.q, /Part 4\/5/);
+  });
+});
+
+describe("finish this set (E5)", () => {
+  it("collapses to confident finish CTA with optional ETA", () => {
+    const action = finishThisSetAction(
+      {
+        missingItems: [
+          { guid: "g1", title: "Part 2" },
+          { guid: "g2", title: "Part 3" },
+        ],
+        missing: [2, 3],
+      },
+      { etaMinutes: 12 },
+    );
+    assert.equal(action.kind, "finish-set");
+    assert.equal(action.enabled, true);
+    assert.match(action.label, /Finish this set \(2\)/);
+    assert.match(action.label, /12 min/);
   });
 });

@@ -39,6 +39,9 @@ export function effectiveReviewReason(work) {
 }
 
 export function reviewReasonCopy(reason) {
+  if (reason === "quiet_hours") {
+    return "Queued for tonight — quiet hours defer unpack and convert until the household window.";
+  }
   if (reason === "unpack_stuck") {
     return "SABnzbd left archives in this folder. Try Repair (par2) when available, then Retry — or Apply to unpack rar/7z with unar.";
   }
@@ -101,6 +104,9 @@ export function reviewActionsFromWork(work = {}) {
     canRepair: Boolean(actions.can_repair),
     canRetry: Boolean(actions.can_retry),
     canRequestNew: Boolean(findQuery) || Boolean(work?.title),
+    canRegrab: Boolean(actions.can_regrab),
+    quietHours: Boolean(actions.quiet_hours) || reason === "quiet_hours",
+    repairFailCount: Number(actions.repair_fail_count || work?.repair_fail_count || 0),
     findQuery: findQuery || [work?.title, work?.author].filter(Boolean).join(" "),
     findKind: String(work?.kind || "").trim(),
     reason,
