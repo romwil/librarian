@@ -156,16 +156,49 @@ describe("reading room cover helpers", () => {
       guid: "g1",
     };
     assert.equal(isBeyondWork(hit), true);
-    assert.equal(coverDisplayTitle(hit), "Dynamite - Aladdin No 03 2026");
+    assert.equal(coverDisplayTitle(hit), "Aladdin No 03 2026");
     const face = coverOverlay(hit);
-    assert.equal(face.title, "Dynamite - Aladdin No 03 2026");
+    assert.equal(face.title, "Aladdin No 03 2026");
+    assert.match(face.byline, /Dynamite/);
     assert.match(face.byline, /comic/);
     assert.match(face.byline, /50 MB/);
     assert.match(face.byline, /2h/);
     assert.equal(coverOverlay({ ...hit, kind: "music" }).chip, "");
-    assert.match(coverCaption(hit), /50 MB/);
+    const caption = coverCaption(hit);
+    assert.match(caption, /Dynamite/);
+    assert.match(caption, /50 MB/);
+    assert.doesNotMatch(caption, /Aladdin/);
+    assert.match(coverTip(hit), /Dynamite/);
     assert.match(coverTip(hit), /NZBFinder/);
   });
+
+  it("demotes ALL-CAPS publisher prefixes on comic beyond cards", () => {
+    const hit = {
+      beyond: true,
+      kind: "comic",
+      title: "TOKYOPOP - Monster And Ghost Vol 03",
+      size: 12 * 1024 * 1024,
+      pub_date: new Date(Date.now() - 5 * 60 * 60 * 1000).toUTCString(),
+      guid: "g-tokyopop",
+    };
+    assert.equal(coverDisplayTitle(hit), "Monster And Ghost Vol 03");
+    assert.equal(coverOverlay(hit).title, "Monster And Ghost Vol 03");
+    assert.match(coverOverlay(hit).byline, /TokyoPop/);
+    assert.match(coverCaption(hit), /TokyoPop/);
+    assert.doesNotMatch(coverCaption(hit), /^Monster/);
+    assert.match(coverTip(hit), /TOKYOPOP/);
+  });
+
+  it("keeps Author - Title for Feist-like book beyond hits", () => {
+    const hit = {
+      beyond: true,
+      kind: "audiobook",
+      title: "Raymond E. Feist - Magician Part 3/5 13/16.mp3 yEnc",
+      guid: "g-feist",
+    };
+    assert.equal(coverDisplayTitle(hit), "Raymond E. Feist - Magician");
+  });
+
   it("labels movie/tv/xxx beyond covers in the byline, not Book", () => {
     const movie = coverOverlay({
       beyond: true,

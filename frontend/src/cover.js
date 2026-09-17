@@ -1,3 +1,4 @@
+import { displayTitleParts } from "./displayTitle.js";
 import { queueReviewReasonCopy } from "./review.js";
 
 const CLOTHS = [
@@ -201,19 +202,37 @@ export function humanizeReleaseTitle(title = "") {
   return text || raw;
 }
 
-export function coverDisplayTitle(work) {
-  if (!work) return "Untitled";
+/** Humanize release noise, then demote publisher prefixes for glanceable card titles. */
+export function coverTitleParts(work) {
+  if (!work) return { primary: "Untitled", secondary: "", raw: "", full: "Untitled" };
   const preferred = work.book_title || work.series_name || work.title || "";
-  if (isBeyondWork(work) || /[._]{2,}|\.-+\./.test(preferred)) {
-    return humanizeReleaseTitle(preferred) || preferred || "Untitled";
+  const raw = String(work.title || preferred || "").trim();
+  let text = preferred;
+  if (isBeyondWork(work) || /[._]{2,}|\.-+\./.test(String(preferred))) {
+    text = humanizeReleaseTitle(preferred) || preferred;
   }
-  return preferred || "Untitled";
+  const parts = displayTitleParts(text, { kind: work.kind });
+  const primary = parts.primary || preferred || "Untitled";
+  return {
+    primary,
+    secondary: parts.secondary || "",
+    raw: raw || parts.raw || primary,
+    full: parts.full || primary,
+  };
+}
+
+export function coverDisplayTitle(work) {
+  return coverTitleParts(work).primary;
 }
 
 export function coverTip(work) {
   if (!work) return "";
+  const parts = coverTitleParts(work);
+  const head =
+    isBeyondWork(work) && parts.raw && parts.raw !== parts.primary ? parts.raw : parts.primary;
   return [
-    coverDisplayTitle(work),
+    head,
+    parts.secondary && parts.raw === parts.primary ? parts.secondary : "",
     formatSize(work.size),
     formatPubAge(work.pub_date),
     String(work.host_name || "").trim(),
@@ -225,7 +244,9 @@ export function coverTip(work) {
 
 function beyondByline(work, fallback = "") {
   const kind = normalizeKind(work?.kind);
+  const demoted = coverTitleParts(work).secondary;
   const bits = [
+    demoted,
     kind && kind !== "book" ? kind : "",
     formatSize(work?.size),
     formatPubAge(work?.pub_date),
@@ -237,7 +258,8 @@ function beyondByline(work, fallback = "") {
 export function coverOverlay(work) {
   const kind = normalizeKind(work?.kind);
   const beyond = isBeyondWork(work);
-  const title = coverDisplayTitle(work);
+  const parts = coverTitleParts(work);
+  const title = parts.primary;
   if (kind === "magazine") {
     return {
       title,
@@ -246,7 +268,9 @@ export function coverOverlay(work) {
     };
   }
   if (kind === "comic") {
-    const series = work.series_name ? coverDisplayTitle({ ...work, title: work.series_name }) : title;
+    const series = work.series_name
+      ? coverTitleParts({ ...work, title: work.series_name, book_title: undefined }).primary
+      : title;
     return {
       title: series,
       byline: beyond
@@ -258,14 +282,14 @@ export function coverOverlay(work) {
     };
   }
   if (kind === "audiobook") {
-    const parts = work.parts || work.series_index;
+    const durationParts = work.parts || work.series_index;
     const duration = work.duration || work.runtime;
     const part = partHint(work?.title);
     return {
       title,
       byline: beyond ? beyondByline(work, work.author || "Audiobook") : work.author || "Audiobook",
       chip:
-        [duration, parts ? `${parts} parts` : "", part ? `Part ${part}` : ""].filter(Boolean).join(" · ") ||
+        [duration, durationParts ? `${durationParts} parts` : "", part ? `Part ${part}` : ""].filter(Boolean).join(" · ") ||
         (beyond ? "" : "Listen"),
     };
   }
@@ -293,8 +317,10 @@ export function coverOverlay(work) {
 export function coverCaption(work) {
   if (!work) return "";
   if (isBeyondWork(work)) {
-    const bits = [coverDisplayTitle(work), formatSize(work.size), formatPubAge(work.pub_date)].filter(Boolean);
-    return bits.join(" · ") || coverDisplayTitle(work);
+    // Under-cloth caption: publisher / size / age — not a second copy of the primary title.
+    const { secondary } = coverTitleParts(work);
+    const bits = [secondary, formatSize(work.size), formatPubAge(work.pub_date)].filter(Boolean);
+    return bits.join(" · ");
   }
   if (work.kind === "magazine") {
     return work.series_index || work.year || work.title || "";
