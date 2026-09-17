@@ -47,14 +47,14 @@ export function setLastSeenVersion(version, storage = globalThis.localStorage) {
 }
 
 /**
- * Show What’s New after an upgrade (runtime newer than last seen).
- * First visit with no stored version: bootstrap silently (no modal).
+ * Show What’s New when last-seen is missing (first visit / new browser)
+ * or when runtime is newer than last-seen. Dismiss writes last-seen = runtime.
  */
 export function shouldShowWhatsNew(runtimeVersion, lastSeenVersion) {
   const runtime = String(runtimeVersion || "").trim();
   if (!runtime) return false;
   const lastSeen = String(lastSeenVersion || "").trim();
-  if (!lastSeen) return false;
+  if (!lastSeen) return true;
   return compareSemver(runtime, lastSeen) > 0;
 }
 

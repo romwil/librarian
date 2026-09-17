@@ -12,7 +12,8 @@ import WhatsNewModal from "./WhatsNewModal.jsx";
 
 /**
  * Compares runtime /api/health version to localStorage last-seen.
- * Shows What’s New for the newest release only after an upgrade.
+ * Shows What’s New when last-seen is missing or older than runtime.
+ * Dismiss / Read full notes persist last-seen = runtime (no silent seed).
  */
 export default function WhatsNewGate() {
   const [open, setOpen] = useState(false);
@@ -29,12 +30,6 @@ export default function WhatsNewGate() {
         if (!runtimeVersion || cancelled) return;
 
         const lastSeen = getLastSeenVersion();
-        if (!lastSeen) {
-          // First visit: remember current version without interrupting onboarding.
-          setLastSeenVersion(runtimeVersion);
-          return;
-        }
-
         if (!shouldShowWhatsNew(runtimeVersion, lastSeen)) return;
 
         let matched = null;

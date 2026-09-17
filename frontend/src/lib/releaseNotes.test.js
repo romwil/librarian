@@ -29,9 +29,9 @@ test("compareSemver tolerates v-prefix and junk", () => {
   assert.equal(compareSemver(null, null), 0);
 });
 
-test("shouldShowWhatsNew only after upgrade", () => {
-  assert.equal(shouldShowWhatsNew("0.1.1", null), false);
-  assert.equal(shouldShowWhatsNew("0.1.1", ""), false);
+test("shouldShowWhatsNew on first visit or after upgrade", () => {
+  assert.equal(shouldShowWhatsNew("0.1.1", null), true);
+  assert.equal(shouldShowWhatsNew("0.1.1", ""), true);
   assert.equal(shouldShowWhatsNew("0.1.1", "0.1.1"), false);
   assert.equal(shouldShowWhatsNew("0.1.1", "0.1.0"), true);
   assert.equal(shouldShowWhatsNew("0.1.0", "0.1.1"), false);

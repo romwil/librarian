@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.2.2] — 2026-09-17
+
+### Highlights
+
+- **What’s New greets you on first visit.** Missing `last_seen` (new browser / cleared storage) opens the modal for the current version; dismiss sets last-seen. Upgrades still greet when runtime is newer.
+
+### Fixed
+
+- Stop silently seeding `librarian.last_seen_version` on first visit so What’s New never appears.
+
 ## [0.2.1] — 2026-09-17
 
 ### Highlights

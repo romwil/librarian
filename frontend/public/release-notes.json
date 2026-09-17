@@ -1,6 +1,22 @@
 {
-  "generated_at": "2026-09-17T22:38:56Z",
+  "generated_at": "2026-09-17T22:52:27Z",
   "releases": [
+    {
+      "version": "0.2.2",
+      "date": "2026-09-17",
+      "summary": "",
+      "highlights": [
+        "**What’s New greets you on first visit.** Missing `last_seen` (new browser / cleared storage) opens the modal for the current version; dismiss sets last-seen. Upgrades still greet when runtime is newer."
+      ],
+      "sections": [
+        {
+          "title": "Fixed",
+          "bullets": [
+            "Stop silently seeding `librarian.last_seen_version` on first visit so What’s New never appears."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.2.1",
       "date": "2026-09-17",
