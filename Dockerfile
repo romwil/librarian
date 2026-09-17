@@ -25,9 +25,10 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# System packages (unar for CBR→CBZ). Independent of app source and extras.
+# System packages (unar for CBR→CBZ / SAB rar; par2cmdline for Review repair).
+# Independent of app source and extras.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates gosu unar \
+    && apt-get install -y --no-install-recommends ca-certificates gosu unar par2 \
     && rm -rf /var/lib/apt/lists/*
 
 # Python extras from pyproject only. Stub package + stub README so edits to

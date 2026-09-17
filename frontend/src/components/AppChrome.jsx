@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { api } from "../api.js";
 import LampMark from "./LampMark.jsx";
@@ -7,6 +7,19 @@ export default function AppChrome({ user, features, reviewCount = 0, children })
   const navigate = useNavigate();
   const op = user.role === "owner" || user.role === "op";
   const owner = user.role === "owner";
+  const prevCount = useRef(reviewCount);
+  const [pulse, setPulse] = useState(false);
+
+  useEffect(() => {
+    if (reviewCount > prevCount.current) {
+      setPulse(true);
+      const timer = window.setTimeout(() => setPulse(false), 1200);
+      prevCount.current = reviewCount;
+      return () => window.clearTimeout(timer);
+    }
+    prevCount.current = reviewCount;
+    return undefined;
+  }, [reviewCount]);
 
   useEffect(() => {
     function onKey(event) {
@@ -30,6 +43,10 @@ export default function AppChrome({ user, features, reviewCount = 0, children })
     navigate("/login");
   }
 
+  const bagTitle = reviewCount
+    ? `Review bag — ${reviewCount} slip${reviewCount === 1 ? "" : "s"} waiting`
+    : "Review bag — empty";
+
   return (
     <div className="room">
       <header className="topbar">
@@ -37,15 +54,20 @@ export default function AppChrome({ user, features, reviewCount = 0, children })
           <LampMark />
           Librarian
         </NavLink>
-        <nav className="nav-links">
+        <nav className="nav-links" aria-label="Reader">
           <NavLink to="/" end className={({ isActive }) => (isActive ? "is-current" : undefined)}>
             Hall
           </NavLink>
-          <NavLink to="/browse" className={({ isActive }) => (isActive ? "is-current" : undefined)}>
-            Stacks
-          </NavLink>
           <NavLink to="/search" className={({ isActive }) => (isActive ? "is-current" : undefined)}>
             Search
+          </NavLink>
+          <NavLink to="/browse?shelf=favorites" className={({ isActive }) => (isActive ? "is-current" : undefined)}>
+            Favorites
+          </NavLink>
+        </nav>
+        <nav className="nav-links nav-ops" aria-label="Stacks and ops">
+          <NavLink to="/browse" className={({ isActive }) => (isActive ? "is-current" : undefined)} title="Browse the stacks">
+            Stacks
           </NavLink>
           {owner ? (
             <NavLink to="/people" className={({ isActive }) => (isActive ? "is-current" : undefined)}>
@@ -67,12 +89,13 @@ export default function AppChrome({ user, features, reviewCount = 0, children })
           {op ? (
             <NavLink
               to="/review"
-              className="bag"
+              className={`bag${pulse ? " is-pulse" : ""}`}
               data-count={reviewCount || undefined}
               aria-label={reviewCount ? `Review bag, ${reviewCount} items` : "Review bag"}
-              title="Review"
+              title={bagTitle}
+              data-testid="review-bag"
             >
-              <span aria-hidden="true">👜</span>
+              <span className="bag-glyph" aria-hidden="true" />
             </NavLink>
           ) : null}
           <button type="button" className="cta ghost" onClick={logout} style={{ padding: "8px 14px" }}>
@@ -84,9 +107,6 @@ export default function AppChrome({ user, features, reviewCount = 0, children })
       <nav className="mobile-tabbar" aria-label="Mobile">
         <NavLink to="/" end className={({ isActive }) => (isActive ? "is-current" : undefined)}>
           Hall
-        </NavLink>
-        <NavLink to="/browse" className={({ isActive }) => (isActive ? "is-current" : undefined)}>
-          Stacks
         </NavLink>
         <NavLink to="/search" className={({ isActive }) => (isActive ? "is-current" : undefined)}>
           Search

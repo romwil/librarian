@@ -47,10 +47,31 @@ def test_client_sends_user_agent_and_api_token():
 
 
 
-def test_fetch_nzb_returns_bytes_not_html():
+def test_normalize_indexer_guid_strips_details_url():
+    from librarian.nzbfinder import normalize_indexer_guid, normalize_item
+
+    bare = "efef9589-be61-455d-a192-0e3907a739bc"
+    assert normalize_indexer_guid(f"https://nzbfinder.ws/details/{bare}") == bare
+    assert normalize_indexer_guid(f"{bare}.nzb") == bare
+    assert normalize_indexer_guid(bare) == bare
+    item = normalize_item(
+        {
+            "title": "Computeractive - Issue 745",
+            "guid": f"https://nzbfinder.ws/details/{bare}",
+            "category": "7010",
+        }
+    )
+    assert item["guid"] == bare
+
+
+def test_fetch_nzb_accepts_details_url_guid():
+    from librarian.nzbfinder import NZBFinderClient
+
+    bare = "efef9589-be61-455d-a192-0e3907a739bc"
+
     def handler(request: httpx.Request) -> httpx.Response:
+        assert f"id={bare}.nzb" in str(request.url) or f"id={bare}" in str(request.url)
         assert "/api/v2/download" in str(request.url)
-        assert "api_token=fixture-token" in str(request.url)
         return httpx.Response(
             200,
             content=b'<?xml version="1.0"?><nzb xmlns="http://www.newzbin.com/DTD/2003/nzb"></nzb>',
@@ -58,8 +79,7 @@ def test_fetch_nzb_returns_bytes_not_html():
         )
 
     client = NZBFinderClient("https://nzbfinder.example", "fixture-token", transport=httpx.MockTransport(handler))
-    body = client.fetch_nzb("guid-linux-mag")
-    assert body.startswith(b"<?xml")
+    body = client.fetch_nzb(f"https://nzbfinder.ws/details/{bare}")
     assert b"<nzb" in body
 
 

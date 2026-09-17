@@ -70,7 +70,10 @@ export default function HallPage() {
       </section>
       {loadError ? <p className="alert hall-alert">{loadError}</p> : null}
       {hall?.empty ? (
-        <section className="empty-cta">
+        <section className="empty-cta hall-empty" data-testid="hall-empty">
+          <p className="empty-illustration" aria-hidden="true">
+            <span className="empty-lamp" />
+          </p>
           <h2>{empty.title}</h2>
           <p className="lede">{empty.lede}</p>
           {owner ? (

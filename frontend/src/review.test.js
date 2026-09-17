@@ -8,8 +8,11 @@ import {
   effectiveReviewReason,
   fieldsFromWork,
   queueReviewReasonCopy,
+  reviewActionsFromWork,
   reviewDiagnosisCopy,
+  reviewFindHref,
   reviewReasonCopy,
+  unpackStuckWorks,
 } from "./review.js";
 
 describe("review identify form", () => {
@@ -43,7 +46,7 @@ describe("review identify form", () => {
     assert.match(diagnosis.meaning, /could not finish/i);
     assert.match(diagnosis.tried, /Opened/);
     assert.match(diagnosis.whatsWrong, /Archives remain/i);
-    assert.match(diagnosis.nextSteps, /SABnzbd|Skip/i);
+    assert.match(diagnosis.nextSteps, /unar|SABnzbd|Skip/i);
     assert.match(diagnosis.pathNote, /complete\/downloads/);
   });
 
@@ -106,5 +109,33 @@ describe("review identify form", () => {
     assert.equal(body.kind, "audiobook");
     assert.equal(body.year, 1955);
     assert.equal(body.folder, "/data/complete/Return");
+  });
+});
+
+describe("review recovery actions", () => {
+  it("reads actions flags and builds /find?q=&kind= deep-link", () => {
+    const work = {
+      title: "Guardians Mix",
+      author: "Various",
+      kind: "music",
+      review_reason: "unpack_stuck",
+      actions: { can_repair: true, can_retry: true, find_query: "Guardians Mix" },
+    };
+    const actions = reviewActionsFromWork(work);
+    assert.equal(actions.canRepair, true);
+    assert.equal(actions.canRetry, true);
+    assert.equal(reviewFindHref(work), "/find?q=Guardians+Mix&kind=music");
+  });
+
+  it("filters unpack_stuck slips for bulk Repair/Retry", () => {
+    const works = [
+      { id: "a", review_reason: "unpack_stuck", folder_diagnosis: { problem: "unpack_stuck" } },
+      { id: "b", review_reason: "collision" },
+      { id: "c", review_reason: "no_payload", folder_diagnosis: { problem: "unpack_stuck" } },
+    ];
+    assert.deepEqual(
+      unpackStuckWorks(works).map((row) => row.id),
+      ["a", "c"],
+    );
   });
 });

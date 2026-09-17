@@ -8,14 +8,16 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from librarian.config import Settings
-from librarian.convert import maybe_convert_payload
+from librarian.convert import maybe_convert_payload, maybe_par2_repair, maybe_unpack_archives
 from librarian.covers import ensure_music_cover, fetch_cover
 from librarian.db import Database
 from librarian.identify import (
     REVIEW_COLLISION,
+    REVIEW_MISSING_FOLDER,
     REVIEW_NO_PAYLOAD,
     REVIEW_UNPACK_STUCK,
     dest_layout,
+    diagnose_review_folder,
     identify_completed,
     inspect_complete_folder,
     list_payload_files,
@@ -59,9 +61,8 @@ NO_PAYLOAD_APPLY_ERROR = (
     "point the folder at files this Librarian can read, fix SAB unpack, or Skip."
 )
 UNPACK_STUCK_APPLY_ERROR = (
-    "SABnzbd left archives (rar/7z) here — unpack never finished. "
-    "Extract or repair the download in SAB, point Complete folder at the extracted "
-    "audio/book files, then Apply — or Skip to dismiss this slip."
+    "Archives are still here after Librarian tried to repair (par2) and unpack (rar/7z). "
+    "Use Repair, fix in SABnzbd, extract manually, then Retry — or Skip."
 )
 MISSING_FOLDER_APPLY_ERROR = (
     "No complete folder. Enter the SAB storage path this Librarian can read, "
@@ -112,6 +113,33 @@ def _merge_identity(identity: Dict[str, Any], overrides: Optional[Dict[str, Any]
     return merged
 
 
+def review_find_query(work: Dict[str, Any]) -> str:
+    """Find deep-link query for Request a new version."""
+    title = str(work.get("title") or "").strip()
+    author = str(work.get("author") or "").strip()
+    parts: List[str] = []
+    if title:
+        parts.append(title)
+    if author and author.lower() not in title.lower():
+        parts.append(author)
+    return " ".join(parts)
+
+
+def review_slip_actions(work: Dict[str, Any], diagnosis: Dict[str, Any]) -> Dict[str, Any]:
+    """Flags for Review CTAs: Repair / Retry / Request new version."""
+    problem = str(diagnosis.get("problem") or work.get("review_reason") or "")
+    par2_count = int(diagnosis.get("par2_count") or 0)
+    folder_hint = str(
+        diagnosis.get("resolved_path") or diagnosis.get("path") or work.get("folder_path") or ""
+    )
+    can_retry = problem != REVIEW_MISSING_FOLDER and usable_folder(folder_hint)
+    return {
+        "can_repair": problem == REVIEW_UNPACK_STUCK and par2_count > 0,
+        "can_retry": can_retry,
+        "find_query": review_find_query(work),
+    }
+
+
 def organize_identified(
     db: Database,
     settings: Settings,
@@ -138,11 +166,19 @@ def organize_identified(
         "catalog_lookup": catalog_lookup,
         "catalog_transport": catalog_transport,
     }
+    convert_kwargs = {"runner": convert_runner} if convert_runner is not None else {}
+    # SAB often leaves damaged rar/7z; when stuck, par2 then unar before identify.
+    if inspect_complete_folder(folder).get("problem") == REVIEW_UNPACK_STUCK:
+        maybe_par2_repair(folder, **convert_kwargs)
+    unpacked = maybe_unpack_archives(folder, **convert_kwargs)
     preview = identify_completed(folder, **identify_kwargs)
     kind = str((identity_overrides or {}).get("kind") or preview["identity"].get("kind") or "")
-    convert_kwargs = {"runner": convert_runner} if convert_runner is not None else {}
     converted = maybe_convert_payload(folder, kind, **convert_kwargs)
-    result = identify_completed(folder, **identify_kwargs) if converted["converted"] else preview
+    result = (
+        identify_completed(folder, **identify_kwargs)
+        if converted["converted"] or unpacked["unpacked"]
+        else preview
+    )
     identity = _merge_identity(dict(result["identity"]), identity_overrides)
     files = [Path(path) for path in result["files"]]
     if force:
@@ -356,6 +392,67 @@ def apply_review(
         if reason == REVIEW_COLLISION:
             raise ValueError(COLLISION_APPLY_ERROR)
     return result
+
+
+def repair_review(
+    db: Database,
+    settings: Settings,
+    *,
+    work_id: str,
+    convert_runner=None,
+) -> Dict[str, Any]:
+    """Run par2 then unar on a Review slip folder; does not shelve."""
+    work = db.get_work(work_id)
+    if work is None:
+        raise ValueError("Work not found")
+    source = Path(str(work.get("folder_path") or ""))
+    if not usable_folder(source):
+        raise ValueError(MISSING_FOLDER_APPLY_ERROR)
+    resolved = resolve_storage_path(source, settings.complete_root)
+    if not usable_folder(resolved) or not resolved.exists():
+        raise ValueError(MISSING_FOLDER_APPLY_ERROR)
+    convert_kwargs = {"runner": convert_runner} if convert_runner is not None else {}
+    repaired = maybe_par2_repair(resolved, **convert_kwargs)
+    unpacked = maybe_unpack_archives(resolved, **convert_kwargs)
+    diagnosis = diagnose_review_folder(resolved, settings.complete_root)
+    problem = diagnosis.get("problem")
+    updated = work
+    if problem:
+        if str(work.get("review_reason") or "") != problem:
+            updated = db.upsert_work({**work, "review_reason": problem, "folder_path": str(resolved)})
+    elif str(work.get("review_reason") or "") == REVIEW_UNPACK_STUCK:
+        updated = db.upsert_work(
+            {**work, "review_reason": "unknown_identity", "folder_path": str(resolved)}
+        )
+    actions = review_slip_actions(updated, diagnosis)
+    return {
+        "work": updated,
+        "repaired": repaired,
+        "unpacked": unpacked,
+        "folder_diagnosis": diagnosis,
+        "actions": actions,
+    }
+
+
+def retry_review(
+    db: Database,
+    settings: Settings,
+    *,
+    work_id: str,
+    identity_overrides: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Force re-organize / apply using the parked work identity."""
+    work = db.get_work(work_id)
+    if work is None:
+        raise ValueError("Work not found")
+    folder = Path(str(work.get("folder_path") or ""))
+    return apply_review(
+        db,
+        settings,
+        work_id=work_id,
+        folder=folder,
+        identity_overrides=dict(identity_overrides or {}),
+    )
 
 
 def promote_music(db: Database, settings: Settings, work_id: str) -> Dict[str, Any]:

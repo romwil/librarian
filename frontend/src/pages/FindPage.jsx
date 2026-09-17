@@ -10,6 +10,7 @@ import PartSetCard from "../components/PartSetCard.jsx";
 import {
   DISCOVER_BROWSE_LIMIT,
   buildFindSearchParams,
+  catalogGapFanoutQueries,
   composeSearchQuery,
   discoverCatFromSearchParams,
   discoverHref,
@@ -18,12 +19,20 @@ import {
   findKindOptions,
   groupDiscoverCategories,
   hasFindQuery,
+  isCatalogGapQuery,
   pruneFieldsForKind,
+  rankBeyondByCompleteness,
   requestBodyFromHit,
   searchHref,
   shouldShowDiscover,
 } from "../find.js";
-import { groupBeyondItems } from "../findParts.js";
+import {
+  GAP_CHASE_QUERY_CAP,
+  annotateChasedGaps,
+  buildGapChaseQueries,
+  groupBeyondItems,
+  mergeBeyondHits,
+} from "../findParts.js";
 
 function fieldsFromState(draft, kind, advanced) {
   return pruneFieldsForKind(kind, {
@@ -57,6 +66,19 @@ function discoverParams(kind, discoverCat) {
   return next;
 }
 
+function SkeletonRail({ label = "Warming the lamp…" }) {
+  return (
+    <div className="skeleton-rail" data-testid="skeleton-rail" aria-hidden="true">
+      <p className="skeleton-rail-label">{label}</p>
+      <div className="skeleton-rail-track">
+        {[0, 1, 2, 3, 4].map((n) => (
+          <span key={n} className="skeleton-cover" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function FindPage() {
   const [params, setParams] = useSearchParams();
   const { user, features } = useOutletContext();
@@ -72,6 +94,11 @@ export default function FindPage() {
   const [kind, setKind] = useState(urlFields.kind);
   const [advanced, setAdvanced] = useState(urlFields);
   const [result, setResult] = useState({ beyond: [] });
+  const [chaseHits, setChaseHits] = useState([]);
+  const [chaseBySet, setChaseBySet] = useState({});
+  const [priorMissing, setPriorMissing] = useState({});
+  const [bestMatches, setBestMatches] = useState([]);
+  const [fanoutPhase, setFanoutPhase] = useState("idle");
   const [discover, setDiscover] = useState({ items: [], categories: [], limit: 0 });
   const [jobs, setJobs] = useState({});
   const [phase, setPhase] = useState("idle");
@@ -80,6 +107,7 @@ export default function FindPage() {
   const [discoverError, setDiscoverError] = useState("");
   const openDiscover = shouldShowDiscover(urlFields);
   const browsing = Boolean(discoverCat) && openDiscover;
+  const catalogGap = isCatalogGapQuery(urlFields);
 
   useEffect(() => {
     setDraft(urlFields.q);
@@ -101,6 +129,11 @@ export default function FindPage() {
   useEffect(() => {
     if (!hasFindQuery(urlFields)) {
       setResult({ beyond: [] });
+      setChaseHits([]);
+      setChaseBySet({});
+      setPriorMissing({});
+      setBestMatches([]);
+      setFanoutPhase("idle");
       setPhase("idle");
       setError("");
       return undefined;
@@ -108,6 +141,11 @@ export default function FindPage() {
     let alive = true;
     setPhase("beyond");
     setError("");
+    setChaseHits([]);
+    setChaseBySet({});
+    setPriorMissing({});
+    setBestMatches([]);
+    setFanoutPhase("idle");
     api
       .search(urlFields.q, { beyond: true, ...urlFields })
       .then((data) => {
@@ -141,6 +179,97 @@ export default function FindPage() {
     urlFields.album,
     urlFields.year,
   ]);
+
+  // B1 — multipart gap chase after primary beyond results land.
+  useEffect(() => {
+    if (phase !== "done") return undefined;
+    const primary = groupBeyondItems(result.beyond || []);
+    const incomplete = primary.sets.filter((set) => !set.complete && (set.missing || []).length);
+    if (!incomplete.length) return undefined;
+
+    let alive = true;
+    const prior = {};
+    for (const set of incomplete) prior[set.id] = [...(set.missing || [])];
+    setPriorMissing(prior);
+
+    (async () => {
+      let budget = GAP_CHASE_QUERY_CAP;
+      const extras = [];
+      for (const set of incomplete) {
+        if (!alive || budget <= 0) break;
+        const queries = buildGapChaseQueries(set, { cap: budget });
+        if (!queries.length) continue;
+        setChaseBySet((prev) => ({
+          ...prev,
+          [set.id]: { status: "searching", queriesTried: 0, total: queries.length },
+        }));
+        let tried = 0;
+        for (const q of queries) {
+          if (!alive || budget <= 0) break;
+          tried += 1;
+          budget -= 1;
+          setChaseBySet((prev) => ({
+            ...prev,
+            [set.id]: { status: "searching", queriesTried: tried, total: queries.length },
+          }));
+          try {
+            const data = await api.search(q, { beyond: true, kind: set.kind || urlFields.kind });
+            extras.push(...(data.beyond || []));
+            if (alive) setChaseHits([...extras]);
+          } catch {
+            /* keep chasing */
+          }
+        }
+        if (alive) {
+          setChaseBySet((prev) => ({
+            ...prev,
+            [set.id]: { status: "done", queriesTried: tried, total: queries.length },
+          }));
+        }
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [phase, result.beyond, urlFields.kind]);
+
+  // B2 — catalog gap fan-out / Best matches (Confirm still required).
+  useEffect(() => {
+    if (phase !== "done" || !catalogGap) {
+      setBestMatches([]);
+      setFanoutPhase("idle");
+      return undefined;
+    }
+    const queries = catalogGapFanoutQueries(urlFields, { cap: 5 }).slice(1);
+    if (!queries.length) return undefined;
+    let alive = true;
+    setFanoutPhase("searching");
+    (async () => {
+      const extras = [];
+      for (const fields of queries) {
+        if (!alive) return;
+        try {
+          const data = await api.search(fields.q, { beyond: true, ...fields });
+          extras.push(...(data.beyond || []));
+        } catch {
+          /* continue */
+        }
+      }
+      if (!alive) return;
+      const merged = mergeBeyondHits(result.beyond || [], extras).items;
+      const { sets, singles } = groupBeyondItems(merged);
+      const ranked = rankBeyondByCompleteness([
+        ...sets.map((set) => ({ ...set, _rankType: "set" })),
+        ...singles.map((item) => ({ ...item, _rankType: "single", found: 1, total: 1 })),
+      ]).slice(0, 8);
+      setBestMatches(ranked);
+      setFanoutPhase("done");
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [phase, catalogGap, result.beyond, urlFields]);
 
   useEffect(() => {
     let alive = true;
@@ -197,9 +326,25 @@ export default function FindPage() {
     return data;
   }
 
-  const { sets: partSets, singles: beyondSinglesRaw } = useMemo(
-    () => groupBeyondItems(result.beyond || []),
-    [result.beyond],
+  const mergedBeyond = useMemo(
+    () => mergeBeyondHits(result.beyond || [], chaseHits).items,
+    [result.beyond, chaseHits],
+  );
+  const { sets: rawPartSets, singles: beyondSinglesRaw } = useMemo(
+    () => groupBeyondItems(mergedBeyond),
+    [mergedBeyond],
+  );
+  const partSets = useMemo(
+    () =>
+      rawPartSets.map((set) => {
+        const chased = annotateChasedGaps(set, priorMissing[set.id] || []);
+        const chaseMeta = chaseBySet[set.id];
+        return {
+          ...chased,
+          chaseQueriesTried: chaseMeta?.queriesTried || 0,
+        };
+      }),
+    [rawPartSets, priorMissing, chaseBySet],
   );
   const beyondSingles = beyondSinglesRaw.map((item) => ({
     ...item,
@@ -212,7 +357,7 @@ export default function FindPage() {
   const status = findStatusLine({
     q: composed,
     kind: urlFields.kind,
-    beyondCount: (result.beyond || []).length,
+    beyondCount: mergedBeyond.length,
     phase,
   });
   const beyondEmpty =
@@ -227,8 +372,7 @@ export default function FindPage() {
     count: discoverItems.length,
   });
   const kindCats = useMemo(
-    () =>
-      (discover.categories || []).filter((row) => !urlFields.kind || row.kind === urlFields.kind),
+    () => (discover.categories || []).filter((row) => !urlFields.kind || row.kind === urlFields.kind),
     [discover.categories, urlFields.kind],
   );
   const rails = groupDiscoverRails(discoverItems, discover.categories);
@@ -237,6 +381,7 @@ export default function FindPage() {
     discoverItems[0]?.category_name ||
     discoverCat;
   const backDiscoverHref = discoverHref({ kind: urlFields.kind });
+  const anyChasing = Object.values(chaseBySet).some((row) => row?.status === "searching");
 
   function renderDiscoverBrowse() {
     return (
@@ -249,7 +394,7 @@ export default function FindPage() {
           <p>Indexers · Request queues SAB. Readers file an asked slip.</p>
         </header>
         {discoverPhase === "loading" && !discoverItems.length ? (
-          <p className="lede discover-empty">{discoverEmpty}</p>
+          <SkeletonRail label="The indexers are turning pages…" />
         ) : null}
         {discoverItems.length ? (
           <div className="discover-grid" data-testid="discover-grid">
@@ -271,13 +416,15 @@ export default function FindPage() {
   }
 
   function renderDiscoverRails() {
+    if (discoverPhase === "loading" && !rails.length) {
+      return <SkeletonRail label="Warming Discover…" />;
+    }
     if (!rails.length) {
       return <p className="lede discover-empty">{discoverEmpty}</p>;
     }
     return rails.map((rail) => {
       const feedKind =
-        (discover.categories || []).find((row) => String(row.id) === String(rail.id))?.kind ||
-        urlFields.kind;
+        (discover.categories || []).find((row) => String(row.id) === String(rail.id))?.kind || urlFields.kind;
       return (
         <Rail
           key={rail.id}
@@ -342,6 +489,50 @@ export default function FindPage() {
     );
   }
 
+  function renderBestMatches() {
+    if (!catalogGap || (!bestMatches.length && fanoutPhase !== "searching")) return null;
+    return (
+      <section className="best-matches" data-testid="best-matches">
+        <header className="rail-head">
+          <div>
+            <h2>Best matches</h2>
+            <p>Ranked by how complete the release looks. Request still files a slip — nothing auto-queues.</p>
+          </div>
+        </header>
+        {fanoutPhase === "searching" && !bestMatches.length ? (
+          <p className="lede" role="status">
+            Checking other phrasings across the indexers…
+          </p>
+        ) : null}
+        <div className="best-matches-strip">
+          {bestMatches.map((row) => {
+            if (row._rankType === "set" || row.parts) {
+              return (
+                <PartSetCard
+                  key={`best-${row.id}`}
+                  set={row}
+                  onRequest={request}
+                  role={user?.role}
+                  jobs={jobs}
+                  chase={chaseBySet[row.id]}
+                />
+              );
+            }
+            return (
+              <CoverCard
+                key={row.guid || row.title}
+                work={{ ...row, job_status: jobs[row.guid || row.title] }}
+                onRequest={request}
+                beyond
+                role={user?.role}
+              />
+            );
+          })}
+        </div>
+      </section>
+    );
+  }
+
   return (
     <div className="search-page">
       <QueryForm
@@ -362,6 +553,9 @@ export default function FindPage() {
       <p className="search-status" aria-live="polite" data-testid="find-status">
         {status}
       </p>
+      <p className="sr-only" role="status" aria-live="polite" data-testid="chase-live-region">
+        {anyChasing ? "Searching for missing parts…" : ""}
+      </p>
       {composed ? (
         <p className="find-cta-block">
           <Link className="muted" to={searchHref(fieldsFromState(draft.trim() || urlFields.q, kind, advanced))}>
@@ -376,6 +570,10 @@ export default function FindPage() {
       ) : null}
       {composed ? (
         <>
+          {phase === "beyond" && !partSets.length && !beyondSingles.length ? (
+            <SkeletonRail label="Looking beyond the shelves…" />
+          ) : null}
+          {renderBestMatches()}
           {partSets.length ? (
             <section className="part-sets" data-testid="part-sets">
               <header className="rail-head">
@@ -383,12 +581,19 @@ export default function FindPage() {
                   <h2>Multipart releases</h2>
                   <p>
                     Grouped from part / CD / disc markers. Select what you need — each Request files its own slip.
-                    Incomplete sets stay honest about missing parts.
+                    Incomplete sets chase missing parts quietly.
                   </p>
                 </div>
               </header>
               {partSets.map((set) => (
-                <PartSetCard key={set.id} set={set} onRequest={request} role={user?.role} jobs={jobs} />
+                <PartSetCard
+                  key={set.id}
+                  set={set}
+                  onRequest={request}
+                  role={user?.role}
+                  jobs={jobs}
+                  chase={chaseBySet[set.id]}
+                />
               ))}
             </section>
           ) : null}
@@ -403,7 +608,9 @@ export default function FindPage() {
           />
         </>
       ) : null}
-      {openDiscover ? renderDiscover() : (
+      {openDiscover ? (
+        renderDiscover()
+      ) : (
         <details className="discover-fold">
           <summary className="kicker">Discover — trending on the indexers</summary>
           {renderDiscover()}

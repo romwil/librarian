@@ -66,6 +66,9 @@ _MAG_MONTH = re.compile(
 _EBOOK_GROUP = re.compile(r"[\.\s]eBook(?:-|\.)(?P<group>[A-Za-z0-9]+)", re.IGNORECASE)
 _YEAR = re.compile(r"\b(19\d{2}|20\d{2})\b")
 _AUDIO_PART = re.compile(r"\b(?:part|cd|disc)\s*(\d+)\b", re.IGNORECASE)
+# yEnc / article counters — never feed these through pathlib ( '/' is a separator ).
+_PART_COUNTER = re.compile(r"[\[(]\s*\d{1,3}\s*/\s*\d{1,3}\s*[\])]")
+_BARE_PART_COUNTER = re.compile(r"\b\d{1,3}\s*/\s*\d{1,3}\b")
 _MUSIC_TRACK = re.compile(
     r"^(?:(?:cd|disc|disk)\s*(?P<disc>\d+)[\.\s-]+)?(?P<num>\d{1,3})[\.\s-]+(?P<title>.+)$",
     re.IGNORECASE,
@@ -95,6 +98,15 @@ SIDECAR_NAMES = {"metadata.opf", "comicinfo.xml", "cover.jpg", "cover.png", "nfo
 JUNK_EXTENSIONS = {".par2", ".nzb", ".nfo", ".sfv", ".srr", ".url"}
 JUNK_NAMES = {".ds_store", "thumbs.db", "desktop.ini"}
 ARCHIVE_EXTENSIONS = {".rar", ".7z"}
+_STEM_EXTENSIONS = MEDIA_EXTENSIONS | JUNK_EXTENSIONS | ARCHIVE_EXTENSIONS | {
+    ".zip",
+    ".gz",
+    ".txt",
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".webp",
+}
 UNPACK_STUCK = REVIEW_UNPACK_STUCK  # jobs / ingest compare against this name
 HOST_DATA_PREFIX = "/mnt/user/data/"
 CONTAINER_DATA_PREFIX = "/data/"
@@ -161,6 +173,49 @@ def tidy_title(value: str) -> str:
     return text
 
 
+def usenet_basename(name: str) -> str:
+    """Basename for Usenet subjects or real paths without splitting on [N/M] slashes."""
+    text = str(name or "").strip()
+    if not text:
+        return ""
+    normalized = text.replace("\\", "/")
+    looks_like_path = (
+        normalized.startswith("/")
+        or bool(re.match(r"^[A-Za-z]:/", normalized))
+        or "/mnt/" in normalized
+        or "/data/" in normalized
+        or "/downloads/" in normalized
+        or "/config/" in normalized
+    )
+    if not looks_like_path:
+        return text
+    # Split on the last path slash that is not inside [] or ().
+    depth = 0
+    for index in range(len(normalized) - 1, -1, -1):
+        char = normalized[index]
+        if char in "])":
+            depth += 1
+        elif char in "[(":
+            depth = max(0, depth - 1)
+        elif char == "/" and depth == 0:
+            return normalized[index + 1 :]
+    return normalized
+
+
+def filename_stem(name: str) -> str:
+    """Strip a known extension without pathlib — Path.stem treats '/' in [6/8] as a parent path."""
+    base = usenet_basename(name)
+    lower = base.lower()
+    for ext in sorted(_STEM_EXTENSIONS, key=len, reverse=True):
+        if lower.endswith(ext):
+            return base[: -len(ext)]
+    if "." in base:
+        head, ext = base.rsplit(".", 1)
+        if ext.isalnum() and 1 <= len(ext) <= 5:
+            return head
+    return base
+
+
 def extract_isbn(text: str) -> str:
     match = _ISBN.search(text or "")
     if not match:
@@ -213,8 +268,8 @@ def isbn_match_keys(*values: str) -> List[str]:
 
 def parse_usenet_name(name: str, *, category: object = None, kind: object = None) -> Identity:
     """Deterministic Usenet / folder parse. Never invents an ISBN. Filename layer is weak."""
-    raw = Path(name).name
-    stem = Path(raw).stem
+    raw = usenet_basename(name)
+    stem = filename_stem(raw)
     isbn = extract_isbn(stem)
     hinted = str(kind or "").strip().lower()
     if hinted not in ALL_KINDS:
@@ -277,6 +332,8 @@ def parse_usenet_name(name: str, *, category: object = None, kind: object = None
     def _clean_piece(value: str) -> str:
         text = _EBOOK_GROUP.sub("", value)
         text = _AUDIO_PART.sub("", text)
+        text = _PART_COUNTER.sub(" ", text)
+        text = _BARE_PART_COUNTER.sub(" ", text)
         text = _YEAR.sub("", text)
         text = _ISBN.sub("", text)
         return tidy_title(text)
@@ -616,6 +673,7 @@ def diagnose_review_folder(folder: Path, complete_root: str = "") -> Dict[str, A
     payload = inspection.get("payload") or []
     archives = inspection.get("archives") or []
     junk = inspection.get("junk") or []
+    par2_count = sum(1 for path in junk if Path(path).name.lower().endswith(".par2"))
     looked_for = "book (epub/pdf), comic (cbz/cbr), or audio (flac/mp3/m4a/m4b) files"
     empty_dir = False
     if problem == REVIEW_NO_PAYLOAD and resolved.exists() and resolved.is_dir():
@@ -626,10 +684,24 @@ def diagnose_review_folder(folder: Path, complete_root: str = "") -> Dict[str, A
     if problem == REVIEW_MISSING_FOLDER:
         tried = f"Looked for a complete folder at {resolved or raw or '(empty)'}."
     elif problem == REVIEW_UNPACK_STUCK:
+        sidecar = f"(also {len(junk)} junk/sidecar file(s)"
+        if par2_count:
+            sidecar += f", including {par2_count} PAR2 recovery file(s)"
+        sidecar += ")"
         tried = (
             f"Opened {resolved}. Found {len(archives)} archive file(s) and no readable media "
-            f"(also {len(junk)} junk/sidecar file(s))."
+            f"{sidecar}."
         )
+        if par2_count:
+            tried += (
+                " Archives may be incomplete or checksum-damaged — "
+                "Repair runs par2 then unpack; Retry shelves if media appears."
+            )
+        else:
+            tried += (
+                " No PAR2 recovery files here — extract manually, fix in SABnzbd, "
+                "or Request a new version."
+            )
     elif problem == REVIEW_NO_PAYLOAD and empty_dir:
         tried = f"Opened {resolved}. The folder is empty."
     elif problem == REVIEW_NO_PAYLOAD:
@@ -643,6 +715,7 @@ def diagnose_review_folder(folder: Path, complete_root: str = "") -> Dict[str, A
         "payload_count": len(payload),
         "archive_count": len(archives),
         "junk_count": len(junk),
+        "par2_count": par2_count,
         "looked_for": looked_for,
         "tried": tried,
         "path_note": path_layout_note(resolved if usable_folder(resolved) else raw),
@@ -1064,7 +1137,8 @@ def _apply_review_gates(identity: Identity, files: Sequence[Path]) -> None:
             identity.review_reason = identity.review_reason or REVIEW_UNKNOWN
             identity.confidence = "low"
         suffixes = {path.suffix.lower() for path in files}
-        if identity.kind == KIND_COMIC and suffixes & {".cbr", ".pdf"} and ".cbz" not in suffixes:
+        # PDF comics are Reading Room–ready. Only CBR (RAR) needs CBZ conversion.
+        if identity.kind == KIND_COMIC and ".cbr" in suffixes and ".cbz" not in suffixes:
             identity.review_reason = identity.review_reason or REVIEW_CONVERT
             identity.confidence = "low"
 
@@ -1108,7 +1182,8 @@ def _apply_post_llm_review(identity: Identity, folder: Path) -> List[Path]:
             identity.review_reason = None
     if identity.kind in (KIND_COMIC, KIND_MAGAZINE) and identity.series_name and identity.series_index:
         suffixes = {path.suffix.lower() for path in files}
-        if identity.kind == KIND_COMIC and suffixes & {".cbr", ".pdf"} and ".cbz" not in suffixes:
+        # PDF comics are Reading Room–ready. Only CBR (RAR) needs CBZ conversion.
+        if identity.kind == KIND_COMIC and ".cbr" in suffixes and ".cbz" not in suffixes:
             identity.review_reason = identity.review_reason or REVIEW_CONVERT
             identity.confidence = "low"
         elif identity.confidence == "high" and identity.review_reason != REVIEW_EXTRA:
@@ -1221,10 +1296,19 @@ def music_state_for_folder(settings: Any, folder: Path) -> str:
 
 def _safe_source_filename(filename: str) -> str:
     """Keep the source name; only strip separators and trailing dots (not Usenet tidy)."""
-    name = Path(filename).name
-    stem = Path(name).stem.replace("/", "-").replace("\\", "-")
+    name = usenet_basename(filename)
+    stem = filename_stem(name).replace("/", "-").replace("\\", "-")
     stem = re.sub(r"[:]+", " - ", stem).strip(" .")
-    suffix = Path(name).suffix
+    suffix = ""
+    lower = name.lower()
+    for ext in sorted(_STEM_EXTENSIONS, key=len, reverse=True):
+        if lower.endswith(ext):
+            suffix = name[len(name) - len(ext) :]
+            break
+    if not suffix and "." in name:
+        maybe = name.rsplit(".", 1)[-1]
+        if maybe.isalnum() and 1 <= len(maybe) <= 5:
+            suffix = f".{maybe}"
     if not stem:
         return name or "track"
     return f"{stem}{suffix}"
@@ -1270,7 +1354,7 @@ def expected_payload_ok(kind: str, files: Sequence[Path]) -> Optional[str]:
     if not files:
         return REVIEW_NO_PAYLOAD
     suffixes = {path.suffix.lower() for path in files}
-    if kind == KIND_COMIC and suffixes & {".cbr", ".pdf"} and ".cbz" not in suffixes:
+    if kind == KIND_COMIC and ".cbr" in suffixes and ".cbz" not in suffixes:
         return REVIEW_CONVERT
     if kind == KIND_BOOK and suffixes == {".pdf"}:
         return REVIEW_CONVERT

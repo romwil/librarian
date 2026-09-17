@@ -40,13 +40,13 @@ export function effectiveReviewReason(work) {
 
 export function reviewReasonCopy(reason) {
   if (reason === "unpack_stuck") {
-    return "SABnzbd left archives in this folder — unpack never finished. Librarian cannot shelve rar/7z.";
+    return "SABnzbd left archives in this folder. Try Repair (par2) when available, then Retry — or Apply to unpack rar/7z with unar.";
   }
   if (reason === "missing_folder") {
     return "That complete folder is missing on disk. Remap SAB’s path, paste a folder this process can read, or Skip.";
   }
   if (reason === "no_payload") {
-    return "No book, comic, or audio file at this path. Apply cannot invent a payload.";
+    return "No book, comic, or audio file at this path. Apply cannot invent a payload — Request a new version beyond the shelves if the dump is empty.";
   }
   if (reason === "unknown_identity") {
     return "Identity is missing. Fill title, author, ISBN or series/issue, then Apply.";
@@ -61,7 +61,7 @@ export function reviewReasonCopy(reason) {
     return "Extra files in the complete folder. Confirm the identity and Apply to file what is there.";
   }
   if (reason === "convert_failed") {
-    return "A conversion is still needed (PDF book or CBR comic). Apply retries once files are readable.";
+    return "This comic is still only CBR (RAR). Apply retries converting it to CBZ for the Reading Room. PDF comics open as PDF — no conversion needed.";
   }
   if (reason === "collision") {
     return "Collision — a file already exists at the library destination (duplicate path or identity). Librarian will not silent-overwrite.";
@@ -75,21 +75,52 @@ export function reviewSlipMeaning() {
 
 export function reviewNextStepsCopy(reason, diagnosis = {}) {
   if (reason === "unpack_stuck") {
-    return "In SABnzbd, repair/extract this job (or delete and re-grab). When flac/mp3/epub/cbz files appear in the folder, Apply — or Skip to dismiss and keep nothing on the shelf.";
+    return "Repair runs par2 when recovery volumes are present. Retry re-runs organize after unpack. Apply still tries unar — or Skip.";
   }
   if (reason === "missing_folder") {
     return "Check Settings → SAB complete root so /downloads maps to a path under /data this container can read. Paste the real folder, then Apply — or Skip.";
   }
   if (reason === "no_payload") {
     if (diagnosis?.suggested_folder) {
-      return `Try the suggested folder below (readable files were nearby), then Apply — or Skip.`;
+      return `Try the suggested folder below (readable files were nearby), then Apply — or Request a new version beyond the shelves.`;
     }
-    return "Point Complete folder at a dump with readable media, or Skip.";
+    return "Point Complete folder at a dump with readable media, Request a new version, or Skip.";
   }
   if (reason === "collision") {
     return collisionActionCopy();
   }
   return "Confirm the fields and Complete folder, then Apply to file a ticket — or Skip to dismiss.";
+}
+
+/** Flags from GET /api/review → work.actions (backend review_slip_actions). */
+export function reviewActionsFromWork(work = {}) {
+  const actions = work?.actions || {};
+  const reason = effectiveReviewReason(work);
+  const findQuery = String(actions.find_query || "").trim();
+  return {
+    canRepair: Boolean(actions.can_repair),
+    canRetry: Boolean(actions.can_retry),
+    canRequestNew: Boolean(findQuery) || Boolean(work?.title),
+    findQuery: findQuery || [work?.title, work?.author].filter(Boolean).join(" "),
+    findKind: String(work?.kind || "").trim(),
+    reason,
+  };
+}
+
+/** Deep-link for Request a new version — Confirm still required on Find. */
+export function reviewFindHref(work = {}) {
+  const actions = reviewActionsFromWork(work);
+  const q = actions.findQuery;
+  const kind = actions.findKind && actions.findKind !== "gap" ? actions.findKind : "";
+  const params = new URLSearchParams();
+  if (q) params.set("q", q);
+  if (kind) params.set("kind", kind);
+  const qs = params.toString();
+  return qs ? `/find?${qs}` : "/find";
+}
+
+export function unpackStuckWorks(works = []) {
+  return (works || []).filter((work) => effectiveReviewReason(work) === "unpack_stuck");
 }
 
 /** Structured diagnosis block for a Review slip. */

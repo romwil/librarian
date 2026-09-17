@@ -4,6 +4,12 @@ import { api } from "../api.js";
 import { jobChipTone, jobHouseholdLabel, jobNeedsYouReason, jobQueueDetail } from "../cover.js";
 import { emptyQueueCopy, humanError, queueNeedsYouHelp } from "../copy.js";
 
+function isUnpackStuck(job) {
+  const reason = String(job?.review_reason || "").trim();
+  const problem = String(job?.folder_diagnosis?.problem || job?.payload?.problem || "").trim();
+  return reason === "unpack_stuck" || problem === "unpack_stuck";
+}
+
 export default function QueuePage() {
   const [jobs, setJobs] = useState([]);
   const [error, setError] = useState("");
@@ -34,11 +40,17 @@ export default function QueuePage() {
           const needsYou = jobNeedsYouReason(job);
           const raw = jobQueueDetail(job);
           const reviewTo = job.work_id ? `/review?work=${encodeURIComponent(job.work_id)}` : "/review";
+          const unpack = isUnpackStuck(job);
           return (
             <li key={job.id} className="card" data-testid="queue-job" data-status={job.status || ""}>
               <strong>{job.title || job.nzo_id || job.id}</strong>
               <p className="chip-row" data-testid="queue-household">
                 <span className={["live-chip", tone].filter(Boolean).join(" ")}>{household}</span>
+                {unpack ? (
+                  <Link className="live-chip is-review" to={reviewTo} data-testid="queue-unpack-badge">
+                    Unpack stuck
+                  </Link>
+                ) : null}
               </p>
               {needsYou ? <p data-testid="queue-needs-you-reason">{needsYou}</p> : null}
               {raw ? <p className="muted" data-testid="queue-ops-detail">{raw}</p> : null}

@@ -1,12 +1,17 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  annotateChasedGaps,
+  buildGapChaseQueries,
   defaultPartSelectionKeys,
   formatBytes,
+  GAP_CHASE_QUERY_CAP,
   groupBeyondItems,
+  mergeBeyondHits,
   missingParts,
   normalizePartBase,
   parsePartMarker,
+  partBeadStates,
   partIndexOrigin,
   partSetFingerprint,
   partSetRequestAction,
@@ -70,6 +75,38 @@ describe("multipart Find parsing", () => {
     );
   });
 
+  it("strips bare N/M yEnc indexes so Part N/M bases match", () => {
+    // [._]+ collapses the abbreviation dot in "E." — same as other strip paths.
+    assert.equal(
+      stripPartMarkers("Raymond E. Feist - Magician Part 3/5 13/16.mp3 yEnc"),
+      "Raymond E Feist - Magician",
+    );
+    assert.equal(
+      normalizePartBase("Raymond E. Feist - Magician Part 3/5 13/16.mp3 yEnc"),
+      normalizePartBase("Raymond E. Feist - Magician Part 5/5 15/16.mp3 yEnc"),
+    );
+    // Bare N/M alone is not a part marker.
+    assert.equal(parsePartMarker("Raymond E. Feist - Magician 13/16.mp3"), null);
+  });
+
+  it("prefers Part N/M over yEnc [N/M] when both present", () => {
+    assert.deepEqual(
+      parsePartMarker('(NMRT [13/16] - "Raymond E. Feist - Magician Part 3/5.mp3" yEnc'),
+      { part: 3, total: 5, style: "part", raw: "Part 3/5" },
+    );
+    assert.deepEqual(
+      parsePartMarker("(NMRT [13/16] - Magician 03of05 yEnc"),
+      { part: 3, total: 5, style: "of", raw: "03of05" },
+    );
+    // Bracket-only titles still parse as bracket.
+    assert.deepEqual(parsePartMarker('(NMRT [01/44] - "Tin Can Sailors.par2" yEnc'), {
+      part: 1,
+      total: 44,
+      style: "bracket",
+      raw: "[01/44]",
+    });
+  });
+
   it("fingerprints same release across parts", () => {
     const a = { title: "Stephen King - The Stand 01of32", host_name: "NZBFinder" };
     const b = { title: "Stephen King - The Stand 23of32.mp3", host_name: "NZBFinder" };
@@ -78,6 +115,45 @@ describe("multipart Find parsing", () => {
       partSetFingerprint(a),
       partSetFingerprint({ title: "Other Book 01of32", host_name: "NZBFinder" }),
     );
+  });
+
+  it("groups Feist Part 3–5/5 despite bare yEnc 13/16–15/16 indexes", () => {
+    const items = [
+      {
+        title: "Raymond E. Feist - Magician Part 3/5 13/16.mp3 yEnc",
+        guid: "f3",
+        size: 100,
+        host_name: "NZBFinder",
+        kind: "audiobook",
+      },
+      {
+        title: "Raymond E. Feist - Magician Part 4/5 14/16.mp3 yEnc",
+        guid: "f4",
+        size: 100,
+        host_name: "NZBFinder",
+        kind: "audiobook",
+      },
+      {
+        title: "Raymond E. Feist - Magician Part 5/5 15/16.mp3 yEnc",
+        guid: "f5",
+        size: 100,
+        host_name: "NZBFinder",
+        kind: "audiobook",
+      },
+    ];
+    const { sets, singles } = groupBeyondItems(items);
+    assert.equal(sets.length, 1);
+    assert.equal(singles.length, 0);
+    const feist = sets[0];
+    assert.equal(feist.total, 5);
+    assert.equal(feist.found, 3);
+    assert.deepEqual(
+      feist.parts.map((p) => p.part),
+      [3, 4, 5],
+    );
+    assert.deepEqual(feist.missing, [1, 2]);
+    assert.equal(feist.complete, false);
+    assert.equal(partSetStatusLine(feist), "3/5 · incomplete · missing 2");
   });
 
   it("groups The Stand parts and leaves unrelated singles", () => {
@@ -221,5 +297,73 @@ describe("multipart request CTA policy", () => {
     assert.equal(action.style, "primary");
     assert.equal(action.label, "Request missing (1)");
     assert.equal(action.honesty, "");
+  });
+});
+
+
+describe("multipart gap chase", () => {
+  it("builds capped Part/of/CD queries for missing numbers", () => {
+    const set = {
+      title: "Raymond E. Feist - Magician",
+      total: 5,
+      style: "part",
+      complete: false,
+      missing: [1, 2],
+    };
+    const queries = buildGapChaseQueries(set, { cap: 5 });
+    assert.ok(queries.length <= 5);
+    assert.ok(queries.some((q) => /Part 1\/5/.test(q)));
+    assert.ok(queries.some((q) => /Part 2/.test(q)));
+    assert.ok(buildGapChaseQueries(set, { cap: GAP_CHASE_QUERY_CAP }).length <= GAP_CHASE_QUERY_CAP);
+  });
+
+  it("merges chase hits and annotates Request missing", () => {
+    const existing = [{ guid: "f3", title: "Magician Part 3/5" }];
+    const incoming = [
+      { guid: "f3", title: "Magician Part 3/5" },
+      { guid: "f1", title: "Raymond E. Feist - Magician Part 1/5" },
+    ];
+    const merged = mergeBeyondHits(existing, incoming);
+    assert.equal(merged.added, 1);
+    assert.equal(merged.items.length, 2);
+
+    const set = {
+      complete: false,
+      found: 2,
+      missing: [2],
+      parts: [
+        { part: 1, item: { guid: "f1" } },
+        { part: 3, item: { guid: "f3" } },
+      ],
+      missingItems: [],
+    };
+    const annotated = annotateChasedGaps(set, [1, 2]);
+    assert.deepEqual(
+      annotated.missingItems.map((row) => row.guid),
+      ["f1"],
+    );
+    const action = partSetRequestAction({ ...annotated, chaseQueriesTried: 3 }, 1);
+    assert.equal(action.kind, "missing-listed");
+    assert.equal(action.label, "Request missing (1)");
+  });
+
+  it("mentions tried queries when gaps stay unlisted", () => {
+    const action = partSetRequestAction(
+      { complete: false, found: 1, missing: [2, 3], missingItems: [], parts: [{ part: 1 }], chaseQueriesTried: 4 },
+      1,
+    );
+    assert.equal(action.kind, "listed-only");
+    assert.match(action.honesty, /Tried 4 queries/);
+  });
+
+  it("builds bead states for found/missing parts", () => {
+    const beads = partBeadStates({
+      total: 4,
+      parts: [{ part: 1 }, { part: 3 }],
+    });
+    assert.deepEqual(
+      beads.map((b) => b.state),
+      ["found", "missing", "found", "missing"],
+    );
   });
 });

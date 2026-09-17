@@ -32,6 +32,7 @@ from librarian.db import Database
 from librarian.enrich import enrich_library, enrich_work
 from librarian.gaps import catalog_gaps, gap_cards
 from librarian.goodreads import MAX_GOODREADS_BYTES, import_goodreads_csv
+from librarian.identify import diagnose_review_folder
 from librarian.indexers.discover import discover_beyond, resolve_feed_limit
 from librarian.indexers.hosts import search_beyond
 from librarian.indexers.sync import ping_nzbfinder, sync_nzbfinder
@@ -52,11 +53,13 @@ from librarian.invites import (
 from librarian.jobs import confirm_asked_job, enqueue_indexer_item, poll_active_jobs, poll_job
 from librarian.kinds import ALL_KINDS, EXTRA_KINDS
 from librarian.nzbfinder import NZBFinderError
-from librarian.identify import diagnose_review_folder
 from librarian.organize import (
     apply_review,
     organize_identified,
     promote_music,
+    repair_review,
+    retry_review,
+    review_slip_actions,
     shelf_work_for_collision,
 )
 from librarian.poller import JobPoller
@@ -851,6 +854,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
                 db.upsert_work({**db.get_work(work["id"]), "review_reason": "unpack_stuck"})
             shelf = shelf_work_for_collision(db, work)
             work["shelf_work"] = shelf
+            work["actions"] = review_slip_actions(work, diagnosis)
         return {"works": works}
 
     @app.post("/api/review/{work_id}/apply")
@@ -868,6 +872,26 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
         return result
+
+    @app.post("/api/review/{work_id}/repair")
+    def review_repair(work_id: str, request: Request):
+        require_role(request.state.user, "owner", "op")
+        if db.get_work(work_id) is None:
+            raise HTTPException(status_code=404, detail="Work not found")
+        try:
+            return repair_review(db, settings(), work_id=work_id)
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.post("/api/review/{work_id}/retry")
+    def review_retry(work_id: str, request: Request):
+        require_role(request.state.user, "owner", "op")
+        if db.get_work(work_id) is None:
+            raise HTTPException(status_code=404, detail="Work not found")
+        try:
+            return retry_review(db, settings(), work_id=work_id)
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
 
     @app.post("/api/review/{work_id}/skip")
     def review_skip(work_id: str, request: Request):

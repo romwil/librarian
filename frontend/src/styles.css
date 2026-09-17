@@ -1683,6 +1683,26 @@ body:has(.reader) .work-hero-scrim {
   display: grid;
   gap: var(--space-3);
   margin: var(--space-4) 0 0;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.identify-form .field {
+  min-width: 0;
+}
+
+.identify-form input,
+.identify-form select {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.ticket .empty-note code,
+.ticket .font-mono {
+  overflow-wrap: anywhere;
+  word-break: break-all;
 }
 
 @media (min-width: 720px) {
@@ -2183,6 +2203,9 @@ button.cover {
 .ticket {
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--surface-raised) 88%, transparent), color-mix(in srgb, var(--surface) 90%, transparent));
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
 }
 .ticket-head {
   display: flex;
@@ -2199,6 +2222,8 @@ button.cover {
   font-size: var(--text-lg);
   margin-bottom: var(--space-2);
   overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 100%;
 }
 
 .ticket.is-focus {
@@ -2365,5 +2390,286 @@ button.cover {
   justify-content: center;
 }
 .browse-genre-stub {
-  margin-top: var(--space-3);
+  margin-top: 0;
 }
+.browse-fold {
+  margin: var(--space-3) 0 0;
+}
+.browse-fold-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 6px 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  text-align: left;
+}
+.browse-fold-toggle:hover {
+  color: var(--fg);
+}
+.browse-fold-label {
+  flex: 0 0 auto;
+}
+.browse-fold-active {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--accent-text, var(--fg));
+}
+.browse-fold-chevron {
+  margin-left: auto;
+  opacity: 0.7;
+}
+.browse-fold-body {
+  margin-top: 4px;
+}
+.browse-fold .chip-row {
+  margin-top: 0;
+}
+
+/* ── Multipart chase, gap beads, Review craft, empty warmth ── */
+
+.part-beads,
+.gap-beads {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.28rem;
+  margin-top: 0.55rem;
+}
+.part-bead,
+.gap-bead {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--gilt) 55%, transparent);
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+}
+.part-bead.is-found,
+.gap-bead.is-owned {
+  background: var(--accent);
+  border-color: var(--accent);
+  cursor: default;
+}
+.part-bead.is-missing.is-pulse,
+.gap-bead.is-current {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.gap-bead:disabled {
+  cursor: default;
+}
+.part-chase {
+  margin: 0 0 var(--space-3);
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  color: color-mix(in srgb, var(--gilt) 80%, var(--muted));
+}
+.part-chase.is-shimmer {
+  background: linear-gradient(
+    100deg,
+    color-mix(in srgb, var(--gilt) 25%, transparent) 20%,
+    color-mix(in srgb, var(--gilt) 70%, transparent) 50%,
+    color-mix(in srgb, var(--gilt) 25%, transparent) 80%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: part-chase-shimmer 1.4s ease-in-out infinite;
+}
+.part-set.is-chasing {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+.part-cell:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  outline-offset: 2px;
+}
+@keyframes part-chase-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+.best-matches {
+  margin: 0 0 var(--space-6);
+}
+.best-matches-strip {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.ticket {
+  min-width: 0;
+}
+.ticket-enter {
+  animation: ticket-enter 200ms ease-out;
+}
+.ticket-diagnosis {
+  margin: 0 0 var(--space-3);
+  min-width: 0;
+}
+.ticket-diagnosis summary {
+  cursor: pointer;
+  font-family: var(--font-display);
+  color: var(--gilt);
+  margin-bottom: 0.4rem;
+}
+.ticket-diagnosis .empty-note,
+.ticket-diagnosis p,
+.ticket code {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.ticket-recovery {
+  margin: 0 0 var(--space-3);
+}
+.review-bulk {
+  margin: 0 0 var(--space-4);
+  align-items: center;
+}
+@keyframes ticket-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.bag-glyph {
+  width: 14px;
+  height: 16px;
+  border: 1.5px solid currentColor;
+  border-radius: 3px 3px 4px 4px;
+  position: relative;
+  display: block;
+}
+.bag-glyph::before {
+  content: "";
+  position: absolute;
+  top: -5px;
+  left: 2px;
+  right: 2px;
+  height: 6px;
+  border: 1.5px solid currentColor;
+  border-bottom: 0;
+  border-radius: 6px 6px 0 0;
+}
+.bag.is-pulse {
+  animation: bag-pulse 200ms ease-out 2;
+}
+.bag.is-pulse[data-count]::after {
+  animation: bag-badge-pulse 200ms ease-out 2;
+}
+@keyframes bag-pulse {
+  0%,
+  100% {
+    box-shadow: none;
+  }
+  50% {
+    box-shadow: 0 0 0 4px var(--accent-soft);
+  }
+}
+@keyframes bag-badge-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.15);
+  }
+}
+
+.nav-ops {
+  opacity: 0.85;
+}
+.nav-ops a {
+  font-size: 0.92em;
+}
+
+.skeleton-rail {
+  margin: 0 var(--gutter) var(--space-6);
+}
+.skeleton-rail-label {
+  font-family: var(--font-display);
+  color: var(--muted);
+  margin: 0 0 var(--space-3);
+  text-align: center;
+}
+.skeleton-rail-track {
+  display: flex;
+  gap: var(--space-3);
+  overflow: hidden;
+}
+.skeleton-cover {
+  flex: 0 0 5.5rem;
+  height: 8.2rem;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(
+    110deg,
+    color-mix(in srgb, var(--surface-raised) 80%, transparent) 25%,
+    color-mix(in srgb, var(--gilt) 12%, var(--surface)) 45%,
+    color-mix(in srgb, var(--surface-raised) 80%, transparent) 65%
+  );
+  background-size: 200% 100%;
+  animation: part-chase-shimmer 1.6s ease-in-out infinite;
+}
+
+.empty-illustration {
+  display: grid;
+  place-items: center;
+  margin: 0 0 var(--space-3);
+}
+.empty-lamp {
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 999px;
+  background: radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--lamp, #e8c98a) 70%, #fff), transparent 70%);
+  box-shadow: 0 0 24px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.hall-empty,
+.review-empty {
+  text-align: center;
+  max-width: 28rem;
+  margin-inline: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .part-chase.is-shimmer,
+  .skeleton-cover,
+  .ticket-enter,
+  .bag.is-pulse,
+  .bag.is-pulse[data-count]::after,
+  .part-bead.is-pulse {
+    animation: none !important;
+  }
+  .part-chase.is-shimmer {
+    color: color-mix(in srgb, var(--gilt) 80%, var(--muted));
+    background: none;
+    -webkit-background-clip: unset;
+    background-clip: unset;
+  }
+}
+

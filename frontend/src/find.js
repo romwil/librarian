@@ -254,6 +254,96 @@ export function gapFindFields(work = {}) {
   });
 }
 
+/** True when Find was opened from a Hall gap (series/issue or title+kind hole). */
+export function isCatalogGapQuery(fields = {}) {
+  const kind = trimmed(fields.kind);
+  if (!kind || kind === "gap") return false;
+  if (kind === "comic" && trimmed(fields.series) && trimmed(fields.issue)) return true;
+  if (kind === "magazine" && (trimmed(fields.title) || trimmed(fields.q)) && trimmed(fields.year)) return true;
+  if (kind === "music" && (trimmed(fields.album) || trimmed(fields.artist))) return true;
+  if ((kind === "book" || kind === "audiobook") && trimmed(fields.title) && trimmed(fields.author)) return true;
+  return Boolean(trimmed(fields.series) && trimmed(fields.issue));
+}
+
+/**
+ * Kind-aware fan-out queries for Hall → Find catalog gaps.
+ * Confirm / Request still required — never auto-queue.
+ */
+export function catalogGapFanoutQueries(fields = {}, { cap = 6 } = {}) {
+  const base = pruneFieldsForKind(trimmed(fields.kind), { ...emptyFindFields(), ...fields });
+  const kind = trimmed(base.kind);
+  const queries = [];
+  const seen = new Set();
+
+  function push(partial) {
+    const next = pruneFieldsForKind(kind || trimmed(partial.kind), {
+      ...emptyFindFields(),
+      ...base,
+      ...partial,
+      kind: kind || trimmed(partial.kind),
+    });
+    const key = composeSearchQuery(next).toLowerCase();
+    if (!key || seen.has(key) || queries.length >= cap) return;
+    seen.add(key);
+    queries.push(next);
+  }
+
+  push(base);
+  if (kind === "comic") {
+    const series = trimmed(base.series);
+    const issue = trimmed(base.issue);
+    if (series && issue) {
+      push({ q: `${series} ${issue}`, series, issue, title: "", author: "" });
+      push({ q: `${series} #${issue}`, series, issue });
+      push({ q: series, series, issue: "", title: "" });
+    }
+  } else if (kind === "magazine") {
+    const title = trimmed(base.title) || trimmed(base.q);
+    if (title) {
+      push({ q: title, title, year: trimmed(base.year) });
+      if (base.year) push({ q: `${title} ${base.year}`, title, year: trimmed(base.year) });
+    }
+  } else if (kind === "music") {
+    const artist = trimmed(base.artist);
+    const album = trimmed(base.album);
+    if (artist && album) {
+      push({ q: `${artist} ${album}`, artist, album });
+      push({ q: album, artist: "", album });
+    } else if (album) {
+      push({ q: album, album });
+    }
+  } else if (kind === "audiobook" || kind === "book") {
+    const title = trimmed(base.title) || trimmed(base.q);
+    const author = trimmed(base.author);
+    if (title && author) {
+      push({ q: `${author} ${title}`, title, author });
+      push({ q: title, title, author: "" });
+      push({ q: author, title: "", author });
+    } else if (title) {
+      push({ q: title, title });
+    }
+  } else {
+    const q = composeSearchQuery(base);
+    if (q) push({ q });
+  }
+  return queries.slice(0, cap);
+}
+
+/** Rank beyond hits: complete multipart sets first, then fuller sets, then singles. */
+export function rankBeyondByCompleteness(items = []) {
+  // Imported lazily via dynamic would cycle; FindPage groups and sorts — helper for tests/UI.
+  const list = Array.isArray(items) ? items : [];
+  return [...list].sort((a, b) => {
+    const score = (row) => {
+      if (row?.complete) return 100 + (Number(row.found) || 0);
+      if (row?.found != null && row?.total) return (Number(row.found) / Number(row.total)) * 50 + Number(row.found);
+      if (row?.parts) return Number(row.found) || row.parts.length;
+      return 1;
+    };
+    return score(b) - score(a);
+  });
+}
+
 export function selectedFromHit(item = {}) {
   return {
     guid: item.guid || "",

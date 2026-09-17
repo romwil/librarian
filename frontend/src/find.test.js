@@ -8,6 +8,9 @@ import {
   findFieldsFromSearchParams,
   findHref,
   gapFindFields,
+  catalogGapFanoutQueries,
+  isCatalogGapQuery,
+  rankBeyondByCompleteness,
   groupDiscoverCategories,
   pruneFieldsForKind,
   requestBodyFromHit,
@@ -252,5 +255,26 @@ describe("Find query builder", () => {
     assert.equal(beyondHostName(body.selected), "Books.nzb");
     assert.equal(body.host_id, "extra1");
     assert.equal(body.selected.host_name, "Books.nzb");
+  });
+});
+
+
+describe("catalog gap fan-out", () => {
+  it("detects Hall gap queries and builds kind-aware alternates", () => {
+    const comic = { kind: "comic", series: "Saga", issue: "54", q: "Saga 54" };
+    assert.equal(isCatalogGapQuery(comic), true);
+    const queries = catalogGapFanoutQueries(comic, { cap: 5 });
+    assert.ok(queries.length >= 2);
+    assert.ok(queries.some((row) => /#54/.test(row.q || "")));
+  });
+
+  it("ranks complete sets ahead of thin singles", () => {
+    const ranked = rankBeyondByCompleteness([
+      { found: 1, total: 5, complete: false },
+      { found: 5, total: 5, complete: true },
+      { found: 3, total: 5, complete: false },
+    ]);
+    assert.equal(ranked[0].complete, true);
+    assert.equal(ranked[1].found, 3);
   });
 });

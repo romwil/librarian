@@ -9,8 +9,11 @@ import {
   collisionApplyAllowed,
   effectiveReviewReason,
   fieldsFromWork,
+  reviewActionsFromWork,
   reviewDiagnosisCopy,
+  reviewFindHref,
   reviewReasonCopy,
+  unpackStuckWorks,
 } from "../review.js";
 
 const KINDS = ["book", "magazine", "comic", "audiobook", "music"];
@@ -21,6 +24,8 @@ export default function ReviewPage() {
   const [works, setWorks] = useState([]);
   const [drafts, setDrafts] = useState({});
   const [errors, setErrors] = useState({});
+  const [busy, setBusy] = useState({});
+  const [bulkNote, setBulkNote] = useState("");
   const [error, setError] = useState("");
   const focusRef = useRef(null);
 
@@ -62,6 +67,10 @@ export default function ReviewPage() {
     }));
   }
 
+  function setWorkBusy(workId, on) {
+    setBusy((prev) => ({ ...prev, [workId]: on }));
+  }
+
   async function apply(work) {
     setErrors((prev) => ({ ...prev, [work.id]: "" }));
     try {
@@ -91,6 +100,58 @@ export default function ReviewPage() {
     }
   }
 
+  async function repair(work) {
+    setWorkBusy(work.id, true);
+    setErrors((prev) => ({ ...prev, [work.id]: "" }));
+    try {
+      await api.reviewRepair(work.id);
+      reload();
+    } catch (err) {
+      setErrors((prev) => ({ ...prev, [work.id]: humanError(err) }));
+    } finally {
+      setWorkBusy(work.id, false);
+    }
+  }
+
+  async function retry(work) {
+    setWorkBusy(work.id, true);
+    setErrors((prev) => ({ ...prev, [work.id]: "" }));
+    try {
+      await api.reviewRetry(work.id);
+      reload();
+    } catch (err) {
+      setErrors((prev) => ({ ...prev, [work.id]: humanError(err) }));
+    } finally {
+      setWorkBusy(work.id, false);
+    }
+  }
+
+  async function bulkAction(kind) {
+    const stuck = unpackStuckWorks(works).filter((work) => {
+      const actions = reviewActionsFromWork(work);
+      return kind === "repair" ? actions.canRepair : actions.canRetry;
+    });
+    if (!stuck.length) {
+      setBulkNote(kind === "repair" ? "No slips with Repair available." : "No slips ready to Retry.");
+      return;
+    }
+    setBulkNote(`${kind === "repair" ? "Repairing" : "Retrying"} ${stuck.length}…`);
+    let ok = 0;
+    for (const work of stuck) {
+      try {
+        if (kind === "repair") await api.reviewRepair(work.id);
+        else await api.reviewRetry(work.id);
+        ok += 1;
+      } catch {
+        /* continue */
+      }
+    }
+    setBulkNote(`${ok} of ${stuck.length} ${kind === "repair" ? "repaired" : "retried"}.`);
+    reload();
+  }
+
+  const unpackCount = unpackStuckWorks(works).length;
+
   return (
     <div className="admin-room">
       <p className="kicker">Bagging area</p>
@@ -100,7 +161,29 @@ export default function ReviewPage() {
         ticket once the folder has readable media — Skip dismisses without shelving.
       </p>
       {error ? <p className="alert">{error}</p> : null}
-      {!works.length ? <p className="empty-note">{emptyReviewCopy()}</p> : null}
+      {unpackCount ? (
+        <div className="cta-row review-bulk" data-testid="review-bulk">
+          <button type="button" className="cta outline compact" onClick={() => bulkAction("repair")}>
+            Repair unpack slips
+          </button>
+          <button type="button" className="cta outline compact" onClick={() => bulkAction("retry")}>
+            Retry unpack slips
+          </button>
+          {bulkNote ? (
+            <p className="muted" role="status">
+              {bulkNote}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+      {!works.length ? (
+        <section className="empty-cta review-empty" data-testid="review-empty">
+          <p className="empty-illustration" aria-hidden="true">
+            <span className="empty-lamp" />
+          </p>
+          <p className="lede empty-note">{emptyReviewCopy()}</p>
+        </section>
+      ) : null}
       <ul className="stack">
         {works.map((work) => {
           const draft = drafts[work.id] || fieldsFromWork(work);
@@ -110,11 +193,14 @@ export default function ReviewPage() {
           const canApply = collisionApplyAllowed(reason, draft, work);
           const shelf = work.shelf_work;
           const diagnosis = reviewDiagnosisCopy(work);
+          const actions = reviewActionsFromWork(work);
+          const findTo = reviewFindHref(work);
+          const workBusy = Boolean(busy[work.id]);
           return (
             <li
               key={work.id}
               ref={focused ? focusRef : null}
-              className={["card", "ticket", focused ? "is-focus" : ""].filter(Boolean).join(" ")}
+              className={["card", "ticket", "ticket-enter", focused ? "is-focus" : ""].filter(Boolean).join(" ")}
               data-testid="review-ticket"
               data-work-id={work.id}
               data-focused={focused ? "true" : "false"}
@@ -128,38 +214,41 @@ export default function ReviewPage() {
               <p className="lede" data-testid="review-reason-copy">
                 {reviewReasonCopy(reason)}
               </p>
-              <div className="empty-note" data-testid="review-diagnosis">
-                <p>
-                  <strong>What this slip means.</strong> {diagnosis.meaning}
-                </p>
-                <p>
-                  <strong>What we tried.</strong> {diagnosis.tried}
-                </p>
-                <p>
-                  <strong>What’s wrong.</strong> {diagnosis.whatsWrong}
-                </p>
-                <p>
-                  <strong>What to do.</strong> {diagnosis.nextSteps}
-                </p>
-                {diagnosis.pathNote ? (
-                  <p data-testid="review-path-note">
-                    <strong>About this path.</strong> {diagnosis.pathNote}
+              <details className="ticket-diagnosis" data-testid="review-diagnosis">
+                <summary>About this slip</summary>
+                <div className="empty-note">
+                  <p>
+                    <strong>What this slip means.</strong> {diagnosis.meaning}
                   </p>
-                ) : null}
-                {diagnosis.suggestedFolder ? (
-                  <p data-testid="review-suggested-folder">
-                    <strong>Suggested folder.</strong>{" "}
-                    <code className="font-mono">{diagnosis.suggestedFolder}</code>{" "}
-                    <button
-                      type="button"
-                      className="cta ghost compact"
-                      onClick={() => patch(work.id, "folder", diagnosis.suggestedFolder)}
-                    >
-                      Use this path
-                    </button>
+                  <p>
+                    <strong>What we tried.</strong> {diagnosis.tried}
                   </p>
-                ) : null}
-              </div>
+                  <p>
+                    <strong>What’s wrong.</strong> {diagnosis.whatsWrong}
+                  </p>
+                  <p>
+                    <strong>What to do.</strong> {diagnosis.nextSteps}
+                  </p>
+                  {diagnosis.pathNote ? (
+                    <p data-testid="review-path-note">
+                      <strong>About this path.</strong> {diagnosis.pathNote}
+                    </p>
+                  ) : null}
+                  {diagnosis.suggestedFolder ? (
+                    <p data-testid="review-suggested-folder">
+                      <strong>Suggested folder.</strong>{" "}
+                      <code className="font-mono">{diagnosis.suggestedFolder}</code>{" "}
+                      <button
+                        type="button"
+                        className="cta ghost compact"
+                        onClick={() => patch(work.id, "folder", diagnosis.suggestedFolder)}
+                      >
+                        Use this path
+                      </button>
+                    </p>
+                  ) : null}
+                </div>
+              </details>
               {collision ? (
                 <p className="empty-note" data-testid="collision-action-copy">
                   {collisionActionCopy()}
@@ -174,6 +263,41 @@ export default function ReviewPage() {
                   </Link>
                 </p>
               ) : null}
+              {(actions.canRepair || actions.canRetry || actions.canRequestNew) && (
+                <div className="cta-row ticket-recovery" data-testid="review-recovery">
+                  {actions.canRepair ? (
+                    <button
+                      type="button"
+                      className="cta compact"
+                      disabled={workBusy}
+                      onClick={() => repair(work)}
+                      data-testid="review-repair"
+                    >
+                      Repair
+                    </button>
+                  ) : null}
+                  {actions.canRetry ? (
+                    <button
+                      type="button"
+                      className={`cta compact${actions.canRepair ? " outline" : ""}`}
+                      disabled={workBusy}
+                      onClick={() => retry(work)}
+                      data-testid="review-retry"
+                    >
+                      Retry
+                    </button>
+                  ) : null}
+                  {actions.canRequestNew ? (
+                    <Link
+                      className="cta outline compact"
+                      to={findTo}
+                      data-testid="review-request-new"
+                    >
+                      Request new version
+                    </Link>
+                  ) : null}
+                </div>
+              )}
               <form
                 className="identify-form"
                 onSubmit={(event) => {
@@ -251,7 +375,7 @@ export default function ReviewPage() {
                   <button
                     type="submit"
                     className="cta"
-                    disabled={!canApply}
+                    disabled={!canApply || workBusy}
                     title={
                       collision && !canApply
                         ? "Change title, author, series, or folder so the destination is free — Apply will not overwrite."

@@ -24,6 +24,8 @@ const INDEXER_COPY = [
   [/returned non-json/i, "The indexer answered in a format we could not read. Try again in a moment."],
   [/^(?!.*sabnzbd).*http 5\d\d/i, "One indexer is having a moment. Other hits may still be below."],
   [/nzbfinder http 5/i, "The indexer is having a moment. Try again shortly."],
+  [/missing required parameters/i, "That release id looks wrong for the indexer. Close the peek and open it again, or try Search."],
+  [/download needs a guid/i, "This result is missing its NZB id. Close the peek and pick it again from Discover or Search."],
   [/nzbfinder/i, "Could not reach Beyond the shelves. Check the indexer in Settings."],
   [/radarr is not configured/i, "Radarr needs its URL and key in Settings before a movie can be expected."],
   [/sonarr is not configured/i, "Sonarr needs its URL and key in Settings before a show can be expected."],
@@ -116,14 +118,14 @@ export function emptyHallCopy({ owner = false, configured = false } = {}) {
   if (configured) {
     return {
       title: "The shelves are still bare",
-      lede: "Find a volume beyond the shelves, or wait for the first organize to land.",
+      lede: "The lamp is lit. Find a volume beyond the shelves, or wait for the first organize to land.",
     };
   }
   return {
     title: "Open the stacks",
     lede: owner
-      ? "Add an indexer and library roots in Settings. The Hall stays open while you do."
-      : "Ask the owner to add an indexer. Covers will land here.",
+      ? "Add an indexer and library roots in Settings. The Hall stays quiet and open while you do."
+      : "Ask the owner to add an indexer. Covers will land here under the lamp.",
   };
 }
 
@@ -140,7 +142,11 @@ export function canPromoteIncomingMusic(work, role) {
 }
 
 export function emptyReviewCopy() {
-  return "The bagging area is empty. Slips only appear when organize needs you — happy-path books never stop here.";
+  return "The bagging area is empty. The lamp is quiet — slips only appear when organize needs you.";
+}
+
+export function discoverLoadingCopy() {
+  return "Warming Discover — the indexers are turning pages.";
 }
 
 export function emptyQueueCopy() {

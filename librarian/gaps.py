@@ -550,6 +550,15 @@ def gap_cards(rows: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 isbn = ""
             series = str(row.get("series_name") or "").strip()
             title = title or f"{series} {index}".strip()
+            owned_indexes = [str(value) for value in (row.get("owned_indexes") or []) if str(value or "").strip()]
+            series_missing = []
+            for hole in row.get("missing") or []:
+                if isinstance(hole, dict):
+                    hole_index = str(hole.get("series_index") or hole.get("missing_index") or "").strip()
+                else:
+                    hole_index = str(hole or "").strip()
+                if hole_index:
+                    series_missing.append(hole_index)
             card: Dict[str, Any] = {
                 "id": f"gap:{row['kind']}:{series}:{index or title_key(title)}",
                 "kind": row["kind"],
@@ -558,6 +567,8 @@ def gap_cards(rows: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 "missing_index": index,
                 "title": title,
                 "provenance": row.get("provenance") or extra.get("source") or "local",
+                "owned_indexes": owned_indexes,
+                "series_missing": series_missing,
             }
             if row.get("gap_type"):
                 card["gap_type"] = row["gap_type"]

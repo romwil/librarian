@@ -218,6 +218,20 @@ def test_identify_music_request_without_files_stays_music(tmp_path):
     assert result["identity"]["review_reason"] == "no_payload"
 
 
+
+def test_identify_pdf_comic_does_not_require_conversion(tmp_path):
+    folder = tmp_path / "Vampirella.No.06"
+    folder.mkdir()
+    (folder / "Vampirella.pdf").write_bytes(b"%PDF")
+    result = identify_completed(
+        folder,
+        indexer_item={"kind": "comic", "title": "Vampirella #6", "series": "Vampirella", "issue": "6"},
+        category=7030,
+    )
+    assert result["identity"]["kind"] == "comic"
+    assert result["identity"]["review_reason"] != "convert_failed"
+
+
 def test_identify_pdf_only_book_goes_to_review(tmp_path):
     folder = tmp_path / "Le Guin - A Book 9780441478125"
     folder.mkdir()
@@ -649,7 +663,10 @@ def test_diagnose_review_folder_explains_complete_downloads_and_archives(tmp_pat
     diagnosis = diagnose_review_folder(root, str(tmp_path / "usenet" / "complete"))
     assert diagnosis["problem"] == "unpack_stuck"
     assert diagnosis["archive_count"] == 1
+    assert diagnosis["par2_count"] == 1
     assert "archive" in diagnosis["tried"].lower()
+    assert "PAR2" in diagnosis["tried"]
+    assert "checksum" in diagnosis["tried"].lower() or "Repair" in diagnosis["tried"]
     assert "complete/downloads" in diagnosis["path_note"]
     assert diagnosis["suggested_folder"] is None
 
@@ -671,3 +688,19 @@ def test_diagnose_review_folder_missing_path(tmp_path):
     missing = tmp_path / "gone"
     diagnosis = diagnose_review_folder(missing, str(tmp_path))
     assert diagnosis["problem"] == "missing_folder"
+
+
+def test_parse_usenet_name_keeps_bracket_part_counters_out_of_author():
+    """Pathlib would treat [6/8] as a parent path and leave author as '8]'."""
+    identity = parse_usenet_name("Raymond E. Feist - Magician [6/8].mp3", kind="audiobook")
+    assert identity.author == "Raymond E Feist"
+    assert identity.title == "Magician"
+    assert "8]" not in identity.author
+    assert "8|" not in identity.author
+
+    nested = parse_usenet_name(
+        "/data/usenet/complete/Raymond E. Feist - Magician [6/8].m4b",
+        kind="audiobook",
+    )
+    assert nested.author == "Raymond E Feist"
+    assert nested.title == "Magician"

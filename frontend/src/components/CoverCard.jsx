@@ -13,6 +13,38 @@ import {
 import { beyondHostName, findHref, gapFindFields } from "../find.js";
 import { useWorkPeek } from "./WorkPeekProvider.jsx";
 
+function gapBeadModel(work = {}) {
+  const owned = [...new Set((work.owned_indexes || []).map(String).filter(Boolean))];
+  const missing = [...new Set((work.series_missing || []).map(String).filter(Boolean))];
+  const current = String(work.missing_index || work.series_index || "").trim();
+  if (!owned.length && !missing.length) return [];
+  const order = [];
+  const seen = new Set();
+  for (const value of [...owned, ...missing].sort((a, b) => {
+    const na = Number(a);
+    const nb = Number(b);
+    if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
+    return String(a).localeCompare(String(b));
+  })) {
+    if (seen.has(value)) continue;
+    seen.add(value);
+    order.push(value);
+  }
+  if (order.length > 24) {
+    const focus = current || missing[0] || owned[owned.length - 1];
+    const idx = Math.max(0, order.indexOf(focus));
+    const start = Math.max(0, idx - 8);
+    return order.slice(start, start + 16).map((value) => ({
+      value,
+      state: owned.includes(value) ? "owned" : value === current ? "current" : "missing",
+    }));
+  }
+  return order.map((value) => ({
+    value,
+    state: owned.includes(value) ? "owned" : value === current ? "current" : "missing",
+  }));
+}
+
 export default function CoverCard({ work, onRequest, badge, beyond = false, role = "reader" }) {
   const peek = useWorkPeek();
   const navigate = useNavigate();
@@ -29,6 +61,7 @@ export default function CoverCard({ work, onRequest, badge, beyond = false, role
   const caption = coverCaption(item);
   const tip = coverTip(item);
   const host = beyond ? beyondHostName(work) : "";
+  const beads = isGap ? gapBeadModel(work) : [];
 
   function onClick(event) {
     if (isGap) {
@@ -46,8 +79,22 @@ export default function CoverCard({ work, onRequest, badge, beyond = false, role
     peek.openWork({ ...work, beyond, job_status: status }, { triggerEl: event.currentTarget, onRequest });
   }
 
+  function onBeadClick(event, bead) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (bead.state === "owned") return;
+    const href = findHref(
+      gapFindFields({
+        ...work,
+        missing_index: bead.value,
+        series_index: bead.value,
+      }),
+    );
+    navigate(href);
+  }
+
   return (
-    <div className={`cover-unit cover-unit-${kind}${beyond ? " is-beyond" : ""}`}>
+    <div className={`cover-unit cover-unit-${kind}${beyond ? " is-beyond" : ""}${isGap ? " is-gap-unit" : ""}`}>
       <button
         type="button"
         className={coverClassNames(item, { art: hasArt })}
@@ -69,6 +116,22 @@ export default function CoverCard({ work, onRequest, badge, beyond = false, role
         {caption}
         {host ? <span className="cover-host"> · {host}</span> : null}
       </p>
+      {beads.length ? (
+        <div className="gap-beads" role="list" aria-label="Series progress" data-testid="gap-beads">
+          {beads.map((bead) => (
+            <button
+              key={bead.value}
+              type="button"
+              role="listitem"
+              className={`gap-bead is-${bead.state}`}
+              title={bead.state === "owned" ? `Owned ${bead.value}` : `Find ${bead.value}`}
+              aria-label={bead.state === "owned" ? `Owned ${bead.value}` : `Find missing ${bead.value}`}
+              disabled={bead.state === "owned"}
+              onClick={(event) => onBeadClick(event, bead)}
+            />
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

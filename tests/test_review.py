@@ -48,7 +48,12 @@ def test_review_list_diagnoses_unpack_stuck_and_soft_repairs(tmp_path, monkeypat
     assert row["review_reason"] == "unpack_stuck"
     assert row["folder_diagnosis"]["problem"] == "unpack_stuck"
     assert row["folder_diagnosis"]["archive_count"] >= 1
+    assert row["folder_diagnosis"]["par2_count"] >= 1
     assert "complete/downloads" in row["folder_diagnosis"]["path_note"]
+    assert "PAR2" in row["folder_diagnosis"]["tried"]
+    assert row["actions"]["can_repair"] is True
+    assert row["actions"]["can_retry"] is True
+    assert "Guardians" in row["actions"]["find_query"]
     refreshed = db.get_work(work["id"])
     assert refreshed["review_reason"] == "unpack_stuck"
 
@@ -281,3 +286,97 @@ def test_review_skip_keeps_shelf_and_dismisses(tmp_path, monkeypatch):
     assert resp.status_code == 200
     assert resp.json()["work"]["review_state"] == "resolved"
     assert client.get("/api/review").json()["works"] == []
+
+
+def test_review_repair_endpoint_returns_diagnosis(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from librarian.convert import maybe_par2_repair, maybe_unpack_archives
+
+    stuck = tmp_path / "complete" / "VA-Mix"
+    stuck.mkdir(parents=True)
+    (stuck / "mix.rar").write_bytes(b"Rar!")
+    (stuck / "mix.par2").write_bytes(b"PAR2")
+    settings = Settings(
+        books_root=str(tmp_path / "books"),
+        magazines_root=str(tmp_path / "magazines"),
+        comics_root=str(tmp_path / "comics"),
+        audiobooks_root=str(tmp_path / "audiobooks"),
+        incoming_music_root=str(tmp_path / "incoming"),
+        music_root=str(tmp_path / "music"),
+        complete_root=str(tmp_path / "complete"),
+    )
+    client, app = _client(tmp_path, monkeypatch, settings=settings)
+    db = app.state.db
+    work = db.upsert_work(
+        {
+            "kind": "music",
+            "title": "Awesome Mix",
+            "author": "Various Artists",
+            "review_state": "needs_review",
+            "review_reason": "unpack_stuck",
+            "folder_path": str(stuck),
+        }
+    )
+    calls = []
+
+    def runner(argv, timeout=120):
+        calls.append(list(argv))
+        if len(argv) >= 2 and argv[1] == "r":
+            return SimpleNamespace(returncode=0)
+        (stuck / "01 Track.flac").write_bytes(b"flac")
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(
+        "librarian.organize.maybe_par2_repair",
+        lambda folder, **kw: maybe_par2_repair(folder, runner=runner, par2="/usr/bin/par2"),
+    )
+    monkeypatch.setattr(
+        "librarian.organize.maybe_unpack_archives",
+        lambda folder, **kw: maybe_unpack_archives(folder, runner=runner, unar="/usr/bin/unar"),
+    )
+
+    resp = client.post(f"/api/review/{work['id']}/repair")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["repaired"]["repaired"] is True
+    assert body["unpacked"]["unpacked"] is True
+    assert body["folder_diagnosis"]["problem"] is None
+    assert body["work"]["review_reason"] == "unknown_identity"
+    assert body["actions"]["can_repair"] is False
+    assert any(call[:2] == ["/usr/bin/par2", "r"] for call in calls)
+    assert any(call[0] == "/usr/bin/unar" for call in calls)
+
+
+def test_review_retry_force_organizes_after_payload(tmp_path, monkeypatch):
+    settings = Settings(
+        books_root=str(tmp_path / "books"),
+        magazines_root=str(tmp_path / "magazines"),
+        comics_root=str(tmp_path / "comics"),
+        audiobooks_root=str(tmp_path / "audiobooks"),
+        incoming_music_root=str(tmp_path / "incoming"),
+        music_root=str(tmp_path / "music"),
+    )
+    client, app = _client(tmp_path, monkeypatch, settings=settings)
+    db = app.state.db
+    folder = tmp_path / "complete" / "Mystery.Release"
+    folder.mkdir(parents=True)
+    (folder / "book.epub").write_bytes(b"epub")
+    work = db.upsert_work(
+        {
+            "kind": "book",
+            "title": "The Return of the King",
+            "author": "J. R. R. Tolkien",
+            "isbn": "9780000000000",
+            "review_state": "needs_review",
+            "review_reason": "unknown_identity",
+            "folder_path": str(folder),
+        }
+    )
+    resp = client.post(f"/api/review/{work['id']}/retry")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["organized"] is True
+    stored = db.get_work(work["id"])
+    assert stored["review_state"] == "none"
+    assert stored["title"] == "The Return of the King"

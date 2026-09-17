@@ -75,14 +75,25 @@ def _attr_map(item: Dict[str, Any]) -> Dict[str, str]:
     return attrs
 
 
+def normalize_indexer_guid(guid: Any) -> str:
+    """Return a bare NZB id. RSS often stores the full /details/ URL as guid."""
+    raw = str(guid or "").strip()
+    if not raw:
+        return ""
+    if "/details/" in raw:
+        raw = raw.rsplit("/", 1)[-1].split("?", 1)[0]
+    elif "id=" in raw:
+        raw = raw.split("id=", 1)[1].split("&", 1)[0]
+    return raw.removesuffix(".nzb").strip()
+
+
 def _v2_guid(item: Dict[str, Any]) -> str:
-    details = str(item.get("details") or "")
-    if "/details/" in details:
-        return details.rsplit("/", 1)[-1]
-    url = str(item.get("url") or "")
-    if "id=" in url:
-        raw = url.split("id=", 1)[1].split("&", 1)[0]
-        return raw.removesuffix(".nzb")
+    for candidate in (item.get("details"), item.get("url"), item.get("link")):
+        bare = normalize_indexer_guid(candidate)
+        if bare and bare != str(candidate or "").strip():
+            return bare
+        if bare and "/" not in bare and "://" not in bare:
+            return bare
     return ""
 
 
@@ -108,6 +119,7 @@ def normalize_item(item: Dict[str, Any]) -> Dict[str, Any]:
     guid = item.get("guid")
     if isinstance(guid, dict):
         guid = guid.get("#text") or guid.get("text") or guid.get("@attributes", {}).get("guid")
+    guid = normalize_indexer_guid(guid or attrs.get("guid") or _v2_guid(item) or "")
     category = attrs.get("category") or item.get("category")
     cats: List[Any] = []
     if isinstance(category, list) and category:
@@ -123,7 +135,7 @@ def normalize_item(item: Dict[str, Any]) -> Dict[str, Any]:
     year = _optional_year(attrs.get("year") or item.get("year"))
     return {
         "title": item.get("title") or "",
-        "guid": str(guid or attrs.get("guid") or _v2_guid(item) or ""),
+        "guid": guid,
         "link": item.get("link") or item.get("details") or "",
         "pub_date": item.get("pubDate") or item.get("pub_date") or item.get("postdate") or item.get("adddate") or "",
         "category": cat_id,
@@ -309,7 +321,10 @@ class NZBFinderClient:
         return [item for item in parse_search_payload(payload) if item.get("kind") in ALL_KINDS]
 
     def details(self, guid: str) -> Dict[str, Any]:
-        payload = self._get("details", {"id": guid})
+        nzb_id = normalize_indexer_guid(guid)
+        if not nzb_id:
+            raise NZBFinderError(f"{self.label} details needs a guid")
+        payload = self._get("details", {"id": nzb_id})
         items = parse_search_payload(payload)
         if items:
             return items[0]
@@ -320,13 +335,16 @@ class NZBFinderClient:
     def download_url(self, guid: str) -> str:
         if not self.api_token:
             raise NZBFinderError(f"{self.label} api_token is not configured")
-        nzb_id = guid if str(guid).endswith(".nzb") else f"{guid}.nzb"
+        bare = normalize_indexer_guid(guid)
+        if not bare:
+            raise NZBFinderError(f"{self.label} download needs a guid")
+        nzb_id = bare if bare.endswith(".nzb") else f"{bare}.nzb"
         query = urlencode({"id": nzb_id, "api_token": self.api_token, "apikey": self.api_token})
         return urljoin(self.base_url + "/", f"api/v2/download?{query}")
 
     def fetch_nzb(self, guid: str) -> bytes:
         """Download NZB bytes with this host's token. Never log the URL (has secrets)."""
-        if not guid:
+        if not normalize_indexer_guid(guid):
             raise NZBFinderError(f"{self.label} download needs a guid")
         url = self.download_url(guid)
         headers = {

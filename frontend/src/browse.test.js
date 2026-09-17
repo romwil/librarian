@@ -9,6 +9,8 @@ import {
   browseHref,
   browseParamsObject,
   mergeFacetSelection,
+  readBrowseFoldState,
+  toggleBrowseFold,
 } from "./browse.js";
 import { coverWashStyle, coverWashUrl } from "./cover.js";
 
@@ -150,5 +152,25 @@ describe("browse facet selection helpers", () => {
     assert.deepEqual(browseParamsObject(applyBrowseFilterPatch(next, { genre: "" })), {
       kind: "book",
     });
+  });
+});
+
+describe("browse facet folds", () => {
+  it("defaults author/series/genre collapsed and persists toggles", () => {
+    const store = {
+      data: {},
+      getItem(key) {
+        return this.data[key] ?? null;
+      },
+      setItem(key, value) {
+        this.data[key] = String(value);
+      },
+    };
+    assert.deepEqual(readBrowseFoldState(store), { author: false, series: false, genre: false });
+    const opened = toggleBrowseFold(readBrowseFoldState(store), "author", store);
+    assert.equal(opened.author, true);
+    assert.deepEqual(readBrowseFoldState(store), opened);
+    const closed = toggleBrowseFold(opened, "author", store);
+    assert.equal(closed.author, false);
   });
 });

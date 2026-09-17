@@ -8,6 +8,7 @@ from librarian.convert import (
     convert_ebook,
     images_to_cbz,
     maybe_convert_payload,
+    maybe_unpack_archives,
     pdf_to_cbz,
     pdf_to_epub,
 )
@@ -161,3 +162,63 @@ def test_on_demand_convert_caches_under_conversions(tmp_path):
     assert again == dest
     assert calls == [["/usr/bin/ebook-convert", str(src), str(dest)]]
     assert "epub" in ALLOWED_EBOOK_FORMATS
+
+
+def test_maybe_unpack_archives_calls_unar(tmp_path):
+    folder = tmp_path / "Trick"
+    folder.mkdir()
+    archive = folder / "Trick.rar"
+    archive.write_bytes(b"Rar!\x00")
+    calls = []
+
+    def runner(argv, timeout=300):
+        calls.append(list(argv))
+        (folder / "Trick.cbz").write_bytes(b"cbz")
+        return SimpleNamespace(returncode=0)
+
+    result = maybe_unpack_archives(folder, runner=runner, unar="/usr/bin/unar")
+    assert result["unpacked"] is True
+    assert result["archives"] == [str(archive)]
+    assert calls[0][:4] == ["/usr/bin/unar", "-o", str(folder), "-f"]
+    assert calls[0][4] == str(archive)
+
+
+def test_maybe_unpack_archives_noop_without_archives(tmp_path):
+    folder = tmp_path / "empty"
+    folder.mkdir()
+    (folder / "note.txt").write_text("hi")
+    result = maybe_unpack_archives(folder)
+    assert result["unpacked"] is False
+    assert result["archives"] == []
+
+
+def test_maybe_par2_repair_calls_par2_on_index(tmp_path):
+    from librarian.convert import maybe_par2_repair
+
+    folder = tmp_path / "Mix"
+    folder.mkdir()
+    index = folder / "mix.par2"
+    index.write_bytes(b"PAR2")
+    (folder / "mix.vol00+01.par2").write_bytes(b"PAR2VOL")
+    calls = []
+
+    def runner(argv, timeout=600):
+        calls.append(list(argv))
+        return SimpleNamespace(returncode=0)
+
+    result = maybe_par2_repair(folder, runner=runner, par2="/usr/bin/par2")
+    assert result["repaired"] is True
+    assert result["par2_files"] == [str(index)]
+    assert calls == [["/usr/bin/par2", "r", str(index)]]
+
+
+def test_maybe_par2_repair_noop_without_tool(tmp_path, monkeypatch):
+    from librarian.convert import maybe_par2_repair
+
+    monkeypatch.setattr("librarian.convert.which_par2", lambda: None)
+    folder = tmp_path / "Mix"
+    folder.mkdir()
+    (folder / "mix.par2").write_bytes(b"PAR2")
+    result = maybe_par2_repair(folder)
+    assert result["repaired"] is False
+    assert result["par2_files"] == []

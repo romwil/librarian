@@ -10,11 +10,33 @@ import {
   browseKinds,
   browseParamsObject,
   mergeFacetSelection,
+  readBrowseFoldState,
+  toggleBrowseFold,
 } from "../browse.js";
 import CoverCard from "../components/CoverCard.jsx";
 import { humanError } from "../copy.js";
 
 const PAGE_SIZE = 48;
+
+function BrowseFacetFold({ id, label, open, activeLabel, onToggle, children, testId }) {
+  return (
+    <div className={`browse-fold${open ? " is-open" : ""}`} data-testid={testId || `browse-fold-${id}`}>
+      <button
+        type="button"
+        className="browse-fold-toggle"
+        aria-expanded={open}
+        onClick={onToggle}
+      >
+        <span className="browse-fold-label">{label}</span>
+        {activeLabel && !open ? <span className="browse-fold-active muted">{activeLabel}</span> : null}
+        <span className="browse-fold-chevron" aria-hidden="true">
+          {open ? "▾" : "▸"}
+        </span>
+      </button>
+      {open ? <div className="browse-fold-body">{children}</div> : null}
+    </div>
+  );
+}
 
 export default function BrowsePage() {
   const [params, setParams] = useSearchParams();
@@ -26,6 +48,7 @@ export default function BrowsePage() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
+  const [folds, setFolds] = useState(() => readBrowseFoldState());
 
   const letterCounts = useMemo(() => {
     const map = new Map();
@@ -91,6 +114,10 @@ export default function BrowsePage() {
 
   function patchFilters(patch) {
     setParams(browseParamsObject(applyBrowseFilterPatch(filters, patch)));
+  }
+
+  function flipFold(id) {
+    setFolds((current) => toggleBrowseFold(current, id));
   }
 
   async function loadMore() {
@@ -163,75 +190,30 @@ export default function BrowsePage() {
           })}
         </div>
         {authorChips.length ? (
-          <div className="chip-row browse-authors" data-testid="browse-authors">
-            <button
-              type="button"
-              className={`chip${!filters.author ? " is-on" : ""}`}
-              onClick={() => patchFilters({ author: "" })}
-            >
-              Any author
-            </button>
-            {authorChips.map((row) => (
-              <button
-                key={row.name}
-                type="button"
-                className={`chip${filters.author.toLowerCase() === row.name.toLowerCase() ? " is-on" : ""}`}
-                onClick={() =>
-                  patchFilters({
-                    author: filters.author.toLowerCase() === row.name.toLowerCase() ? "" : row.name,
-                  })
-                }
-              >
-                {row.name}
-                {row.count != null ? <span className="muted"> {row.count}</span> : null}
-              </button>
-            ))}
-          </div>
-        ) : null}
-        {seriesChips.length || filters.series ? (
-          <div className="chip-row browse-series" data-testid="browse-series">
-            <button
-              type="button"
-              className={`chip${!filters.series ? " is-on" : ""}`}
-              onClick={() => patchFilters({ series: "" })}
-            >
-              Any series
-            </button>
-            {seriesChips.map((row) => (
-              <button
-                key={row.name}
-                type="button"
-                className={`chip${filters.series.toLowerCase() === row.name.toLowerCase() ? " is-on" : ""}`}
-                onClick={() =>
-                  patchFilters({
-                    series: filters.series.toLowerCase() === row.name.toLowerCase() ? "" : row.name,
-                  })
-                }
-              >
-                {row.name}
-                {row.count != null ? <span className="muted"> {row.count}</span> : null}
-              </button>
-            ))}
-          </div>
-        ) : null}
-        <div className="chip-row browse-genre-stub" data-testid="browse-genre-stub">
-          {showGenres && (genreChips.length || filters.genre) ? (
-            <>
+          <BrowseFacetFold
+            id="author"
+            label="Authors"
+            open={Boolean(folds.author) || Boolean(filters.author)}
+            activeLabel={filters.author || ""}
+            onToggle={() => flipFold("author")}
+            testId="browse-authors-fold"
+          >
+            <div className="chip-row browse-authors" data-testid="browse-authors">
               <button
                 type="button"
-                className={`chip${!filters.genre ? " is-on" : ""}`}
-                onClick={() => patchFilters({ genre: "" })}
+                className={`chip${!filters.author ? " is-on" : ""}`}
+                onClick={() => patchFilters({ author: "" })}
               >
-                Any genre
+                Any author
               </button>
-              {genreChips.map((row) => (
+              {authorChips.map((row) => (
                 <button
                   key={row.name}
                   type="button"
-                  className={`chip${filters.genre.toLowerCase() === row.name.toLowerCase() ? " is-on" : ""}`}
+                  className={`chip${filters.author.toLowerCase() === row.name.toLowerCase() ? " is-on" : ""}`}
                   onClick={() =>
                     patchFilters({
-                      genre: filters.genre.toLowerCase() === row.name.toLowerCase() ? "" : row.name,
+                      author: filters.author.toLowerCase() === row.name.toLowerCase() ? "" : row.name,
                     })
                   }
                 >
@@ -239,13 +221,85 @@ export default function BrowsePage() {
                   {row.count != null ? <span className="muted"> {row.count}</span> : null}
                 </button>
               ))}
-            </>
-          ) : (
-            <span className="chip is-disabled" title="Subject enrich fills these later">
-              Genre facets soon
-            </span>
-          )}
-        </div>
+            </div>
+          </BrowseFacetFold>
+        ) : null}
+        {seriesChips.length || filters.series ? (
+          <BrowseFacetFold
+            id="series"
+            label="Series"
+            open={Boolean(folds.series) || Boolean(filters.series)}
+            activeLabel={filters.series || ""}
+            onToggle={() => flipFold("series")}
+            testId="browse-series-fold"
+          >
+            <div className="chip-row browse-series" data-testid="browse-series">
+              <button
+                type="button"
+                className={`chip${!filters.series ? " is-on" : ""}`}
+                onClick={() => patchFilters({ series: "" })}
+              >
+                Any series
+              </button>
+              {seriesChips.map((row) => (
+                <button
+                  key={row.name}
+                  type="button"
+                  className={`chip${filters.series.toLowerCase() === row.name.toLowerCase() ? " is-on" : ""}`}
+                  onClick={() =>
+                    patchFilters({
+                      series: filters.series.toLowerCase() === row.name.toLowerCase() ? "" : row.name,
+                    })
+                  }
+                >
+                  {row.name}
+                  {row.count != null ? <span className="muted"> {row.count}</span> : null}
+                </button>
+              ))}
+            </div>
+          </BrowseFacetFold>
+        ) : null}
+        <BrowseFacetFold
+          id="genre"
+          label="Genres"
+          open={Boolean(folds.genre) || Boolean(filters.genre)}
+          activeLabel={filters.genre || ""}
+          onToggle={() => flipFold("genre")}
+          testId="browse-genre-fold"
+        >
+          <div className="chip-row browse-genre-stub" data-testid="browse-genre-stub">
+            {showGenres && (genreChips.length || filters.genre) ? (
+              <>
+                <button
+                  type="button"
+                  className={`chip${!filters.genre ? " is-on" : ""}`}
+                  onClick={() => patchFilters({ genre: "" })}
+                >
+                  Any genre
+                </button>
+                {genreChips.map((row) => (
+                  <button
+                    key={row.name}
+                    type="button"
+                    className={`chip${filters.genre.toLowerCase() === row.name.toLowerCase() ? " is-on" : ""}`}
+                    onClick={() =>
+                      patchFilters({
+                        genre: filters.genre.toLowerCase() === row.name.toLowerCase() ? "" : row.name,
+                      })
+                    }
+                  >
+                    {row.name}
+                    {row.count != null ? <span className="muted"> {row.count}</span> : null}
+                  </button>
+                ))}
+              </>
+            ) : (
+              <span className="chip is-disabled" title="Subject enrich fills these later">
+                Genre facets soon
+              </span>
+            )}
+          </div>
+        </BrowseFacetFold>
         <div className="chip-row browse-sort">
           {[
             ["author", "Author"],

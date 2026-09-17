@@ -9,13 +9,45 @@ const BRACKET_PART = /\[(\d+)\s*\/\s*(\d+)\]/;
 const PAREN_PART = /\((\d+)\s*\/\s*(\d+)\)/;
 const OF_PART = /\b(\d{1,3})\s*of\s*(\d{1,3})\b/i;
 const NAMED_PART = /\b(?:part|cd|disc|disk)\s*(\d{1,3})(?:\s*(?:\/|of)\s*(\d{1,3}))?\b/i;
+/** yEnc/article file index — strip for base titles only; never treat as a part marker. */
+const BARE_SLASH_PART = /\b\d{1,3}\s*\/\s*\d{1,3}\b/g;
 const NOISE_PREFIX = /^(?:attn\s+\S+\s+|nmr(?:t)?\s+|\[?[a-z0-9]{6,}\]\s*-?\s*)/i;
+
+function namedMarkerStyle(raw) {
+  const lower = String(raw || "").toLowerCase();
+  if (lower.startsWith("cd")) return "cd";
+  if (lower.startsWith("disc") || lower.startsWith("disk")) return "disc";
+  return "part";
+}
 
 export function parsePartMarker(title = "") {
   const text = String(title || "");
   if (!text.trim()) return null;
 
   const bracket = text.match(BRACKET_PART);
+  const paren = text.match(PAREN_PART);
+  const ofMatch = text.match(OF_PART);
+  const named = text.match(NAMED_PART);
+  const namedWithTotal = Boolean(named && named[2]);
+
+  // Prefer Part N/M / N of M over yEnc [N/M] or (N/M) when both present.
+  if ((bracket || paren) && (ofMatch || namedWithTotal)) {
+    if (ofMatch) {
+      return {
+        part: Number(ofMatch[1]),
+        total: Number(ofMatch[2]),
+        style: "of",
+        raw: ofMatch[0],
+      };
+    }
+    return {
+      part: Number(named[1]),
+      total: Number(named[2]),
+      style: namedMarkerStyle(named[0]),
+      raw: named[0],
+    };
+  }
+
   if (bracket) {
     return {
       part: Number(bracket[1]),
@@ -25,7 +57,6 @@ export function parsePartMarker(title = "") {
     };
   }
 
-  const paren = text.match(PAREN_PART);
   if (paren) {
     return {
       part: Number(paren[1]),
@@ -35,7 +66,6 @@ export function parsePartMarker(title = "") {
     };
   }
 
-  const ofMatch = text.match(OF_PART);
   if (ofMatch) {
     return {
       part: Number(ofMatch[1]),
@@ -45,17 +75,12 @@ export function parsePartMarker(title = "") {
     };
   }
 
-  const named = text.match(NAMED_PART);
   if (named) {
     const total = named[2] ? Number(named[2]) : null;
     return {
       part: Number(named[1]),
       total,
-      style: named[0].toLowerCase().startsWith("cd")
-        ? "cd"
-        : named[0].toLowerCase().startsWith("disc") || named[0].toLowerCase().startsWith("disk")
-          ? "disc"
-          : "part",
+      style: namedMarkerStyle(named[0]),
       raw: named[0],
     };
   }
@@ -69,6 +94,8 @@ export function stripPartMarkers(title = "") {
   text = text.replace(PAREN_PART, " ");
   text = text.replace(OF_PART, " ");
   text = text.replace(NAMED_PART, " ");
+  // After named/bracket strips — bare N/M is a yEnc file index, not a release part.
+  text = text.replace(BARE_SLASH_PART, " ");
   text = text.replace(EXT_TAIL, " ");
   text = text.replace(YENC, " ");
   text = text.replace(/[._]+/g, " ");
@@ -271,6 +298,7 @@ export function partSetRequestAction(set, selectedCount = 0) {
   const gapItems = set?.missingItems || [];
   const gapCount = set?.missing?.length || 0;
   const n = Math.max(0, Number(selectedCount) || 0);
+  const chased = Math.max(0, Number(set?.chaseQueriesTried) || 0);
 
   if (set?.complete) {
     return {
@@ -292,10 +320,13 @@ export function partSetRequestAction(set, selectedCount = 0) {
     };
   }
 
-  const honesty =
+  let honesty =
     gapCount > 0
       ? `Missing ${gapCount} part${gapCount === 1 ? "" : "s"} aren’t listed in these indexer results — refine the search or try another host.`
       : "Indexer only returned some parts — missing NZBs can’t be requested from this result.";
+  if (chased > 0 && gapCount > 0) {
+    honesty = `Tried ${chased} quer${chased === 1 ? "y" : "ies"} for missing parts — still unlisted. Request listed parts only, or refine the search.`;
+  }
 
   return {
     kind: "listed-only",
@@ -304,4 +335,111 @@ export function partSetRequestAction(set, selectedCount = 0) {
     enabled: n > 0,
     honesty,
   };
+}
+
+/** Cap secondary beyond searches when chasing missing multipart NZBs. */
+export const GAP_CHASE_QUERY_CAP = 8;
+
+function padPartNum(n, width = 2) {
+  const text = String(n);
+  return text.length >= width ? text : text.padStart(width, "0");
+}
+
+/**
+ * Secondary Find queries for missing part numbers on an incomplete PartSet.
+ * Styles: Part n/total, NofM, CDn / Disc n — capped.
+ */
+export function buildGapChaseQueries(set, { cap = GAP_CHASE_QUERY_CAP } = {}) {
+  if (!set || set.complete || !(set.missing || []).length) return [];
+  const base = String(set.title || set.base || "").trim();
+  if (!base) return [];
+  const total = set.total != null ? Number(set.total) : null;
+  const style = set.style || "part";
+  const queries = [];
+  const seen = new Set();
+
+  function add(q) {
+    const key = String(q || "")
+      .trim()
+      .toLowerCase();
+    if (!key || seen.has(key) || queries.length >= cap) return;
+    seen.add(key);
+    queries.push(String(q).trim());
+  }
+
+  for (const part of set.missing) {
+    if (queries.length >= cap) break;
+    const n = Number(part);
+    if (!Number.isFinite(n)) continue;
+    const padded = padPartNum(n);
+    const totalPad = total != null ? padPartNum(total) : "";
+
+    if (style === "cd") {
+      add(`${base} CD${n}`);
+      add(`${base} CD${padded}`);
+      if (total) add(`${base} CD${n}/${total}`);
+    } else if (style === "disc") {
+      add(`${base} Disc ${n}`);
+      if (total) add(`${base} Disc ${n}/${total}`);
+      add(`${base} Disc ${padded}`);
+    } else if (style === "of" && total) {
+      add(`${base} ${padded}of${totalPad}`);
+      add(`${base} ${n} of ${total}`);
+      add(`${base} Part ${n}/${total}`);
+    } else if (total) {
+      add(`${base} Part ${n}/${total}`);
+      add(`${base} Part ${n} of ${total}`);
+      add(`${base} ${padded}of${totalPad}`);
+    } else {
+      add(`${base} Part ${n}`);
+      add(`${base} CD${n}`);
+    }
+  }
+  return queries.slice(0, cap);
+}
+
+/** Dedupe beyond hits by guid/title; returns merged list + how many were new. */
+export function mergeBeyondHits(existing = [], incoming = []) {
+  const byKey = new Map();
+  for (const item of existing || []) {
+    const key = item?.guid || item?.title;
+    if (key) byKey.set(key, item);
+  }
+  let added = 0;
+  for (const item of incoming || []) {
+    const key = item?.guid || item?.title;
+    if (!key || byKey.has(key)) continue;
+    byKey.set(key, item);
+    added += 1;
+  }
+  return { items: [...byKey.values()], added };
+}
+
+/**
+ * After a chase, mark newly found formerly-missing parts as missingItems
+ * so the CTA can say Request missing.
+ */
+export function annotateChasedGaps(set, priorMissing = []) {
+  if (!set?.parts?.length) return set;
+  const prior = new Set((priorMissing || []).map(Number).filter(Number.isFinite));
+  if (!prior.size) {
+    return { ...set, missingItems: set.missingItems || [] };
+  }
+  const foundGaps = set.parts.filter((row) => prior.has(Number(row.part))).map((row) => row.item);
+  return {
+    ...set,
+    missingItems: foundGaps,
+  };
+}
+
+export function partBeadStates(set) {
+  if (!set || set.total == null || set.total < 1) return [];
+  const have = new Set((set.parts || []).map((row) => Number(row.part)));
+  const origin = partIndexOrigin(set.parts);
+  const last = origin === 0 ? set.total - 1 : set.total;
+  const beads = [];
+  for (let i = origin; i <= last; i += 1) {
+    beads.push({ part: i, state: have.has(i) ? "found" : "missing" });
+  }
+  return beads;
 }

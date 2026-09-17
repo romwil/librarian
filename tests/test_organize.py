@@ -484,3 +484,46 @@ def test_organize_music_writes_cover_from_caa(tmp_path):
     cover = Path(result["work"]["cover_path"])
     assert cover.name == "cover.jpg"
     assert cover.read_bytes() == jpeg
+
+
+def test_organize_par2_then_unar_when_archives_stuck(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    folder = tmp_path / "complete" / "VA-Guardians.Mix"
+    folder.mkdir(parents=True)
+    (folder / "mix.rar").write_bytes(b"Rar!")
+    (folder / "mix.par2").write_bytes(b"PAR2")
+    calls = []
+
+    def runner(argv, timeout=120):
+        calls.append(list(argv))
+        if len(argv) >= 2 and argv[1] == "r":
+            return SimpleNamespace(returncode=0)
+        (folder / "01 Track.flac").write_bytes(b"flac")
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr("librarian.convert.which_par2", lambda: "/usr/bin/par2")
+    monkeypatch.setattr("librarian.convert.which_unar", lambda: "/usr/bin/unar")
+    db = Database(tmp_path / "librarian.db")
+    result = organize_identified(
+        db,
+        _settings(tmp_path),
+        folder=folder,
+        indexer_item={
+            "title": "Awesome Mix Vol. 1",
+            "author": "Various Artists",
+            "kind": "music",
+            "category": 3010,
+            "name": folder.name,
+            "guid": "g-mix",
+        },
+        convert_runner=runner,
+    )
+    assert any(call[:2] == ["/usr/bin/par2", "r"] for call in calls)
+    assert any(call[0] == "/usr/bin/unar" for call in calls)
+    assert calls.index(next(c for c in calls if c[:2] == ["/usr/bin/par2", "r"])) < calls.index(
+        next(c for c in calls if c[0] == "/usr/bin/unar")
+    )
+    assert result["organized"] is True
+    assert result["work"]["kind"] == "music"
+    assert Path(result["files"][0]).suffix == ".flac"

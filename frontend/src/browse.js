@@ -119,3 +119,37 @@ export const BROWSE_LETTERS = [
   "#",
   ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""),
 ];
+
+const FOLD_STORAGE_KEY = "librarian.browse.folds";
+const FOLD_DEFAULTS = { author: false, series: false, genre: false };
+
+/** Session-persisted expand state for Authors / Series / Genres (default collapsed). */
+export function readBrowseFoldState(storage = globalThis.sessionStorage) {
+  try {
+    const raw = storage?.getItem?.(FOLD_STORAGE_KEY);
+    if (!raw) return { ...FOLD_DEFAULTS };
+    const parsed = JSON.parse(raw);
+    return {
+      author: Boolean(parsed?.author),
+      series: Boolean(parsed?.series),
+      genre: Boolean(parsed?.genre),
+    };
+  } catch {
+    return { ...FOLD_DEFAULTS };
+  }
+}
+
+export function toggleBrowseFold(current, id, storage = globalThis.sessionStorage) {
+  const next = {
+    author: Boolean(current?.author),
+    series: Boolean(current?.series),
+    genre: Boolean(current?.genre),
+    [id]: !Boolean(current?.[id]),
+  };
+  try {
+    storage?.setItem?.(FOLD_STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    /* private mode / quota — ignore */
+  }
+  return next;
+}

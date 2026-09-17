@@ -1,12 +1,13 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { beyondHostName } from "../find.js";
 import {
   defaultPartSelectionKeys,
   formatBytes,
+  partBeadStates,
   partSetRequestAction,
   partSetStatusLine,
 } from "../findParts.js";
 import { jobChipLabel, jobChipTone } from "../cover.js";
-import { beyondHostName } from "../find.js";
 import { humanError } from "../copy.js";
 import { useWorkPeek } from "./WorkPeekProvider.jsx";
 
@@ -19,6 +20,7 @@ export default function PartSetCard({
   onRequest,
   role = "reader",
   jobs = {},
+  chase = null,
 }) {
   const peek = useWorkPeek();
   const [selected, setSelected] = useState(() => new Set(defaultPartSelectionKeys(set)));
@@ -26,12 +28,39 @@ export default function PartSetCard({
   const [error, setError] = useState("");
   const [progress, setProgress] = useState("");
 
-  const status = partSetStatusLine(set);
-  const selectable = useMemo(() => set.parts.map((row) => row.item), [set.parts]);
+  const enriched = useMemo(
+    () => ({
+      ...set,
+      chaseQueriesTried: chase?.queriesTried ?? set.chaseQueriesTried ?? 0,
+    }),
+    [set, chase],
+  );
+  const status = partSetStatusLine(enriched);
+  const beads = useMemo(() => partBeadStates(enriched), [enriched]);
+  const selectable = useMemo(() => {
+    const listed = enriched.parts.map((row) => row.item);
+    const gaps = enriched.missingItems || [];
+    const byKey = new Map();
+    for (const item of [...gaps, ...listed]) {
+      const key = itemKey(item);
+      if (key) byKey.set(key, item);
+    }
+    return [...byKey.values()];
+  }, [enriched]);
   const selectedItems = selectable.filter((item) => selected.has(itemKey(item)));
-  const action = partSetRequestAction(set, selectedItems.length);
-  const requestClass =
-    action.style === "primary" ? "cta compact" : "cta compact outline";
+  const action = partSetRequestAction(enriched, selectedItems.length);
+  const requestClass = action.style === "primary" ? "cta compact" : "cta compact outline";
+  const chasing = chase?.status === "searching";
+  const chaseLive =
+    chasing
+      ? `Searching for missing parts… (${chase.queriesTried || 0}${chase.total ? ` of ${chase.total}` : ""})`
+      : chase?.status === "done" && chase.queriesTried
+        ? `Searched ${chase.queriesTried} quer${chase.queriesTried === 1 ? "y" : "ies"} for missing parts.`
+        : "";
+
+  useEffect(() => {
+    setSelected(new Set(defaultPartSelectionKeys(set)));
+  }, [set.id, set.found, set.missingItems?.length, set.complete]);
 
   function toggle(key) {
     setSelected((prev) => {
@@ -76,19 +105,42 @@ export default function PartSetCard({
     peek.openWork({ ...item, beyond: true, job_status: jobs[itemKey(item)] }, { triggerEl: event?.currentTarget, onRequest });
   }
 
+  function onPartKeyDown(event, key) {
+    if (event.key === " " || event.key === "Enter") {
+      event.preventDefault();
+      if (!busy && !jobs[key]) toggle(key);
+    }
+  }
+
   return (
-    <article className="part-set" data-testid="part-set" data-complete={set.complete ? "1" : "0"}>
+    <article
+      className={`part-set${chasing ? " is-chasing" : ""}`}
+      data-testid="part-set"
+      data-complete={enriched.complete ? "1" : "0"}
+      data-chasing={chasing ? "1" : "0"}
+    >
       <header className="part-set-head">
         <div>
-          <p className="kicker">Multipart · {set.kind || "release"}</p>
-          <h3 className="part-set-title">{set.title}</h3>
+          <p className="kicker">Multipart · {enriched.kind || "release"}</p>
+          <h3 className="part-set-title">{enriched.title}</h3>
           <p className="part-set-meta">
-            <span className={`chip${set.complete ? " is-on" : ""}`}>{status}</span>
-            {beyondHostName(set) ? <span className="muted"> · {beyondHostName(set)}</span> : null}
-            {!set.complete && set.total > set.found ? (
+            <span className={`chip${enriched.complete ? " is-on" : ""}`}>{status}</span>
+            {beyondHostName(enriched) ? <span className="muted"> · {beyondHostName(enriched)}</span> : null}
+            {!enriched.complete && enriched.total > enriched.found ? (
               <span className="muted"> · indexer only returned some parts</span>
             ) : null}
           </p>
+          {beads.length > 0 && beads.length <= 48 ? (
+            <div className="part-beads" role="img" aria-label={`${enriched.found} of ${enriched.total} parts found`} data-testid="part-beads">
+              {beads.map((bead) => (
+                <span
+                  key={bead.part}
+                  className={`part-bead is-${bead.state}${chasing && bead.state === "missing" ? " is-pulse" : ""}`}
+                  title={`Part ${bead.part}`}
+                />
+              ))}
+            </div>
+          ) : null}
         </div>
         <div className="part-set-actions">
           <button type="button" className="chip" onClick={selectAll} disabled={busy}>
@@ -110,8 +162,14 @@ export default function PartSetCard({
         </div>
       </header>
 
+      {chaseLive ? (
+        <p className={`part-chase${chasing ? " is-shimmer" : ""}`} role="status" aria-live="polite" data-testid="part-chase-live">
+          {chaseLive}
+        </p>
+      ) : null}
+
       <div className="part-grid" role="list">
-        {set.parts.map(({ part, item, alternatives }) => {
+        {enriched.parts.map(({ part, item, alternatives }) => {
           const key = itemKey(item);
           const checked = selected.has(key);
           const job = jobs[key];
@@ -119,7 +177,14 @@ export default function PartSetCard({
           const chip = job ? jobChipLabel(job, role) : "";
           const size = formatBytes(item.size);
           return (
-            <div key={key} className={`part-cell${checked ? " is-selected" : ""}`} role="listitem">
+            <div
+              key={key}
+              className={`part-cell${checked ? " is-selected" : ""}`}
+              role="listitem"
+              tabIndex={0}
+              onKeyDown={(event) => onPartKeyDown(event, key)}
+              data-testid="part-cell"
+            >
               <label className="part-check">
                 <input
                   type="checkbox"
@@ -131,11 +196,12 @@ export default function PartSetCard({
                 <span className="part-num">{String(part).padStart(2, "0")}</span>
               </label>
               <button type="button" className="part-open" onClick={(event) => openPeek(item, event)}>
-                <span className="part-label">Part {part}{set.total ? ` / ${set.total}` : ""}</span>
+                <span className="part-label">
+                  Part {part}
+                  {enriched.total ? ` / ${enriched.total}` : ""}
+                </span>
                 {size ? <span className="part-size">{size}</span> : null}
-                {alternatives?.length ? (
-                  <span className="part-alts muted">+{alternatives.length} alt</span>
-                ) : null}
+                {alternatives?.length ? <span className="part-alts muted">+{alternatives.length} alt</span> : null}
               </button>
               <button
                 type="button"
@@ -156,9 +222,9 @@ export default function PartSetCard({
           {action.honesty}
         </p>
       ) : null}
-      {set.missing?.length && set.missing.length <= 12 ? (
+      {enriched.missing?.length && enriched.missing.length <= 12 ? (
         <p className="part-missing muted" data-testid="part-set-missing">
-          Missing parts: {set.missing.join(", ")}
+          Missing parts: {enriched.missing.join(", ")}
         </p>
       ) : null}
       {error ? (

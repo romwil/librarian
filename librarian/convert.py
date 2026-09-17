@@ -20,6 +20,10 @@ def which_unar() -> Optional[str]:
     return shutil.which("unar") or shutil.which("unrar")
 
 
+def which_par2() -> Optional[str]:
+    return shutil.which("par2") or shutil.which("par2cmdline")
+
+
 def which_ebook_convert() -> Optional[str]:
     return shutil.which("ebook-convert")
 
@@ -203,6 +207,135 @@ def convert_ebook(
     if int(getattr(completed, "returncode", 1) or 0) != 0 or not dest.is_file():
         raise RuntimeError("ebook-convert failed")
     return dest
+
+
+ARCHIVE_SUFFIXES = {".rar", ".7z"}
+
+
+def list_archive_files(folder: Path) -> List[Path]:
+    folder = Path(folder)
+    if not folder.is_dir():
+        return []
+    found: List[Path] = []
+    for path in sorted(folder.iterdir()):
+        if path.is_file() and path.suffix.lower() in ARCHIVE_SUFFIXES:
+            found.append(path)
+    return found
+
+
+def list_par2_files(folder: Path) -> List[Path]:
+    """PAR2 index files in a folder (prefer *.par2 without .vol recovery slices)."""
+    folder = Path(folder)
+    if not folder.is_dir():
+        return []
+    indexes: List[Path] = []
+    volumes: List[Path] = []
+    for path in sorted(folder.iterdir()):
+        if not path.is_file():
+            continue
+        name = path.name.lower()
+        if not name.endswith(".par2"):
+            continue
+        if ".vol" in name:
+            volumes.append(path)
+        else:
+            indexes.append(path)
+    return indexes or volumes
+
+
+def unpack_archive(
+    src: Path,
+    *,
+    runner: RunTool = run_tool,
+    unar: Optional[str] = None,
+) -> bool:
+    """Extract rar/7z into the archive's parent folder. Returns True on success."""
+    src = Path(src)
+    tool = unar or which_unar()
+    if not tool or not src.is_file():
+        return False
+    dest = src.parent
+    name = Path(tool).name.lower()
+    if name == "unar":
+        argv = [tool, "-o", str(dest), "-f", str(src)]
+    else:
+        argv = [tool, "x", "-o+", str(src), str(dest) + "/"]
+    try:
+        completed = runner(argv, timeout=300)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return int(getattr(completed, "returncode", 1) or 0) == 0
+
+
+def par2_repair(
+    src: Path,
+    *,
+    runner: RunTool = run_tool,
+    par2: Optional[str] = None,
+) -> bool:
+    """Run `par2 r` on a PAR2 index. Returns True when the tool exits 0."""
+    src = Path(src)
+    tool = par2 or which_par2()
+    if not tool or not src.is_file():
+        return False
+    argv = [tool, "r", str(src)]
+    try:
+        completed = runner(argv, timeout=600)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return int(getattr(completed, "returncode", 1) or 0) == 0
+
+
+def maybe_par2_repair(
+    folder: Path,
+    *,
+    runner: RunTool = run_tool,
+    par2: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Best-effort PAR2 repair before unar. Missing tools leave the folder unchanged."""
+    folder = Path(folder)
+    tool = par2 or which_par2()
+    repaired: List[str] = []
+    if not tool:
+        return {
+            "repaired": False,
+            "par2_files": [],
+            "payload": [str(path) for path in list_payload_files(folder)],
+        }
+    for index in list_par2_files(folder):
+        if par2_repair(index, runner=runner, par2=tool):
+            repaired.append(str(index))
+    return {
+        "repaired": bool(repaired),
+        "par2_files": repaired,
+        "payload": [str(path) for path in list_payload_files(folder)],
+    }
+
+
+def maybe_unpack_archives(
+    folder: Path,
+    *,
+    runner: RunTool = run_tool,
+    unar: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Best-effort unar of rar/7z left by SAB. Missing tools leave the folder unchanged."""
+    folder = Path(folder)
+    tool = unar or which_unar()
+    unpacked: List[str] = []
+    if not tool:
+        return {
+            "unpacked": False,
+            "archives": [],
+            "payload": [str(path) for path in list_payload_files(folder)],
+        }
+    for archive in list_archive_files(folder):
+        if unpack_archive(archive, runner=runner, unar=tool):
+            unpacked.append(str(archive))
+    return {
+        "unpacked": bool(unpacked),
+        "archives": unpacked,
+        "payload": [str(path) for path in list_payload_files(folder)],
+    }
 
 
 def maybe_convert_payload(
