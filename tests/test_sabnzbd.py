@@ -10,6 +10,7 @@ def test_map_sab_status_values():
     assert map_sab_status("Failed", history=True) == "failed"
     assert map_sab_status("Queued") == "queued"
     assert map_sab_status("Propagating") == "queued"
+    assert map_sab_status("Grabbing") == "queued"
     assert map_sab_status("Verifying") == "extracting"
 
 
@@ -53,6 +54,57 @@ def test_addurl_and_job_status_nzo_id():
     assert snap["where"] == "queue"
     assert snap["percentage"] == "42"
     assert snap["name"] == "Saga"
+
+
+def test_addfile_posts_multipart_nzb():
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["method"] = request.method
+        seen["content_type"] = request.headers.get("content-type", "")
+        body = request.content or b""
+        seen["has_nzb"] = b"<nzb" in body
+        seen["has_mode"] = b"name=\"mode\"" in body or b"mode" in body
+        return httpx.Response(200, json={"status": True, "nzo_ids": ["SABnzbd_nzo_file"]})
+
+    client = SABClient("http://downloader.sl", "sab-key", transport=httpx.MockTransport(handler))
+    nzo = client.addfile(b'<?xml version="1.0"?><nzb></nzb>', filename="saga.nzb", nzbname="Saga", cat="books")
+    assert nzo == "SABnzbd_nzo_file"
+    assert seen["method"] == "POST"
+    assert "multipart" in seen["content_type"]
+    assert seen["has_nzb"] is True
+
+
+def test_grabbing_wait_label_surfaces_in_sab_status():
+    def handler(request: httpx.Request) -> httpx.Response:
+        params = dict(request.url.params)
+        if params.get("mode") == "queue":
+            return httpx.Response(
+                200,
+                json={
+                    "queue": {
+                        "slots": [
+                            {
+                                "nzo_id": "SABnzbd_nzo_wait",
+                                "status": "Grabbing",
+                                "filename": "Wait.Title",
+                                "labels": ["WAIT 89 sec"],
+                                "percentage": "0",
+                                "mb": "0",
+                                "mbleft": "0",
+                            }
+                        ]
+                    }
+                },
+            )
+        if params.get("mode") == "get_files":
+            return httpx.Response(200, json={"files": []})
+        return httpx.Response(200, json={"history": {"slots": []}})
+
+    client = SABClient("http://downloader.sl", "sab-key", transport=httpx.MockTransport(handler))
+    snap = client.job_status("SABnzbd_nzo_wait")
+    assert snap["status"] == "queued"
+    assert snap["sab_status"] == "Grabbing · WAIT 89 sec"
 
 
 def test_history_completed_storage():

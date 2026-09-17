@@ -28,9 +28,25 @@ export function applyBodyFromDraft(draft) {
   return body;
 }
 
+/** Effective reason: live folder diagnosis can refine a stale no_payload. */
+export function effectiveReviewReason(work) {
+  const problem = work?.folder_diagnosis?.problem;
+  const stored = String(work?.review_reason || "");
+  if (problem === "unpack_stuck") return "unpack_stuck";
+  if (problem === "missing_folder" && (stored === "no_payload" || !stored)) return "missing_folder";
+  if (problem === "no_payload" && (!stored || stored === "no_payload")) return "no_payload";
+  return stored || problem || "";
+}
+
 export function reviewReasonCopy(reason) {
+  if (reason === "unpack_stuck") {
+    return "SABnzbd left archives in this folder — unpack never finished. Librarian cannot shelve rar/7z.";
+  }
+  if (reason === "missing_folder") {
+    return "That complete folder is missing on disk. Remap SAB’s path, paste a folder this process can read, or Skip.";
+  }
   if (reason === "no_payload") {
-    return "No book, comic, or audio file at this path. Apply cannot invent a payload — point the folder at files this Librarian can read, set SAB complete root to map /downloads, or Skip.";
+    return "No book, comic, or audio file at this path. Apply cannot invent a payload.";
   }
   if (reason === "unknown_identity") {
     return "Identity is missing. Fill title, author, ISBN or series/issue, then Apply.";
@@ -51,6 +67,54 @@ export function reviewReasonCopy(reason) {
     return "Collision — a file already exists at the library destination (duplicate path or identity). Librarian will not silent-overwrite.";
   }
   return "Unexpected item in the bagging area. Confirm identity and the complete folder, then Apply or Skip.";
+}
+
+export function reviewSlipMeaning() {
+  return "A slip means organize could not finish filing this download — it needs you before it can land on a shelf.";
+}
+
+export function reviewNextStepsCopy(reason, diagnosis = {}) {
+  if (reason === "unpack_stuck") {
+    return "In SABnzbd, repair/extract this job (or delete and re-grab). When flac/mp3/epub/cbz files appear in the folder, Apply — or Skip to dismiss and keep nothing on the shelf.";
+  }
+  if (reason === "missing_folder") {
+    return "Check Settings → SAB complete root so /downloads maps to a path under /data this container can read. Paste the real folder, then Apply — or Skip.";
+  }
+  if (reason === "no_payload") {
+    if (diagnosis?.suggested_folder) {
+      return `Try the suggested folder below (readable files were nearby), then Apply — or Skip.`;
+    }
+    return "Point Complete folder at a dump with readable media, or Skip.";
+  }
+  if (reason === "collision") {
+    return collisionActionCopy();
+  }
+  return "Confirm the fields and Complete folder, then Apply to file a ticket — or Skip to dismiss.";
+}
+
+/** Structured diagnosis block for a Review slip. */
+export function reviewDiagnosisCopy(work) {
+  const reason = effectiveReviewReason(work);
+  const diagnosis = work?.folder_diagnosis || {};
+  const whatsWrong =
+    reason === "unpack_stuck"
+      ? `Archives remain (${diagnosis.archive_count || "some"} rar/7z) and no readable media.`
+      : reason === "missing_folder"
+        ? "The complete folder path does not exist where Librarian can read it."
+        : reason === "no_payload"
+          ? diagnosis.junk_count
+            ? `Only non-media files (${diagnosis.junk_count}) — no book, comic, or audio.`
+            : "No readable book, comic, or audio file here."
+          : reviewReasonCopy(reason);
+  return {
+    meaning: reviewSlipMeaning(),
+    tried: diagnosis.tried || "Checked the complete folder for files this Librarian can shelve.",
+    lookedFor: diagnosis.looked_for || "book, comic, or audio files",
+    whatsWrong,
+    nextSteps: reviewNextStepsCopy(reason, diagnosis),
+    pathNote: diagnosis.path_note || "",
+    suggestedFolder: diagnosis.suggested_folder || "",
+  };
 }
 
 /** Extra guidance under collision slips (Skip vs Apply). */
@@ -75,6 +139,12 @@ export function collisionApplyAllowed(reason, draft, work) {
 
 /** One-line Queue copy for job status `review` → household **Needs you**. */
 export function queueReviewReasonCopy(reason) {
+  if (reason === "unpack_stuck") {
+    return "Archives left unpacked — open Review.";
+  }
+  if (reason === "missing_folder") {
+    return "Complete folder missing — open Review.";
+  }
   if (reason === "no_payload") {
     return "No readable book, comic, or audio file — open Review.";
   }

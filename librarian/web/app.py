@@ -52,6 +52,7 @@ from librarian.invites import (
 from librarian.jobs import confirm_asked_job, enqueue_indexer_item, poll_active_jobs, poll_job
 from librarian.kinds import ALL_KINDS, EXTRA_KINDS
 from librarian.nzbfinder import NZBFinderError
+from librarian.identify import diagnose_review_folder
 from librarian.organize import (
     apply_review,
     organize_identified,
@@ -68,8 +69,11 @@ from librarian.serve import (
     can_read_work,
     existing_file_paths,
     is_inline_media,
+    is_reading_file,
+    is_streamable_audio,
     media_type_for,
     primary_reading_path,
+    resolve_catalog_file,
     safe_filename,
     zip_files,
 )
@@ -620,17 +624,29 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             pass
 
     @app.get("/api/works/{work_id}/download")
-    def work_download(work_id: str, request: Request, format: str = "", inline: int = 0):
+    def work_download(
+        work_id: str,
+        request: Request,
+        format: str = "",
+        inline: int = 0,
+        file: str = "",
+    ):
         require_role(request.state.user, "owner", "op", "reader")
         work = db.get_work(work_id)
         if work is None:
             raise HTTPException(status_code=404, detail="Work not found")
-        on_disk = _files_on_disk(work_id)
+        rows = db.files_for_work(work_id)
+        on_disk = existing_file_paths(rows)
         if not on_disk:
             raise HTTPException(status_code=404, detail="File missing")
+        chosen = None
+        if str(file or "").strip():
+            chosen = resolve_catalog_file(rows, file)
+            if chosen is None:
+                raise HTTPException(status_code=404, detail="File not found")
         reading = primary_reading_path(on_disk)
         # Convert / Download may use Kindle; Reading Room never does.
-        src = reading or on_disk[0]
+        src = chosen or reading or on_disk[0]
         if format:
             fmt = format.lower()
             if f".{fmt}" != src.suffix.lower():
@@ -646,6 +662,25 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
                 return FileResponse(dest, filename=dest.name)
         if inline:
             # Hard rule: Reading Room gets ONLY EPUB/CBZ/PDF — never Kindle, never a zip.
+            if chosen is not None:
+                if is_reading_file(chosen):
+                    return FileResponse(
+                        chosen,
+                        filename=chosen.name,
+                        media_type=media_type_for(chosen),
+                        content_disposition_type="inline",
+                    )
+                if is_inline_media(chosen):
+                    return FileResponse(
+                        chosen,
+                        filename=chosen.name,
+                        media_type=media_type_for(chosen),
+                        content_disposition_type="inline",
+                    )
+                raise HTTPException(
+                    status_code=422,
+                    detail="This volume isn’t a readable EPUB, CBZ, or PDF.",
+                )
             if reading is not None:
                 return FileResponse(
                     reading,
@@ -665,7 +700,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
                 status_code=422,
                 detail="This volume isn’t a readable EPUB, CBZ, or PDF.",
             )
-        if len(on_disk) == 1:
+        if chosen is not None or len(on_disk) == 1:
             return FileResponse(
                 src,
                 filename=src.name,
@@ -679,6 +714,26 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             filename=zip_name,
             media_type="application/zip",
             background=BackgroundTask(_unlink, str(zip_path)),
+        )
+
+    @app.get("/api/works/{work_id}/stream")
+    def work_stream(work_id: str, request: Request, file: str = ""):
+        """Single-file audio stream for on-page album playback (household auth)."""
+        require_role(request.state.user, "owner", "op", "reader")
+        work = db.get_work(work_id)
+        if work is None:
+            raise HTTPException(status_code=404, detail="Work not found")
+        rows = db.files_for_work(work_id)
+        chosen = resolve_catalog_file(rows, file)
+        if chosen is None:
+            raise HTTPException(status_code=404, detail="File not found")
+        if not is_streamable_audio(chosen):
+            raise HTTPException(status_code=422, detail="Not a streamable audio file")
+        return FileResponse(
+            chosen,
+            filename=chosen.name,
+            media_type=media_type_for(chosen),
+            content_disposition_type="inline",
         )
 
     @app.post("/api/works/{work_id}/convert")
@@ -772,6 +827,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
     @app.get("/api/review")
     def review_list(request: Request):
         require_role(request.state.user, "owner", "op")
+        cfg = settings()
         works = public_works(db.list_works(review_state="needs_review", limit=80))
         jobs_by_work: Dict[str, Any] = {}
         for job in db.list_jobs(limit=200):
@@ -784,6 +840,15 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             work["storage_path"] = storage or None
             if not work.get("folder_path") and storage:
                 work["folder_path"] = storage
+            folder_raw = str(work.get("folder_path") or storage or "")
+            diagnosis = diagnose_review_folder(Path(folder_raw), cfg.complete_root)
+            work["folder_diagnosis"] = diagnosis
+            problem = diagnosis.get("problem")
+            stored = str(work.get("review_reason") or "")
+            # Soft-repair: archives left behind were often parked as no_payload.
+            if problem == "unpack_stuck" and stored in {"", "no_payload"}:
+                work["review_reason"] = "unpack_stuck"
+                db.upsert_work({**db.get_work(work["id"]), "review_reason": "unpack_stuck"})
             shelf = shelf_work_for_collision(db, work)
             work["shelf_work"] = shelf
         return {"works": works}

@@ -10,6 +10,7 @@ QUEUE_STATUSES = {
     "Queued": "queued",
     "Paused": "queued",
     "Propagating": "queued",
+    "Grabbing": "queued",
     "Downloading": "downloading",
     "Fetching": "downloading",
     "Running": "downloading",
@@ -44,7 +45,7 @@ def map_sab_status(status: str, *, history: bool = False) -> str:
         return "extracting"
     if lowered in {"downloading", "fetching", "running"}:
         return "downloading"
-    if lowered in {"queued", "paused", "idle", "propagating"}:
+    if lowered in {"queued", "paused", "idle", "propagating", "grabbing"}:
         return "queued"
     return "queued" if not history else "failed"
 
@@ -104,6 +105,14 @@ def _slot_percent(slot: Dict[str, Any]) -> Optional[str]:
     return None
 
 
+def _wait_label(slot: Dict[str, Any]) -> str:
+    for label in slot.get("labels") or []:
+        text = str(label or "").strip()
+        if text.upper().startswith("WAIT"):
+            return text
+    return ""
+
+
 def snapshot_from_slot(slot: Dict[str, Any], *, nzo_id: str, history: bool) -> Dict[str, Any]:
     raw_status = str(slot.get("status") or "")
     mapped = map_sab_status(raw_status, history=history)
@@ -113,10 +122,17 @@ def snapshot_from_slot(slot: Dict[str, Any], *, nzo_id: str, history: bool) -> D
         mapped = "failed"
     name = slot.get("filename") or slot.get("name") or slot.get("nzb_name") or ""
     storage = slot.get("storage") or slot.get("path") or ""
+    wait = _wait_label(slot)
+    if wait and raw_status:
+        sab_status = f"{raw_status} · {wait}"
+    elif wait:
+        sab_status = wait
+    else:
+        sab_status = raw_status or ("Failed" if mapped == "failed" else "")
     return {
         "nzo_id": nzo_id,
         "status": mapped,
-        "sab_status": raw_status or ("Failed" if mapped == "failed" else ""),
+        "sab_status": sab_status,
         "fail_message": fail_message,
         "storage": storage,
         "path": slot.get("path") or "",
@@ -172,6 +188,53 @@ class SABClient:
         ids = payload.get("nzo_ids") or []
         if not ids:
             raise SABError("SABnzbd addurl did not return nzo_id")
+        return str(ids[0])
+
+    def addfile(
+        self,
+        nzb_bytes: bytes,
+        *,
+        filename: str = "upload.nzb",
+        nzbname: str = "",
+        cat: str = "",
+    ) -> str:
+        """Push NZB content via multipart `mode=addfile` — avoids SAB URL-fetch WAIT."""
+        if not self.api_key:
+            raise SABError("SABnzbd API key is not configured")
+        if not nzb_bytes:
+            raise SABError("SABnzbd addfile needs NZB bytes")
+        safe_name = str(filename or "upload.nzb").strip() or "upload.nzb"
+        if not safe_name.lower().endswith(".nzb"):
+            safe_name = f"{safe_name}.nzb"
+        data: Dict[str, str] = {
+            "mode": "addfile",
+            "output": "json",
+            "apikey": self.api_key,
+        }
+        if nzbname:
+            data["nzbname"] = str(nzbname)
+        if cat:
+            data["cat"] = str(cat)
+        files = {"nzbfile": (safe_name, nzb_bytes, "application/x-nzb")}
+        url = f"{self.base_url}/api"
+        try:
+            response = self._client.post(url, data=data, files=files)
+        except httpx.HTTPError as error:
+            raise SABError(str(error)) from error
+        if response.status_code >= 400:
+            raise SABError(f"SABnzbd HTTP {response.status_code}")
+        try:
+            payload = response.json()
+        except ValueError as error:
+            raise SABError("SABnzbd returned non-JSON") from error
+        if not isinstance(payload, dict):
+            raise SABError("SABnzbd returned an unexpected payload")
+        error = payload.get("error")
+        if error:
+            raise SABError(str(error))
+        ids = payload.get("nzo_ids") or []
+        if not ids:
+            raise SABError("SABnzbd addfile did not return nzo_id")
         return str(ids[0])
 
     def queue(self, nzo_id: Optional[str] = None) -> List[Dict[str, Any]]:

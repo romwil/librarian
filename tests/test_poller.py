@@ -56,11 +56,14 @@ def test_poller_tick_polls_active_job(tmp_path):
     complete = tmp_path / "complete" / "Le Guin - The Left Hand of Darkness 9780441478125"
     complete.mkdir(parents=True)
     (complete / "book.epub").write_bytes(b"epub")
+    nzb_xml = b'<?xml version="1.0"?><nzb xmlns="http://www.newzbin.com/DTD/2003/nzb"></nzb>'
 
     def sab_handler(request: httpx.Request) -> httpx.Response:
         params = dict(request.url.params)
-        if params.get("mode") == "addurl":
+        if request.method == "POST" or params.get("mode") == "addfile":
             return httpx.Response(200, json={"nzo_ids": ["SABnzbd_nzo_p"]})
+        if params.get("mode") == "addurl":
+            raise AssertionError("addurl must not be used")
         if params.get("mode") == "queue":
             return httpx.Response(200, json={"queue": {"slots": []}})
         return httpx.Response(
@@ -79,6 +82,11 @@ def test_poller_tick_polls_active_job(tmp_path):
             },
         )
 
+    def nzb_handler(request: httpx.Request) -> httpx.Response:
+        if "/api/v2/download" in str(request.url):
+            return httpx.Response(200, content=nzb_xml, headers={"content-type": "application/x-nzb"})
+        return httpx.Response(200, json={})
+
     settings = Settings(
         books_root=str(tmp_path / "books"),
         magazines_root=str(tmp_path / "mags"),
@@ -90,6 +98,9 @@ def test_poller_tick_polls_active_job(tmp_path):
         nzbfinder_api_token="tok",
     )
     sab = SABClient("http://downloader.sl", "sab", transport=httpx.MockTransport(sab_handler))
+    from librarian.nzbfinder import NZBFinderClient
+
+    nzb = NZBFinderClient("https://nzbfinder.example", "tok", transport=httpx.MockTransport(nzb_handler))
     db = Database(tmp_path / "librarian.db")
     job = enqueue_indexer_item(
         db,
@@ -107,6 +118,7 @@ def test_poller_tick_polls_active_job(tmp_path):
         requested_by="owner-1",
         role="owner",
         sab=sab,
+        nzb=nzb,
     )
     assert job["status"] == "queued"
     poller = JobPoller(db, lambda: settings, interval=999, sab=sab)

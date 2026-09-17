@@ -34,6 +34,7 @@ const SAB_COPY = [
   [/http 401|http 403/i, "SABnzbd refused the key. Check the downloader settings."],
   [/returned non-json|unexpected payload/i, "SABnzbd answered strangely. Check the downloader URL."],
   [/did not return nzo_id/i, "SABnzbd did not accept the NZB. Try another result."],
+  [/url fetching failed|maximum retries/i, "The downloader could not fetch the NZB from the indexer. Delete the stuck line and request again."],
   [/sabnzbd/i, "The downloader did not answer. Check the SABnzbd URL in Settings."],
 ];
 
@@ -78,7 +79,8 @@ export const FIELD_HELP = {
   reviewIsbn: "Optional. Librarian never invents one — only use digits you trust.",
   reviewSeries: "Series or magazine name, if this is an issue in a run.",
   reviewIndex: "Issue number, YYYY-MM for magazines, or disc/part index.",
-  reviewFolder: "Folder this process can read. On Unraid, /downloads may need complete root remapped.",
+  reviewFolder:
+    "Folder this process can read. …/complete/downloads/… is normal when SAB’s category is downloads — not a double map. Archives (rar) are not enough; need extracted media.",
   searchKind: "Narrows the local stacks.",
   findKind: "Picks the indexer form: books and magazines use title/author/ISBN; comics use series and issue; music uses artist and album.",
   searchAuthor: "Folded into the same search box — not a second app.",
@@ -138,7 +140,7 @@ export function canPromoteIncomingMusic(work, role) {
 }
 
 export function emptyReviewCopy() {
-  return "The bagging area is empty. Happy-path books never stop here.";
+  return "The bagging area is empty. Slips only appear when organize needs you — happy-path books never stop here.";
 }
 
 export function emptyQueueCopy() {

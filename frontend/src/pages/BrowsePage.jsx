@@ -3,9 +3,13 @@ import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api.js";
 import {
   BROWSE_LETTERS,
+  applyBrowseFilterPatch,
   browseFiltersFromSearchParams,
-  browseHref,
+  browseHasActiveFilters,
+  browseHeading,
   browseKinds,
+  browseParamsObject,
+  mergeFacetSelection,
 } from "../browse.js";
 import CoverCard from "../components/CoverCard.jsx";
 import { humanError } from "../copy.js";
@@ -30,6 +34,19 @@ export default function BrowsePage() {
     }
     return map;
   }, [facets]);
+
+  const seriesChips = useMemo(
+    () => mergeFacetSelection(facets?.series, filters.series, { limit: 16 }),
+    [facets, filters.series],
+  );
+  const genreChips = useMemo(
+    () => mergeFacetSelection(facets?.genres, filters.genre, { limit: 12 }),
+    [facets, filters.genre],
+  );
+  const authorChips = useMemo(
+    () => mergeFacetSelection(facets?.authors, filters.author, { limit: 12 }),
+    [facets, filters.author],
+  );
 
   useEffect(() => {
     let alive = true;
@@ -73,10 +90,7 @@ export default function BrowsePage() {
   }, [filters.kind, filters.author, filters.letter, filters.series, filters.shelf, filters.sort, filters.genre]);
 
   function patchFilters(patch) {
-    const next = { ...filters, ...patch };
-    const href = browseHref(next);
-    const qs = href.includes("?") ? href.slice(href.indexOf("?") + 1) : "";
-    setParams(qs ? Object.fromEntries(new URLSearchParams(qs)) : {});
+    setParams(browseParamsObject(applyBrowseFilterPatch(filters, patch)));
   }
 
   async function loadMore() {
@@ -94,13 +108,8 @@ export default function BrowsePage() {
     }
   }
 
-  const titleBits = [];
-  if (filters.shelf === "favorites") titleBits.push("Favorites");
-  if (filters.kind) titleBits.push(filters.kind);
-  if (filters.author) titleBits.push(filters.author);
-  if (filters.series) titleBits.push(filters.series);
-  if (filters.letter) titleBits.push(`Letter ${filters.letter}`);
-  const heading = titleBits.length ? titleBits.join(" · ") : "The stacks";
+  const heading = browseHeading(filters);
+  const showGenres = Boolean(facets?.genre_ready) || Boolean(filters.genre);
 
   return (
     <div className="browse-page" data-testid="browse-page">
@@ -153,7 +162,33 @@ export default function BrowsePage() {
             );
           })}
         </div>
-        {(facets?.series || []).length ? (
+        {authorChips.length ? (
+          <div className="chip-row browse-authors" data-testid="browse-authors">
+            <button
+              type="button"
+              className={`chip${!filters.author ? " is-on" : ""}`}
+              onClick={() => patchFilters({ author: "" })}
+            >
+              Any author
+            </button>
+            {authorChips.map((row) => (
+              <button
+                key={row.name}
+                type="button"
+                className={`chip${filters.author.toLowerCase() === row.name.toLowerCase() ? " is-on" : ""}`}
+                onClick={() =>
+                  patchFilters({
+                    author: filters.author.toLowerCase() === row.name.toLowerCase() ? "" : row.name,
+                  })
+                }
+              >
+                {row.name}
+                {row.count != null ? <span className="muted"> {row.count}</span> : null}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {seriesChips.length || filters.series ? (
           <div className="chip-row browse-series" data-testid="browse-series">
             <button
               type="button"
@@ -162,35 +197,49 @@ export default function BrowsePage() {
             >
               Any series
             </button>
-            {(facets.series || []).slice(0, 16).map((row) => (
+            {seriesChips.map((row) => (
               <button
                 key={row.name}
                 type="button"
-                className={`chip${filters.series === row.name ? " is-on" : ""}`}
+                className={`chip${filters.series.toLowerCase() === row.name.toLowerCase() ? " is-on" : ""}`}
                 onClick={() =>
-                  patchFilters({ series: filters.series === row.name ? "" : row.name })
+                  patchFilters({
+                    series: filters.series.toLowerCase() === row.name.toLowerCase() ? "" : row.name,
+                  })
                 }
               >
                 {row.name}
-                <span className="muted"> {row.count}</span>
+                {row.count != null ? <span className="muted"> {row.count}</span> : null}
               </button>
             ))}
           </div>
         ) : null}
         <div className="chip-row browse-genre-stub" data-testid="browse-genre-stub">
-          {facets?.genre_ready && (facets.genres || []).length ? (
-            (facets.genres || []).slice(0, 12).map((row) => (
+          {showGenres && (genreChips.length || filters.genre) ? (
+            <>
               <button
-                key={row.name}
                 type="button"
-                className={`chip${filters.genre === row.name ? " is-on" : ""}`}
-                onClick={() =>
-                  patchFilters({ genre: filters.genre === row.name ? "" : row.name })
-                }
+                className={`chip${!filters.genre ? " is-on" : ""}`}
+                onClick={() => patchFilters({ genre: "" })}
               >
-                {row.name}
+                Any genre
               </button>
-            ))
+              {genreChips.map((row) => (
+                <button
+                  key={row.name}
+                  type="button"
+                  className={`chip${filters.genre.toLowerCase() === row.name.toLowerCase() ? " is-on" : ""}`}
+                  onClick={() =>
+                    patchFilters({
+                      genre: filters.genre.toLowerCase() === row.name.toLowerCase() ? "" : row.name,
+                    })
+                  }
+                >
+                  {row.name}
+                  {row.count != null ? <span className="muted"> {row.count}</span> : null}
+                </button>
+              ))}
+            </>
           ) : (
             <span className="chip is-disabled" title="Subject enrich fills these later">
               Genre facets soon
@@ -212,8 +261,8 @@ export default function BrowsePage() {
               {label}
             </button>
           ))}
-          {filters.author || filters.letter || filters.series || filters.shelf || filters.kind ? (
-            <Link className="chip" to="/browse">
+          {browseHasActiveFilters(filters) ? (
+            <Link className="chip" to="/browse" data-testid="browse-clear">
               Clear filters
             </Link>
           ) : null}

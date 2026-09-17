@@ -68,6 +68,10 @@ describe("reading room cover helpers", () => {
     assert.equal(jobQueueDetail({ status: "extracting", nzo_id: "nzo_abc" }), "Extracting · nzo_abc");
     assert.equal(jobQueueDetail({ status: "asked" }), "Asked slip");
     assert.equal(
+      jobQueueDetail({ sab_status: "Grabbing · WAIT 89 sec", nzo_id: "nzo_wait" }),
+      "Fetching NZB · Grabbing · WAIT 89 sec · nzo_wait",
+    );
+    assert.equal(
       jobQueueDetail({
         status: "failed",
         error: "Unpack did not finish; archives remain in the complete folder",

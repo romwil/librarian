@@ -23,9 +23,11 @@ REVIEW_UNKNOWN = "unknown_identity"
 REVIEW_LOW = "low_confidence"
 REVIEW_UNEXPECTED = "unexpected_kind"
 REVIEW_NO_PAYLOAD = "no_payload"
+REVIEW_UNPACK_STUCK = "unpack_stuck"
 REVIEW_EXTRA = "extra_files"
 REVIEW_CONVERT = "convert_failed"
 REVIEW_COLLISION = "collision"
+REVIEW_MISSING_FOLDER = "missing_folder"
 
 _DOT_GROUP = re.compile(r"[\.\-_]+")
 _ISBN = re.compile(r"\b(?:97[89][-\s]?)?(?:\d[-\s]?){9}[\dXx]\b")
@@ -93,7 +95,7 @@ SIDECAR_NAMES = {"metadata.opf", "comicinfo.xml", "cover.jpg", "cover.png", "nfo
 JUNK_EXTENSIONS = {".par2", ".nzb", ".nfo", ".sfv", ".srr", ".url"}
 JUNK_NAMES = {".ds_store", "thumbs.db", "desktop.ini"}
 ARCHIVE_EXTENSIONS = {".rar", ".7z"}
-UNPACK_STUCK = "unpack_stuck"
+UNPACK_STUCK = REVIEW_UNPACK_STUCK  # jobs / ingest compare against this name
 HOST_DATA_PREFIX = "/mnt/user/data/"
 CONTAINER_DATA_PREFIX = "/data/"
 DOWNLOADS_PREFIXES = (
@@ -523,7 +525,7 @@ def inspect_complete_folder(folder: Path) -> Dict[str, Any]:
             "payload": [],
             "archives": [],
             "junk": [],
-            "problem": "missing_folder",
+            "problem": REVIEW_MISSING_FOLDER,
         }
     root = Path(folder)
     if root.is_file():
@@ -546,7 +548,7 @@ def inspect_complete_folder(folder: Path) -> Dict[str, Any]:
     if payload:
         problem = None
     elif archives:
-        problem = UNPACK_STUCK
+        problem = REVIEW_UNPACK_STUCK
     else:
         problem = REVIEW_NO_PAYLOAD
     return {
@@ -554,6 +556,97 @@ def inspect_complete_folder(folder: Path) -> Dict[str, Any]:
         "archives": archives,
         "junk": junk,
         "problem": problem,
+    }
+
+
+def suggest_payload_folder(folder: Path) -> Optional[Path]:
+    """Nearby folder that already has readable media (parent or nested child only)."""
+    if not usable_folder(folder):
+        return None
+    root = Path(folder)
+    candidates: List[Path] = []
+    parent = root.parent if root.is_absolute() or str(root.parent) not in {"", "."} else None
+    if parent is not None and parent.is_dir() and parent.name not in {"", ".", "/"}:
+        # Prefer a same-named child under parent, then parent itself if it has media.
+        same = parent / root.name
+        if same.is_dir() and same != root:
+            candidates.append(same)
+        candidates.append(parent)
+    if root.is_dir():
+        try:
+            for child in sorted(root.iterdir()):
+                if child.is_dir():
+                    candidates.append(child)
+        except OSError:
+            pass
+    for candidate in _unique_paths(candidates):
+        try:
+            if root.exists() and candidate.resolve() == root.resolve():
+                continue
+        except OSError:
+            pass
+        # Do not suggest a broad complete/downloads root that happens to contain other albums.
+        if candidate.name in {"complete", "downloads", "usenet", "data"}:
+            continue
+        if list_payload_files(candidate):
+            return candidate
+    return None
+
+
+def path_layout_note(folder: Path) -> str:
+    """Honest note when …/complete/downloads/… looks like a double prefix but is SAB’s category layout."""
+    text = str(folder or "").replace("\\", "/")
+    if "/complete/downloads/" in text or text.rstrip("/").endswith("/complete/downloads"):
+        return (
+            "The …/complete/downloads/… path is normal: SAB’s complete root ends at …/complete, "
+            "and a downloads category adds that folder under it — not a doubled map."
+        )
+    return ""
+
+
+def diagnose_review_folder(folder: Path, complete_root: str = "") -> Dict[str, Any]:
+    """Live diagnosis for a Review slip: what we checked, what’s wrong, optional better path."""
+    raw = Path(folder) if usable_folder(folder) else Path()
+    resolved = resolve_storage_path(raw, complete_root) if usable_folder(raw) else raw
+    inspection = inspect_complete_folder(resolved)
+    problem = inspection.get("problem")
+    suggested = suggest_payload_folder(resolved)
+    if problem and suggested is None and usable_folder(raw) and resolved != raw:
+        suggested = suggest_payload_folder(raw)
+    payload = inspection.get("payload") or []
+    archives = inspection.get("archives") or []
+    junk = inspection.get("junk") or []
+    looked_for = "book (epub/pdf), comic (cbz/cbr), or audio (flac/mp3/m4a/m4b) files"
+    empty_dir = False
+    if problem == REVIEW_NO_PAYLOAD and resolved.exists() and resolved.is_dir():
+        try:
+            empty_dir = not any(resolved.iterdir())
+        except OSError:
+            empty_dir = False
+    if problem == REVIEW_MISSING_FOLDER:
+        tried = f"Looked for a complete folder at {resolved or raw or '(empty)'}."
+    elif problem == REVIEW_UNPACK_STUCK:
+        tried = (
+            f"Opened {resolved}. Found {len(archives)} archive file(s) and no readable media "
+            f"(also {len(junk)} junk/sidecar file(s))."
+        )
+    elif problem == REVIEW_NO_PAYLOAD and empty_dir:
+        tried = f"Opened {resolved}. The folder is empty."
+    elif problem == REVIEW_NO_PAYLOAD:
+        tried = f"Opened {resolved}. Found {len(junk)} non-media file(s) and no {looked_for}."
+    else:
+        tried = f"Opened {resolved}. Found {len(payload)} readable file(s) this Librarian can shelve."
+    return {
+        "path": str(resolved) if usable_folder(resolved) else str(raw or ""),
+        "resolved_path": str(resolved) if usable_folder(resolved) else "",
+        "problem": problem,
+        "payload_count": len(payload),
+        "archive_count": len(archives),
+        "junk_count": len(junk),
+        "looked_for": looked_for,
+        "tried": tried,
+        "path_note": path_layout_note(resolved if usable_folder(resolved) else raw),
+        "suggested_folder": str(suggested) if suggested is not None else None,
     }
 
 
@@ -686,7 +779,11 @@ def identify_completed(
             identity = fill_identity_holes(
                 identity, parse_usenet_name(folder.name, category=item.get("category"), kind=identity.kind).as_dict()
             )
-        identity.review_reason = REVIEW_NO_PAYLOAD
+        inspection = inspect_complete_folder(folder)
+        problem = inspection.get("problem") or REVIEW_NO_PAYLOAD
+        if problem == REVIEW_MISSING_FOLDER:
+            problem = REVIEW_NO_PAYLOAD
+        identity.review_reason = str(problem)
         identity.confidence = "low"
         return {"identity": identity.as_dict(), "files": [], "auto_organize": False}
 

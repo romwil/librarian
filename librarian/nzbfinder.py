@@ -323,3 +323,39 @@ class NZBFinderClient:
         nzb_id = guid if str(guid).endswith(".nzb") else f"{guid}.nzb"
         query = urlencode({"id": nzb_id, "api_token": self.api_token, "apikey": self.api_token})
         return urljoin(self.base_url + "/", f"api/v2/download?{query}")
+
+    def fetch_nzb(self, guid: str) -> bytes:
+        """Download NZB bytes with this host's token. Never log the URL (has secrets)."""
+        if not guid:
+            raise NZBFinderError(f"{self.label} download needs a guid")
+        url = self.download_url(guid)
+        headers = {
+            "User-Agent": self.user_agent,
+            "Accept": "application/x-nzb, application/xml, text/xml, */*",
+        }
+        try:
+            response = self._client.get(url, headers=headers)
+        except httpx.HTTPError as error:
+            raise NZBFinderError(str(error)) from error
+        if response.status_code >= 400:
+            raise self._error_from_response(response)
+        body = response.content or b""
+        if not body:
+            raise NZBFinderError(f"{self.label} download returned empty NZB")
+        head = body.lstrip()[:64].lower()
+        ctype = (response.headers.get("content-type") or "").split(";")[0].strip().lower()
+        if "html" in ctype or head.startswith(b"<!doctype") or head.startswith(b"<html"):
+            raise NZBFinderError(describe_nzbfinder_response(response, self.label))
+        if head.startswith(b"{") or head.startswith(b"["):
+            # JSON error payloads sometimes sneak through with HTTP 200.
+            try:
+                payload = response.json()
+            except ValueError:
+                payload = None
+            if isinstance(payload, dict) and (payload.get("error") or payload.get("message")):
+                detail = payload.get("error") or payload.get("message")
+                raise NZBFinderError(f"{self.label} download refused: {detail}")
+            raise NZBFinderError(f"{self.label} download returned JSON, not an NZB")
+        if b"<nzb" not in body[:512].lower() and b"<?xml" not in head:
+            raise NZBFinderError(f"{self.label} download did not look like an NZB")
+        return body

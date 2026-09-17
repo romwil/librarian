@@ -5,7 +5,8 @@ import { browseHref } from "../browse.js";
 import { coverWashStyle, coverWashUrl, isInboundJob } from "../cover.js";
 import { canPromoteIncomingMusic, humanError, peekMediaNote } from "../copy.js";
 import { looksLikeHtml, sanitizeDescriptionHtml } from "../description.js";
-import { canOpenInlineMedia, canReadInApp } from "../reader.js";
+import { useAlbumPlayer } from "../hooks/useAlbumPlayer.js";
+import { canOpenInlineMedia, canReadInApp, workDownloadUrl } from "../reader.js";
 import Rail from "../components/Rail.jsx";
 import Reader from "../components/Reader.jsx";
 
@@ -19,6 +20,12 @@ export default function WorkPage() {
   const [enriching, setEnriching] = useState(false);
   const [enrichNote, setEnrichNote] = useState("");
   const [reading, setReading] = useState(false);
+  const [readingFileId, setReadingFileId] = useState("");
+  const album = useAlbumPlayer({
+    workId: id,
+    files: data?.files || [],
+    enabled: Boolean(data?.can_download && data?.work?.kind === "music"),
+  });
 
   useEffect(() => {
     api
@@ -35,14 +42,31 @@ export default function WorkPage() {
   useEffect(() => {
     if (!data) return;
     const readable = Boolean(data.can_read) && canReadInApp(data.work, data.files);
-    if (searchParams.get("read") === "1" && readable) setReading(true);
+    if (searchParams.get("read") === "1" && readable) {
+      setReadingFileId(searchParams.get("file") || "");
+      setReading(true);
+    }
   }, [searchParams, data]);
+
+  function openReader(fileId = "") {
+    const wanted = String(fileId || "").trim();
+    setReadingFileId(wanted);
+    setReading(true);
+    // Shareable deep link — same `?read=1&file=` contract as WorkPeek (`workReaderPath`).
+    const next = new URLSearchParams(searchParams);
+    next.set("read", "1");
+    if (wanted) next.set("file", wanted);
+    else next.delete("file");
+    setSearchParams(next, { replace: true });
+  }
 
   function closeReader() {
     setReading(false);
-    if (searchParams.get("read")) {
+    setReadingFileId("");
+    if (searchParams.get("read") || searchParams.get("file")) {
       const next = new URLSearchParams(searchParams);
       next.delete("read");
+      next.delete("file");
       setSearchParams(next, { replace: true });
     }
   }
@@ -118,8 +142,17 @@ export default function WorkPage() {
             <button type="button" className="cta outline compact" onClick={favorite}>
               {data.favorite ? "In Favorites" : "Favorite"}
             </button>
-            {canRead ? (
-              <button type="button" className="cta compact" onClick={() => setReading(true)} data-testid="work-open">
+            {album.enabled ? (
+              <button
+                type="button"
+                className="cta compact"
+                onClick={album.toggleAlbum}
+                data-testid="album-play"
+              >
+                {album.active ? "Stop" : "Play"}
+              </button>
+            ) : canRead ? (
+              <button type="button" className="cta compact" onClick={() => openReader()} data-testid="work-open">
                 Open
               </button>
             ) : canInlineOpen ? (
@@ -237,20 +270,66 @@ export default function WorkPage() {
         ) : null}
         {data.files?.length ? (
           <section>
-            <h2 className="kicker">Files</h2>
+            <h2 className="kicker">{work.kind === "music" ? "Tracks" : "Files"}</h2>
+            {album.nowPlayingLabel ? (
+              <p className="muted album-now-playing" data-testid="now-playing">
+                Playing · {album.nowPlayingLabel}
+              </p>
+            ) : null}
             <ul className="file-list">
               {data.files.map((file) => (
-                <li key={file.id}>
-                  <span>{file.filename}</span>
+                <li
+                  key={file.id}
+                  className={String(album.playingId || "") === String(file.id) ? "is-playing" : undefined}
+                >
                   {file.reading_room ? (
-                    <span className="chip is-on" data-testid="reading-room-badge">
+                    <button
+                      type="button"
+                      className="file-list-open"
+                      onClick={() => openReader(file.id)}
+                      data-testid="reading-room-open"
+                    >
+                      {file.filename}
+                    </button>
+                  ) : (
+                    <span>{file.filename}</span>
+                  )}
+                  {file.reading_room ? (
+                    <button
+                      type="button"
+                      className="chip is-on"
+                      onClick={() => openReader(file.id)}
+                      data-testid="reading-room-badge"
+                    >
                       Reading Room
-                    </span>
+                    </button>
+                  ) : null}
+                  {album.canPlayFile(file) ? (
+                    <button
+                      type="button"
+                      className="chip"
+                      onClick={() => album.toggleTrack(file.id)}
+                      data-testid="track-play"
+                    >
+                      {String(album.playingId || "") === String(file.id) ? "Stop" : "Play"}
+                    </button>
+                  ) : null}
+                  {data.can_download && file.on_disk !== false ? (
+                    <a
+                      className="chip"
+                      href={workDownloadUrl(work.id, { fileId: file.id })}
+                      data-testid="file-download"
+                    >
+                      Download
+                    </a>
                   ) : null}
                   {file.on_disk === false ? <span className="chip">Missing</span> : null}
                 </li>
               ))}
             </ul>
+            {work.kind === "music" ? (
+              <audio ref={album.audioRef} preload="none" hidden data-testid="album-audio" />
+            ) : null}
           </section>
         ) : null}
       </div>
@@ -260,7 +339,13 @@ export default function WorkPage() {
         seeAllTo={work.author ? browseHref({ author: work.author }) : ""}
       />
       {reading && canRead ? (
-        <Reader work={work} files={data.files} progress={data.progress} onClose={closeReader} />
+        <Reader
+          work={work}
+          files={data.files}
+          fileId={readingFileId}
+          progress={data.progress}
+          onClose={closeReader}
+        />
       ) : null}
     </article>
   );

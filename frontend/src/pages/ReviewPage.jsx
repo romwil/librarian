@@ -7,7 +7,9 @@ import {
   applyBodyFromDraft,
   collisionActionCopy,
   collisionApplyAllowed,
+  effectiveReviewReason,
   fieldsFromWork,
+  reviewDiagnosisCopy,
   reviewReasonCopy,
 } from "../review.js";
 
@@ -31,7 +33,14 @@ export default function ReviewPage() {
         setDrafts((prev) => {
           const merged = { ...prev };
           next.forEach((work) => {
-            merged[work.id] = merged[work.id] || fieldsFromWork(work);
+            const base = fieldsFromWork(work);
+            const suggested = work.folder_diagnosis?.suggested_folder;
+            if (!merged[work.id]) {
+              merged[work.id] = {
+                ...base,
+                folder: base.folder || suggested || "",
+              };
+            }
           });
           return merged;
         });
@@ -86,16 +95,21 @@ export default function ReviewPage() {
     <div className="admin-room">
       <p className="kicker">Bagging area</p>
       <h1>Review</h1>
-      <p className="lede">Unexpected items only. Happy-path ISBN books never appear here. Apply files a ticket, not a dump.</p>
+      <p className="lede">
+        Slips are downloads organize could not finish filing. Happy-path ISBN books never appear here. Apply files a
+        ticket once the folder has readable media — Skip dismisses without shelving.
+      </p>
       {error ? <p className="alert">{error}</p> : null}
       {!works.length ? <p className="empty-note">{emptyReviewCopy()}</p> : null}
       <ul className="stack">
         {works.map((work) => {
           const draft = drafts[work.id] || fieldsFromWork(work);
           const focused = Boolean(focusId) && work.id === focusId;
-          const collision = work.review_reason === "collision";
-          const canApply = collisionApplyAllowed(work.review_reason, draft, work);
+          const reason = effectiveReviewReason(work);
+          const collision = reason === "collision";
+          const canApply = collisionApplyAllowed(reason, draft, work);
           const shelf = work.shelf_work;
+          const diagnosis = reviewDiagnosisCopy(work);
           return (
             <li
               key={work.id}
@@ -104,14 +118,48 @@ export default function ReviewPage() {
               data-testid="review-ticket"
               data-work-id={work.id}
               data-focused={focused ? "true" : "false"}
-              data-reason={work.review_reason || ""}
+              data-reason={reason || ""}
             >
               <header className="ticket-head">
                 <p className="kicker">{focused ? "From Queue" : "Slip"}</p>
                 <span className="seal">{draft.kind || work.kind}</span>
               </header>
               <strong className="ticket-title">{draft.title || work.title || "Untitled"}</strong>
-              <p className="lede">{reviewReasonCopy(work.review_reason)}</p>
+              <p className="lede" data-testid="review-reason-copy">
+                {reviewReasonCopy(reason)}
+              </p>
+              <div className="empty-note" data-testid="review-diagnosis">
+                <p>
+                  <strong>What this slip means.</strong> {diagnosis.meaning}
+                </p>
+                <p>
+                  <strong>What we tried.</strong> {diagnosis.tried}
+                </p>
+                <p>
+                  <strong>What’s wrong.</strong> {diagnosis.whatsWrong}
+                </p>
+                <p>
+                  <strong>What to do.</strong> {diagnosis.nextSteps}
+                </p>
+                {diagnosis.pathNote ? (
+                  <p data-testid="review-path-note">
+                    <strong>About this path.</strong> {diagnosis.pathNote}
+                  </p>
+                ) : null}
+                {diagnosis.suggestedFolder ? (
+                  <p data-testid="review-suggested-folder">
+                    <strong>Suggested folder.</strong>{" "}
+                    <code className="font-mono">{diagnosis.suggestedFolder}</code>{" "}
+                    <button
+                      type="button"
+                      className="cta ghost compact"
+                      onClick={() => patch(work.id, "folder", diagnosis.suggestedFolder)}
+                    >
+                      Use this path
+                    </button>
+                  </p>
+                ) : null}
+              </div>
               {collision ? (
                 <p className="empty-note" data-testid="collision-action-copy">
                   {collisionActionCopy()}

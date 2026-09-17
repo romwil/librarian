@@ -1451,8 +1451,19 @@ body:has(.reader) .topbar {
   border: 0;
   background: #1a1410;
 }
+/* EPUB: Foliate clears body bg; paper host must show through, not Reading Room chrome.
+   Do not put work-hero / peek cover wash on this stage. CBZ keeps the dark letterbox. */
+.reader-stage[data-engine="epub"] .reader-host,
+.reader-stage[data-engine="epub"] foliate-view {
+  background: #faf6ee;
+}
 .reader-stage iframe {
   background: var(--paper);
+}
+/* Hero wash stays under the fixed reader; hide art while open so it cannot bleed. */
+body:has(.reader) .work-hero-art,
+body:has(.reader) .work-hero-scrim {
+  visibility: hidden;
 }
 .reader-status {
   position: absolute;
@@ -1712,6 +1723,33 @@ body:has(.reader) .topbar {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
+}
+.file-list-open {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+.file-list-open:hover,
+.file-list-open:focus-visible {
+  color: var(--gilt);
+  text-decoration: underline;
+}
+.file-list button.chip,
+.file-list a.chip {
+  cursor: pointer;
+  text-decoration: none;
+}
+.file-list li.is-playing > span:first-child,
+.file-list li.is-playing .file-list-open {
+  color: var(--gilt);
+}
+.album-now-playing {
+  margin: 0 0 var(--space-3);
 }
 
 .join-once {

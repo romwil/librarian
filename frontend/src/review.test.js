@@ -5,16 +5,46 @@ import {
   collisionActionCopy,
   collisionApplyAllowed,
   collisionDraftUnchanged,
+  effectiveReviewReason,
   fieldsFromWork,
   queueReviewReasonCopy,
+  reviewDiagnosisCopy,
   reviewReasonCopy,
 } from "./review.js";
 
 describe("review identify form", () => {
-  it("explains no_payload instead of hiding identity fields", () => {
+  it("explains no_payload without blaming SAB path mapping first", () => {
     const copy = reviewReasonCopy("no_payload");
     assert.match(copy, /cannot invent/);
-    assert.match(copy, /complete root|Skip/);
+    assert.doesNotMatch(copy, /complete root to map/);
+  });
+
+  it("explains unpack_stuck as leftover archives", () => {
+    const copy = reviewReasonCopy("unpack_stuck");
+    assert.match(copy, /archives/i);
+    assert.match(copy, /unpack/i);
+  });
+
+  it("builds a diagnosis block for Guardians-style unpack stuck", () => {
+    const work = {
+      review_reason: "no_payload",
+      folder_diagnosis: {
+        problem: "unpack_stuck",
+        archive_count: 3,
+        junk_count: 2,
+        tried: "Opened /data/usenet/complete/downloads/VA-Guardians. Found 3 archive file(s).",
+        looked_for: "book (epub/pdf), comic (cbz/cbr), or audio (flac/mp3/m4a/m4b) files",
+        path_note: "The …/complete/downloads/… path is normal",
+        suggested_folder: null,
+      },
+    };
+    assert.equal(effectiveReviewReason(work), "unpack_stuck");
+    const diagnosis = reviewDiagnosisCopy(work);
+    assert.match(diagnosis.meaning, /could not finish/i);
+    assert.match(diagnosis.tried, /Opened/);
+    assert.match(diagnosis.whatsWrong, /Archives remain/i);
+    assert.match(diagnosis.nextSteps, /SABnzbd|Skip/i);
+    assert.match(diagnosis.pathNote, /complete\/downloads/);
   });
 
   it("explains collision Skip vs Apply without overwrite", () => {
@@ -46,6 +76,7 @@ describe("review identify form", () => {
     assert.match(queueReviewReasonCopy("extra_files"), /Extra files/);
     assert.match(queueReviewReasonCopy("collision"), /Open Review/i);
     assert.match(queueReviewReasonCopy("collision"), /shelf/i);
+    assert.match(queueReviewReasonCopy("unpack_stuck"), /Archives/);
     assert.match(queueReviewReasonCopy(""), /Waiting in Review/);
   });
 

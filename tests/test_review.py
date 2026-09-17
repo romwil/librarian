@@ -20,6 +20,39 @@ def _client(tmp_path, monkeypatch, settings=None):
     return client, app
 
 
+def test_review_list_diagnoses_unpack_stuck_and_soft_repairs(tmp_path, monkeypatch):
+    stuck = tmp_path / "usenet" / "complete" / "downloads" / "VA-Guardians.Mix"
+    stuck.mkdir(parents=True)
+    (stuck / "mix.rar").write_bytes(b"Rar!")
+    (stuck / "mix.par2").write_bytes(b"par2")
+    settings = Settings(
+        books_root=str(tmp_path / "books"),
+        complete_root=str(tmp_path / "usenet" / "complete"),
+    )
+    client, app = _client(tmp_path, monkeypatch, settings=settings)
+    db = app.state.db
+    work = db.upsert_work(
+        {
+            "kind": "music",
+            "title": "Guardians of the Galaxy Awesome Mix Vol. 1",
+            "author": "Various Artists",
+            "review_state": "needs_review",
+            "review_reason": "no_payload",
+            "folder_path": str(stuck),
+        }
+    )
+    listed = client.get("/api/review")
+    assert listed.status_code == 200
+    row = listed.json()["works"][0]
+    assert row["id"] == work["id"]
+    assert row["review_reason"] == "unpack_stuck"
+    assert row["folder_diagnosis"]["problem"] == "unpack_stuck"
+    assert row["folder_diagnosis"]["archive_count"] >= 1
+    assert "complete/downloads" in row["folder_diagnosis"]["path_note"]
+    refreshed = db.get_work(work["id"])
+    assert refreshed["review_reason"] == "unpack_stuck"
+
+
 def test_review_list_fills_folder_from_job_storage(tmp_path, monkeypatch):
     client, app = _client(tmp_path, monkeypatch)
     db = app.state.db

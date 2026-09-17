@@ -56,13 +56,17 @@ def _queue_download(
     )
     guid = str(payload.get("guid") or (item.get("selected") or {}).get("guid") or item.get("guid") or "")
     selected = payload.get("selected") or {}
-    url = selected.get("download_url") or item.get("download_url") or finder.download_url(guid)
     title = payload.get("title") or item.get("title")
     kind = str(payload.get("kind") or item.get("kind") or "")
     client = sab or SABClient(settings.sabnzbd_url, settings.sabnzbd_api_key)
-    nzo_id = client.addurl(
-        url,
-        nzbname=str(title or "librarian"),
+    # Push NZB bytes (addfile) with Librarian's indexer credentials. Never hand SAB a
+    # stripped download_url (public hits drop api_token → Unauthorized / WAIT).
+    # SAB nzbname is the release title, not the Find query (sought.q → title).
+    nzo_id = _submit_nzb_to_sab(
+        client,
+        finder,
+        guid=guid,
+        nzbname=_sab_nzbname(selected=selected, item=item, catalog_title=str(title or "")),
         cat=sab_category_for_kind(settings, kind),
     )
     status = "queued"
@@ -91,6 +95,37 @@ def _queue_download(
         assert updated is not None
         return updated
     return db.create_job(fields)
+
+
+def _sab_nzbname(
+    *,
+    selected: Dict[str, Any],
+    item: Dict[str, Any],
+    catalog_title: str,
+) -> str:
+    """Name SAB sees in history — release/dump title, never the Find query string."""
+    _ = item  # top-level title may be sought.q; payload.selected is authoritative
+    release = str(selected.get("title") or "").strip()
+    catalog = str(catalog_title or "").strip()
+    if release:
+        return release
+    return catalog or "librarian"
+
+
+def _submit_nzb_to_sab(
+    client: SABClient,
+    finder: NZBFinderClient,
+    *,
+    guid: str,
+    nzbname: str,
+    cat: str,
+) -> str:
+    """Fetch NZB with Librarian credentials, then SAB addfile. Fail closed — no addurl."""
+    if not guid:
+        raise NZBFinderError(f"{finder.label} download needs a guid")
+    nzb_bytes = finder.fetch_nzb(guid)
+    filename = guid if str(guid).endswith(".nzb") else f"{guid}.nzb"
+    return client.addfile(nzb_bytes, filename=filename, nzbname=nzbname, cat=cat)
 
 
 def enqueue_indexer_item(

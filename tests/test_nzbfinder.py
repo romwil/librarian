@@ -46,6 +46,35 @@ def test_client_sends_user_agent_and_api_token():
     assert "t=get" not in url
 
 
+
+def test_fetch_nzb_returns_bytes_not_html():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert "/api/v2/download" in str(request.url)
+        assert "api_token=fixture-token" in str(request.url)
+        return httpx.Response(
+            200,
+            content=b'<?xml version="1.0"?><nzb xmlns="http://www.newzbin.com/DTD/2003/nzb"></nzb>',
+            headers={"content-type": "application/x-nzb"},
+        )
+
+    client = NZBFinderClient("https://nzbfinder.example", "fixture-token", transport=httpx.MockTransport(handler))
+    body = client.fetch_nzb("guid-linux-mag")
+    assert body.startswith(b"<?xml")
+    assert b"<nzb" in body
+
+
+def test_fetch_nzb_rejects_json_error_body():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"error": "not found"})
+
+    client = NZBFinderClient("https://nzbfinder.example", "fixture-token", transport=httpx.MockTransport(handler))
+    try:
+        client.fetch_nzb("missing")
+        raise AssertionError("expected NZBFinderError")
+    except NZBFinderError as error:
+        assert "refused" in str(error).lower() or "not found" in str(error).lower()
+
+
 def test_client_requires_token():
     client = NZBFinderClient("https://nzbfinder.example", "")
     try:

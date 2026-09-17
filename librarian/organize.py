@@ -14,8 +14,10 @@ from librarian.db import Database
 from librarian.identify import (
     REVIEW_COLLISION,
     REVIEW_NO_PAYLOAD,
+    REVIEW_UNPACK_STUCK,
     dest_layout,
     identify_completed,
+    inspect_complete_folder,
     list_payload_files,
     music_state_for_folder,
     resolve_storage_path,
@@ -53,9 +55,13 @@ def _inject_comicinfo(cbz: Path, identity: Dict[str, Any], guid: str) -> None:
 
 
 NO_PAYLOAD_APPLY_ERROR = (
-    "No payload files at this path. Librarian cannot invent an EPUB/CBZ. "
-    "Point the folder at a complete directory this process can read, "
-    "set SAB complete root to map /downloads, or Skip."
+    "No book, comic, or audio file at this path. Apply cannot invent a payload — "
+    "point the folder at files this Librarian can read, fix SAB unpack, or Skip."
+)
+UNPACK_STUCK_APPLY_ERROR = (
+    "SABnzbd left archives (rar/7z) here — unpack never finished. "
+    "Extract or repair the download in SAB, point Complete folder at the extracted "
+    "audio/book files, then Apply — or Skip to dismiss this slip."
 )
 MISSING_FOLDER_APPLY_ERROR = (
     "No complete folder. Enter the SAB storage path this Librarian can read, "
@@ -145,7 +151,10 @@ def organize_identified(
             identity["review_reason"] = None
             result["auto_organize"] = True
         else:
-            identity["review_reason"] = REVIEW_NO_PAYLOAD
+            stuck = inspect_complete_folder(folder).get("problem")
+            identity["review_reason"] = (
+                REVIEW_UNPACK_STUCK if stuck == REVIEW_UNPACK_STUCK else REVIEW_NO_PAYLOAD
+            )
             identity["confidence"] = "low"
             result["auto_organize"] = False
     result["identity"] = identity
@@ -340,6 +349,8 @@ def apply_review(
     )
     if not result["organized"]:
         reason = result.get("identity", {}).get("review_reason") or result["work"].get("review_reason")
+        if reason == REVIEW_UNPACK_STUCK:
+            raise ValueError(UNPACK_STUCK_APPLY_ERROR)
         if reason == REVIEW_NO_PAYLOAD:
             raise ValueError(NO_PAYLOAD_APPLY_ERROR)
         if reason == REVIEW_COLLISION:

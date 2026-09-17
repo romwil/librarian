@@ -330,7 +330,39 @@ def test_reader_can_view_discover_and_request_is_asked(tmp_path, monkeypatch):
 
 
 def _quiet_nzb():
-    return httpx.MockTransport(lambda request: httpx.Response(200, json={}))
+    nzb_xml = b'<?xml version="1.0"?><nzb xmlns="http://www.newzbin.com/DTD/2003/nzb"></nzb>'
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "/api/v2/download" in str(request.url) or "/api/v1/getnzb" in str(request.url):
+            return httpx.Response(200, content=nzb_xml, headers={"content-type": "application/x-nzb"})
+        return httpx.Response(200, json={})
+
+    return httpx.MockTransport(handler)
+
+
+def _sab_addfile_handler(nzo_id: str, sab_cats=None):
+    def sab_handler(request: httpx.Request) -> httpx.Response:
+        params = dict(request.url.params)
+        if request.method == "POST" or params.get("mode") == "addfile":
+            if sab_cats is not None:
+                # multipart field cat=
+                body = request.content or b""
+                if b'name="cat"' in body:
+                    start = body.find(b'name="cat"')
+                    chunk = body[start : start + 120]
+                    parts = chunk.split(b"\r\n\r\n", 1)
+                    if len(parts) == 2:
+                        sab_cats.append(parts[1].split(b"\r\n")[0].decode())
+                    else:
+                        sab_cats.append("")
+                else:
+                    sab_cats.append("")
+            return httpx.Response(200, json={"nzo_ids": [nzo_id]})
+        if params.get("mode") == "addurl":
+            raise AssertionError("addurl must not be used")
+        return httpx.Response(200, json={"queue": {"slots": []}})
+
+    return sab_handler
 
 
 def test_movie_request_queues_sab_and_tells_radarr(tmp_path, monkeypatch):
@@ -340,13 +372,6 @@ def test_movie_request_queues_sab_and_tells_radarr(tmp_path, monkeypatch):
 
     sab_cats = []
     arr_calls = []
-
-    def sab_handler(request: httpx.Request) -> httpx.Response:
-        params = dict(request.url.params)
-        if params.get("mode") == "addurl":
-            sab_cats.append(params.get("cat"))
-            return httpx.Response(200, json={"nzo_ids": ["SABnzbd_nzo_movie"]})
-        return httpx.Response(200, json={"queue": {"slots": []}})
 
     def expect(settings, kind, item, **kwargs):
         arr_calls.append((kind, item.get("tmdb_id") or (item.get("selected") or {}).get("tmdb_id")))
@@ -374,7 +399,7 @@ def test_movie_request_queues_sab_and_tells_radarr(tmp_path, monkeypatch):
         },
         requested_by="owner-1",
         role="owner",
-        sab=SABClient("http://downloader.sl", "sab", transport=httpx.MockTransport(sab_handler)),
+        sab=SABClient("http://downloader.sl", "sab", transport=httpx.MockTransport(_sab_addfile_handler("SABnzbd_nzo_movie", sab_cats))),
         nzb=NZBFinderClient("https://nzbfinder.example", "tok", transport=_quiet_nzb()),
     )
     assert job["status"] == "queued"
@@ -430,13 +455,6 @@ def test_xxx_request_is_sab_only_no_arr(tmp_path, monkeypatch):
     arr_hits = []
     sab_cats = []
 
-    def sab_handler(request: httpx.Request) -> httpx.Response:
-        params = dict(request.url.params)
-        if params.get("mode") == "addurl":
-            sab_cats.append(params.get("cat") or "")
-            return httpx.Response(200, json={"nzo_ids": ["SABnzbd_nzo_xxx"]})
-        return httpx.Response(200, json={"queue": {"slots": []}})
-
     def boom(*args, **kwargs):
         arr_hits.append("called")
         raise AssertionError("arr should not be called for XXX")
@@ -455,7 +473,11 @@ def test_xxx_request_is_sab_only_no_arr(tmp_path, monkeypatch):
         },
         requested_by="owner-1",
         role="owner",
-        sab=SABClient("http://downloader.sl", "sab", transport=httpx.MockTransport(sab_handler)),
+        sab=SABClient(
+            "http://downloader.sl",
+            "sab",
+            transport=httpx.MockTransport(_sab_addfile_handler("SABnzbd_nzo_xxx", sab_cats)),
+        ),
         nzb=NZBFinderClient("https://nzbfinder.example", "tok", transport=_quiet_nzb()),
     )
     assert job["status"] == "queued"
@@ -470,11 +492,6 @@ def test_movie_request_without_arr_token_still_sabs_and_needs_you(tmp_path):
     from librarian.nzbfinder import NZBFinderClient
     from librarian.sabnzbd import SABClient
 
-    def sab_handler(request: httpx.Request) -> httpx.Response:
-        if dict(request.url.params).get("mode") == "addurl":
-            return httpx.Response(200, json={"nzo_ids": ["SABnzbd_nzo_movie"]})
-        return httpx.Response(200, json={"queue": {"slots": []}})
-
     db = Database(tmp_path / "librarian.db")
     job = enqueue_indexer_item(
         db,
@@ -488,7 +505,11 @@ def test_movie_request_without_arr_token_still_sabs_and_needs_you(tmp_path):
         },
         requested_by="owner-1",
         role="owner",
-        sab=SABClient("http://downloader.sl", "sab", transport=httpx.MockTransport(sab_handler)),
+        sab=SABClient(
+            "http://downloader.sl",
+            "sab",
+            transport=httpx.MockTransport(_sab_addfile_handler("SABnzbd_nzo_movie")),
+        ),
         nzb=NZBFinderClient("https://nzbfinder.example", "tok", transport=_quiet_nzb()),
     )
     assert job["nzo_id"] == "SABnzbd_nzo_movie"

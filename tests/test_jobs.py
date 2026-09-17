@@ -6,6 +6,36 @@ from librarian.jobs import enqueue_indexer_item, poll_job
 from librarian.nzbfinder import NZBFinderClient
 from librarian.sabnzbd import SABClient
 
+NZB_XML = b'<?xml version="1.0"?><nzb xmlns="http://www.newzbin.com/DTD/2003/nzb"></nzb>'
+
+
+def _nzb_transport():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "/api/v2/download" in str(request.url) or "/api/v1/getnzb" in str(request.url):
+            return httpx.Response(200, content=NZB_XML, headers={"content-type": "application/x-nzb"})
+        return httpx.Response(200, json={})
+
+    return httpx.MockTransport(handler)
+
+
+def _sab_accepts_addfile(nzo_id: str, *, history_slots=None, queue_slots=None):
+    def handler(request: httpx.Request) -> httpx.Response:
+        params = dict(request.url.params)
+        if request.method == "POST" or params.get("mode") == "addfile":
+            return httpx.Response(200, json={"nzo_ids": [nzo_id]})
+        if params.get("mode") == "addurl":
+            raise AssertionError("addurl must not be used when addfile is available")
+        if params.get("mode") == "queue":
+            return httpx.Response(200, json={"queue": {"slots": queue_slots or []}})
+        if params.get("mode") == "get_files":
+            return httpx.Response(200, json={"files": []})
+        return httpx.Response(
+            200,
+            json={"history": {"slots": history_slots if history_slots is not None else []}},
+        )
+
+    return handler
+
 
 def test_reader_request_is_asked_slip(tmp_path):
     db = Database(tmp_path / "librarian.db")
@@ -26,28 +56,6 @@ def test_owner_queue_and_poll_completed_organizes(tmp_path):
     complete.mkdir(parents=True)
     (complete / "book.epub").write_bytes(b"epub")
 
-    def sab_handler(request: httpx.Request) -> httpx.Response:
-        params = dict(request.url.params)
-        if params.get("mode") == "addurl":
-            return httpx.Response(200, json={"nzo_ids": ["SABnzbd_nzo_1"]})
-        if params.get("mode") == "queue":
-            return httpx.Response(200, json={"queue": {"slots": []}})
-        return httpx.Response(
-            200,
-            json={
-                "history": {
-                    "slots": [
-                        {
-                            "nzo_id": "SABnzbd_nzo_1",
-                            "status": "Completed",
-                            "storage": str(complete),
-                            "name": complete.name,
-                        }
-                    ]
-                }
-            },
-        )
-
     settings = Settings(
         books_root=str(tmp_path / "books"),
         magazines_root=str(tmp_path / "mags"),
@@ -58,8 +66,24 @@ def test_owner_queue_and_poll_completed_organizes(tmp_path):
         sabnzbd_api_key="sab",
         nzbfinder_api_token="tok",
     )
-    sab = SABClient("http://downloader.sl", "sab", transport=httpx.MockTransport(sab_handler))
-    nzb = NZBFinderClient("https://nzbfinder.example", "tok", transport=httpx.MockTransport(lambda r: httpx.Response(200, json={})))
+    sab = SABClient(
+        "http://downloader.sl",
+        "sab",
+        transport=httpx.MockTransport(
+            _sab_accepts_addfile(
+                "SABnzbd_nzo_1",
+                history_slots=[
+                    {
+                        "nzo_id": "SABnzbd_nzo_1",
+                        "status": "Completed",
+                        "storage": str(complete),
+                        "name": complete.name,
+                    }
+                ],
+            )
+        ),
+    )
+    nzb = NZBFinderClient("https://nzbfinder.example", "tok", transport=_nzb_transport())
     db = Database(tmp_path / "librarian.db")
     job = enqueue_indexer_item(
         db,
@@ -94,28 +118,6 @@ def test_music_request_keeps_kind_through_complete(tmp_path):
     (complete / "01 Hooked on a Feeling.flac").write_bytes(b"flac")
     sab_storage = "/downloads/downloads/VA-Guardians.Of.The.Galaxy.Awesome.Mix.Vol.1-202"
 
-    def sab_handler(request: httpx.Request) -> httpx.Response:
-        params = dict(request.url.params)
-        if params.get("mode") == "addurl":
-            return httpx.Response(200, json={"nzo_ids": ["SABnzbd_nzo_mix"]})
-        if params.get("mode") == "queue":
-            return httpx.Response(200, json={"queue": {"slots": []}})
-        return httpx.Response(
-            200,
-            json={
-                "history": {
-                    "slots": [
-                        {
-                            "nzo_id": "SABnzbd_nzo_mix",
-                            "status": "Completed",
-                            "storage": sab_storage,
-                            "name": complete.name,
-                        }
-                    ]
-                }
-            },
-        )
-
     settings = Settings(
         books_root=str(tmp_path / "books"),
         magazines_root=str(tmp_path / "mags"),
@@ -127,10 +129,24 @@ def test_music_request_keeps_kind_through_complete(tmp_path):
         sabnzbd_api_key="sab",
         nzbfinder_api_token="tok",
     )
-    sab = SABClient("http://downloader.sl", "sab", transport=httpx.MockTransport(sab_handler))
-    nzb = NZBFinderClient(
-        "https://nzbfinder.example", "tok", transport=httpx.MockTransport(lambda r: httpx.Response(200, json={}))
+    sab = SABClient(
+        "http://downloader.sl",
+        "sab",
+        transport=httpx.MockTransport(
+            _sab_accepts_addfile(
+                "SABnzbd_nzo_mix",
+                history_slots=[
+                    {
+                        "nzo_id": "SABnzbd_nzo_mix",
+                        "status": "Completed",
+                        "storage": sab_storage,
+                        "name": complete.name,
+                    }
+                ],
+            )
+        ),
     )
+    nzb = NZBFinderClient("https://nzbfinder.example", "tok", transport=_nzb_transport())
     db = Database(tmp_path / "librarian.db")
     job = enqueue_indexer_item(
         db,
@@ -170,31 +186,19 @@ def _sab_settings(tmp_path):
 
 
 def _history_handler(nzo_id, *, status, storage="", name="", fail_message=""):
-    def handler(request: httpx.Request) -> httpx.Response:
-        params = dict(request.url.params)
-        if params.get("mode") == "addurl":
-            return httpx.Response(200, json={"nzo_ids": [nzo_id]})
-        if params.get("mode") == "queue":
-            return httpx.Response(200, json={"queue": {"slots": []}})
-        return httpx.Response(
-            200,
-            json={
-                "history": {
-                    "slots": [
-                        {
-                            "nzo_id": nzo_id,
-                            "status": status,
-                            "storage": storage,
-                            "name": name,
-                            "fail_message": fail_message,
-                            "bytes": 1234,
-                        }
-                    ]
-                }
-            },
-        )
-
-    return handler
+    return _sab_accepts_addfile(
+        nzo_id,
+        history_slots=[
+            {
+                "nzo_id": nzo_id,
+                "status": status,
+                "storage": storage,
+                "name": name,
+                "fail_message": fail_message,
+                "bytes": 1234,
+            }
+        ],
+    )
 
 
 def test_history_fail_message_marks_job_failed(tmp_path):
@@ -211,9 +215,7 @@ def test_history_fail_message_marks_job_failed(tmp_path):
             )
         ),
     )
-    nzb = NZBFinderClient(
-        "https://nzbfinder.example", "tok", transport=httpx.MockTransport(lambda r: httpx.Response(200, json={}))
-    )
+    nzb = NZBFinderClient("https://nzbfinder.example", "tok", transport=_nzb_transport())
     db = Database(tmp_path / "librarian.db")
     job = enqueue_indexer_item(
         db,
@@ -256,9 +258,7 @@ def test_unpack_stuck_archives_are_not_organized(tmp_path):
             )
         ),
     )
-    nzb = NZBFinderClient(
-        "https://nzbfinder.example", "tok", transport=httpx.MockTransport(lambda r: httpx.Response(200, json={}))
-    )
+    nzb = NZBFinderClient("https://nzbfinder.example", "tok", transport=_nzb_transport())
     db = Database(tmp_path / "librarian.db")
     job = enqueue_indexer_item(
         db,
@@ -299,9 +299,7 @@ def test_requested_title_survives_usenet_nzo_name(tmp_path):
             )
         ),
     )
-    nzb = NZBFinderClient(
-        "https://nzbfinder.example", "tok", transport=httpx.MockTransport(lambda r: httpx.Response(200, json={}))
-    )
+    nzb = NZBFinderClient("https://nzbfinder.example", "tok", transport=_nzb_transport())
     db = Database(tmp_path / "librarian.db")
     job = enqueue_indexer_item(
         db,
@@ -386,3 +384,71 @@ def test_request_persists_sought_selected_retrieved(tmp_path):
     assert payload["retrieved"]["details"]["guid"] == "g-dune"
     assert "api_token" not in str(payload)
     assert "tok" not in str(payload)
+
+
+def test_owner_prefers_addfile_over_stripped_url(tmp_path):
+    """Public hits strip api_token; Librarian must push NZB bytes, not addurl the bare link."""
+    seen = {"addfile": 0, "addurl": 0, "nzbname": ""}
+
+    def nzb_handler(request: httpx.Request) -> httpx.Response:
+        if "/api/v2/download" in str(request.url):
+            return httpx.Response(
+                200,
+                content=NZB_XML,
+                headers={"content-type": "application/x-nzb"},
+            )
+        return httpx.Response(200, json={})
+
+    def sab_handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST":
+            seen["addfile"] += 1
+            # Multipart form field nzbname=
+            body = request.content or b""
+            if b'name="nzbname"' in body:
+                start = body.find(b'name="nzbname"')
+                chunk = body[start : start + 200]
+                # value follows headers + blank line
+                parts = chunk.split(b"\r\n\r\n", 1)
+                if len(parts) == 2:
+                    seen["nzbname"] = parts[1].split(b"\r\n")[0].decode()
+            return httpx.Response(200, json={"nzo_ids": ["SABnzbd_nzo_push"]})
+        params = dict(request.url.params)
+        if params.get("mode") == "addurl":
+            seen["addurl"] += 1
+            return httpx.Response(200, json={"nzo_ids": ["SABnzbd_nzo_url"]})
+        if params.get("mode") == "queue":
+            return httpx.Response(200, json={"queue": {"slots": []}})
+        return httpx.Response(200, json={"history": {"slots": []}})
+
+    settings = Settings(sabnzbd_api_key="sab", nzbfinder_api_token="tok")
+    sab = SABClient("http://downloader.sl", "sab", transport=httpx.MockTransport(sab_handler))
+    nzb = NZBFinderClient("https://nzbfinder.example", "tok", transport=httpx.MockTransport(nzb_handler))
+    db = Database(tmp_path / "librarian.db")
+    job = enqueue_indexer_item(
+        db,
+        settings,
+        item={
+            "title": "NFL",  # Find query / sought title — must NOT become SAB nzbname
+            "q": "NFL",
+            "kind": "book",
+            "sought": {"q": "NFL", "kind": "book", "title": "NFL"},
+            "selected": {
+                "guid": "g-saga",
+                "title": "NFL.Week.01.DEN.KC.1080p",
+                "download_url": "https://nzbfinder.example/api/v1/getnzb?id=g-saga.nzb",
+                "kind": "book",
+            },
+            "guid": "g-saga",
+            "download_url": "https://nzbfinder.example/api/v1/getnzb?id=g-saga.nzb",
+        },
+        requested_by="owner-1",
+        role="owner",
+        sab=sab,
+        nzb=nzb,
+    )
+    assert job["nzo_id"] == "SABnzbd_nzo_push"
+    assert job["title"] == "NFL"  # catalog/sought title stays for shelving
+    assert seen["addfile"] == 1
+    assert seen["addurl"] == 0
+    assert seen["nzbname"] == "NFL.Week.01.DEN.KC.1080p"
+

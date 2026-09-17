@@ -105,6 +105,50 @@ def test_download_zips_album_when_multiple_files(tmp_path, monkeypatch):
     assert opened.content == b"one"
 
 
+def test_stream_serves_single_album_track_and_refuses_non_audio(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    assert client.get("/api/works/missing/stream", params={"file": "x"}).status_code == 401
+    _login(client)
+    db = Database(tmp_path / "librarian.db")
+    folder = tmp_path / "incoming" / "Mix"
+    folder.mkdir(parents=True)
+    one = folder / "01-a.flac"
+    two = folder / "02-b.mp3"
+    note = folder / "liner.pdf"
+    one.write_bytes(b"one")
+    two.write_bytes(b"two")
+    note.write_bytes(b"%PDF")
+    work = db.upsert_work(
+        {
+            "kind": "music",
+            "title": "Awesome Mix Vol. 2",
+            "music_state": "incoming",
+            "folder_path": str(folder),
+        }
+    )
+    row_one = db.add_file({"work_id": work["id"], "path": str(one), "filename": one.name, "kind": "music"})
+    row_two = db.add_file({"work_id": work["id"], "path": str(two), "filename": two.name, "kind": "music"})
+    row_note = db.add_file({"work_id": work["id"], "path": str(note), "filename": note.name, "kind": "music"})
+    first = client.get(f"/api/works/{work['id']}/stream", params={"file": row_one["id"]})
+    assert first.status_code == 200
+    assert first.content == b"one"
+    assert first.headers.get("content-type", "").startswith("audio/")
+    assert "inline" in (first.headers.get("content-disposition") or "")
+    second = client.get(f"/api/works/{work['id']}/stream", params={"file": row_two["id"]})
+    assert second.status_code == 200
+    assert second.content == b"two"
+    refused = client.get(f"/api/works/{work['id']}/stream", params={"file": row_note["id"]})
+    assert refused.status_code == 422
+    assert "streamable audio" in refused.json()["detail"]
+    missing = client.get(f"/api/works/{work['id']}/stream", params={"file": "nope"})
+    assert missing.status_code == 404
+    # Per-file download still works; album zip is separate from stream.
+    attachment = client.get(f"/api/works/{work['id']}/download", params={"file": row_two["id"]})
+    assert attachment.status_code == 200
+    assert attachment.content == b"two"
+    assert "attachment" in (attachment.headers.get("content-disposition") or "")
+
+
 def test_reader_can_download(tmp_path, monkeypatch):
     client = _client(tmp_path, monkeypatch)
     _login(client)
@@ -245,3 +289,79 @@ def test_stale_epub_path_does_not_enable_read(tmp_path, monkeypatch):
     assert by_name["Ghost.azw3"]["on_disk"] is True
     inline = client.get(f"/api/works/{work['id']}/download", params={"inline": 1})
     assert inline.status_code == 422
+
+
+def test_multi_pdf_magazine_opens_any_volume_by_file_id(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    _login(client)
+    db = Database(tmp_path / "librarian.db")
+    folder = tmp_path / "magazines" / "Archive Historical"
+    folder.mkdir(parents=True)
+    vol1 = folder / "The Hacker Digest - Volume 01.pdf"
+    vol2 = folder / "The Hacker Digest - Volume 02.pdf"
+    vol1.write_bytes(b"%PDF-vol1")
+    vol2.write_bytes(b"%PDF-vol2")
+    work = db.upsert_work(
+        {
+            "kind": "magazine",
+            "title": "Archive Historical",
+            "folder_path": str(folder),
+        }
+    )
+    one = db.add_file({"work_id": work["id"], "path": str(vol1), "filename": vol1.name, "kind": "magazine"})
+    two = db.add_file({"work_id": work["id"], "path": str(vol2), "filename": vol2.name, "kind": "magazine"})
+    detail = client.get(f"/api/works/{work['id']}")
+    body = detail.json()
+    assert body["can_read"] is True
+    reading = [row for row in body["files"] if row.get("reading_room")]
+    assert {row["filename"] for row in reading} == {vol1.name, vol2.name}
+
+    primary = client.get(f"/api/works/{work['id']}/download", params={"inline": 1})
+    assert primary.status_code == 200
+    assert primary.content == b"%PDF-vol1"
+
+    second = client.get(
+        f"/api/works/{work['id']}/download",
+        params={"inline": 1, "file": two["id"]},
+    )
+    assert second.status_code == 200
+    assert second.content == b"%PDF-vol2"
+    assert second.headers.get("content-type", "").startswith("application/pdf")
+    assert "inline" in (second.headers.get("content-disposition") or "")
+
+    attachment = client.get(f"/api/works/{work['id']}/download", params={"file": one["id"]})
+    assert attachment.status_code == 200
+    assert attachment.content == b"%PDF-vol1"
+    assert "attachment" in (attachment.headers.get("content-disposition") or "")
+
+    missing = client.get(
+        f"/api/works/{work['id']}/download",
+        params={"inline": 1, "file": "no-such-file"},
+    )
+    assert missing.status_code == 404
+
+
+def test_inline_file_id_never_serves_kindle(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    _login(client)
+    db = Database(tmp_path / "librarian.db")
+    folder = tmp_path / "books" / "Author" / "Mixed"
+    folder.mkdir(parents=True)
+    azw3 = folder / "Title.azw3"
+    epub = folder / "Title.epub"
+    azw3.write_bytes(b"AZW3-bytes")
+    epub.write_bytes(b"PK\x03\x04epub")
+    work = db.upsert_work(
+        {"kind": "book", "title": "Title", "author": "Author", "folder_path": str(folder)}
+    )
+    kindle = db.add_file({"work_id": work["id"], "path": str(azw3), "filename": azw3.name, "kind": "book"})
+    db.add_file({"work_id": work["id"], "path": str(epub), "filename": epub.name, "kind": "book"})
+    inline = client.get(
+        f"/api/works/{work['id']}/download",
+        params={"inline": 1, "file": kindle["id"]},
+    )
+    assert inline.status_code == 422
+    assert "readable EPUB" in inline.json()["detail"]
+    download = client.get(f"/api/works/{work['id']}/download", params={"file": kindle["id"]})
+    assert download.status_code == 200
+    assert download.content == b"AZW3-bytes"

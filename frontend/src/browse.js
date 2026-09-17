@@ -2,6 +2,9 @@
 
 const BROWSE_KINDS = ["book", "magazine", "comic", "audiobook", "music"];
 
+/** Facets that become meaningless when kind changes. */
+const KIND_SCOPED_KEYS = ["author", "letter", "series", "genre"];
+
 export function browseKinds() {
   return [...BROWSE_KINDS];
 }
@@ -21,7 +24,6 @@ export function browseHref(filters = {}) {
   if (series) params.set("series", series);
   if (shelf === "favorites") params.set("shelf", "favorites");
   if (sort && sort !== "author") params.set("sort", sort);
-  // Phase B: genre query key reserved once subjects land.
   if (genre) params.set("genre", genre);
   const qs = params.toString();
   return qs ? `/browse?${qs}` : "/browse";
@@ -44,6 +46,73 @@ export function browseFiltersFromSearchParams(params) {
     sort: ["author", "title", "updated"].includes(sort) ? sort : "author",
     genre: get("genre"),
   };
+}
+
+/**
+ * Merge a selected facet into the top-N chip list so deep-linked values
+ * that fall outside the popular set remain visible and clearable.
+ */
+export function mergeFacetSelection(rows, selected, { limit = 16 } = {}) {
+  const capped = Math.max(1, Math.min(Number(limit) || 16, 100));
+  const list = Array.isArray(rows)
+    ? rows
+        .filter((row) => row && String(row.name || "").trim())
+        .map((row) => ({
+          name: String(row.name).trim(),
+          count: row.count == null ? null : Number(row.count),
+        }))
+    : [];
+  const name = String(selected || "").trim();
+  if (!name) return list.slice(0, capped);
+
+  const idx = list.findIndex((row) => row.name.toLowerCase() === name.toLowerCase());
+  if (idx >= 0) {
+    const [row] = list.splice(idx, 1);
+    return [row, ...list].slice(0, capped);
+  }
+  return [{ name, count: null }, ...list].slice(0, capped);
+}
+
+/** Apply a chip patch; changing kind clears kind-scoped facets. */
+export function applyBrowseFilterPatch(current, patch = {}) {
+  const base = current && typeof current === "object" ? current : {};
+  const next = { ...base, ...patch };
+  if (Object.prototype.hasOwnProperty.call(patch, "kind") && String(patch.kind || "") !== String(base.kind || "")) {
+    for (const key of KIND_SCOPED_KEYS) {
+      next[key] = "";
+    }
+  }
+  return next;
+}
+
+export function browseHasActiveFilters(filters = {}) {
+  return Boolean(
+    filters.kind ||
+      filters.author ||
+      filters.letter ||
+      filters.series ||
+      filters.genre ||
+      filters.shelf,
+  );
+}
+
+/** Heading bits that match visible active filters (kind · author · series · genre · letter). */
+export function browseHeading(filters = {}) {
+  const bits = [];
+  if (filters.shelf === "favorites") bits.push("Favorites");
+  if (filters.kind) bits.push(filters.kind);
+  if (filters.author) bits.push(filters.author);
+  if (filters.series) bits.push(filters.series);
+  if (filters.genre) bits.push(filters.genre);
+  if (filters.letter) bits.push(`Letter ${filters.letter}`);
+  return bits.length ? bits.join(" · ") : "The stacks";
+}
+
+/** Object suitable for react-router setSearchParams (full replace). */
+export function browseParamsObject(filters = {}) {
+  const href = browseHref(filters);
+  const qs = href.includes("?") ? href.slice(href.indexOf("?") + 1) : "";
+  return qs ? Object.fromEntries(new URLSearchParams(qs)) : {};
 }
 
 export const BROWSE_LETTERS = [

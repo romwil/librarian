@@ -18,6 +18,8 @@ INLINE_TYPES = {
     ".ogg": "audio/ogg",
     ".opus": "audio/ogg",
     ".wav": "audio/wav",
+    ".aac": "audio/aac",
+    ".wma": "audio/x-ms-wma",
     ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
     ".png": "image/png",
@@ -25,6 +27,11 @@ INLINE_TYPES = {
     ".webp": "image/webp",
     ".txt": "text/plain",
 }
+
+# Mutagen-known audio containers safe for on-page HTML5 stream (never EPUB/PDF/zip).
+STREAMABLE_AUDIO_EXTS = frozenset(
+    {".mp3", ".m4a", ".m4b", ".flac", ".ogg", ".opus", ".wav", ".aac", ".wma"}
+)
 
 READING_TYPES = {
     ".epub": "application/epub+zip",
@@ -57,6 +64,11 @@ def is_inline_media(path: Path) -> bool:
     return path.suffix.lower() in INLINE_TYPES
 
 
+def is_streamable_audio(path: Path) -> bool:
+    """True when the path is a single audio file safe for household HTML5 playback."""
+    return path.suffix.lower() in STREAMABLE_AUDIO_EXTS
+
+
 def is_reading_file(path: Path) -> bool:
     return path.suffix.lower() in READING_TYPES
 
@@ -83,14 +95,19 @@ def existing_file_paths(rows: Iterable[dict]) -> list[Path]:
 
 
 def annotate_work_files(rows: Iterable[dict], on_disk: Sequence[Path]) -> list[dict]:
-    """Mark which catalog files exist and which one the Reading Room opens."""
-    reading = primary_reading_path(on_disk)
-    reading_key = None
-    if reading is not None:
+    """Mark which catalog files exist and which are Reading Room sources.
+
+    Every on-disk EPUB/CBZ/PDF is marked ``reading_room`` so multi-file magazines
+    can open any volume. ``primary_reading_path`` still picks the default Open.
+    """
+    reading_keys: set[Path] = set()
+    for path in on_disk:
+        if not is_reading_file(path):
+            continue
         try:
-            reading_key = reading.resolve()
+            reading_keys.add(path.resolve())
         except OSError:
-            reading_key = reading
+            reading_keys.add(path)
     out: list[dict] = []
     for row in rows:
         item = dict(row or {})
@@ -98,14 +115,27 @@ def annotate_work_files(rows: Iterable[dict], on_disk: Sequence[Path]) -> list[d
         exists = path.is_file()
         item["on_disk"] = exists
         room = False
-        if exists and reading_key is not None:
+        if exists and reading_keys:
             try:
-                room = path.resolve() == reading_key
+                room = path.resolve() in reading_keys
             except OSError:
-                room = path == reading
+                room = path in reading_keys
         item["reading_room"] = room
         out.append(item)
     return out
+
+
+def resolve_catalog_file(rows: Iterable[dict], file_id: str) -> Path | None:
+    """Return the on-disk path for a work file id, or None if missing/wrong work."""
+    wanted = str(file_id or "").strip()
+    if not wanted:
+        return None
+    for row in rows:
+        if str((row or {}).get("id") or "") != wanted:
+            continue
+        path = Path(str((row or {}).get("path") or ""))
+        return path if path.is_file() else None
+    return None
 
 
 def zip_files(paths: Sequence[Path]) -> Path:

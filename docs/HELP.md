@@ -36,7 +36,7 @@ Chrome stays Hall / Search / Favorites / You. Queue and Review are op links, not
 
 ## Search
 
-One box, owned media only. Hits are what the house already has. Cover click opens a **peek**; Open full page goes to the work. Peek, Open, Favorite — no Request and no downloader chips on Search.
+One box, owned media only. Hits are what the house already has. Cover click opens a **peek**; Open full page goes to the work. Peek, Open, Favorite — no Request and no downloader chips on Search. Typing or loading `/search?q=…` never talks to SABnzbd.
 
 Advanced fields morph with the kind chip (artist/album for music, series/issue for comics, and so on). Author, title, series, artist, album, and year offer **suggestions while you type** — shelves first, then an optional owner-refreshed cache under Settings. You can always type freeform; picking a suggestion just keeps labels tidy. ISBN and issue stay plain boxes.
 
@@ -48,6 +48,8 @@ When indexer hits look like parts of one release (`01of32`, `Part 2 of 10`, `CD1
 
 - Owner / op: **Request** queues SABnzbd (Librarian kinds are identified as before). Movies/TV also tell Radarr/Sonarr to expect the grab. XXX stays in SAB’s default folder.
 - Reader: **Request** files an “asked the house” slip. Nothing downloads until an owner or op confirms.
+
+Librarian downloads the NZB with the indexer API key, then pushes the file to SABnzbd (`addfile`). It does **not** ask SAB to fetch a `getnzb` / `download` URL — those links drop their token before they leave Find, so SAB would only see **Unauthorized** or **URL Fetching failed**. If Queue shows that kind of failure, delete the bad rows in SAB history and Request again after this build. Discover browse and typeahead never queue SAB; only an explicit Request (or Queue confirm of an Asked slip) does.
 
 ### Five job words
 
@@ -65,9 +67,21 @@ Queue cards for **Needs you** show a short reason and **Open Review** (deep-link
 
 **Finished** is reading progress (you finished the book). **Promote** is for incoming music only: move the album into the Plexamp library. Those two words are not job chips.
 
-## Review
+## Review / Bagging area
 
-Unexpected identify results (unknown, extra files, convert fail, collision) go to the **bag**. Happy-path ISBN books do not. Apply writes the layout; Skip marks the work resolved. **Collision:** the destination is already taken — Skip keeps the shelf copy and dismisses the slip; Apply will not overwrite (change identity or folder so the path is free, or Skip).
+A **slip** is a download (or Add-to-shelves dump) that identify/organize could not finish filing. Happy-path ISBN books do not stop here. Each slip shows what Librarian tried, what’s wrong, and what to do next.
+
+| What’s wrong | What to do |
+| --- | --- |
+| **Unpack stuck** | SABnzbd left rar/7z archives — extract or repair in SAB, then Apply once audio/book files appear, or **Skip** |
+| **No payload** | Folder empty or only junk (par2/nfo) — point Complete folder at readable media, or Skip |
+| **Missing folder** | Path not on disk for this container — fix **SAB complete root** in Settings so `/downloads` maps under `/data`, paste the real folder, or Skip |
+| **Identity / kind / extras / convert** | Fill or confirm the fields, then Apply |
+| **Collision** | Destination already taken — Skip keeps the shelf copy; Apply will not overwrite (change identity or folder first) |
+
+**About `…/complete/downloads/…`:** that path is normal when SAB’s complete root is `…/complete` and the job used a **downloads** category. It is not a doubled map by itself.
+
+**Apply** files a ticket once the folder has media Librarian can read. **Skip** dismisses the slip without shelving.
 
 ## Gaps
 

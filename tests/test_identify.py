@@ -623,3 +623,51 @@ def test_dest_layout_music_disc_folder_when_discnumber_tagged(tmp_path):
     assert dest.name == "05 - Hey You.flac"
     assert dest.parent.name == "Disc 2"
     assert dest.parent.parent.name == "The Wall"
+
+
+def test_identify_archives_only_is_unpack_stuck(tmp_path):
+    folder = tmp_path / "VA-Guardians.Mix"
+    folder.mkdir()
+    (folder / "mix.part1.rar").write_bytes(b"Rar!")
+    (folder / "mix.par2").write_bytes(b"par2")
+    result = identify_completed(
+        folder,
+        indexer_item={"title": "Awesome Mix Vol. 1", "kind": "music", "guid": "g-mix"},
+    )
+    assert result["auto_organize"] is False
+    assert result["identity"]["kind"] == "music"
+    assert result["identity"]["review_reason"] == "unpack_stuck"
+
+
+def test_diagnose_review_folder_explains_complete_downloads_and_archives(tmp_path):
+    from librarian.identify import diagnose_review_folder
+
+    root = tmp_path / "usenet" / "complete" / "downloads" / "VA-Guardians.Mix"
+    root.mkdir(parents=True)
+    (root / "a.part1.rar").write_bytes(b"Rar!")
+    (root / "a.par2").write_bytes(b"par2")
+    diagnosis = diagnose_review_folder(root, str(tmp_path / "usenet" / "complete"))
+    assert diagnosis["problem"] == "unpack_stuck"
+    assert diagnosis["archive_count"] == 1
+    assert "archive" in diagnosis["tried"].lower()
+    assert "complete/downloads" in diagnosis["path_note"]
+    assert diagnosis["suggested_folder"] is None
+
+
+def test_suggest_payload_folder_one_level_up(tmp_path):
+    from librarian.identify import suggest_payload_folder
+
+    album = tmp_path / "Awesome Mix"
+    album.mkdir()
+    (album / "01 Track.flac").write_bytes(b"flac")
+    empty = album / "CD1"
+    empty.mkdir()
+    assert suggest_payload_folder(empty) == album
+
+
+def test_diagnose_review_folder_missing_path(tmp_path):
+    from librarian.identify import diagnose_review_folder
+
+    missing = tmp_path / "gone"
+    diagnosis = diagnose_review_folder(missing, str(tmp_path))
+    assert diagnosis["problem"] == "missing_folder"

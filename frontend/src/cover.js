@@ -131,6 +131,9 @@ export function jobQueueDetail(job = {}) {
   const fail = String(job.error || "").trim();
   if (job.status === "asked") return "Asked slip";
   if (job.status === "failed" && fail) return [fail, nzo].filter(Boolean).join(" · ");
+  if (/grabbing|fetch nzb|wait\s+\d/i.test(sab)) {
+    return [`Fetching NZB · ${sab}`, nzo].filter(Boolean).join(" · ");
+  }
   if (sab) return [sab, nzo].filter(Boolean).join(" · ");
   const hint = String(fail || JOB_SAB_HINT[job.status] || "").trim();
   return [hint, nzo].filter(Boolean).join(" · ");

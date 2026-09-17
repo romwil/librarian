@@ -110,10 +110,12 @@ export default function WorkPeek({ work, onClose, onRequest }) {
   }
 
   async function request() {
+    // Hard rule: only Find / Discover / peek Request wired by the parent may enqueue.
+    // Never fall back to api.requestItem — Search and bare peeks must not touch SAB.
+    if (!onRequest) return;
     setError("");
     try {
-      const send = onRequest || api.requestItem;
-      const result = await send({
+      const result = await onRequest({
         title: catalog.title,
         guid: catalog.guid,
         kind: catalog.kind,
@@ -281,11 +283,11 @@ export default function WorkPeek({ work, onClose, onRequest }) {
                       </button>
                     ) : null}
                   </>
-                ) : (
+                ) : onRequest ? (
                   <button type="button" className="cta compact" onClick={request} disabled={Boolean(jobStatus)}>
                     {jobChipLabel(jobStatus, role)}
                   </button>
-                )}
+                ) : null}
               </div>
               {href ? (
                 <p className="peek-full">
