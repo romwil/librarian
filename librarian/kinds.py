@@ -9,11 +9,15 @@ from __future__ import annotations
 from typing import Optional
 
 from librarian.indexers.kind_map import (
+    EXTRA_KINDS,
     KIND_AUDIOBOOK,
     KIND_BOOK,
     KIND_COMIC,
     KIND_MAGAZINE,
+    KIND_MOVIE,
     KIND_MUSIC,
+    KIND_TV,
+    KIND_XXX,
     REFUSED_FAMILIES,
     newznab_cat_to_kind,
 )
@@ -21,11 +25,6 @@ from librarian.indexers.kind_map import (
 READING_KINDS = (KIND_BOOK, KIND_MAGAZINE, KIND_COMIC)
 LISTENING_KINDS = (KIND_AUDIOBOOK, KIND_MUSIC)
 ALL_KINDS = READING_KINDS + LISTENING_KINDS
-
-KIND_MOVIE = "movie"
-KIND_TV = "tv"
-KIND_XXX = "xxx"
-EXTRA_KINDS = (KIND_MOVIE, KIND_TV, KIND_XXX)
 REQUEST_KINDS = ALL_KINDS + EXTRA_KINDS
 
 REFUSED_PREFIXES = REFUSED_FAMILIES
@@ -49,25 +48,17 @@ def _as_int(value: object) -> Optional[int]:
 def kind_from_newznab(category: object, *, extra: bool = False) -> Optional[str]:
     """Map a Newznab category id to a kind, or None if refused/unknown.
 
-    ``extra=True`` maps movie/TV/XXX families for Discover/Find. Identify still
-    uses kind_map, which refuses those families.
+    Display/Find/Request use the full map (including movie/TV/XXX). Hall
+    identify/organize pass ``extra=False`` so extras stay off the shelves.
     """
     cat = _as_int(category)
     if cat is None:
         return None
     mapped = newznab_cat_to_kind(cat)
-    if mapped:
-        return mapped
-    if not extra:
+    if mapped in EXTRA_KINDS and not extra:
         return None
-    family = (cat // 1000) * 1000
-    if family == NEWZNAB_MOVIE:
-        return KIND_MOVIE
-    if family == NEWZNAB_TV:
-        return KIND_TV
-    if family == NEWZNAB_XXX:
-        return KIND_XXX
-    return None
+    return mapped
+
 
 
 def kind_from_caps_cat(cat: object, *, parent: object = None, extra: bool = False) -> Optional[str]:

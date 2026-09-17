@@ -32,7 +32,7 @@ from librarian.db import Database
 from librarian.enrich import enrich_library, enrich_work
 from librarian.gaps import catalog_gaps, gap_cards
 from librarian.goodreads import MAX_GOODREADS_BYTES, import_goodreads_csv
-from librarian.indexers.discover import discover_beyond
+from librarian.indexers.discover import discover_beyond, resolve_feed_limit
 from librarian.indexers.hosts import search_beyond
 from librarian.indexers.sync import ping_nzbfinder, sync_nzbfinder
 from librarian.ingest import (
@@ -52,13 +52,19 @@ from librarian.invites import (
 from librarian.jobs import confirm_asked_job, enqueue_indexer_item, poll_active_jobs, poll_job
 from librarian.kinds import ALL_KINDS, EXTRA_KINDS
 from librarian.nzbfinder import NZBFinderError
-from librarian.organize import apply_review, organize_identified, promote_music
+from librarian.organize import (
+    apply_review,
+    organize_identified,
+    promote_music,
+    shelf_work_for_collision,
+)
 from librarian.poller import JobPoller
 from librarian.rate_limit import enforce_rate_limit
 from librarian.rss import create_rss_feed, poll_rss_feeds, public_rss_feed, update_rss_feed
 from librarian.sabnzbd import SABError
 from librarian.scan import scan_library
 from librarian.serve import (
+    annotate_work_files,
     can_read_work,
     existing_file_paths,
     is_inline_media,
@@ -67,12 +73,12 @@ from librarian.serve import (
     safe_filename,
     zip_files,
 )
-from librarian.suggest import SUGGEST_FIELDS, refresh_suggest_cache, suggest_items
 from librarian.sessions import (
     ensure_session_secret,
     has_usable_session_secret,
     is_dev_session_secret,
 )
+from librarian.suggest import SUGGEST_FIELDS, refresh_suggest_cache, suggest_items
 
 FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 
@@ -221,7 +227,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(application: FastAPI):
-        poller = JobPoller(db, lambda: load_merged_settings(root))
+        poller = JobPoller(db, lambda: load_merged_settings(root), data_dir=root)
         poller.start()
         application.state.poller = poller
         try:
@@ -437,6 +443,66 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             "can_request": user["role"] in ("owner", "op", "reader"),
         }
 
+    @app.get("/api/browse")
+    def browse(
+        request: Request,
+        kind: str = "",
+        author: str = "",
+        letter: str = "",
+        series: str = "",
+        genre: str = "",
+        shelf: str = "",
+        sort: str = "author",
+        offset: int = 0,
+        limit: int = 48,
+    ):
+        user = request.state.user
+        kind_key = kind if kind in ALL_KINDS else None
+        shelf_key = "favorites" if str(shelf or "").strip().lower() == "favorites" else None
+        page = db.browse_works(
+            kind=kind_key,
+            author=author.strip() or None,
+            letter=letter.strip() or None,
+            series=series.strip() or None,
+            genre=genre.strip() or None,
+            shelf=shelf_key,
+            user_id=user["id"] if shelf_key else None,
+            sort=sort,
+            offset=offset,
+            limit=limit,
+        )
+        return {
+            "items": public_works(page["items"]),
+            "total": page["total"],
+            "offset": page["offset"],
+            "limit": page["limit"],
+            "sort": page["sort"],
+            "filters": {
+                "kind": kind_key or "",
+                "author": author.strip(),
+                "letter": letter.strip().upper(),
+                "series": series.strip(),
+                "genre": genre.strip(),
+                "shelf": shelf_key or "",
+            },
+        }
+
+    @app.get("/api/browse/facets")
+    def browse_facets_endpoint(
+        request: Request,
+        kind: str = "",
+        shelf: str = "",
+    ):
+        user = request.state.user
+        kind_key = kind if kind in ALL_KINDS else None
+        shelf_key = "favorites" if str(shelf or "").strip().lower() == "favorites" else None
+        facets = db.browse_facets(
+            kind=kind_key,
+            shelf=shelf_key,
+            user_id=user["id"] if shelf_key else None,
+        )
+        return facets
+
     @app.get("/api/suggest")
     def suggest(
         request: Request,
@@ -453,12 +519,14 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         return {"field": key, "kind": kind, "q": q, "items": items}
 
     @app.get("/api/discover")
-    def discover(request: Request, kind: str = "", cat: str = ""):
+    def discover(request: Request, kind: str = "", cat: str = "", limit: int = 0):
         cfg = settings()
-        items, categories, beyond_error = discover_beyond(cfg, kind=kind, cat=cat)
+        feed_limit = resolve_feed_limit(cat=cat, limit=limit if limit else None)
+        items, categories, beyond_error = discover_beyond(cfg, kind=kind, cat=cat, limit=feed_limit)
         return {
             "kind": kind,
             "cat": cat,
+            "limit": feed_limit,
             "items": items,
             "categories": categories,
             "beyond_error": beyond_error,
@@ -483,7 +551,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         progress = db.get_progress(request.state.user["id"], work_id)
         return {
             "work": work,
-            "files": files,
+            "files": annotate_work_files(files, on_disk),
             "file_count": len(on_disk),
             "can_open": bool(on_disk),
             "can_download": bool(on_disk),
@@ -560,7 +628,9 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         on_disk = _files_on_disk(work_id)
         if not on_disk:
             raise HTTPException(status_code=404, detail="File missing")
-        src = primary_reading_path(on_disk) or on_disk[0]
+        reading = primary_reading_path(on_disk)
+        # Convert / Download may use Kindle; Reading Room never does.
+        src = reading or on_disk[0]
         if format:
             fmt = format.lower()
             if f".{fmt}" != src.suffix.lower():
@@ -574,14 +644,33 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
                 except RuntimeError as error:
                     raise HTTPException(status_code=502, detail=str(error)) from error
                 return FileResponse(dest, filename=dest.name)
-        want_inline = bool(inline) and is_inline_media(src)
-        if want_inline or len(on_disk) == 1:
-            disposition = "inline" if want_inline else "attachment"
+        if inline:
+            # Hard rule: Reading Room gets ONLY EPUB/CBZ/PDF — never Kindle, never a zip.
+            if reading is not None:
+                return FileResponse(
+                    reading,
+                    filename=reading.name,
+                    media_type=media_type_for(reading),
+                    content_disposition_type="inline",
+                )
+            inline_src = next((path for path in on_disk if is_inline_media(path)), None)
+            if inline_src is not None:
+                return FileResponse(
+                    inline_src,
+                    filename=inline_src.name,
+                    media_type=media_type_for(inline_src),
+                    content_disposition_type="inline",
+                )
+            raise HTTPException(
+                status_code=422,
+                detail="This volume isn’t a readable EPUB, CBZ, or PDF.",
+            )
+        if len(on_disk) == 1:
             return FileResponse(
                 src,
                 filename=src.name,
                 media_type=media_type_for(src),
-                content_disposition_type=disposition,
+                content_disposition_type="attachment",
             )
         zip_path = zip_files(on_disk)
         zip_name = f"{safe_filename(str(work.get('title') or 'volume'))}.zip"
@@ -648,7 +737,19 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             poll_active_jobs(db, cfg)
         except SABError:
             pass
-        return {"jobs": db.list_jobs()}
+        jobs = db.list_jobs()
+        for job in jobs:
+            if job.get("status") != "review":
+                continue
+            work_id = str(job.get("work_id") or "").strip()
+            if not work_id:
+                continue
+            work = db.get_work(work_id)
+            if not work:
+                continue
+            job["review_reason"] = work.get("review_reason")
+            job["review_state"] = work.get("review_state")
+        return {"jobs": jobs}
 
     @app.post("/api/queue/{job_id}/poll")
     def queue_poll(job_id: str, request: Request):
@@ -683,6 +784,8 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             work["storage_path"] = storage or None
             if not work.get("folder_path") and storage:
                 work["folder_path"] = storage
+            shelf = shelf_work_for_collision(db, work)
+            work["shelf_work"] = shelf
         return {"works": works}
 
     @app.post("/api/review/{work_id}/apply")

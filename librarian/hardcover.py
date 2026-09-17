@@ -25,6 +25,7 @@ query EditionByIsbn13($isbn: String!) {
       release_year
       cached_image
       cached_featured_series
+      cached_tags
     }
   }
 }
@@ -43,6 +44,7 @@ query EditionByIsbn10($isbn: String!) {
       release_year
       cached_image
       cached_featured_series
+      cached_tags
     }
   }
 }
@@ -175,6 +177,7 @@ def enrichment_from_edition(edition: Mapping[str, Any]) -> Dict[str, Any]:
     year = _year_from(book.get("release_year")) or _year_from(edition.get("release_date"))
     cover = _image_url(book.get("cached_image")) or _image_url(edition.get("cached_image"))
     series = _series_fields(book.get("cached_featured_series"))
+    genre = _genre_from_cached_tags(book.get("cached_tags") or edition.get("cached_tags"))
     out: Dict[str, Any] = {
         "title": str(book.get("title") or edition.get("title") or "").strip(),
         "description": description,
@@ -183,6 +186,8 @@ def enrichment_from_edition(edition: Mapping[str, Any]) -> Dict[str, Any]:
     }
     if year:
         out["year"] = year
+    if genre:
+        out["genre"] = genre
     out.update(series)
     return out
 
@@ -192,6 +197,7 @@ def enrichment_from_search_hit(hit: Mapping[str, Any]) -> Dict[str, Any]:
     year = _year_from(hit.get("release_year") or hit.get("release_date"))
     cover = _image_url(hit.get("image") or hit.get("cached_image") or hit.get("cover"))
     series = _series_fields(hit.get("featured_series") or hit.get("cached_featured_series") or {})
+    genre = _genre_from_cached_tags(hit.get("cached_tags") or hit.get("tags"))
     out: Dict[str, Any] = {
         "title": str(hit.get("title") or "").strip(),
         "description": description,
@@ -200,8 +206,31 @@ def enrichment_from_search_hit(hit: Mapping[str, Any]) -> Dict[str, Any]:
     }
     if year:
         out["year"] = year
+    if genre:
+        out["genre"] = genre
     out.update(series)
     return out
+
+
+def _genre_from_cached_tags(raw: Any) -> str:
+    from librarian.metadata import join_subjects
+
+    if not raw:
+        return ""
+    subjects: list[Any] = []
+    if isinstance(raw, dict):
+        for key in ("Genre", "genre", "Genres", "genres"):
+            bucket = raw.get(key)
+            if isinstance(bucket, list) and bucket:
+                subjects.extend(bucket)
+                break
+        if not subjects:
+            for bucket in raw.values():
+                if isinstance(bucket, list):
+                    subjects.extend(bucket)
+    elif isinstance(raw, list):
+        subjects = list(raw)
+    return join_subjects(subjects)
 
 
 def _unwrap_hit(hit: Any) -> Dict[str, Any]:

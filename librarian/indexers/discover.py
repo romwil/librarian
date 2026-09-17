@@ -26,6 +26,8 @@ from librarian.rss import RSSError, parse_rss_xml
 CAPS_TTL_SECONDS = 300.0
 LATEST_TTL_SECONDS = 90.0
 PER_FEED_LIMIT = 12
+CATEGORY_BROWSE_LIMIT = 50
+MAX_LIMIT = 100
 MAX_FEEDS = 16
 TRENDING_KEYS = ("trending", "latest", "recent")
 
@@ -61,6 +63,19 @@ def _cache_put(key: str, value: Any) -> Any:
 
 def clear_discover_cache() -> None:
     _CACHE.clear()
+
+
+def resolve_feed_limit(*, cat: str = "", limit: Optional[int] = None) -> int:
+    """Rails use a short slice; a selected category browses more items."""
+    if limit is not None:
+        try:
+            n = int(limit)
+        except (TypeError, ValueError):
+            n = CATEGORY_BROWSE_LIMIT if _text(cat) else PER_FEED_LIMIT
+        return max(1, min(n, MAX_LIMIT))
+    if _text(cat):
+        return CATEGORY_BROWSE_LIMIT
+    return PER_FEED_LIMIT
 
 
 def _searching_available(block: Any) -> bool:
@@ -173,19 +188,24 @@ def _wanted_feeds(feeds: List[Dict[str, Any]], *, kind: str = "", cat: str = "")
 
 
 def _retag_kind(item: Dict[str, Any], *, extra: bool, feed_kind: str) -> Optional[str]:
+    """Map item cats to a kind; extras feeds stay movie/tv/xxx, not book."""
     kind = kind_from_newznab(item.get("category"), extra=extra)
-    if kind:
-        return kind
-    if extra:
+    if not kind and extra:
         for cat in item.get("cats") or []:
             kind = kind_from_newznab(cat, extra=True)
             if kind:
-                return kind
+                break
+    if feed_kind in EXTRA_KINDS and extra:
+        # A Movies/TV/XXX feed wins over a library kind (book/music) from a
+        # stray secondary category — display the honest media kind.
+        if kind in EXTRA_KINDS:
+            return kind
+        return feed_kind
+    if kind:
+        return kind
     if feed_kind in ALL_KINDS and not kind_from_newznab(item.get("category"), extra=True):
         if kind_from_newznab(item.get("category"), extra=False) is None:
             return feed_kind
-    if feed_kind in EXTRA_KINDS and extra:
-        return feed_kind
     return kind
 
 
@@ -220,22 +240,29 @@ def public_discover_hit(
     return selected
 
 
-def fetch_feed_items(client: NZBFinderClient, feed: Dict[str, Any], *, path: str = "search") -> List[Dict[str, Any]]:
+def fetch_feed_items(
+    client: NZBFinderClient,
+    feed: Dict[str, Any],
+    *,
+    path: str = "search",
+    limit: int = PER_FEED_LIMIT,
+) -> List[Dict[str, Any]]:
     cat = _text(feed.get("id"))
+    feed_limit = resolve_feed_limit(limit=limit)
     try:
-        items = client.latest(cat, limit=PER_FEED_LIMIT, path=path)
+        items = client.latest(cat, limit=feed_limit, path=path)
         if items:
-            return items
+            return items[:feed_limit]
     except NZBFinderError:
         items = []
     try:
-        raw = client.fetch_rss_category(cat, limit=PER_FEED_LIMIT)
-        return parse_rss_xml(raw)
+        raw = client.fetch_rss_category(cat, limit=feed_limit)
+        return parse_rss_xml(raw)[:feed_limit]
     except (NZBFinderError, RSSError):
         if items:
-            return items
+            return items[:feed_limit]
         raise
-    return items
+    return items[:feed_limit]
 
 
 def _host_caps(client: NZBFinderClient, host_id: str) -> Any:
@@ -252,12 +279,14 @@ def _host_feed_items(
     feed: Dict[str, Any],
     *,
     path: str,
+    limit: int = PER_FEED_LIMIT,
 ) -> List[Dict[str, Any]]:
-    key = f"latest:{host_id}:{feed.get('id')}"
+    feed_limit = resolve_feed_limit(limit=limit)
+    key = f"latest:{host_id}:{feed.get('id')}:{feed_limit}"
     cached = _cache_get(key, LATEST_TTL_SECONDS)
     if cached is not None:
         return cached
-    return _cache_put(key, fetch_feed_items(client, feed, path=path))
+    return _cache_put(key, fetch_feed_items(client, feed, path=path, limit=feed_limit))
 
 
 def merge_category_lists(*groups: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -278,11 +307,13 @@ def discover_beyond(
     *,
     kind: str = "",
     cat: str = "",
+    limit: Optional[int] = None,
     extra: Optional[bool] = None,
     transport: Optional[Any] = None,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], Optional[str]]:
     """Fetch allowed category feeds from every enabled host. Fail closed per host."""
     allow_extra = bool(settings.show_extra_categories) if extra is None else bool(extra)
+    feed_limit = resolve_feed_limit(cat=cat, limit=limit)
     hosts = enabled_hosts(settings)
     if not hosts:
         return [], [], "NZBFinder api_token is not configured"
@@ -309,7 +340,7 @@ def discover_beyond(
             path = trending_path(caps)
             for feed in wanted:
                 try:
-                    rows = _host_feed_items(client, host["id"], feed, path=path)
+                    rows = _host_feed_items(client, host["id"], feed, path=path, limit=feed_limit)
                 except (NZBFinderError, RSSError) as error:
                     errors.append(str(error))
                     continue

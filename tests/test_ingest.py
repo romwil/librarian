@@ -234,3 +234,54 @@ def test_watch_root_forbidden_smart_map_inbox(tmp_path):
     assert watch_root_forbidden(Path("/data/media/YouTubeDownload"), settings)
     assert watch_root_forbidden(Path("/data/media/YouTubeLibrary"), settings)
     assert not watch_root_forbidden(tmp_path / "drop", settings)
+
+
+def test_ingest_refuses_library_root_with_honest_copy(tmp_path, monkeypatch):
+    settings = _settings(tmp_path)
+    books = Path(settings.books_root)
+    books.mkdir(parents=True)
+    (books / "readme.txt").write_text("shelf", encoding="utf-8")
+    save_settings(tmp_path, settings)
+    client = _client(tmp_path, monkeypatch)
+    _login(client)
+    refused = client.post("/api/ingest", json={"path": str(books)})
+    assert refused.status_code == 400
+    detail = refused.json()["detail"].lower()
+    assert "library root" in detail
+    assert "scan" in detail
+
+
+def test_ingest_empty_dump_fails_with_reason(tmp_path, monkeypatch):
+    monkeypatch.setenv("LIBRARIAN_FS_ROOT", str(tmp_path))
+    settings = _settings(tmp_path)
+    empty = tmp_path / "inbox" / "books"
+    empty.mkdir(parents=True)
+    db = Database(tmp_path / "librarian.db")
+    job = enqueue_ingest(db, settings, path=empty, requested_by="owner-1")
+    assert job["status"] == "failed"
+    assert "nothing to identify" in str(job["error"]).lower()
+    assert job["title"] == "books"
+
+
+def test_ingest_allows_dump_under_complete_root(tmp_path, monkeypatch):
+    monkeypatch.setenv("LIBRARIAN_FS_ROOT", str(tmp_path))
+    complete = tmp_path / "usenet" / "complete"
+    dump = complete / "Le Guin - The Left Hand of Darkness 9780441478125.epub"
+    dump.parent.mkdir(parents=True)
+    dump.write_bytes(b"epub")
+    settings = _settings(tmp_path, complete_root=str(complete))
+    db = Database(tmp_path / "librarian.db")
+    job = enqueue_ingest(db, settings, path=dump, requested_by="owner-1")
+    assert job["status"] == "organized"
+
+
+def test_ingest_refuses_complete_root_itself(tmp_path, monkeypatch):
+    complete = tmp_path / "usenet" / "complete"
+    complete.mkdir(parents=True)
+    settings = _settings(tmp_path, complete_root=str(complete))
+    save_settings(tmp_path, settings)
+    client = _client(tmp_path, monkeypatch)
+    _login(client)
+    refused = client.post("/api/ingest", json={"path": str(complete)})
+    assert refused.status_code == 400
+    assert "complete folder" in refused.json()["detail"].lower()

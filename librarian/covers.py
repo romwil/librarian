@@ -114,3 +114,51 @@ def fetch_cover(
         if extracted:
             return extracted
     return None
+
+
+AUDIO_COVER_SUFFIXES = {".flac", ".mp3", ".m4a", ".m4b", ".ogg", ".opus", ".aac", ".mp4"}
+CAA_RELEASE_GROUP = "https://coverartarchive.org/release-group/{mbid}/front-500"
+CAA_RELEASE = "https://coverartarchive.org/release/{mbid}/front-500"
+
+
+def ensure_music_cover(
+    folder: Path,
+    *,
+    mbid: str = "",
+    transport: Optional[httpx.BaseTransport] = None,
+    client: Optional[httpx.Client] = None,
+) -> Optional[Path]:
+    """Write cover.jpg from embedded front art or Cover Art Archive. Never invents art."""
+    directory = Path(folder)
+    if not directory.is_dir():
+        return None
+    dest = directory / "cover.jpg"
+    if dest.is_file() and dest.stat().st_size >= MIN_IMAGE_BYTES:
+        return dest
+
+    from librarian.metadata import extract_embedded_cover_bytes
+
+    try:
+        audio_files = sorted(
+            path
+            for path in directory.rglob("*")
+            if path.is_file() and path.suffix.lower() in AUDIO_COVER_SUFFIXES
+        )
+    except OSError:
+        audio_files = []
+    for audio in audio_files:
+        data = extract_embedded_cover_bytes(audio)
+        if data and looks_like_image(data):
+            dest.write_bytes(data)
+            return dest
+
+    group_id = str(mbid or "").strip()
+    if group_id:
+        for template in (CAA_RELEASE_GROUP, CAA_RELEASE):
+            data = download_image(
+                template.format(mbid=group_id), transport=transport, client=client
+            )
+            if data:
+                dest.write_bytes(data)
+                return dest
+    return None

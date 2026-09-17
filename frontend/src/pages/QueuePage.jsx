@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../api.js";
-import { jobHouseholdLabel, jobQueueDetail } from "../cover.js";
-import { emptyQueueCopy, humanError } from "../copy.js";
+import { jobChipTone, jobHouseholdLabel, jobNeedsYouReason, jobQueueDetail } from "../cover.js";
+import { emptyQueueCopy, humanError, queueNeedsYouHelp } from "../copy.js";
 
 export default function QueuePage() {
   const [jobs, setJobs] = useState([]);
@@ -16,22 +17,38 @@ export default function QueuePage() {
 
   useEffect(reload, []);
 
+  const hasNeedsYou = jobs.some((job) => job.status === "review");
+
   return (
     <div className="admin-room">
       <p className="kicker">Exceptions</p>
       <h1>Queue</h1>
       <p className="lede">Living chips live on Find cards. This list is for asked slips, SAB jobs, and volumes being filed.</p>
+      {hasNeedsYou ? <p className="empty-note" data-testid="queue-needs-you-help">{queueNeedsYouHelp()}</p> : null}
       {error ? <p className="alert">{error}</p> : null}
       {!jobs.length ? <p className="empty-note">{emptyQueueCopy()}</p> : null}
       <ul className="stack">
         {jobs.map((job) => {
           const household = jobHouseholdLabel(job.status) || job.status;
+          const tone = jobChipTone(job.status);
+          const needsYou = jobNeedsYouReason(job);
           const raw = jobQueueDetail(job);
+          const reviewTo = job.work_id ? `/review?work=${encodeURIComponent(job.work_id)}` : "/review";
           return (
-            <li key={job.id} className="card">
+            <li key={job.id} className="card" data-testid="queue-job" data-status={job.status || ""}>
               <strong>{job.title || job.nzo_id || job.id}</strong>
-              <p data-testid="queue-household">{household}</p>
-              {raw ? <p className="muted">{raw}</p> : null}
+              <p className="chip-row" data-testid="queue-household">
+                <span className={["live-chip", tone].filter(Boolean).join(" ")}>{household}</span>
+              </p>
+              {needsYou ? <p data-testid="queue-needs-you-reason">{needsYou}</p> : null}
+              {raw ? <p className="muted" data-testid="queue-ops-detail">{raw}</p> : null}
+              {job.status === "review" ? (
+                <div className="cta-row">
+                  <Link className="cta" to={reviewTo} data-testid="queue-open-review">
+                    Open Review
+                  </Link>
+                </div>
+              ) : null}
               {job.status === "asked" ? (
                 <button
                   type="button"

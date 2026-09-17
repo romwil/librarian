@@ -30,11 +30,11 @@ Calibre’s *features* are an advisory roadmap. Visual bar: Projectionist Explor
 
 | Kind | Setting | Default | Layout |
 | --- | --- | --- | --- |
-| book | `books_root` | `/data/media/books` | `{Author}/{Title}/{Title}.epub` + opf/cover |
-| magazine | `magazines_root` | `/data/media/magazines` | `{Title}/{Year-or-Volume}/` |
-| comic | `comics_root` | `/data/media/comics` | `{Series}/{Issue-or-Year}/{Series} #{Issue}.cbz` + ComicInfo + cover |
-| audiobook | `audiobooks_root` | `/data/media/audiobooks` | `{Author}/{Title}/` (m4b preferred) |
-| music staging | `incoming_music_root` | `/data/media/incoming-music` | `{Artist}/{Album}/` — original filename, or `{NN} - {Title}{ext}` only with a trustworthy track tag |
+| book | `books_root` | `/data/media/library/books` | `{Author}/{Title}/{Title}.epub` + opf/cover |
+| magazine | `magazines_root` | `/data/media/library/magazines` | `{Title}/{Year-or-Volume}/` |
+| comic | `comics_root` | `/data/media/library/comics` | `{Series}/{Issue-or-Year}/{Series} #{Issue}.cbz` + ComicInfo + cover |
+| audiobook | `audiobooks_root` | `/data/media/library/audiobooks` | `{Author}/{Title}/` (m4b preferred) |
+| music staging | `incoming_music_root` | `/data/media/library/incoming-music` | `{Artist}/{Album}/` — original filename, or `{NN} - {Title}{ext}` only with a trustworthy track tag |
 | music Plexamp | `music_root` | `/data/media/music` | same after Promote |
 
 Shared Automat `/data/media` roots and the music filename rule: [automat-media-contract.md](../../automat-media-contract.md). Do not extract a shared Python package.

@@ -8,11 +8,23 @@ def test_settings_json_wins_over_env(tmp_path, monkeypatch):
 
     save_settings(
         tmp_path,
-        Settings(sabnzbd_url="http://downloader.sl", books_root="/data/media/books"),
+        Settings(sabnzbd_url="http://downloader.sl", books_root="/data/media/library/books"),
     )
     settings = load_merged_settings(tmp_path)
     assert settings.sabnzbd_url == "http://downloader.sl"
-    assert settings.books_root == "/data/media/books"
+    assert settings.books_root == "/data/media/library/books"
+
+
+def test_default_media_roots_under_library():
+    from librarian.config import Settings
+
+    settings = Settings()
+    assert settings.books_root == "/data/media/library/books"
+    assert settings.magazines_root == "/data/media/library/magazines"
+    assert settings.comics_root == "/data/media/library/comics"
+    assert settings.audiobooks_root == "/data/media/library/audiobooks"
+    assert settings.incoming_music_root == "/data/media/library/incoming-music"
+    assert settings.music_root == "/data/media/music"
 
 
 def test_blank_secret_takes_env(tmp_path, monkeypatch):

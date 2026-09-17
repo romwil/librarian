@@ -3,9 +3,12 @@ import { describe, it } from "node:test";
 import {
   buildFindSearchParams,
   composeSearchQuery,
+  discoverCatFromSearchParams,
+  discoverHref,
   findFieldsFromSearchParams,
   findHref,
   gapFindFields,
+  groupDiscoverCategories,
   pruneFieldsForKind,
   requestBodyFromHit,
   searchHref,
@@ -36,8 +39,50 @@ describe("Find query builder", () => {
     assert.equal(shouldShowDiscover({}), true);
     assert.equal(shouldShowDiscover({ q: "dune" }), false);
     assert.equal(shouldShowDiscover({ kind: "comic" }), true);
+    assert.equal(discoverHref({ kind: "comic" }), "/find?kind=comic");
+    assert.equal(discoverHref({}), "/find");
     assert.equal(findKindOptions(false).some(([value]) => value === "movie"), false);
     assert.equal(findKindOptions(true).some(([value]) => value === "movie"), true);
+  });
+
+  it("builds Discover category browse hrefs from cat id", () => {
+    assert.equal(discoverHref({ discover: "7030" }), "/find?discover=7030");
+    assert.equal(discoverHref({ discover: "7030", kind: "comic" }), "/find?discover=7030&kind=comic");
+    assert.equal(discoverHref({ cat: "7010", kind: "magazine" }), "/find?discover=7010&kind=magazine");
+    assert.equal(discoverHref({}), "/find");
+    assert.equal(discoverCatFromSearchParams(new URLSearchParams("discover=7030&kind=comic")), "7030");
+    assert.equal(discoverCatFromSearchParams(new URLSearchParams("cat=7010")), "7010");
+    assert.equal(discoverCatFromSearchParams(new URLSearchParams("kind=comic")), "");
+  });
+
+  it("groups Discover chips under Newznab parents and dedupes ids", () => {
+    const groups = groupDiscoverCategories([
+      { id: "7030", name: "Comics", kind: "comic", parent_id: "7000", parent_name: "Books" },
+      { id: "7010", name: "Magazines", kind: "magazine", parent_id: "7000", parent_name: "Books" },
+      { id: "2040", name: "HD", kind: "movie", parent_id: "2000", parent_name: "Movies" },
+      { id: "2010", name: "Foreign", kind: "movie", parent_id: "2000", parent_name: "Movies" },
+      { id: "3030", name: "Audiobook", kind: "audiobook", parent_id: "3000", parent_name: "Audio" },
+      { id: "7030", name: "Comics", kind: "comic", parent_id: "7000", parent_name: "Books" },
+      { id: "7060", name: "Foreign", kind: "book", parent_id: "7000", parent_name: "Books" },
+    ]);
+    assert.deepEqual(
+      groups.map((g) => [g.id, g.name, g.categories.map((c) => c.id)]),
+      [
+        ["2000", "Movies", ["2040", "2010"]],
+        ["3000", "Audio", ["3030"]],
+        ["7000", "Books", ["7030", "7010", "7060"]],
+      ],
+    );
+  });
+
+  it("still groups quieter library feeds when extras are off", () => {
+    const groups = groupDiscoverCategories([
+      { id: "3010", name: "MP3", kind: "music", parent_id: "3000", parent_name: "Audio" },
+      { id: "7020", name: "Ebook", kind: "book", parent_id: "7000", parent_name: "Books" },
+    ]);
+    assert.equal(groups.length, 2);
+    assert.equal(groups[0].name, "Audio");
+    assert.equal(groups[1].name, "Books");
   });
 
   it("composes a beyond query from split fields", () => {

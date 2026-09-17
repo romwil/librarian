@@ -131,9 +131,29 @@ Do **not** stop Projectionist (`:8788`) or Smart Map (`:8790`) while deploying L
 
 ---
 
+## Media roots (`library/*`)
+
+Librarian-owned trees live under `/data/media/library/{books,magazines,comics,audiobooks,incoming-music}`.
+**Music stays** at `/data/media/music` (shared with Smart Map / Plexamp). Never put audiobooks in `music`.
+
+Create empty siblings + dry-run Calibre blend before cutover:
+
+```bash
+./scripts/create-library-roots.sh /data/media
+python -m librarian.migrate_library --media-root /data/media --migrate-books
+# review collisions, then --apply for copy-then-cutover
+```
+
+Full operator steps (rebind Settings, Scan, archive old `books/`): [LIBRARY_MIGRATE.md](LIBRARY_MIGRATE.md).
+
+### Audiobooks on Plex / Plexamp
+
+Plex has no Audiobooks library type. Create a **Music** library named e.g. “Audiobooks” whose folder is `audiobooks_root`, enable track progress / long-form, and keep that folder out of the Plexamp music library (`music_root`).
+
 ## See also
 
 - [DOCKER.md](../DOCKER.md) — volumes, PUID/PGID, extra_hosts
 - [SECURITY.md](../SECURITY.md) — handshake, proxy trust, cookies
 - [automat-media-contract.md](../automat-media-contract.md) — shared `/data/media` roots with Smart Map
+- [LIBRARY_MIGRATE.md](LIBRARY_MIGRATE.md) — library/* cutover + Calibre blend
 - [AGENTS.md](../../AGENTS.md) — boot / test / LAN table

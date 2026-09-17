@@ -84,6 +84,76 @@ export function shouldShowDiscover(fields = {}) {
   return !hasFindQuery(fields);
 }
 
+export function discoverCatFromSearchParams(params) {
+  const read = (key) => {
+    if (!params) return "";
+    if (typeof params.get === "function") return trimmed(params.get(key));
+    return trimmed(params[key]);
+  };
+  return read("discover") || read("cat") || "";
+}
+
+export function discoverHref({ discover = "", cat = "", kind = "" } = {}) {
+  const id = trimmed(discover || cat);
+  const params = new URLSearchParams();
+  if (id) params.set("discover", id);
+  const kindValue = trimmed(kind);
+  if (kindValue) params.set("kind", kindValue);
+  const qs = params.toString();
+  return qs ? `/find?${qs}` : "/find";
+}
+
+/** Newznab top-level parents (approx) for Discover chip grouping. */
+export const NEWZNAB_PARENT_ORDER = ["1000", "2000", "3000", "4000", "5000", "6000", "7000"];
+
+export const NEWZNAB_PARENT_LABELS = {
+  "1000": "Console",
+  "2000": "Movies",
+  "3000": "Audio",
+  "4000": "PC",
+  "5000": "TV",
+  "6000": "XXX",
+  "7000": "Books",
+};
+
+function newznabFamilyId(catId) {
+  const n = Number(String(catId || "").trim());
+  if (!Number.isFinite(n) || n < 1000) return "";
+  return String(Math.floor(n / 1000) * 1000);
+}
+
+/** Group leaf Discover categories under their Newznab parent. Dedupes by id. */
+export function groupDiscoverCategories(categories = []) {
+  const seen = new Set();
+  const buckets = new Map();
+  for (const row of categories || []) {
+    if (!row || row.id == null || row.id === "") continue;
+    const id = String(row.id);
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const parentId = trimmed(row.parent_id) || newznabFamilyId(id) || "other";
+    const parentName =
+      trimmed(row.parent_name) || NEWZNAB_PARENT_LABELS[parentId] || (parentId === "other" ? "Other" : parentId);
+    if (!buckets.has(parentId)) {
+      buckets.set(parentId, { id: parentId, name: parentName, categories: [] });
+    }
+    buckets.get(parentId).categories.push({ ...row, id });
+  }
+  const ordered = [];
+  for (const key of NEWZNAB_PARENT_ORDER) {
+    if (buckets.has(key)) ordered.push(buckets.get(key));
+  }
+  for (const [key, group] of buckets) {
+    if (!NEWZNAB_PARENT_ORDER.includes(key)) ordered.push(group);
+  }
+  return ordered;
+}
+
+
+/** Per-feed rail slice vs category browse grid (mirrors backend defaults). */
+export const DISCOVER_RAIL_LIMIT = 12;
+export const DISCOVER_BROWSE_LIMIT = 50;
+
 export function findKindOptions(showExtra = false) {
   return showExtra ? [...KINDS, ...EXTRA_FIND_KINDS] : KINDS;
 }
@@ -198,6 +268,7 @@ export function selectedFromHit(item = {}) {
     isbn: item.isbn || "",
     book_title: item.book_title || "",
     kind: item.kind || "",
+    pub_date: item.pub_date || "",
     host_id: item.host_id || "",
     host_name: item.host_name || "",
     tmdb_id: item.tmdb_id,

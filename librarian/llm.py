@@ -23,6 +23,13 @@ Never invent an ISBN. Only copy an ISBN that appears in the evidence.
 If you are unsure of kind, use unknown.
 """
 
+POLISH_PROMPT = """Rewrite the provided book description into a short readable blurb (2-3 sentences).
+Use ONLY facts present in the source text. Never invent an ISBN, series index, year, or genre.
+Do not add plot points that are not in the source. Reply with the blurb only.
+"""
+
+_MAX_BLURB_CHARS = 480
+
 
 class LLMError(RuntimeError):
     """LLM HTTP or payload failure."""
@@ -156,6 +163,54 @@ class LLMClient:
             raise LLMError("LLM returned non-JSON") from error
         message = ((payload or {}).get("choices") or [{}])[0].get("message") or {}
         return parse_json_object(str(message.get("content") or ""))
+
+    def polish_blurb(self, *, title: str, author: str, source_text: str) -> str:
+        """Short blurb from existing catalog text only. Fail closed; never invents ISBN."""
+        text = re.sub(r"\s+", " ", str(source_text or "")).strip()
+        if not text or not self.base_url or not self.api_key:
+            return ""
+        url = f"{self.base_url}/chat/completions"
+        user = (
+            f"Title: {str(title or '').strip()}\n"
+            f"Author: {str(author or '').strip()}\n\n"
+            f"Source description:\n{text}"
+        )
+        try:
+            response = self._client.post(
+                url,
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": self.model,
+                    "temperature": 0.2,
+                    "messages": [
+                        {"role": "system", "content": POLISH_PROMPT},
+                        {"role": "user", "content": user},
+                    ],
+                },
+            )
+        except httpx.HTTPError as error:
+            raise LLMError(str(error)) from error
+        if response.status_code >= 400:
+            raise LLMError(f"LLM HTTP {response.status_code}")
+        try:
+            payload = response.json()
+        except ValueError as error:
+            raise LLMError("LLM returned non-JSON") from error
+        message = ((payload or {}).get("choices") or [{}])[0].get("message") or {}
+        return _clean_blurb(str(message.get("content") or ""))
+
+
+def _clean_blurb(text: str) -> str:
+    cleaned = re.sub(r"\s+", " ", str(text or "")).strip().strip('"').strip("'")
+    if not cleaned:
+        return ""
+    cleaned = re.sub(r"^(blurb|summary|description)\s*:\s*", "", cleaned, flags=re.I).strip()
+    if len(cleaned) > _MAX_BLURB_CHARS:
+        cleaned = cleaned[: _MAX_BLURB_CHARS - 1].rstrip() + "…"
+    return cleaned
 
 
 def client_from_settings(

@@ -22,7 +22,6 @@ from librarian.identify import (
     inspect_complete_folder,
     list_payload_files,
 )
-from librarian.jobs import MISSING_FOLDER_ERROR, NO_PAYLOAD_ERROR, UNPACK_STUCK_ERROR
 from librarian.organize import organize_identified
 
 logger = logging.getLogger(__name__)
@@ -30,6 +29,15 @@ logger = logging.getLogger(__name__)
 INGEST_SOURCES = frozenset({"ingest", "watch"})
 AUDIO_EXTENSIONS = {".m4b", ".mp3", ".flac", ".m4a", ".ogg", ".opus"}
 SKIP_NAMES = {name.lower() for name in JUNK_NAMES}
+
+LIBRARY_ROOT_REFUSAL = "That's already a library root — Scan the shelves instead."
+LIBRARY_SHELF_REFUSAL = "That path is already on a library shelf. Scan the shelves instead."
+COMPLETE_ROOT_REFUSAL = (
+    "That's the downloader complete folder. Point at a finished dump inside it, not the folder itself."
+)
+INGEST_NO_PAYLOAD_ERROR = "Nothing to identify in here — empty or only junk files."
+INGEST_UNPACK_STUCK_ERROR = "Unpack did not finish; archives are still in this folder."
+INGEST_MISSING_FOLDER_ERROR = "That path is gone — it moved or was removed."
 
 
 class PathDenied(ValueError):
@@ -238,8 +246,9 @@ def enqueue_ingest(
     existing = db.get_job_by_storage_path(stored)
     if existing is not None:
         return existing
-    if _under_media_root(target, settings):
-        raise PathDenied("That path is already on a library shelf. Scan the shelves instead.")
+    refusal = protected_path_refusal(target, settings)
+    if refusal:
+        raise PathDenied(refusal)
     job = db.create_job(
         {
             "status": "identifying",
@@ -255,14 +264,44 @@ def enqueue_ingest(
     return job
 
 
-def _under_media_root(path: Path, settings: Settings) -> bool:
-    for root in media_root_paths(settings):
-        try:
-            path.resolve().relative_to(root.resolve() if root.exists() else root)
-            return True
-        except (ValueError, OSError):
+def _resolve_maybe(path: Path) -> Path:
+    try:
+        return path.resolve() if path.exists() else path
+    except OSError:
+        return path
+
+
+def protected_path_refusal(path: Path, settings: Settings) -> Optional[str]:
+    """Household English when ingest would hit a Settings root or SAB complete folder."""
+    try:
+        resolved = path.resolve()
+    except OSError:
+        resolved = path
+    for field in MEDIA_ROOT_FIELDS:
+        raw = str(getattr(settings, field) or "").strip()
+        if not raw:
             continue
-    return False
+        root = _resolve_maybe(Path(raw))
+        if resolved == root:
+            return LIBRARY_ROOT_REFUSAL
+        try:
+            resolved.relative_to(root)
+            return LIBRARY_SHELF_REFUSAL
+        except ValueError:
+            continue
+    complete = str(settings.complete_root or "").strip()
+    if complete:
+        root = _resolve_maybe(Path(complete))
+        if resolved == root:
+            return COMPLETE_ROOT_REFUSAL
+        try:
+            resolved.relative_to(root)
+        except ValueError:
+            pass
+        else:
+            # Finished dumps under complete are allowed; only the root itself is refused.
+            pass
+    return None
 
 
 def progress_ingest_job(db: Database, settings: Settings, job_id: str) -> Dict[str, Any]:
@@ -276,17 +315,17 @@ def progress_ingest_job(db: Database, settings: Settings, job_id: str) -> Dict[s
     raw = str(job.get("storage_path") or (job.get("payload") or {}).get("path") or "")
     folder = Path(raw)
     if not folder.exists():
-        updated = db.update_job(job_id, status="failed", error=MISSING_FOLDER_ERROR + f" ({folder})")
+        updated = db.update_job(job_id, status="failed", error=f"{INGEST_MISSING_FOLDER_ERROR} ({folder})")
         return updated or job
     inspection = inspect_complete_folder(folder)
     problem = inspection.get("problem")
     if problem:
         if problem == UNPACK_STUCK:
-            reason = UNPACK_STUCK_ERROR
+            reason = INGEST_UNPACK_STUCK_ERROR
         elif problem == "missing_folder":
-            reason = MISSING_FOLDER_ERROR + f" ({folder})"
+            reason = f"{INGEST_MISSING_FOLDER_ERROR} ({folder})"
         else:
-            reason = NO_PAYLOAD_ERROR
+            reason = INGEST_NO_PAYLOAD_ERROR
         updated = db.update_job(job_id, status="failed", error=str(reason))
         return updated or job
     organized = organize_identified(db, settings, folder=folder, move_source=True)

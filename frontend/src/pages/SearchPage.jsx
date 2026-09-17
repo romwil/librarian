@@ -3,10 +3,11 @@ import { Link, useOutletContext, useSearchParams } from "react-router-dom";
 import { api } from "../api.js";
 import QueryForm from "../components/QueryForm.jsx";
 import Rail from "../components/Rail.jsx";
-import { FIND_BEYOND_CTA, FIELD_HELP, humanError, searchStatusLine } from "../copy.js";
+import { DISCOVER_CTA, FIND_BEYOND_CTA, FIELD_HELP, humanError, searchStatusLine } from "../copy.js";
 import {
   buildFindSearchParams,
   composeSearchQuery,
+  discoverHref,
   emptyFindFields,
   findFieldsFromSearchParams,
   findHref,
@@ -91,6 +92,7 @@ export default function SearchPage() {
     phase,
   });
   const showFindCta = Boolean(composed) && phase !== "idle" && phase !== "local";
+  const showDiscoverDoor = !composed;
   const ctaFields = fieldsFromState(draft.trim() || fields.q, kind, advanced);
 
   return (
@@ -114,6 +116,13 @@ export default function SearchPage() {
       {error ? (
         <p className="callout" role="status" data-testid="search-error">
           {error}
+        </p>
+      ) : null}
+      {showDiscoverDoor ? (
+        <p className="find-cta-block">
+          <Link className="muted" to={discoverHref({ kind })} data-testid="discover-door">
+            {DISCOVER_CTA}
+          </Link>
         </p>
       ) : null}
       {showFindCta ? (

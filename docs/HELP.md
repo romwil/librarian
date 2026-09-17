@@ -8,15 +8,15 @@ Librarian is a private **reading room** for the books, magazines, comics, audiob
 
 **Search** looks only at those local shelves. The hero on The Hall and `/search` never hunt the rest of the world.
 
-**Find** is not a top-level tab. After Search results (including no hits), **Find beyond the shelves** opens Find with your query (and kind, plus the kind-appropriate fields — author/title/ISBN, series/issue, or artist/album) already filled in, then looks outside the house. With no query, Find shows **Discover**: trending indexer category feeds for the kind chip you picked. Owners and ops Request from Find; that is where queue chips and gap **confirm** live. Extra Newznab hosts join NZBFinder on Find only — Search stays on the local stacks.
+**Find** is not a top-level tab. After Search results (including no hits), **Find beyond the shelves** opens Find with your query (and kind, plus the kind-appropriate fields — author/title/ISBN, series/issue, or artist/album) already filled in, then looks outside the house. With no query, Find shows **Discover**: trending indexer category feeds for the kind chip you picked — empty Find is Discover, and **What's trending** on The Hall or idle Search opens it without searching first. Owners and ops Request from Find; that is where queue chips and gap **confirm** live. Extra Newznab hosts join NZBFinder on Find only — Search stays on the local stacks.
 
 ## Find extras
 
 Find can query more than NZBFinder. Extra Newznab v2 hosts live in Settings; results show a muted host name. If one host fails, the others still appear.
 
-**Discover** reads each host’s capabilities category tree (comics `7030`, magazines `7010`, other books `70xx`, audiobooks `3030`, music `3010`/`3040`/`3999`, and real subcats the indexer lists). Latest-in-category uses category RSS (`/rss/category?id=` on NZBFinder, then classic `/rss?t=` or `/api?t=search&cat=`). NZBFinder v2 search needs a real query, so Discover does not call empty-query v2. It does not scrape HTML and does not auto-queue SAB.
+**Discover** reads each host’s capabilities category tree (comics `7030`, magazines `7010`, other books `70xx`, audiobooks `3030`, music `3010`/`3040`/`3999`, and real subcats the indexer lists). Latest-in-category uses category RSS (`/rss/category?id=` on NZBFinder, then classic `/rss?t=` or `/api?t=search&cat=`). NZBFinder v2 search needs a real query, so Discover does not call empty-query v2. It does not scrape HTML and does not auto-queue SAB. Each rail is a short latest slice — click the category title or **See all** to open that feed (`/find?discover=7030`) and browse many more results with the same Request / peek chips.
 
-Owners can turn on **Show categories** in Settings. Then Discover and fielded Find also offer Movies, TV, and XXX if the indexer lists those feeds. Those extra kinds never become Hall works.
+Owners can turn on **Show categories** in Settings. Then Discover and fielded Find also offer Movies, TV, and XXX if the indexer lists those feeds — Discover chips group under Newznab parents (Movies, Audio, TV, XXX, Books, …). Those extra kinds never become Hall works.
 
 - **Movies:** Request queues SABnzbd in the Radarr-watched category (default `movies`), then tells Radarr to expect the title (`POST /api/v3/movie` with search off). When SAB finishes, Radarr gets `DownloadedMoviesScan`.
 - **TV:** same with Sonarr (`series` add, then `DownloadedEpisodesScan`). SAB category default `tv`.
@@ -42,7 +42,9 @@ Advanced fields morph with the kind chip (artist/album for music, series/issue f
 
 ## Find
 
-From Search, **Find beyond the shelves** is the next step. Find talks to NZBFinder, takes Request, and shows living job chips. With no query, **Discover** shows trending feeds for the kind chip. The boxes change with the kind chip: books and magazines take title, author, and ISBN; comics take series and issue; music takes artist, album, and year; audiobooks take author and title. The same typeahead as Search helps fill those fields. Request remembers what you sought and which result you picked — the downloader’s filename is not the library title.
+From Search, **Find beyond the shelves** is the next step after a local query. Empty Find is **Discover** (trending feeds for the kind chip) — open it from Hall or idle Search via **What's trending**, without typing a search first. Find talks to NZBFinder, takes Request, and shows living job chips. The boxes change with the kind chip: books and magazines take title, author, and ISBN; comics take series and issue; music takes artist, album, and year; audiobooks take author and title. The same typeahead as Search helps fill those fields. Request remembers what you sought and which result you picked — the downloader’s filename is not the library title.
+
+When indexer hits look like parts of one release (`01of32`, `Part 2 of 10`, `CD1`, `[01/44]`), Find **groups** them into a multipart card with a part grid, completeness (`3/32 · incomplete`), and multiselect. **Request** on the set still creates one job per NZB — select all available, clear, or ask for a single part. Incomplete sets say so; the indexer may simply not list every part.
 
 - Owner / op: **Request** queues SABnzbd (Librarian kinds are identified as before). Movies/TV also tell Radarr/Sonarr to expect the grab. XXX stays in SAB’s default folder.
 - Reader: **Request** files an “asked the house” slip. Nothing downloads until an owner or op confirms.
@@ -56,16 +58,16 @@ Find and Queue speak household English. The downloader’s raw line (Verifying, 
 | **Asked** | A reader asked; it is not on the way yet |
 | **On the way** | Fetching and filing — you can wait |
 | **Arrived** | It landed on the shelves |
-| **Needs you** | Something unexpected; an owner or op should open Review |
+| **Needs you** | Something unexpected; open **Review** (unknown identify, extra files, convert fail, collision, missing *arr*, and so on). The files are here — the house isn’t sure how to shelve them. Not a Failed download. |
 | **Failed** | It did not land — missing files, a damaged archive, or unpack that never finished |
 
-The title on the job is the title you asked for on Find. SABnzbd’s Usenet filename stays ops-only on Queue.
+Queue cards for **Needs you** show a short reason and **Open Review** (deep-link when the job already has a work). The NZB id stays muted ops detail. The title on the job is the title you asked for on Find. SABnzbd’s Usenet filename stays ops-only on Queue.
 
-**Finished** is reading progress (you finished the book). **Promote** is for incoming music only: copy the album into the Plexamp library. Those two words are not job chips.
+**Finished** is reading progress (you finished the book). **Promote** is for incoming music only: move the album into the Plexamp library. Those two words are not job chips.
 
 ## Review
 
-Unexpected identify results (unknown, extra files, convert fail, collision) go to the **bag**. Happy-path ISBN books do not. Apply writes the layout; Skip marks the work resolved.
+Unexpected identify results (unknown, extra files, convert fail, collision) go to the **bag**. Happy-path ISBN books do not. Apply writes the layout; Skip marks the work resolved. **Collision:** the destination is already taken — Skip keeps the shelf copy and dismisses the slip; Apply will not overwrite (change identity or folder so the path is free, or Skip).
 
 ## Gaps
 
@@ -73,7 +75,9 @@ Cards on The Hall are the *missing* set — honest holes between what you alread
 
 ## Music and audiobooks
 
-Music organizes into Incoming, then **Promote** copies the album into the Plexamp library. Audiobooks never go there. Default publish target is a Plex Audiobooks library. Hide Finished on music — albums are not “read.” Shared Automat folder ownership and the Plex Music filename rule: [automat-media-contract.md](automat-media-contract.md).
+Music organizes into Incoming (`library/incoming-music`), then **Promote** moves the album into the Plexamp library at `/data/media/music`. Audiobooks never go there.
+
+Plex has **no** dedicated Audiobooks library type. Point a Plex **Music** library (named e.g. “Audiobooks”) at `audiobooks_root` (`/data/media/library/audiobooks`), enable store track progress / long-form, and use Plexamp speed + skip on that library. Folder layout is `{Author}/{Title}/`. Keep audiobooks out of the music library root. Optional Audiobookshelf remains a catalog match link when configured. Hide Finished on music — albums are not “read.” Shared Automat folder ownership and the Plex Music filename rule: [automat-media-contract.md](automat-media-contract.md). Library cutover from old flat `/data/media/books`: [ops/LIBRARY_MIGRATE.md](ops/LIBRARY_MIGRATE.md).
 
 ## Covers, convert, indexer ping
 
@@ -81,7 +85,7 @@ Organized folders get a real cover when we can fetch one (indexer, Open Library 
 
 ## Add to the shelves / Watch folder
 
-Owners and ops can **Add to the shelves** from Settings (and a quiet Hall control). Browse `/data` or paste a path the container can see — this is not a browser upload of a whole library. If identify is sure, Librarian **moves and renames** into the proper Settings root. If not, the volume waits in Review (**Needs you**). Empty or unreadable dumps **Failed**.
+Owners and ops can **Add to the shelves** from Settings (and a quiet Hall control). Browse `/data` or paste a path the container can see — this is not a browser upload of a whole library. Point at a **dump** (or a single file), not a Settings library root. If identify is sure, Librarian **moves and renames** into the proper Settings root. If not, the volume waits in Review (**Needs you**). Empty or unreadable dumps **Failed** with a reason (not just the folder name). A configured library root is refused — use **Scan the shelves** instead.
 
 **Scan the shelves** is different: it walks the library roots, updates the catalog, and never moves files.
 

@@ -18,7 +18,7 @@ Everyday path **now:** on-host build with `docker-run.sh` (same early Smart Map 
 | Container | Host (Automat) | Purpose |
 | --- | --- | --- |
 | `/config` | `/mnt/user/appdata/librarian/config` | `settings.json` (mode `0600`), `librarian.db` (WAL + shm), session secret |
-| `/data` | `/mnt/user/data` (`DATA_HOST`) | books / magazines / comics / audiobooks / incoming-music / music |
+| `/data` | `/mnt/user/data` (`DATA_HOST`) | `library/{books,magazines,comics,audiobooks,incoming-music}` + shared `music` |
 
 SQLite WAL needs `librarian.db`, `librarian.db-wal`, and `librarian.db-shm` on the same mount. Keep `/config` on the **cache pool**, not the array.
 

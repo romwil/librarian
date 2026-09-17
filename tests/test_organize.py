@@ -442,3 +442,45 @@ def test_organize_audiobook_tags_never_music_root(tmp_path):
     assert not dest.is_relative_to(Path(settings.incoming_music_root))
     assert result["work"]["kind"] == "audiobook"
 
+
+
+def test_organize_music_writes_cover_from_caa(tmp_path):
+    import httpx
+
+    settings = _settings(tmp_path)
+    folder = tmp_path / "complete" / "Miles Davis - Kind of Blue"
+    folder.mkdir(parents=True)
+    _flac_with_tags(
+        folder / "01 So What.flac",
+        {
+            "ALBUM": "Kind of Blue",
+            "ALBUMARTIST": "Miles Davis",
+            "TITLE": "So What",
+            "TRACKNUMBER": "1",
+            "MUSICBRAINZ_ALBUMID": "f5099ac0-b5c3-4d4a-b3b8-example0001",
+        },
+    )
+    jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 80
+
+    def handler(request):
+        return httpx.Response(200, content=jpeg, headers={"content-type": "image/jpeg"})
+
+    db = Database(tmp_path / "librarian.db")
+    result = organize_identified(
+        db,
+        settings,
+        folder=folder,
+        indexer_item={
+            "title": "Kind of Blue",
+            "author": "Miles Davis",
+            "kind": "music",
+            "category": 3010,
+            "name": folder.name,
+            "mbid": "f5099ac0-b5c3-4d4a-b3b8-example0001",
+        },
+        cover_transport=httpx.MockTransport(handler),
+    )
+    assert result["organized"] is True
+    cover = Path(result["work"]["cover_path"])
+    assert cover.name == "cover.jpg"
+    assert cover.read_bytes() == jpeg

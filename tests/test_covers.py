@@ -61,3 +61,51 @@ def test_fetch_cover_prefers_indexer_url(tmp_path):
     )
     assert cover == folder / "cover.jpg"
     assert captured[0] == "https://covers.example/saga.jpg"
+
+
+def test_ensure_music_cover_from_caa(tmp_path):
+    from librarian.covers import CAA_RELEASE_GROUP, ensure_music_cover
+
+    captured = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(str(request.url))
+        return httpx.Response(200, content=JPEG, headers={"content-type": "image/jpeg"})
+
+    folder = tmp_path / "album"
+    folder.mkdir()
+    (folder / "01.flac").write_bytes(b"fLaC")
+    mbid = "f5099ac0-b5c3-4d4a-b3b8-example0001"
+    cover = ensure_music_cover(
+        folder,
+        mbid=mbid,
+        transport=httpx.MockTransport(handler),
+    )
+    assert cover == folder / "cover.jpg"
+    assert cover.read_bytes() == JPEG
+    assert captured[0] == CAA_RELEASE_GROUP.format(mbid=mbid)
+
+
+def test_ensure_music_cover_from_embedded_flac_picture(tmp_path):
+    from librarian.covers import ensure_music_cover
+
+    folder = tmp_path / "album"
+    folder.mkdir()
+    # Minimal FLAC with a PICTURE block (type 6) carrying JPEG bytes.
+    mime = b"image/jpeg"
+    desc = b""
+    picture = (
+        (3).to_bytes(4, "big")  # front cover
+        + len(mime).to_bytes(4, "big")
+        + mime
+        + len(desc).to_bytes(4, "big")
+        + desc
+        + (0).to_bytes(4, "big") * 4  # width/height/depth/colors
+        + len(JPEG).to_bytes(4, "big")
+        + JPEG
+    )
+    header = bytes([0x80 | 6]) + len(picture).to_bytes(3, "big")
+    (folder / "track.flac").write_bytes(b"fLaC" + header + picture)
+    cover = ensure_music_cover(folder)
+    assert cover == folder / "cover.jpg"
+    assert cover.read_bytes() == JPEG

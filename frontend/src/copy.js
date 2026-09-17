@@ -70,7 +70,8 @@ export const FIELD_HELP = {
   household_name: "Shown quietly in the chrome. The Hall still says The Hall.",
   watch_root: "A drop folder under /data. New top-level files and folders are identified like Add to the shelves. Not a library root, and not SAB’s complete folder.",
   watch_enabled: "When on, Librarian checks the drop folder on the same interval as the downloader.",
-  ingest_path: "A folder or file under /data that this process can read. Not a browser upload of your whole library.",
+  ingest_path:
+    "A dump folder or file under /data — not a Settings library root. Library roots use Scan the shelves.",
   reviewKind: "Which shelf this item belongs on.",
   reviewTitle: "The name that will appear on the cover and in search.",
   reviewAuthor: "Author, artist, or magazine title as the byline.",
@@ -100,8 +101,11 @@ export const FIELD_HELP = {
 
 export const FIND_BEYOND_CTA = "Find beyond the shelves";
 
+/** Quiet door to empty Find (Discover) — Hall / idle Search, not a nav tab. */
+export const DISCOVER_CTA = "What's trending";
+
 export const ADD_TO_LIBRARY_LEDE =
-  "Point at a folder or file the house can see under /data. If Librarian is sure, it files the volume. If not, it waits in Review.";
+  "Point at a dump folder or file under /data — not a library root. If Librarian is sure, it files the volume. If not, it waits in Review. Empty dumps say why they Failed.";
 
 export const WATCH_FOLDER_LEDE =
   "A drop folder. New top-level files and folders are identified the same way. Not a library root, and not SAB’s complete folder.";
@@ -139,6 +143,10 @@ export function emptyReviewCopy() {
 
 export function emptyQueueCopy() {
   return "Nothing in flight. Living chips live on Find cards; this list is for asked slips, SAB jobs, and volumes being filed.";
+}
+
+export function queueNeedsYouHelp() {
+  return "Needs you means Review — the files are here; the house isn’t sure how to shelve them. Use Open Review.";
 }
 
 export function searchIdleHint(kind = "") {

@@ -64,7 +64,10 @@ def _patch_discover_client(monkeypatch, *, latest=None, caps=None):
 
     def fake_latest(self, cat, *, limit=25, path="search"):
         if latest:
-            return latest(self, cat)
+            try:
+                return latest(self, cat, limit=limit, path=path)
+            except TypeError:
+                return latest(self, cat)
         return []
 
     monkeypatch.setattr("librarian.nzbfinder.NZBFinderClient.latest", fake_latest)
@@ -127,6 +130,59 @@ def test_discover_comic_drops_tv_and_keeps_7030(tmp_path, monkeypatch):
     assert all(row["kind"] == "comic" for row in body["items"])
     assert "5000" not in {row["id"] for row in body["categories"]}
     assert "secret" not in json.dumps(body)
+    assert body["limit"] == 12
+
+
+def test_discover_category_browse_uses_higher_limit(tmp_path, monkeypatch):
+    from librarian.indexers.discover import (
+        CATEGORY_BROWSE_LIMIT,
+        PER_FEED_LIMIT,
+        resolve_feed_limit,
+    )
+
+    assert resolve_feed_limit() == PER_FEED_LIMIT
+    assert resolve_feed_limit(cat="7030") == CATEGORY_BROWSE_LIMIT
+    assert resolve_feed_limit(cat="7030", limit=80) == 80
+    assert resolve_feed_limit(limit=999) == 100
+
+    monkeypatch.setenv("NZBFINDER_API_TOKEN", "tok")
+    client = _client(tmp_path, monkeypatch, nzbfinder_api_token="tok")
+    _login(client)
+    seen = []
+
+    def latest(self, cat, *, limit=25, path="search"):
+        seen.append((str(cat), limit))
+        return [
+            {
+                **COMIC_HIT,
+                "guid": f"g-{i}",
+                "title": f"Saga {i:03d}",
+                "download_url": f"https://nzbfinder.example/api/v2/download?id=g-{i}.nzb&api_token=secret",
+            }
+            for i in range(limit)
+        ]
+
+    _patch_discover_client(monkeypatch, latest=latest)
+    rails = client.get("/api/discover", params={"kind": "comic"})
+    assert rails.status_code == 200
+    assert rails.json()["limit"] == PER_FEED_LIMIT
+    assert all(limit == PER_FEED_LIMIT for _, limit in seen if _ == "7030")
+
+    seen.clear()
+    browse = client.get("/api/discover", params={"kind": "comic", "cat": "7030"})
+    assert browse.status_code == 200
+    body = browse.json()
+    assert body["limit"] == CATEGORY_BROWSE_LIMIT
+    assert body["cat"] == "7030"
+    assert len(body["items"]) == CATEGORY_BROWSE_LIMIT
+    assert seen == [("7030", CATEGORY_BROWSE_LIMIT)]
+    assert "secret" not in json.dumps(body)
+
+    seen.clear()
+    capped = client.get("/api/discover", params={"cat": "7030", "limit": 30})
+    assert capped.status_code == 200
+    assert capped.json()["limit"] == 30
+    assert seen == [("7030", 30)]
 
 
 def test_discover_rss_category_happy_path_mocked(tmp_path, monkeypatch):
@@ -464,3 +520,38 @@ def test_mask_settings_hides_arr_keys():
     assert masked["sonarr_api_key"] == ""
     assert "radarr-secret" not in json.dumps(masked)
     assert "sonarr-secret" not in json.dumps(masked)
+
+
+def test_discover_movie_feed_keeps_movie_kind_despite_book_cat():
+    """Extras feed kind wins over a stray library category on the item."""
+    host = {"id": "nzbfinder", "name": "NZBFinder"}
+    feed = {"id": "2010", "name": "Foreign", "kind": "movie", "parent_id": "2000", "parent_name": "Movies"}
+    hit = {
+        "title": "Solo.A.Star.Wars.Story.2018",
+        "guid": "g-solo",
+        "category": 7060,
+        "cats": [7060, 2010],
+        "download_url": "https://example.test/solo.nzb",
+    }
+    row = public_discover_hit(hit, host=host, feed=feed, extra=True)
+    assert row is not None
+    assert row["kind"] == "movie"
+
+
+def test_discover_tv_feed_kind_not_book():
+    host = {"id": "nzbfinder", "name": "NZBFinder"}
+    feed = {"id": "5020", "name": "Foreign", "kind": "tv"}
+    hit = {"title": "Show.S01E01", "guid": "g-show", "category": 7020, "download_url": "https://example.test/s.nzb"}
+    row = public_discover_hit(hit, host=host, feed=feed, extra=True)
+    assert row is not None
+    assert row["kind"] == "tv"
+
+
+def test_category_feeds_include_parent_for_grouping():
+    rows = category_feeds(CAPS, extra=True)
+    foreign = {row["id"]: row for row in rows}
+    assert foreign["2010"]["parent_id"] == "2000"
+    assert foreign["2010"]["parent_name"] == "Movies"
+    assert foreign["7060"]["parent_id"] == "7000"
+    assert foreign["7060"]["kind"] == "book"
+    assert foreign["2010"]["kind"] == "movie"

@@ -41,6 +41,9 @@ export default function AppChrome({ user, features, reviewCount = 0, children })
           <NavLink to="/" end className={({ isActive }) => (isActive ? "is-current" : undefined)}>
             Hall
           </NavLink>
+          <NavLink to="/browse" className={({ isActive }) => (isActive ? "is-current" : undefined)}>
+            Stacks
+          </NavLink>
           <NavLink to="/search" className={({ isActive }) => (isActive ? "is-current" : undefined)}>
             Search
           </NavLink>
@@ -82,10 +85,13 @@ export default function AppChrome({ user, features, reviewCount = 0, children })
         <NavLink to="/" end className={({ isActive }) => (isActive ? "is-current" : undefined)}>
           Hall
         </NavLink>
+        <NavLink to="/browse" className={({ isActive }) => (isActive ? "is-current" : undefined)}>
+          Stacks
+        </NavLink>
         <NavLink to="/search" className={({ isActive }) => (isActive ? "is-current" : undefined)}>
           Search
         </NavLink>
-        <NavLink to="/search?shelf=favorites" className={({ isActive }) => (isActive ? "is-current" : undefined)}>
+        <NavLink to="/browse?shelf=favorites" className={({ isActive }) => (isActive ? "is-current" : undefined)}>
           Favorites
         </NavLink>
         <span className="kicker" style={{ display: "grid", placeItems: "center" }}>

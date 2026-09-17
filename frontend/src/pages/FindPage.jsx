@@ -4,19 +4,26 @@ import { api } from "../api.js";
 import QueryForm from "../components/QueryForm.jsx";
 import Rail from "../components/Rail.jsx";
 import RssPanel from "../components/RssPanel.jsx";
+import CoverCard from "../components/CoverCard.jsx";
 import { FIELD_HELP, discoverKindNote, discoverStatusLine, findStatusLine, humanError } from "../copy.js";
+import PartSetCard from "../components/PartSetCard.jsx";
 import {
+  DISCOVER_BROWSE_LIMIT,
   buildFindSearchParams,
   composeSearchQuery,
+  discoverCatFromSearchParams,
+  discoverHref,
   emptyFindFields,
   findFieldsFromSearchParams,
   findKindOptions,
+  groupDiscoverCategories,
   hasFindQuery,
   pruneFieldsForKind,
   requestBodyFromHit,
   searchHref,
   shouldShowDiscover,
 } from "../find.js";
+import { groupBeyondItems } from "../findParts.js";
 
 function fieldsFromState(draft, kind, advanced) {
   return pruneFieldsForKind(kind, {
@@ -43,6 +50,13 @@ function groupDiscoverRails(items, categories) {
   return groups;
 }
 
+function discoverParams(kind, discoverCat) {
+  const next = {};
+  if (kind) next.kind = kind;
+  if (discoverCat) next.discover = discoverCat;
+  return next;
+}
+
 export default function FindPage() {
   const [params, setParams] = useSearchParams();
   const { user, features } = useOutletContext();
@@ -52,25 +66,25 @@ export default function FindPage() {
     findFieldsFromSearchParams(params).kind,
     findFieldsFromSearchParams(params),
   );
+  const discoverCat = discoverCatFromSearchParams(params);
   const composed = composeSearchQuery(urlFields);
   const [draft, setDraft] = useState(urlFields.q);
   const [kind, setKind] = useState(urlFields.kind);
   const [advanced, setAdvanced] = useState(urlFields);
-  const [cat, setCat] = useState("");
   const [result, setResult] = useState({ beyond: [] });
-  const [discover, setDiscover] = useState({ items: [], categories: [] });
+  const [discover, setDiscover] = useState({ items: [], categories: [], limit: 0 });
   const [jobs, setJobs] = useState({});
   const [phase, setPhase] = useState("idle");
   const [discoverPhase, setDiscoverPhase] = useState("idle");
   const [error, setError] = useState("");
   const [discoverError, setDiscoverError] = useState("");
   const openDiscover = shouldShowDiscover(urlFields);
+  const browsing = Boolean(discoverCat) && openDiscover;
 
   useEffect(() => {
     setDraft(urlFields.q);
     setKind(urlFields.kind);
     setAdvanced(urlFields);
-    setCat("");
   }, [
     urlFields.q,
     urlFields.kind,
@@ -132,11 +146,17 @@ export default function FindPage() {
     let alive = true;
     setDiscoverPhase("loading");
     setDiscoverError("");
+    const extras = { kind: urlFields.kind, cat: discoverCat };
+    if (discoverCat) extras.limit = DISCOVER_BROWSE_LIMIT;
     api
-      .discover({ kind: urlFields.kind, cat })
+      .discover(extras)
       .then((data) => {
         if (!alive) return;
-        setDiscover({ items: data.items || [], categories: data.categories || [] });
+        setDiscover({
+          items: data.items || [],
+          categories: data.categories || [],
+          limit: data.limit || 0,
+        });
         if (data.beyond_error) {
           setDiscoverError(humanError(data.beyond_error));
           setDiscoverPhase((data.items || []).length ? "done" : "error");
@@ -152,7 +172,7 @@ export default function FindPage() {
     return () => {
       alive = false;
     };
-  }, [urlFields.kind, cat]);
+  }, [urlFields.kind, discoverCat]);
 
   function commitFind(nextKind = kind, nextAdvanced = advanced, nextDraft = draft) {
     const next = fieldsFromState(nextDraft, nextKind, nextAdvanced);
@@ -165,9 +185,8 @@ export default function FindPage() {
     const next = fieldsFromState(draft, nextKind, advanced);
     setKind(nextKind);
     setAdvanced(next);
-    setCat("");
     if (hasFindQuery(next)) commitFind(nextKind, next);
-    else setParams(nextKind ? { kind: nextKind } : {});
+    else setParams(discoverParams(nextKind, ""));
   }
 
   async function request(item) {
@@ -178,7 +197,11 @@ export default function FindPage() {
     return data;
   }
 
-  const beyond = (result.beyond || []).map((item) => ({
+  const { sets: partSets, singles: beyondSinglesRaw } = useMemo(
+    () => groupBeyondItems(result.beyond || []),
+    [result.beyond],
+  );
+  const beyondSingles = beyondSinglesRaw.map((item) => ({
     ...item,
     job_status: jobs[item.guid || item.title],
   }));
@@ -189,7 +212,7 @@ export default function FindPage() {
   const status = findStatusLine({
     q: composed,
     kind: urlFields.kind,
-    beyondCount: beyond.length,
+    beyondCount: (result.beyond || []).length,
     phase,
   });
   const beyondEmpty =
@@ -209,6 +232,66 @@ export default function FindPage() {
     [discover.categories, urlFields.kind],
   );
   const rails = groupDiscoverRails(discoverItems, discover.categories);
+  const browseTitle =
+    kindCats.find((row) => String(row.id) === String(discoverCat))?.name ||
+    discoverItems[0]?.category_name ||
+    discoverCat;
+  const backDiscoverHref = discoverHref({ kind: urlFields.kind });
+
+  function renderDiscoverBrowse() {
+    return (
+      <section className="discover-browse" data-testid="discover-browse">
+        <header className="discover-browse-head">
+          <Link className="discover-back" to={backDiscoverHref}>
+            ← Discover
+          </Link>
+          <h2>{browseTitle || "Category"}</h2>
+          <p>Indexers · Request queues SAB. Readers file an asked slip.</p>
+        </header>
+        {discoverPhase === "loading" && !discoverItems.length ? (
+          <p className="lede discover-empty">{discoverEmpty}</p>
+        ) : null}
+        {discoverItems.length ? (
+          <div className="discover-grid" data-testid="discover-grid">
+            {discoverItems.map((item) => (
+              <CoverCard
+                key={item.id || item.guid || item.title}
+                work={item}
+                onRequest={request}
+                beyond
+                role={user?.role}
+              />
+            ))}
+          </div>
+        ) : discoverPhase !== "loading" ? (
+          <p className="lede discover-empty">{discoverEmpty}</p>
+        ) : null}
+      </section>
+    );
+  }
+
+  function renderDiscoverRails() {
+    if (!rails.length) {
+      return <p className="lede discover-empty">{discoverEmpty}</p>;
+    }
+    return rails.map((rail) => {
+      const feedKind =
+        (discover.categories || []).find((row) => String(row.id) === String(rail.id))?.kind ||
+        urlFields.kind;
+      return (
+        <Rail
+          key={rail.id}
+          title={rail.title}
+          kicker="Indexers · Request queues SAB. Readers file an asked slip."
+          items={rail.items}
+          onRequest={request}
+          beyond
+          role={user?.role}
+          seeAllTo={discoverHref({ discover: rail.id, kind: feedKind || urlFields.kind })}
+        />
+      );
+    });
+  }
 
   function renderDiscover() {
     return (
@@ -218,25 +301,34 @@ export default function FindPage() {
           <p className="lede discover-lede">{discoverKindNote(urlFields.kind)}</p>
         </header>
         {kindCats.length > 1 ? (
-          <div className="search-hero chip-row discover-cats">
-            <button
-              type="button"
-              className={`chip${cat === "" ? " is-on" : ""}`}
-              aria-pressed={cat === ""}
-              onClick={() => setCat("")}
-            >
-              All
-            </button>
-            {kindCats.map((row) => (
+          <div className="discover-cats" data-testid="discover-cats">
+            <div className="search-hero chip-row discover-cats-all">
               <button
-                key={row.id}
                 type="button"
-                className={`chip${cat === String(row.id) ? " is-on" : ""}`}
-                aria-pressed={cat === String(row.id)}
-                onClick={() => setCat(String(row.id))}
+                className={`chip${discoverCat === "" ? " is-on" : ""}`}
+                aria-pressed={discoverCat === ""}
+                onClick={() => setParams(discoverParams(urlFields.kind, ""))}
               >
-                {row.name}
+                All
               </button>
+            </div>
+            {groupDiscoverCategories(kindCats).map((group) => (
+              <div key={group.id} className="discover-cat-group" data-parent={group.id}>
+                <p className="discover-cat-label kicker">{group.name}</p>
+                <div className="search-hero chip-row">
+                  {group.categories.map((row) => (
+                    <button
+                      key={row.id}
+                      type="button"
+                      className={`chip${discoverCat === String(row.id) ? " is-on" : ""}`}
+                      aria-pressed={discoverCat === String(row.id)}
+                      onClick={() => setParams(discoverParams(urlFields.kind || row.kind, String(row.id)))}
+                    >
+                      {row.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
         ) : null}
@@ -245,21 +337,7 @@ export default function FindPage() {
             {discoverError}
           </p>
         ) : null}
-        {rails.length ? (
-          rails.map((rail) => (
-            <Rail
-              key={rail.id}
-              title={rail.title}
-              kicker="Indexers · Request queues SAB. Readers file an asked slip."
-              items={rail.items}
-              onRequest={request}
-              beyond
-              role={user?.role}
-            />
-          ))
-        ) : (
-          <p className="lede discover-empty">{discoverEmpty}</p>
-        )}
+        {browsing ? renderDiscoverBrowse() : renderDiscoverRails()}
       </section>
     );
   }
@@ -297,15 +375,33 @@ export default function FindPage() {
         </p>
       ) : null}
       {composed ? (
-        <Rail
-          title="Beyond the shelves"
-          kicker="Indexers · Request queues SAB. Readers file an asked slip. Host names stay muted on the card."
-          items={beyond}
-          empty={beyondEmpty}
-          onRequest={request}
-          beyond
-          role={user?.role}
-        />
+        <>
+          {partSets.length ? (
+            <section className="part-sets" data-testid="part-sets">
+              <header className="rail-head">
+                <div>
+                  <h2>Multipart releases</h2>
+                  <p>
+                    Grouped from part / CD / disc markers. Select what you need — each Request files its own slip.
+                    Incomplete sets stay honest about missing parts.
+                  </p>
+                </div>
+              </header>
+              {partSets.map((set) => (
+                <PartSetCard key={set.id} set={set} onRequest={request} role={user?.role} jobs={jobs} />
+              ))}
+            </section>
+          ) : null}
+          <Rail
+            title={partSets.length ? "Other results" : "Beyond the shelves"}
+            kicker="Indexers · Request queues SAB. Readers file an asked slip. Host names stay muted on the card."
+            items={beyondSingles}
+            empty={partSets.length ? "" : beyondEmpty}
+            onRequest={request}
+            beyond
+            role={user?.role}
+          />
+        </>
       ) : null}
       {openDiscover ? renderDiscover() : (
         <details className="discover-fold">

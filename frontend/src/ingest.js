@@ -18,3 +18,23 @@ export function ingestSourcePath(job = {}) {
   if (source !== "ingest" && source !== "watch") return "";
   return String(job.storage_path || payload.path || "").trim();
 }
+
+/** Status line vs alert for Add to the shelves after POST /api/ingest. */
+export function ingestResultMessage(job = {}, path = "") {
+  const title = String(job.title || path || "").trim() || "volume";
+  const status = String(job.status || "").trim();
+  if (status === "failed") {
+    const reason = String(job.error || "").trim();
+    return {
+      kind: "error",
+      text: reason || `Failed — ${title}`,
+    };
+  }
+  const word =
+    status === "organized"
+      ? "Arrived"
+      : status === "review"
+        ? "Needs you"
+        : "On the way";
+  return { kind: "status", text: `${word} — ${title}` };
+}

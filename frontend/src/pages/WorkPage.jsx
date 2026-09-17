@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link, useOutletContext, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api.js";
-import { isInboundJob } from "../cover.js";
+import { browseHref } from "../browse.js";
+import { coverWashStyle, coverWashUrl, isInboundJob } from "../cover.js";
 import { canPromoteIncomingMusic, humanError, peekMediaNote } from "../copy.js";
-import { canReadInApp } from "../reader.js";
+import { looksLikeHtml, sanitizeDescriptionHtml } from "../description.js";
+import { canOpenInlineMedia, canReadInApp } from "../reader.js";
 import Rail from "../components/Rail.jsx";
 import Reader from "../components/Reader.jsx";
 
@@ -32,7 +34,7 @@ export default function WorkPage() {
 
   useEffect(() => {
     if (!data) return;
-    const readable = canReadInApp(data.work, data.files) || Boolean(data.can_read);
+    const readable = Boolean(data.can_read) && canReadInApp(data.work, data.files);
     if (searchParams.get("read") === "1" && readable) setReading(true);
   }, [searchParams, data]);
 
@@ -55,8 +57,12 @@ export default function WorkPage() {
   if (!data) return <p className="lede" style={{ padding: "var(--space-8) var(--gutter)" }}>Opening the volume…</p>;
 
   const work = data.work;
-  const canRead = canReadInApp(work, data.files) || Boolean(data.can_read);
+  const canRead = Boolean(data.can_read) && canReadInApp(work, data.files);
+  const canInlineOpen = canOpenInlineMedia(work, Boolean(data.can_download), canRead);
   const mediaNote = peekMediaNote(work, { canDownload: Boolean(data.can_download), ready: true });
+  const descriptionHtml = looksLikeHtml(work.description) ? sanitizeDescriptionHtml(work.description) : "";
+  const washUrl = coverWashUrl(work);
+  const washStyle = coverWashStyle(work);
 
   async function favorite() {
     const next = await api.favorite(work.id);
@@ -71,14 +77,28 @@ export default function WorkPage() {
 
   return (
     <article>
-      <section className={`work-hero${data.can_download ? "" : " is-bare"}`}>
-        <div className="work-hero-art" aria-hidden="true" />
+      <section className={`work-hero${data.can_download ? "" : " is-bare"}${washUrl ? " has-wash" : ""}`}>
+        <div
+          className={`work-hero-art${washUrl ? " has-wash" : ""}`}
+          style={washStyle}
+          aria-hidden="true"
+          data-testid="work-hero-art"
+        />
         <div className="work-hero-scrim" aria-hidden="true" />
         <div className="work-hero-inner">
           <div className="chip-row" style={{ marginBottom: 16 }}>
             {work.kind ? <span className="chip is-on">{work.kind}</span> : null}
             {work.year ? <span className="chip">{work.year}</span> : null}
-            {work.author ? <span className="chip">{work.author}</span> : null}
+            {work.author ? (
+              <Link className="chip" to={browseHref({ author: work.author })} data-testid="work-author-chip">
+                {work.author}
+              </Link>
+            ) : null}
+            {work.series_name ? (
+              <Link className="chip" to={browseHref({ series: work.series_name })} data-testid="work-series-chip">
+                {work.series_name}
+              </Link>
+            ) : null}
             {work.isbn ? <span className="chip font-mono">{work.isbn}</span> : null}
             {work.review_state === "needs_review" ? <span className="chip">Review</span> : null}
             {work.music_state === "incoming" ? <span className="chip">Incoming</span> : null}
@@ -102,7 +122,7 @@ export default function WorkPage() {
               <button type="button" className="cta compact" onClick={() => setReading(true)} data-testid="work-open">
                 Open
               </button>
-            ) : data.can_download ? (
+            ) : canInlineOpen ? (
               <a
                 className="cta compact"
                 href={`/api/works/${work.id}/download?inline=1${fmt ? `&format=${encodeURIComponent(fmt)}` : ""}`}
@@ -146,7 +166,7 @@ export default function WorkPage() {
               </button>
             ) : null}
             {work.review_state === "needs_review" ? (
-              <Link className="cta ghost compact" to="/review">
+              <Link className="cta ghost compact" to={`/review?work=${encodeURIComponent(work.id)}`}>
                 Open Review
               </Link>
             ) : null}
@@ -204,7 +224,15 @@ export default function WorkPage() {
         {work.description ? (
           <section className="synopsis">
             <h2>Description</h2>
-            <p>{work.description}</p>
+            {descriptionHtml ? (
+              <div
+                className="synopsis-body"
+                data-testid="work-description"
+                dangerouslySetInnerHTML={{ __html: descriptionHtml }}
+              />
+            ) : (
+              <p data-testid="work-description">{work.description}</p>
+            )}
           </section>
         ) : null}
         {data.files?.length ? (
@@ -212,13 +240,25 @@ export default function WorkPage() {
             <h2 className="kicker">Files</h2>
             <ul className="file-list">
               {data.files.map((file) => (
-                <li key={file.id}>{file.filename}</li>
+                <li key={file.id}>
+                  <span>{file.filename}</span>
+                  {file.reading_room ? (
+                    <span className="chip is-on" data-testid="reading-room-badge">
+                      Reading Room
+                    </span>
+                  ) : null}
+                  {file.on_disk === false ? <span className="chip">Missing</span> : null}
+                </li>
               ))}
             </ul>
           </section>
         ) : null}
       </div>
-      <Rail title={work.author ? `More by ${work.author}` : "More on this shelf"} items={data.related} />
+      <Rail
+        title={work.author ? `More by ${work.author}` : "More on this shelf"}
+        items={data.related}
+        seeAllTo={work.author ? browseHref({ author: work.author }) : ""}
+      />
       {reading && canRead ? (
         <Reader work={work} files={data.files} progress={data.progress} onClose={closeReader} />
       ) : null}

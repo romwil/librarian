@@ -82,6 +82,32 @@ def existing_file_paths(rows: Iterable[dict]) -> list[Path]:
     return out
 
 
+def annotate_work_files(rows: Iterable[dict], on_disk: Sequence[Path]) -> list[dict]:
+    """Mark which catalog files exist and which one the Reading Room opens."""
+    reading = primary_reading_path(on_disk)
+    reading_key = None
+    if reading is not None:
+        try:
+            reading_key = reading.resolve()
+        except OSError:
+            reading_key = reading
+    out: list[dict] = []
+    for row in rows:
+        item = dict(row or {})
+        path = Path(str(item.get("path") or ""))
+        exists = path.is_file()
+        item["on_disk"] = exists
+        room = False
+        if exists and reading_key is not None:
+            try:
+                room = path.resolve() == reading_key
+            except OSError:
+                room = path == reading
+        item["reading_room"] = room
+        out.append(item)
+    return out
+
+
 def zip_files(paths: Sequence[Path]) -> Path:
     tmp = tempfile.NamedTemporaryFile(
         prefix="librarian-",

@@ -1,6 +1,15 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { clothFor, coverCaption, coverClassNames, coverOverlay, jobChipLabel, jobChipTone, shouldOpenPeek } from "../cover.js";
+import {
+  clothFor,
+  coverCaption,
+  coverClassNames,
+  coverOverlay,
+  coverTip,
+  jobChipLabel,
+  jobChipTone,
+  shouldOpenPeek,
+} from "../cover.js";
 import { beyondHostName, findHref, gapFindFields } from "../find.js";
 import { useWorkPeek } from "./WorkPeekProvider.jsx";
 
@@ -8,7 +17,6 @@ export default function CoverCard({ work, onRequest, badge, beyond = false, role
   const peek = useWorkPeek();
   const navigate = useNavigate();
   const kind = work.kind || "book";
-  const title = work.title || "Untitled";
   const isGap = Boolean(work.gap || work.kind === "gap");
   const status = work.job_status || badge;
   const tone = isGap ? "" : jobChipTone(status);
@@ -16,7 +24,11 @@ export default function CoverCard({ work, onRequest, badge, beyond = false, role
   const art = work.has_cover && work.id ? `/api/works/${work.id}/cover` : work.cover || "";
   const [artFailed, setArtFailed] = useState(false);
   const hasArt = Boolean(art) && !artFailed;
-  const overlay = coverOverlay(work);
+  const item = beyond ? { ...work, beyond: true } : work;
+  const overlay = coverOverlay(item);
+  const caption = coverCaption(item);
+  const tip = coverTip(item);
+  const host = beyond ? beyondHostName(work) : "";
 
   function onClick(event) {
     if (isGap) {
@@ -35,13 +47,14 @@ export default function CoverCard({ work, onRequest, badge, beyond = false, role
   }
 
   return (
-    <div className={`cover-unit cover-unit-${kind}`}>
+    <div className={`cover-unit cover-unit-${kind}${beyond ? " is-beyond" : ""}`}>
       <button
         type="button"
-        className={coverClassNames(work, { art: hasArt })}
-        style={{ "--cloth": work.cloth || clothFor(title), "--progress": `${work.progress || 0}%` }}
+        className={coverClassNames(item, { art: hasArt })}
+        style={{ "--cloth": work.cloth || clothFor(tip || work.title), "--progress": `${work.progress || 0}%` }}
         onClick={onClick}
-        aria-label={isGap ? `Find ${coverCaption(work)} beyond the shelves` : coverCaption(work)}
+        title={tip || undefined}
+        aria-label={isGap ? `Find ${caption} beyond the shelves` : tip || caption}
       >
         <span className="cover-meta">
           <strong>{overlay.title}</strong>
@@ -52,9 +65,9 @@ export default function CoverCard({ work, onRequest, badge, beyond = false, role
         {hasArt ? <img src={art} alt="" onError={() => setArtFailed(true)} /> : null}
         {chip ? <span className={`live-chip${tone ? ` ${tone}` : ""}`}>{chip}</span> : null}
       </button>
-      <p className="cover-caption">
-        {coverCaption(work)}
-        {beyond && beyondHostName(work) ? <span className="cover-host"> · {beyondHostName(work)}</span> : null}
+      <p className="cover-caption" title={tip || undefined}>
+        {caption}
+        {host ? <span className="cover-host"> · {host}</span> : null}
       </p>
     </div>
   );

@@ -6,7 +6,14 @@ from fastapi.testclient import TestClient
 
 from librarian.config import Settings, mask_settings, save_settings
 from librarian.db import Database
-from librarian.enrich import Enrichment, _still_needs, enrich_library, enrich_work, is_thin
+from librarian.enrich import (
+    Enrichment,
+    _still_needs,
+    enrich_backlog_batch,
+    enrich_library,
+    enrich_work,
+    is_thin,
+)
 from librarian.goodreads import import_goodreads_csv, parse_csv_isbn, parse_goodreads_rows
 from librarian.identify import isbn10_to_isbn13, isbn13_to_isbn10, isbn_match_keys
 from librarian.rate_limit import clear_rate_limits
@@ -40,6 +47,7 @@ def _hardcover_edition():
             "release_year": 1969,
             "cached_image": {"url": "https://covers.hardcover.test/lh.jpg"},
             "cached_featured_series": {"name": "Hainish Cycle", "position": 4},
+            "cached_tags": {"Genre": [{"tag": "Science Fiction"}, {"tag": "Fiction"}]},
         },
     }
 
@@ -84,7 +92,14 @@ def _handler(request: httpx.Request) -> httpx.Response:
             },
         )
     if "/works/OL59037W" in url:
-        return httpx.Response(200, json={"description": {"value": BLURB}, "title": "The Left Hand of Darkness"})
+        return httpx.Response(
+            200,
+            json={
+                "description": {"value": BLURB},
+                "title": "The Left Hand of Darkness",
+                "subjects": ["Science fiction", "Gender"],
+            },
+        )
     if "search.json" in url:
         return httpx.Response(
             200,
@@ -97,15 +112,69 @@ def _handler(request: httpx.Request) -> httpx.Response:
                         "cover_i": 99,
                         "isbn": ["9780441172719"],
                         "author_name": ["Frank Herbert"],
+                        "subject": ["Science fiction"],
                     }
                 ]
             },
         )
     if "/works/OL893415W" in url:
-        return httpx.Response(200, json={"description": "Desert planet.", "title": "Dune"})
+        return httpx.Response(
+            200,
+            json={
+                "description": "Desert planet.",
+                "title": "Dune",
+                "subjects": ["Science fiction", "Planets"],
+            },
+        )
+    if "wikipedia.org" in url or "wikimedia.org" in url:
+        return _wiki_handler(request)
     if request.headers.get("accept", "").startswith("image") or url.endswith(".jpg"):
         return httpx.Response(200, content=JPEG, headers={"content-type": "image/jpeg"})
     return httpx.Response(404, json={"error": "missing"})
+
+
+def _wiki_handler(request: httpx.Request) -> httpx.Response:
+    url = str(request.url)
+    if "upload.wikimedia.org" in url or request.headers.get("accept", "").startswith("image"):
+        return httpx.Response(200, content=JPEG, headers={"content-type": "image/jpeg"})
+    if "commons.wikimedia.org" in url:
+        return httpx.Response(
+            200,
+            json={
+                "query": {
+                    "pages": {
+                        "1": {
+                            "title": "File:Example.jpg",
+                            "imageinfo": [
+                                {
+                                    "url": "https://upload.wikimedia.org/example.jpg",
+                                    "thumburl": "https://upload.wikimedia.org/example-thumb.jpg",
+                                    "extmetadata": {
+                                        "Artist": {"value": "Jane Doe"},
+                                        "LicenseShortName": {"value": "CC BY-SA 4.0"},
+                                    },
+                                }
+                            ],
+                        }
+                    }
+                }
+            },
+        )
+    return httpx.Response(
+        200,
+        json={
+            "query": {
+                "pages": {
+                    "1": {
+                        "title": "King Tut (novel)",
+                        "extract": "A novel about Tutankhamun.",
+                        "pageimage": "Example.jpg",
+                        "original": {"source": "https://upload.wikimedia.org/example.jpg"},
+                    }
+                }
+            }
+        },
+    )
 
 
 def test_isbn10_converts_to_known_isbn13():
@@ -165,6 +234,8 @@ def test_hardcover_isbn_fills_thin_work_and_keeps_isbn(tmp_path):
     assert updated["year"] == 1969
     assert updated["cover_path"]
     assert Path(updated["cover_path"]).read_bytes() == JPEG
+    assert "Science Fiction" in (updated.get("genre") or "")
+    assert updated.get("synopsis_source") == "hardcover"
 
 
 def test_openlibrary_fills_when_hardcover_has_no_token(tmp_path):
@@ -381,6 +452,7 @@ def test_enrich_library_counts_complete_books_as_skipped(tmp_path):
             "author": "Butler",
             "isbn": "9780807083697",
             "description": "A homecoming.",
+            "genre": "Fiction",
             "year": 1979,
             "cover_path": str(cover),
         }
@@ -389,3 +461,160 @@ def test_enrich_library_counts_complete_books_as_skipped(tmp_path):
     assert counts["scanned"] == 0
     assert counts["updated"] == 0
     assert counts["skipped"] == 1
+
+
+def test_openlibrary_fills_genre_from_subjects(tmp_path):
+    db = Database(tmp_path / "librarian.db")
+    work = db.upsert_work(
+        {
+            "kind": "book",
+            "title": "The Left Hand of Darkness",
+            "author": "Le Guin",
+            "isbn": ISBN13,
+        }
+    )
+    result = enrich_work(
+        db,
+        Settings(hardcover_api_token=""),
+        work["id"],
+        data_dir=tmp_path,
+        transport=httpx.MockTransport(_handler),
+    )
+    assert "Science fiction" in (result["work"].get("genre") or "")
+    assert result["work"].get("synopsis_source") == "openlibrary"
+
+
+def test_wikipedia_fills_empty_description_and_localizes_art(tmp_path):
+    db = Database(tmp_path / "librarian.db")
+    folder = tmp_path / "books" / "Author" / "King Tut"
+    folder.mkdir(parents=True)
+    work = db.upsert_work(
+        {
+            "kind": "book",
+            "title": "King Tut",
+            "author": "Someone",
+            "folder_path": str(folder),
+            "year": 1978,
+        }
+    )
+
+    def wiki_only(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if "hardcover" in url or "openlibrary.org" in url:
+            return httpx.Response(404, json={})
+        if request.headers.get("accept", "").startswith("image") or "upload.wikimedia.org" in url:
+            return httpx.Response(200, content=JPEG, headers={"content-type": "image/jpeg"})
+        if "wikipedia.org" in url or "commons.wikimedia.org" in url:
+            return _wiki_handler(request)
+        return httpx.Response(404, json={"error": "missing"})
+
+    result = enrich_work(
+        db,
+        Settings(hardcover_api_token=""),
+        work["id"],
+        data_dir=tmp_path,
+        transport=httpx.MockTransport(wiki_only),
+    )
+    updated = result["work"]
+    assert updated["description"] == "A novel about Tutankhamun."
+    assert updated["synopsis_source"] == "wikipedia"
+    assert updated.get("art_attribution")
+    assert "CC BY-SA" in updated["art_attribution"]
+    atmosphere = Path(updated["atmosphere_path"])
+    assert atmosphere.name == "atmosphere.jpg"
+    assert atmosphere.read_bytes() == JPEG
+    assert Path(updated["cover_path"]).read_bytes() == JPEG
+
+
+def test_llm_polish_fail_closed_without_key(tmp_path):
+    db = Database(tmp_path / "librarian.db")
+    work = db.upsert_work(
+        {
+            "kind": "book",
+            "title": "Dune",
+            "author": "Frank Herbert",
+            "description": "Desert planet.",
+            "year": 1965,
+            "genre": "Science fiction",
+        }
+    )
+    cover = tmp_path / "cover.jpg"
+    cover.write_bytes(JPEG)
+    db.upsert_work({**work, "cover_path": str(cover)})
+    result = enrich_work(
+        db,
+        Settings(hardcover_api_token="", llm_api_key=""),
+        work["id"],
+        data_dir=tmp_path,
+        transport=httpx.MockTransport(_handler),
+    )
+    assert not result["work"].get("llm_blurb")
+
+
+def test_llm_polish_writes_blurb_from_existing_text(tmp_path):
+    db = Database(tmp_path / "librarian.db")
+    cover = tmp_path / "cover.jpg"
+    cover.write_bytes(JPEG)
+    work = db.upsert_work(
+        {
+            "kind": "book",
+            "title": "Dune",
+            "author": "Frank Herbert",
+            "description": "A desert planet and a messianic prophecy.",
+            "year": 1965,
+            "genre": "Science fiction",
+            "cover_path": str(cover),
+        }
+    )
+
+    def llm_handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if "chat/completions" in url:
+            return httpx.Response(
+                200,
+                json={
+                    "choices": [
+                        {"message": {"content": "On a desert world, a prophecy reshapes an empire."}}
+                    ]
+                },
+            )
+        return _handler(request)
+
+    result = enrich_work(
+        db,
+        Settings(
+            hardcover_api_token="",
+            llm_base_url="https://llm.test/v1",
+            llm_api_key="test-key",
+            llm_model="test-model",
+        ),
+        work["id"],
+        data_dir=tmp_path,
+        transport=httpx.MockTransport(llm_handler),
+    )
+    assert result["work"]["llm_blurb"] == "On a desert world, a prophecy reshapes an empire."
+    assert result["work"]["description"] == "A desert planet and a messianic prophecy."
+    assert result["work"]["isbn"] in (None, "")
+
+
+def test_enrich_backlog_batch_updates_thin_work(tmp_path):
+    db = Database(tmp_path / "librarian.db")
+    work = db.upsert_work(
+        {
+            "kind": "book",
+            "title": "The Left Hand of Darkness",
+            "author": "Le Guin",
+            "isbn": ISBN13,
+        }
+    )
+    assert db.count_works_needing_enrichment() == 1
+    result = enrich_backlog_batch(
+        db,
+        Settings(hardcover_api_token="hardcover-test-token"),
+        data_dir=tmp_path,
+        limit=5,
+        transport=httpx.MockTransport(_handler),
+        pause_seconds=0,
+    )
+    assert result["enriched"] == 1
+    assert db.get_work(work["id"])["description"] == BLURB

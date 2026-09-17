@@ -31,6 +31,23 @@ export const api = {
     request("/invites/redeem/local", { method: "POST", body: JSON.stringify({ token, username, password }) }),
   mintInvite: (role) => request("/invites", { method: "POST", body: JSON.stringify({ role }) }),
   hall: () => request("/hall"),
+  browse: (filters = {}) => {
+    const params = new URLSearchParams();
+    for (const key of ["kind", "author", "letter", "series", "genre", "shelf", "sort"]) {
+      if (filters[key]) params.set(key, String(filters[key]));
+    }
+    if (filters.offset != null) params.set("offset", String(filters.offset));
+    if (filters.limit != null) params.set("limit", String(filters.limit));
+    const qs = params.toString();
+    return request(`/browse${qs ? `?${qs}` : ""}`);
+  },
+  browseFacets: (filters = {}) => {
+    const params = new URLSearchParams();
+    if (filters.kind) params.set("kind", String(filters.kind));
+    if (filters.shelf) params.set("shelf", String(filters.shelf));
+    const qs = params.toString();
+    return request(`/browse/facets${qs ? `?${qs}` : ""}`);
+  },
   search: (q, extras = {}) => {
     const { beyond = false, kind = "", title, author, isbn, series, issue, artist, album, year } = extras;
     const params = new URLSearchParams();
@@ -78,6 +95,7 @@ export const api = {
     const params = new URLSearchParams();
     if (extras.kind) params.set("kind", extras.kind);
     if (extras.cat) params.set("cat", extras.cat);
+    if (extras.limit) params.set("limit", String(extras.limit));
     const qs = params.toString();
     return request(`/discover${qs ? `?${qs}` : ""}`);
   },

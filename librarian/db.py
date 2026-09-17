@@ -51,6 +51,10 @@ CREATE TABLE IF NOT EXISTS works (
     cover_path TEXT,
     folder_path TEXT,
     abs_item_id TEXT,
+    synopsis_source TEXT,
+    llm_blurb TEXT,
+    atmosphere_path TEXT,
+    art_attribution TEXT,
     review_state TEXT NOT NULL DEFAULT 'none',
     review_reason TEXT,
     music_state TEXT,
@@ -127,6 +131,9 @@ CREATE VIRTUAL TABLE IF NOT EXISTS works_fts USING fts5(
 );
 CREATE INDEX IF NOT EXISTS idx_works_kind ON works(kind);
 CREATE INDEX IF NOT EXISTS idx_works_review ON works(review_state);
+CREATE INDEX IF NOT EXISTS idx_works_author ON works(author COLLATE NOCASE);
+CREATE INDEX IF NOT EXISTS idx_works_kind_author ON works(kind, author COLLATE NOCASE);
+CREATE INDEX IF NOT EXISTS idx_works_series ON works(series_name COLLATE NOCASE);
 CREATE INDEX IF NOT EXISTS idx_jobs_nzo ON jobs(nzo_id);
 CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
 CREATE TABLE IF NOT EXISTS rss_feeds (
@@ -186,6 +193,10 @@ JOB_EXTRA_COLUMNS = {
 
 WORK_EXTRA_COLUMNS = {
     "abs_item_id": "TEXT",
+    "synopsis_source": "TEXT",
+    "llm_blurb": "TEXT",
+    "atmosphere_path": "TEXT",
+    "art_attribution": "TEXT",
 }
 
 
@@ -409,6 +420,10 @@ class Database:
             "cover_path": work.get("cover_path"),
             "folder_path": work.get("folder_path"),
             "abs_item_id": work.get("abs_item_id"),
+            "synopsis_source": work.get("synopsis_source"),
+            "llm_blurb": work.get("llm_blurb"),
+            "atmosphere_path": work.get("atmosphere_path"),
+            "art_attribution": work.get("art_attribution"),
             "review_state": work.get("review_state") or "none",
             "review_reason": work.get("review_reason"),
             "music_state": work.get("music_state"),
@@ -416,17 +431,26 @@ class Database:
             "created_at": work.get("created_at") or now,
             "updated_at": now,
         }
+        preserve = (
+            "abs_item_id",
+            "synopsis_source",
+            "llm_blurb",
+            "atmosphere_path",
+            "art_attribution",
+        )
         with self._lock, self._connect() as conn:
-            existing = conn.execute("SELECT abs_item_id FROM works WHERE id = ?", (work_id,)).fetchone()
+            existing = conn.execute("SELECT * FROM works WHERE id = ?", (work_id,)).fetchone()
             if existing:
-                if "abs_item_id" not in work:
-                    payload["abs_item_id"] = existing["abs_item_id"]
+                for key in preserve:
+                    if key not in work:
+                        payload[key] = existing[key]
                 conn.execute(
                     """
                     UPDATE works SET
                         kind=?, title=?, author=?, series_name=?, series_index=?, year=?,
                         isbn=?, mbid=?, description=?, publisher=?, genre=?, cover_path=?,
-                        folder_path=?, abs_item_id=?, review_state=?, review_reason=?,
+                        folder_path=?, abs_item_id=?, synopsis_source=?, llm_blurb=?,
+                        atmosphere_path=?, art_attribution=?, review_state=?, review_reason=?,
                         music_state=?, indexer_guid=?, updated_at=?
                     WHERE id=?
                     """,
@@ -445,6 +469,10 @@ class Database:
                         payload["cover_path"],
                         payload["folder_path"],
                         payload["abs_item_id"],
+                        payload["synopsis_source"],
+                        payload["llm_blurb"],
+                        payload["atmosphere_path"],
+                        payload["art_attribution"],
                         payload["review_state"],
                         payload["review_reason"],
                         payload["music_state"],
@@ -460,11 +488,38 @@ class Database:
                     INSERT INTO works (
                         id, kind, title, author, series_name, series_index, year, isbn, mbid,
                         description, publisher, genre, cover_path, folder_path, abs_item_id,
+                        synopsis_source, llm_blurb, atmosphere_path, art_attribution,
                         review_state, review_reason, music_state, indexer_guid, created_at,
                         updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    tuple(payload.values()),
+                    (
+                        payload["id"],
+                        payload["kind"],
+                        payload["title"],
+                        payload["author"],
+                        payload["series_name"],
+                        payload["series_index"],
+                        payload["year"],
+                        payload["isbn"],
+                        payload["mbid"],
+                        payload["description"],
+                        payload["publisher"],
+                        payload["genre"],
+                        payload["cover_path"],
+                        payload["folder_path"],
+                        payload["abs_item_id"],
+                        payload["synopsis_source"],
+                        payload["llm_blurb"],
+                        payload["atmosphere_path"],
+                        payload["art_attribution"],
+                        payload["review_state"],
+                        payload["review_reason"],
+                        payload["music_state"],
+                        payload["indexer_guid"],
+                        payload["created_at"],
+                        payload["updated_at"],
+                    ),
                 )
             conn.execute(
                 """
@@ -628,6 +683,260 @@ class Database:
         with self._connect() as conn:
             rows = conn.execute(sql, args).fetchall()
         return [_row_dict(row) or {} for row in rows]
+
+    _NEEDS_ENRICHMENT_WHERE = """
+        kind IN ('book', 'audiobook')
+        AND review_state != 'needs_review'
+        AND (
+            description IS NULL OR description = ''
+            OR genre IS NULL OR genre = ''
+            OR year IS NULL
+            OR cover_path IS NULL OR cover_path = ''
+        )
+    """
+
+    def works_needing_enrichment(self, *, limit: int = 10) -> List[Dict[str, Any]]:
+        """Oldest thin books/audiobooks for the enrich trickle."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT * FROM works
+                WHERE {self._NEEDS_ENRICHMENT_WHERE}
+                ORDER BY updated_at ASC
+                LIMIT ?
+                """,
+                (max(1, int(limit)),),
+            ).fetchall()
+        return [_row_dict(row) or {} for row in rows]
+
+    def count_works_needing_enrichment(self) -> int:
+        with self._connect() as conn:
+            row = conn.execute(
+                f"SELECT COUNT(*) AS cnt FROM works WHERE {self._NEEDS_ENRICHMENT_WHERE}"
+            ).fetchone()
+        return int(row["cnt"] if row else 0)
+
+    @staticmethod
+    def _author_letter_sql(column: str = "author") -> str:
+        return (
+            f"CASE "
+            f"WHEN {column} IS NULL OR trim({column}) = '' THEN '#' "
+            f"WHEN upper(substr(trim({column}), 1, 1)) GLOB '[A-Z]' "
+            f"THEN upper(substr(trim({column}), 1, 1)) "
+            f"ELSE '#' END"
+        )
+
+    def _browse_base(
+        self,
+        *,
+        kind: Optional[str] = None,
+        author: Optional[str] = None,
+        letter: Optional[str] = None,
+        series: Optional[str] = None,
+        genre: Optional[str] = None,
+        shelf: Optional[str] = None,
+        user_id: Optional[str] = None,
+        include_review: bool = False,
+    ) -> Tuple[str, str, List[Any]]:
+        """Return (from_sql, where_sql, args) for Stacks browse."""
+        clauses = ["1=1"]
+        args: List[Any] = []
+        from_sql = "works w"
+        if shelf == "favorites":
+            if not user_id:
+                raise ValueError("user_id required for favorites shelf")
+            shelf_row = self.favorites_shelf(user_id)
+            from_sql = "shelf_items s JOIN works w ON w.id = s.work_id"
+            clauses.append("s.shelf_id = ?")
+            args.append(shelf_row["id"])
+        if not include_review:
+            clauses.append("w.review_state != 'needs_review'")
+        if kind:
+            clauses.append("w.kind = ?")
+            args.append(kind)
+        if author:
+            clauses.append("lower(trim(w.author)) = lower(?)")
+            args.append(author.strip())
+        if series:
+            clauses.append("lower(trim(w.series_name)) = lower(?)")
+            args.append(series.strip())
+        if genre:
+            clauses.append("lower(trim(w.genre)) = lower(?)")
+            args.append(genre.strip())
+        letter_key = str(letter or "").strip().upper()
+        if letter_key:
+            if letter_key != "#" and (len(letter_key) != 1 or not ("A" <= letter_key <= "Z")):
+                letter_key = ""
+            if letter_key:
+                clauses.append(f"{self._author_letter_sql('w.author')} = ?")
+                args.append(letter_key)
+        where_sql = " AND ".join(clauses)
+        return from_sql, where_sql, args
+
+    def browse_works(
+        self,
+        *,
+        kind: Optional[str] = None,
+        author: Optional[str] = None,
+        letter: Optional[str] = None,
+        series: Optional[str] = None,
+        genre: Optional[str] = None,
+        shelf: Optional[str] = None,
+        user_id: Optional[str] = None,
+        sort: str = "author",
+        offset: int = 0,
+        limit: int = 48,
+    ) -> Dict[str, Any]:
+        capped = max(1, min(int(limit or 48), 100))
+        skip = max(0, int(offset or 0))
+        sort_key = str(sort or "author").strip().lower()
+        if sort_key not in ("author", "title", "updated"):
+            sort_key = "author"
+        if sort_key == "title":
+            order_sql = "w.title COLLATE NOCASE ASC, w.author COLLATE NOCASE ASC"
+        elif sort_key == "updated":
+            order_sql = "w.updated_at DESC, w.title COLLATE NOCASE ASC"
+        else:
+            order_sql = "w.author COLLATE NOCASE ASC, w.title COLLATE NOCASE ASC"
+        if shelf == "favorites" and sort_key == "updated":
+            order_sql = "s.added_at DESC, w.title COLLATE NOCASE ASC"
+
+        from_sql, where_sql, args = self._browse_base(
+            kind=kind,
+            author=author,
+            letter=letter,
+            series=series,
+            genre=genre,
+            shelf=shelf,
+            user_id=user_id,
+        )
+        with self._connect() as conn:
+            total = int(
+                conn.execute(f"SELECT COUNT(*) AS n FROM {from_sql} WHERE {where_sql}", args).fetchone()["n"]
+            )
+            rows = conn.execute(
+                f"""
+                SELECT w.* FROM {from_sql}
+                WHERE {where_sql}
+                ORDER BY {order_sql}
+                LIMIT ? OFFSET ?
+                """,
+                [*args, capped, skip],
+            ).fetchall()
+        items = [_row_dict(row) or {} for row in rows]
+        for item in items:
+            item["has_cover"] = bool(item.get("cover_path"))
+        return {
+            "items": items,
+            "total": total,
+            "offset": skip,
+            "limit": capped,
+            "sort": sort_key,
+        }
+
+    def browse_facets(
+        self,
+        *,
+        kind: Optional[str] = None,
+        shelf: Optional[str] = None,
+        user_id: Optional[str] = None,
+        author_limit: int = 40,
+        series_limit: int = 40,
+    ) -> Dict[str, Any]:
+        from_sql, where_sql, args = self._browse_base(
+            kind=kind,
+            shelf=shelf,
+            user_id=user_id,
+        )
+        letter_expr = self._author_letter_sql("w.author")
+        with self._connect() as conn:
+            letter_rows = conn.execute(
+                f"""
+                SELECT {letter_expr} AS letter, COUNT(*) AS n
+                FROM {from_sql}
+                WHERE {where_sql}
+                GROUP BY letter
+                ORDER BY letter
+                """,
+                args,
+            ).fetchall()
+            kind_rows = conn.execute(
+                f"""
+                SELECT w.kind AS kind, COUNT(*) AS n
+                FROM {from_sql}
+                WHERE {where_sql}
+                GROUP BY w.kind
+                ORDER BY w.kind
+                """,
+                args,
+            ).fetchall()
+            author_rows = conn.execute(
+                f"""
+                SELECT w.author AS name, COUNT(*) AS n
+                FROM {from_sql}
+                WHERE {where_sql}
+                  AND w.author IS NOT NULL AND trim(w.author) != ''
+                GROUP BY lower(trim(w.author))
+                ORDER BY n DESC, w.author COLLATE NOCASE ASC
+                LIMIT ?
+                """,
+                [*args, max(1, min(int(author_limit or 40), 100))],
+            ).fetchall()
+            series_rows = conn.execute(
+                f"""
+                SELECT w.series_name AS name, COUNT(*) AS n
+                FROM {from_sql}
+                WHERE {where_sql}
+                  AND w.series_name IS NOT NULL AND trim(w.series_name) != ''
+                GROUP BY lower(trim(w.series_name))
+                ORDER BY n DESC, w.series_name COLLATE NOCASE ASC
+                LIMIT ?
+                """,
+                [*args, max(1, min(int(series_limit or 40), 100))],
+            ).fetchall()
+            genre_filled = int(
+                conn.execute(
+                    f"""
+                    SELECT COUNT(*) AS n FROM {from_sql}
+                    WHERE {where_sql}
+                      AND w.genre IS NOT NULL AND trim(w.genre) != ''
+                    """,
+                    args,
+                ).fetchone()["n"]
+            )
+            genre_total = int(
+                conn.execute(f"SELECT COUNT(*) AS n FROM {from_sql} WHERE {where_sql}", args).fetchone()["n"]
+            )
+
+        letters = [{"letter": str(row["letter"]), "count": int(row["n"])} for row in letter_rows]
+        # Phase B: subject/genre facets stay empty until enrich fills genre at usable rate.
+        genre_ready = genre_total > 0 and (genre_filled / genre_total) >= 0.25
+        genres: List[Dict[str, Any]] = []
+        if genre_ready:
+            with self._connect() as conn:
+                genre_rows = conn.execute(
+                    f"""
+                    SELECT w.genre AS name, COUNT(*) AS n
+                    FROM {from_sql}
+                    WHERE {where_sql}
+                      AND w.genre IS NOT NULL AND trim(w.genre) != ''
+                    GROUP BY lower(trim(w.genre))
+                    ORDER BY n DESC, w.genre COLLATE NOCASE ASC
+                    LIMIT 40
+                    """,
+                    args,
+                ).fetchall()
+            genres = [{"name": str(row["name"]), "count": int(row["n"])} for row in genre_rows if row["name"]]
+
+        return {
+            "letters": letters,
+            "kinds": [{"kind": str(row["kind"]), "count": int(row["n"])} for row in kind_rows],
+            "authors": [{"name": str(row["name"]), "count": int(row["n"])} for row in author_rows if row["name"]],
+            "series": [{"name": str(row["name"]), "count": int(row["n"])} for row in series_rows if row["name"]],
+            "genres": genres,
+            "genre_ready": genre_ready,
+            "genre_fill": {"filled": genre_filled, "total": genre_total},
+        }
 
     def search_works(self, query: str, *, limit: int = 24, kind: Optional[str] = None) -> List[Dict[str, Any]]:
         match = _fts_query(query)

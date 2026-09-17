@@ -7,7 +7,7 @@ import xml.etree.ElementTree as ET
 import xml.sax.saxutils as sax
 import zipfile
 from pathlib import Path
-from typing import Any, Dict, Mapping, Optional
+from typing import Any, Dict, Mapping, Optional, Sequence
 
 from librarian.identify import extract_isbn
 
@@ -24,6 +24,10 @@ def write_opf(folder: Path, identity: Mapping[str, Any], *, guid: str = "") -> P
     index = str(identity.get("series_index") or "").strip()
     year = identity.get("year")
     published = f"{year}-01-01" if year else ""
+    subjects = _subjects_from_genre(identity.get("genre"))
+    subject_xml = "\n".join(f"    <dc:subject>{_esc(item)}</dc:subject>" for item in subjects)
+    if not subject_xml:
+        subject_xml = "    <dc:subject></dc:subject>"
     xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" unique-identifier="uuid_id" version="2.0">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
@@ -33,7 +37,7 @@ def write_opf(folder: Path, identity: Mapping[str, Any], *, guid: str = "") -> P
     <dc:language>en</dc:language>
     <dc:publisher>{_esc(identity.get("publisher"))}</dc:publisher>
     <dc:date>{_esc(published)}</dc:date>
-    <dc:subject>{_esc(identity.get("genre"))}</dc:subject>
+{subject_xml}
     <dc:description>{_esc(identity.get("description"))}</dc:description>
     <meta name="calibre:series" content="{_esc(series)}"/>
     <meta name="calibre:series_index" content="{_esc(index)}"/>
@@ -44,6 +48,22 @@ def write_opf(folder: Path, identity: Mapping[str, Any], *, guid: str = "") -> P
     path = folder / "metadata.opf"
     path.write_text(xml, encoding="utf-8")
     return path
+
+
+def _subjects_from_genre(value: object) -> list[str]:
+    text = str(value or "").strip()
+    if not text:
+        return []
+    parts = [part.strip() for part in re.split(r"[,;/|]+", text) if part.strip()]
+    seen: set[str] = set()
+    out: list[str] = []
+    for part in parts:
+        key = part.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(part)
+    return out
 
 
 def comicinfo_xml(identity: Mapping[str, Any], *, guid: str = "", page_count: int = 0) -> str:
@@ -140,7 +160,34 @@ def parse_opf_bytes(data: bytes) -> Dict[str, Any]:
     description = _text(_first_child(root, "description"))
     if description:
         out["description"] = description
+    subjects: list[str] = []
+    for child in root.iter():
+        local = child.tag.rsplit("}", 1)[-1]
+        if local.lower() != "subject":
+            continue
+        text = _text(child)
+        if text:
+            subjects.append(text)
+    genre = join_subjects(subjects)
+    if genre:
+        out["genre"] = genre
     return out
+
+
+def join_subjects(values: object, *, limit: int = 12) -> str:
+    """Normalize subject/genre lists into a single catalog genre string."""
+    items: list[str] = []
+    if isinstance(values, str):
+        items = _subjects_from_genre(values)
+    elif isinstance(values, (list, tuple)):
+        for raw in values:
+            if isinstance(raw, Mapping):
+                text = str(raw.get("tag") or raw.get("name") or raw.get("subject") or "").strip()
+            else:
+                text = str(raw or "").strip()
+            if text:
+                items.extend(_subjects_from_genre(text))
+    return ", ".join(items[: max(1, int(limit))]) if items else ""
 
 
 def read_opf(path: Path) -> Dict[str, Any]:
@@ -461,6 +508,9 @@ def _identity_from_audio_comments(comments: Mapping[str, str]) -> Dict[str, Any]
         out["mbid"] = mbid
     if recording_mbid:
         out["recording_mbid"] = recording_mbid
+    genre = lowered.get("genre") or lowered.get("©gen") or ""
+    if genre:
+        out["genre"] = genre
     if _comments_look_like_audiobook(lowered):
         out["kind"] = "audiobook"
     return out
@@ -544,3 +594,318 @@ def _parse_vorbis_comment(payload: bytes) -> Dict[str, str]:
         key, value = raw.split("=", 1)
         comments[key.strip().lower()] = value.strip()
     return comments
+
+
+def extract_embedded_cover_bytes(path: Path) -> bytes:
+    """Front-cover image bytes from embedded tags. Empty when absent or unreadable."""
+    file_path = Path(path)
+    if not file_path.is_file():
+        return b""
+    suffix = file_path.suffix.lower()
+    if suffix == ".flac":
+        data = _flac_picture_bytes(file_path)
+        if data:
+            return data
+    return _mutagen_picture_bytes(file_path)
+
+
+def _flac_picture_bytes(file_path: Path) -> bytes:
+    try:
+        with file_path.open("rb") as handle:
+            if handle.read(4) != b"fLaC":
+                return b""
+            while True:
+                header = handle.read(4)
+                if len(header) < 4:
+                    break
+                is_last = header[0] & 0x80
+                block_type = header[0] & 0x7F
+                length = int.from_bytes(header[1:4], "big")
+                payload = handle.read(length)
+                if len(payload) < length:
+                    break
+                if block_type == 6:
+                    picture = _decode_flac_picture(payload)
+                    if picture:
+                        return picture
+                if is_last:
+                    break
+    except OSError:
+        return b""
+    return b""
+
+
+def _decode_flac_picture(payload: bytes) -> bytes:
+    if len(payload) < 32:
+        return b""
+    cursor = 4  # picture type
+    mime_len = int.from_bytes(payload[cursor : cursor + 4], "big")
+    cursor += 4
+    if cursor + mime_len > len(payload):
+        return b""
+    cursor += mime_len
+    desc_len = int.from_bytes(payload[cursor : cursor + 4], "big")
+    cursor += 4
+    if cursor + desc_len > len(payload):
+        return b""
+    cursor += desc_len
+    cursor += 16  # width, height, depth, colors
+    if cursor + 4 > len(payload):
+        return b""
+    data_len = int.from_bytes(payload[cursor : cursor + 4], "big")
+    cursor += 4
+    if data_len <= 0 or cursor + data_len > len(payload):
+        return b""
+    data = payload[cursor : cursor + data_len]
+    from librarian.covers import looks_like_image
+
+    return data if looks_like_image(data) else b""
+
+
+def _mutagen_picture_bytes(path: Path) -> bytes:
+    try:
+        from mutagen import File as MutagenFile
+        from mutagen.flac import FLAC
+        from mutagen.id3 import ID3
+        from mutagen.mp4 import MP4
+    except ImportError:
+        return b""
+    try:
+        audio = MutagenFile(path)
+    except Exception:
+        return b""
+    if audio is None:
+        return b""
+    from librarian.covers import looks_like_image
+
+    if isinstance(audio, FLAC) and getattr(audio, "pictures", None):
+        for picture in audio.pictures:
+            data = bytes(getattr(picture, "data", b"") or b"")
+            if looks_like_image(data):
+                return data
+    tags = getattr(audio, "tags", None)
+    if tags is None:
+        return b""
+    if isinstance(tags, ID3) or hasattr(tags, "getall"):
+        try:
+            frames = tags.getall("APIC")  # type: ignore[attr-defined]
+        except Exception:
+            frames = []
+        for frame in frames or []:
+            data = bytes(getattr(frame, "data", b"") or b"")
+            if looks_like_image(data):
+                return data
+    if isinstance(audio, MP4) or (isinstance(tags, dict) and "covr" in tags):
+        covers = tags.get("covr") if isinstance(tags, dict) else None
+        if covers:
+            first = covers[0]
+            data = bytes(first) if not isinstance(first, bytes) else first
+            if looks_like_image(data):
+                return data
+    return b""
+
+
+def write_audio_tags(path: Path, identity: Mapping[str, Any]) -> bool:
+    """Write album/artist/track tags that already exist in identity. Never invents titles."""
+    file_path = Path(path)
+    if not file_path.is_file():
+        return False
+    artist = str(identity.get("author") or identity.get("albumartist") or "").strip()
+    album = str(identity.get("album") or identity.get("series_name") or identity.get("title") or "").strip()
+    title = str(identity.get("track_title") or "").strip()
+    tracknumber = str(identity.get("tracknumber") or "").strip()
+    discnumber = str(identity.get("discnumber") or "").strip()
+    genre = str(identity.get("genre") or "").strip()
+    if not any((artist, album, title, tracknumber, discnumber, genre)):
+        return False
+    if file_path.suffix.lower() == ".flac":
+        return _write_flac_tags(
+            file_path,
+            artist=artist,
+            album=album,
+            title=title,
+            tracknumber=tracknumber,
+            discnumber=discnumber,
+            genre=genre,
+        )
+    return _write_mutagen_tags(
+        file_path,
+        artist=artist,
+        album=album,
+        title=title,
+        tracknumber=tracknumber,
+        discnumber=discnumber,
+        genre=genre,
+    )
+
+
+def _write_flac_tags(
+    path: Path,
+    *,
+    artist: str,
+    album: str,
+    title: str,
+    tracknumber: str,
+    discnumber: str,
+    genre: str,
+) -> bool:
+    """Replace Vorbis COMMENT block. Leaves picture/other blocks intact when possible."""
+    try:
+        from mutagen.flac import FLAC
+    except ImportError:
+        return False
+    try:
+        audio = FLAC(path)
+    except Exception:
+        return False
+    if audio is None:
+        return False
+    if artist:
+        audio["albumartist"] = [artist]
+        audio["artist"] = [artist]
+    if album:
+        audio["album"] = [album]
+    if title:
+        audio["title"] = [title]
+    if tracknumber:
+        audio["tracknumber"] = [tracknumber]
+    if discnumber:
+        audio["discnumber"] = [discnumber]
+    if genre:
+        audio["genre"] = [genre]
+    try:
+        audio.save()
+    except Exception:
+        return False
+    return True
+
+
+def _write_mutagen_tags(
+    path: Path,
+    *,
+    artist: str,
+    album: str,
+    title: str,
+    tracknumber: str,
+    discnumber: str,
+    genre: str,
+) -> bool:
+    try:
+        from mutagen import File as MutagenFile
+        from mutagen.easyid3 import EasyID3
+        from mutagen.id3 import ID3NoHeaderError
+        from mutagen.mp4 import MP4
+    except ImportError:
+        return False
+    suffix = path.suffix.lower()
+    try:
+        if suffix == ".mp3":
+            try:
+                tags = EasyID3(path)
+            except ID3NoHeaderError:
+                audio = MutagenFile(path, easy=True)
+                if audio is None:
+                    return False
+                audio.add_tags()
+                tags = audio
+            if artist:
+                tags["albumartist"] = artist
+                tags["artist"] = artist
+            if album:
+                tags["album"] = album
+            if title:
+                tags["title"] = title
+            if tracknumber:
+                tags["tracknumber"] = tracknumber
+            if discnumber:
+                tags["discnumber"] = discnumber
+            if genre:
+                tags["genre"] = genre
+            tags.save(path)
+            return True
+        audio = MutagenFile(path)
+        if audio is None:
+            return False
+        if isinstance(audio, MP4) or path.suffix.lower() in {".m4a", ".m4b", ".mp4"}:
+            if audio.tags is None:
+                audio.add_tags()
+            assert audio.tags is not None
+            if artist:
+                audio.tags["aART"] = [artist]
+                audio.tags["\xa9ART"] = [artist]
+            if album:
+                audio.tags["\xa9alb"] = [album]
+            if title:
+                audio.tags["\xa9nam"] = [title]
+            if tracknumber and tracknumber.isdigit():
+                audio.tags["trkn"] = [(int(tracknumber), 0)]
+            if discnumber and discnumber.isdigit():
+                audio.tags["disk"] = [(int(discnumber), 0)]
+            if genre:
+                audio.tags["\xa9gen"] = [genre]
+            audio.save()
+            return True
+        if audio.tags is None:
+            try:
+                audio.add_tags()
+            except Exception:
+                return False
+        if artist:
+            audio["albumartist"] = [artist]
+            audio["artist"] = [artist]
+        if album:
+            audio["album"] = [album]
+        if title:
+            audio["title"] = [title]
+        if tracknumber:
+            audio["tracknumber"] = [tracknumber]
+        if discnumber:
+            audio["discnumber"] = [discnumber]
+        if genre:
+            audio["genre"] = [genre]
+        audio.save()
+        return True
+    except Exception:
+        return False
+
+
+def apply_audio_tags_in_folder(
+    folder: Path,
+    identity: Mapping[str, Any],
+    *,
+    paths: Optional[Sequence[Path]] = None,
+) -> int:
+    """Optional tag write for audio files under a folder. Returns files updated."""
+    directory = Path(folder)
+    candidates = list(paths) if paths is not None else []
+    if not candidates and directory.is_dir():
+        for path in sorted(directory.rglob("*")):
+            if path.is_file() and path.suffix.lower() in {
+                ".flac",
+                ".mp3",
+                ".m4a",
+                ".m4b",
+                ".ogg",
+                ".opus",
+                ".aac",
+            }:
+                candidates.append(path)
+    written = 0
+    for path in candidates:
+        tags = read_audio_tags(path)
+        merged = {
+            "author": identity.get("author") or tags.get("author"),
+            "album": identity.get("album") or identity.get("series_name") or tags.get("album"),
+            "series_name": identity.get("series_name") or tags.get("series_name"),
+            "track_title": tags.get("track_title") or identity.get("track_title"),
+            "tracknumber": tags.get("tracknumber") or identity.get("tracknumber"),
+            "discnumber": tags.get("discnumber") or identity.get("discnumber"),
+            "genre": identity.get("genre") or tags.get("genre"),
+        }
+        # Never invent a track title — only write when we already have one from tags or identity.
+        if not str(merged.get("track_title") or "").strip():
+            continue
+        if write_audio_tags(path, merged):
+            written += 1
+    return written
+

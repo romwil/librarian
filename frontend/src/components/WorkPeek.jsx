@@ -1,9 +1,25 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
-import { clothFor, coverClassNames, coverOverlay, isInboundJob, jobChipLabel } from "../cover.js";
+import { browseHref } from "../browse.js";
+import {
+  clothFor,
+  coverClassNames,
+  coverDisplayTitle,
+  coverOverlay,
+  coverWashStyle,
+  coverWashUrl,
+  formatPubAge,
+  formatSize,
+  isBeyondWork,
+  isInboundJob,
+  jobChipLabel,
+  partHint,
+} from "../cover.js";
 import { canPromoteIncomingMusic, humanError, peekMediaNote } from "../copy.js";
-import { canReadInApp, workReaderPath } from "../reader.js";
+import { looksLikeHtml, sanitizeDescriptionHtml } from "../description.js";
+import { beyondHostName } from "../find.js";
+import { canOpenInlineMedia, canReadInApp, workReaderPath } from "../reader.js";
 
 export default function WorkPeek({ work, onClose, onRequest }) {
   const panel = useRef(null);
@@ -57,12 +73,21 @@ export default function WorkPeek({ work, onClose, onRequest }) {
   const catalog = { ...work, ...(detail?.work || {}) };
   const href = catalog.id ? `/works/${catalog.id}` : null;
   const kind = catalog.kind || "work";
+  const beyond = isBeyondWork(catalog);
+  const displayTitle = coverDisplayTitle(catalog);
+  const sizeLabel = formatSize(catalog.size);
+  const ageLabel = formatPubAge(catalog.pub_date);
+  const hostLabel = beyondHostName(catalog);
+  const partLabel = partHint(catalog.title);
   const art = catalog.has_cover && catalog.id ? `/api/works/${catalog.id}/cover` : catalog.cover || "";
   const hasArt = Boolean(art) && !artFailed;
+  const washUrl = !artFailed ? coverWashUrl(catalog) : "";
+  const washStyle = washUrl ? coverWashStyle(catalog) : undefined;
   const overlay = coverOverlay(catalog);
   const detailMatches = Boolean(work?.id) && detail?.work?.id === work.id;
   const canDownload = Boolean(detailMatches && detail?.can_download);
-  const canRead = Boolean(detailMatches && (canReadInApp(catalog, detail?.files) || detail?.can_read));
+  const canRead = Boolean(detailMatches && detail?.can_read && canReadInApp(catalog, detail?.files));
+  const canInlineOpen = canOpenInlineMedia(catalog, canDownload, canRead);
   const fileCount = detailMatches ? detail?.file_count || 0 : 0;
   const mediaNote = peekMediaNote(catalog, {
     canDownload,
@@ -71,6 +96,9 @@ export default function WorkPeek({ work, onClose, onRequest }) {
   const openHref = catalog.id ? `/api/works/${catalog.id}/download?inline=1` : "";
   const downloadHref = catalog.id ? `/api/works/${catalog.id}/download` : "";
   const canPromote = canPromoteIncomingMusic(catalog, role);
+  const descriptionHtml = looksLikeHtml(catalog.description)
+    ? sanitizeDescriptionHtml(catalog.description)
+    : "";
 
   async function favorite() {
     if (!catalog.id) return;
@@ -125,7 +153,17 @@ export default function WorkPeek({ work, onClose, onRequest }) {
   return (
     <>
       <button type="button" className="scrim" aria-label="Close peek" onClick={onClose} />
-      <aside className="peek" role="dialog" aria-modal="true" aria-labelledby="peek-title" data-testid="peek" ref={panel}>
+      <aside
+        className={`peek${washUrl ? " has-wash" : ""}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="peek-title"
+        data-testid="peek"
+        ref={panel}
+        style={washStyle}
+      >
+        {washUrl ? <div className="peek-wash" aria-hidden="true" data-testid="peek-wash" /> : null}
+        {washUrl ? <div className="peek-wash-scrim" aria-hidden="true" /> : null}
         <header className="peek-head">
           <p className="kicker">{kind}</p>
           <button type="button" className="peek-close" aria-label="Close" ref={closeBtn} onClick={onClose}>
@@ -148,11 +186,29 @@ export default function WorkPeek({ work, onClose, onRequest }) {
               {hasArt ? <img src={art} alt="" onError={() => setArtFailed(true)} /> : null}
             </div>
             <div className="peek-copy">
-              <h1 id="peek-title">{catalog.title}</h1>
-              <div className="chip-row">
+              <h1 id="peek-title" title={catalog.title !== displayTitle ? catalog.title : undefined}>
+                {displayTitle}
+              </h1>
+              <div className="chip-row peek-meta" data-testid="peek-meta">
                 {kind ? <span className="chip is-on">{kind}</span> : null}
                 {catalog.year ? <span className="chip">{catalog.year}</span> : null}
-                {catalog.author ? <span className="chip">{catalog.author}</span> : null}
+                {sizeLabel ? <span className="chip">{sizeLabel}</span> : null}
+                {ageLabel ? <span className="chip">{ageLabel}</span> : null}
+                {partLabel ? <span className="chip">Part {partLabel}</span> : null}
+                {hostLabel ? <span className="chip">{hostLabel}</span> : null}
+                {catalog.author ? (
+                  <Link
+                    className="chip"
+                    to={browseHref({ author: catalog.author })}
+                    onClick={(event) => {
+                      if (event.metaKey || event.ctrlKey) return;
+                      onClose();
+                    }}
+                    data-testid="peek-author-chip"
+                  >
+                    {catalog.author}
+                  </Link>
+                ) : null}
                 {catalog.isbn ? <span className="chip font-mono">{catalog.isbn}</span> : null}
                 {catalog.review_state === "needs_review" ? <span className="chip">Review</span> : null}
                 {catalog.music_state === "incoming" ? <span className="chip">Incoming</span> : null}
@@ -160,14 +216,31 @@ export default function WorkPeek({ work, onClose, onRequest }) {
                 {fileCount > 1 ? <span className="chip">{fileCount} files</span> : null}
                 {catalog.abs_item_id ? <span className="chip">On the player</span> : null}
               </div>
-              {catalog.description ? <p className="blurb">{catalog.description}</p> : null}
+              {beyond && catalog.title && catalog.title !== displayTitle ? (
+                <p className="peek-raw muted" data-testid="peek-raw-title">
+                  {catalog.title}
+                </p>
+              ) : null}
+              {catalog.description ? (
+                descriptionHtml ? (
+                  <div
+                    className="blurb blurb-html"
+                    data-testid="peek-description"
+                    dangerouslySetInnerHTML={{ __html: descriptionHtml }}
+                  />
+                ) : (
+                  <p className="blurb" data-testid="peek-description">
+                    {catalog.description}
+                  </p>
+                )
+              ) : null}
               {error ? <p className="alert">{error}</p> : null}
               {mediaNote ? (
                 <p className="lede" data-testid="peek-media-note">
                   {mediaNote}
                 </p>
               ) : null}
-              <div className="cta-row compact">
+              <div className="cta-row compact peek-actions" data-testid="peek-actions">
                 {href ? (
                   <>
                     {canRead ? (
@@ -182,7 +255,7 @@ export default function WorkPeek({ work, onClose, onRequest }) {
                       >
                         Open
                       </Link>
-                    ) : canDownload ? (
+                    ) : canInlineOpen ? (
                       <a className="cta compact" href={openHref} target="_blank" rel="noreferrer" data-testid="peek-open">
                         Open
                       </a>

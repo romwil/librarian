@@ -17,9 +17,13 @@ function fileLabel(row) {
   return String(row?.filename || row?.path || "");
 }
 
+function isOnDisk(row) {
+  return row?.on_disk !== false;
+}
+
 export function readingFiles(files = []) {
   return [...(files || [])]
-    .filter((row) => READING_EXTS.includes(fileExtension(fileLabel(row))))
+    .filter((row) => isOnDisk(row) && READING_EXTS.includes(fileExtension(fileLabel(row))))
     .sort((left, right) => {
       const leftExt = fileExtension(fileLabel(left));
       const rightExt = fileExtension(fileLabel(right));
@@ -30,12 +34,21 @@ export function readingFiles(files = []) {
 }
 
 export function primaryReadingFile(files = []) {
+  const tagged = (files || []).find((row) => row?.reading_room && isOnDisk(row));
+  if (tagged && READING_EXTS.includes(fileExtension(fileLabel(tagged)))) return tagged;
   return readingFiles(files)[0] || null;
 }
 
 export function canReadInApp(work, files = []) {
   if (!READABLE_KINDS.includes(work?.kind)) return false;
   return Boolean(primaryReadingFile(files));
+}
+
+/** Kindle-only (and similar) stay on Download — not an inline Open. */
+export function canOpenInlineMedia(work, canDownload = false, canRead = false) {
+  if (canRead) return false;
+  if (!canDownload) return false;
+  return !READABLE_KINDS.includes(work?.kind);
 }
 
 export function readerEngine(files = []) {
@@ -69,4 +82,15 @@ export function readingFileName(files = [], header = "") {
   const fromFiles = fileLabel(primaryReadingFile(files));
   if (fromFiles) return fromFiles.split("/").pop();
   return filenameFromDisposition(header, "volume");
+}
+
+export function readerOpenError(error, responseStatus = 0) {
+  const raw = String(error?.message || error || "").trim();
+  if (responseStatus === 422 || /isn.?t a readable EPUB/i.test(raw)) {
+    return "This file isn’t a readable EPUB, CBZ, or PDF.";
+  }
+  if (/container|corrupt|zip|EPUBJS|failed to load/i.test(raw)) {
+    return "This file isn’t a readable EPUB/CBZ/PDF, or the EPUB on disk looks damaged.";
+  }
+  return raw || "This volume could not be opened in the reading room.";
 }

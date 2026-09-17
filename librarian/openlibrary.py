@@ -9,6 +9,7 @@ from urllib.parse import urlencode
 import httpx
 
 from librarian.covers import DEFAULT_USER_AGENT, OPENLIB_ISBN_COVER
+from librarian.descriptions import normalize_description
 from librarian.identify import extract_isbn
 
 OPENLIB_ISBN = "https://openlibrary.org/isbn/{isbn}.json"
@@ -31,8 +32,10 @@ def _year_from(value: Any) -> Optional[int]:
 
 def _description(value: Any) -> str:
     if isinstance(value, dict):
-        return str(value.get("value") or value.get("text") or "").strip()
-    return str(value or "").strip()
+        raw = str(value.get("value") or value.get("text") or "").strip()
+    else:
+        raw = str(value or "").strip()
+    return normalize_description(raw)
 
 
 def _series_name(value: Any) -> str:
@@ -204,6 +207,7 @@ class OpenLibraryClient:
             first = authors[0]
             if isinstance(first, dict):
                 author = str(first.get("name") or "").strip()
+        genre = _subjects_to_genre(work.get("subjects") or edition.get("subjects"))
         out: Dict[str, Any] = {
             "title": str(edition.get("title") or work.get("title") or "").strip(),
             "author": author,
@@ -215,6 +219,8 @@ class OpenLibraryClient:
             out["year"] = year
         if series:
             out["series_name"] = series
+        if genre:
+            out["genre"] = genre
         return out
 
     def lookup_by_title(self, title: str, author: str = "") -> Dict[str, Any]:
@@ -243,6 +249,7 @@ class OpenLibraryClient:
         if isinstance(series_raw, list) and series_raw:
             series = str(series_raw[0]).strip()
         series = series or _series_name(work.get("series"))
+        genre = _subjects_to_genre(work.get("subjects") or doc.get("subject"))
         out: Dict[str, Any] = {
             "title": str(doc.get("title") or work.get("title") or name).strip(),
             "author": str(author_name or "").strip(),
@@ -254,6 +261,8 @@ class OpenLibraryClient:
             out["year"] = year
         if series:
             out["series_name"] = series
+        if genre:
+            out["genre"] = genre
         # Title search may include ISBNs on the hit — we deliberately do not copy them.
         return out
 
@@ -286,3 +295,9 @@ class OpenLibraryClient:
             volumes.append(volume)
         volumes.sort(key=lambda row: _sort_index(str(row.get("series_index") or "")))
         return volumes
+
+
+def _subjects_to_genre(raw: Any) -> str:
+    from librarian.metadata import join_subjects
+
+    return join_subjects(raw)

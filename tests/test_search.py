@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 
+from librarian.config import Settings, save_settings
 from librarian.db import Database
 from librarian.nzbfinder import NZBFinderError
 from librarian.rate_limit import clear_rate_limits
@@ -7,10 +8,12 @@ from librarian.sessions import clear_session_secret_cache
 from librarian.web.app import create_app
 
 
-def _client(tmp_path, monkeypatch):
+def _client(tmp_path, monkeypatch, **settings_fields):
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
     monkeypatch.setenv("LIBRARIAN_OWNER_USERNAME", "owner")
     monkeypatch.setenv("LIBRARIAN_OWNER_PASSWORD", "password123")
+    if settings_fields:
+        save_settings(tmp_path, Settings(**settings_fields))
     clear_session_secret_cache()
     clear_rate_limits()
     return TestClient(create_app(tmp_path))
@@ -148,3 +151,27 @@ def test_search_comics_use_7030_and_music_ignores_isbn(tmp_path, monkeypatch):
     assert music.status_code == 200
     assert calls == [("search", "Queen Jazz", "3000")]
     assert music.json()["beyond"][0]["kind"] == "music"
+
+
+def test_search_movie_maps_kind_from_category(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch, nzbfinder_api_token="tok", show_extra_categories=True)
+    _login(client)
+
+    def fake_search(self, query, *, cat=None, kind=None, limit=25, offset=0, keep_untyped=False):
+        assert keep_untyped is True
+        assert cat == "2000"
+        return [
+            {
+                "title": "SUPERCARS.CHAMPIONSHIP.2022.Race.21.OTR",
+                "kind": None,
+                "guid": "g-otr",
+                "category": 2040,
+            }
+        ]
+
+    monkeypatch.setattr("librarian.nzbfinder.NZBFinderClient.search", fake_search)
+    resp = client.get("/api/search", params={"beyond": 1, "kind": "movie", "q": "OTR"})
+    assert resp.status_code == 200
+    beyond = resp.json()["beyond"]
+    assert [row["kind"] for row in beyond] == ["movie"]
+    assert beyond[0]["title"].startswith("SUPERCARS")

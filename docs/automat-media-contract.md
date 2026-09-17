@@ -2,7 +2,7 @@
 
 Household layout for Librarian (`:8793`) and Smart Map (`:8790`) on the shared `/data` mount (`/mnt/user/data`). This is written truth for paths, filenames, tags, and inbox boundaries. It is **not** a shared Python package — do not extract `automat-media`.
 
-**This product (Librarian):** organizes Usenet / watch payloads into `incoming-music`, **Promote**s whole album folders into `music_root`, and is the only writer of `audiobooks`. It does not write `YouTubeLibrary` or use `YouTubeDownload` as `watch_root`.
+**This product (Librarian):** organizes Usenet / watch payloads into `library/incoming-music`, **Promote**s whole album folders into `music_root`, and is the only writer of `library/audiobooks` (plus books / magazines / comics under `library/`). It does not write `YouTubeLibrary` or use `YouTubeDownload` as `watch_root`.
 
 Sibling copy: Smart Map `docs/automat-media-contract.md` (same standards).
 
@@ -10,13 +10,18 @@ Sibling copy: Smart Map `docs/automat-media-contract.md` (same standards).
 
 | Path | Owner | Layout |
 |------|--------|--------|
-| `/data/media/incoming-music` | Librarian | `{Artist}/{Album}/` then **Promote** the whole folder to `music_root` |
+| `/data/media/library/incoming-music` | Librarian | `{Artist}/{Album}/` then **Promote** the whole folder to `music_root` |
 | `/data/media/music` | Shared filesystem: Librarian album Promote + Smart Map YouTube/inbox audio confirm | `{Artist}/{Album}/` — **never audiobooks** |
-| `/data/media/audiobooks` | Librarian only | `{Author}/{Title}/` |
+| `/data/media/library/audiobooks` | Librarian only | `{Author}/{Title}/` |
+| `/data/media/library/books` | Librarian only | `{Author}/{Title}/` |
+| `/data/media/library/magazines` | Librarian only | `{Series\|Title}/{YYYY-MM}/` |
+| `/data/media/library/comics` | Librarian only | `{Series}/{Issue}/` |
 | `/data/media/YouTubeLibrary` | Smart Map only | existing channel/title layout |
 | `/data/media/YouTubeDownload` | Smart Map inbox | Librarian `watch_root` must not be this or library roots |
 
 `/data/media/music` is a **shared filesystem**, not a shared workflow. Librarian owns Usenet-sourced album folders (incoming → Promote). Smart Map owns YouTubeDownload-sourced tracks (operator confirm → move). Neither app calls the Plex API; Plex scans these folders.
+
+Legacy flat roots (`/data/media/books`, `/data/media/audiobooks`, `/data/media/incoming-music`, …) may still exist on disk during cutover. New defaults and Settings point at `library/*`. Operator migrate: [ops/LIBRARY_MIGRATE.md](ops/LIBRARY_MIGRATE.md).
 
 ## Filename rule (locked)
 
@@ -34,7 +39,7 @@ Librarian never invents an ISBN or MusicBrainz id. Smart Map never invents TMDB/
 
 ## Spoken-word
 
-`.m4b`, or `audiobook` / `unabridged` in the name → **not** Plex Music. Librarian routes those to `audiobooks_root`. Smart Map keeps `.m4b` out of `AUDIO_EXTENSIONS` so it cannot be classified as music.
+`.m4b`, or `audiobook` / `unabridged` in the name → **not** Plex Music. Librarian routes those to `audiobooks_root` under `library/`. Smart Map keeps `.m4b` out of `AUDIO_EXTENSIONS` so it cannot be classified as music.
 
 ## Inbox boundaries
 
@@ -55,7 +60,7 @@ LLM assist may fill titles; it does not mint catalog ids that were not in eviden
 
 | Writer | Writes | Does not write |
 |--------|--------|----------------|
-| Librarian | `incoming-music` (organize), `music` (Promote whole album), `audiobooks`, books / magazines / comics | `YouTubeLibrary`, `YouTubeDownload` |
-| Smart Map | `YouTubeDownload` (inbox read + move-out on confirm), `YouTubeLibrary` (video publish), `music` (per-file confirm) | `incoming-music`, `audiobooks`, books / comics / magazines |
+| Librarian | `library/incoming-music` (organize), `music` (Promote whole album), `library/audiobooks`, `library/books` / magazines / comics | `YouTubeLibrary`, `YouTubeDownload` |
+| Smart Map | `YouTubeDownload` (inbox read + move-out on confirm), `YouTubeLibrary` (video publish), `music` (per-file confirm) | `library/incoming-music`, `library/audiobooks`, `library/books` / comics / magazines |
 
 Do not merge the two apps. Do not share NZBFinder/SAB or Smart Map’s TV/movie/YouTube video pipeline.

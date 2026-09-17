@@ -1,10 +1,11 @@
-"""Background job poller (SAB + ingest/watch + RSS + ABS match). On-demand GET /api/queue still works."""
+"""Background job poller (SAB + ingest/watch + RSS + ABS match + enrich trickle)."""
 
 from __future__ import annotations
 
 import logging
 import os
 import threading
+from pathlib import Path
 from typing import Callable, Optional
 
 from librarian.config import Settings
@@ -13,6 +14,10 @@ from librarian.jobs import poll_active_jobs
 from librarian.sabnzbd import SABError
 
 logger = logging.getLogger(__name__)
+
+# Enrich trickle runs every N poll ticks so SAB stays responsive.
+_ENRICH_EVERY_TICKS = 10
+_ENRICH_BATCH = 3
 
 
 def poll_interval_seconds() -> float:
@@ -31,13 +36,18 @@ class JobPoller:
         *,
         interval: Optional[float] = None,
         sab=None,
+        data_dir: Optional[Path] = None,
     ) -> None:
         self.db = db
         self.settings_fn = settings_fn
         self.interval = interval if interval is not None else poll_interval_seconds()
         self.sab = sab
+        self.data_dir = (
+            Path(data_dir) if data_dir is not None else Path(os.environ.get("DATA_DIR", "/config"))
+        )
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
+        self._tick_count = 0
 
     @property
     def is_running(self) -> bool:
@@ -64,6 +74,21 @@ class JobPoller:
             match_audiobooks(self.db, settings)
         except Exception:
             logger.exception("ABS match tick failed")
+        self._tick_count += 1
+        if self._tick_count % _ENRICH_EVERY_TICKS == 0:
+            try:
+                from librarian.enrich import enrich_backlog_batch
+
+                result = enrich_backlog_batch(
+                    self.db,
+                    settings,
+                    data_dir=self.data_dir,
+                    limit=_ENRICH_BATCH,
+                    pause_seconds=0.5,
+                )
+                count += int(result.get("enriched") or 0)
+            except Exception:
+                logger.exception("Enrich backlog tick failed")
         try:
             return count + poll_active_jobs(self.db, settings, sab=self.sab)
         except SABError as error:

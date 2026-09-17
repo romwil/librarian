@@ -1075,9 +1075,14 @@ def dest_layout(identity: Dict[str, Any], settings: Any, *, filename: str, sourc
         dest_name = _music_track_filename(identity, filename=filename, source=source)
         existing = existing_album_folder(identity, settings)
         if existing is not None:
-            return existing / dest_name
-        album = safe_path_part(str(identity.get("series_name") or identity.get("album") or title))
-        return Path(settings.incoming_music_root) / author / album / dest_name
+            album_folder = existing
+        else:
+            album = safe_path_part(str(identity.get("series_name") or identity.get("album") or title))
+            album_folder = Path(settings.incoming_music_root) / author / album
+        disc = _music_discnumber(identity, source=source)
+        if disc:
+            album_folder = album_folder / f"Disc {disc}"
+        return album_folder / dest_name
     raise ValueError(f"unsupported kind {kind}")
 
 
@@ -1145,6 +1150,23 @@ def _music_track_filename(_identity: Mapping[str, Any], *, filename: str, source
         name = safe_path_part(track_title)
         return f"{int(number):02d} - {name}{Path(filename).suffix}"
     return _safe_source_filename(filename)
+
+
+def _music_discnumber(identity: Mapping[str, Any], *, source: Optional[Path]) -> str:
+    """Disc folder segment when a trustworthy discnumber tag (or identity) is present."""
+    raw = str(identity.get("discnumber") or "").strip()
+    if not raw and source is not None:
+        try:
+            from librarian.metadata import read_audio_tags
+
+            tags = read_audio_tags(Path(source))
+            raw = str(tags.get("discnumber") or "").strip()
+        except Exception:
+            raw = ""
+    if not raw or not raw.isdigit():
+        return ""
+    number = int(raw)
+    return str(number) if number >= 1 else ""
 
 
 def expected_payload_ok(kind: str, files: Sequence[Path]) -> Optional[str]:

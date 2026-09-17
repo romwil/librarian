@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 
 from librarian.config import Settings
 from librarian.convert import maybe_convert_payload
-from librarian.covers import fetch_cover
+from librarian.covers import ensure_music_cover, fetch_cover
 from librarian.db import Database
 from librarian.identify import (
     REVIEW_COLLISION,
@@ -23,7 +23,7 @@ from librarian.identify import (
 )
 from librarian.kinds import KIND_BOOK, KIND_COMIC, KIND_MAGAZINE, KIND_MUSIC
 from librarian.llm import client_from_settings
-from librarian.metadata import comicinfo_xml, write_comicinfo, write_opf
+from librarian.metadata import apply_audio_tags_in_folder, comicinfo_xml, write_comicinfo, write_opf
 
 
 def _copy_into(src: Path, dest: Path, *, move: bool = False) -> Path:
@@ -61,6 +61,37 @@ MISSING_FOLDER_APPLY_ERROR = (
     "No complete folder. Enter the SAB storage path this Librarian can read, "
     "set SAB complete root, or Skip."
 )
+COLLISION_APPLY_ERROR = (
+    "A file already exists at the library destination. "
+    "Apply will not overwrite. Change title, author, series, or folder so the "
+    "destination path is free, or Skip to keep what is on the shelf."
+)
+
+
+def shelf_work_for_collision(db: Database, work: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Catalog row already on the shelf for the same identity (different folder)."""
+    if str(work.get("review_reason") or "") != REVIEW_COLLISION:
+        return None
+    conflict = db.find_work_conflict(
+        kind=str(work.get("kind") or ""),
+        folder_path=str(work.get("folder_path") or ""),
+        isbn=str(work.get("isbn") or ""),
+        series_name=str(work.get("series_name") or ""),
+        series_index=str(work.get("series_index") or ""),
+        title=str(work.get("title") or ""),
+        author=str(work.get("author") or ""),
+        music_state=work.get("music_state"),
+        exclude_id=str(work.get("id") or "") or None,
+    )
+    if conflict is None:
+        return None
+    return {
+        "id": conflict["id"],
+        "title": conflict.get("title"),
+        "author": conflict.get("author"),
+        "folder_path": conflict.get("folder_path"),
+        "kind": conflict.get("kind"),
+    }
 
 
 def _source_folder_value(folder: Path) -> Optional[str]:
@@ -190,6 +221,20 @@ def organize_identified(
         indexer_cover_url=cover_url,
         transport=cover_transport,
     )
+    if identity["kind"] == KIND_MUSIC:
+        music_cover = ensure_music_cover(
+            Path(folder_path),
+            mbid=str(identity.get("mbid") or ""),
+            transport=cover_transport,
+        )
+        if music_cover is not None:
+            cover = music_cover
+        if getattr(settings, "music_write_tags", False):
+            apply_audio_tags_in_folder(
+                Path(folder_path),
+                identity,
+                paths=[Path(path) for path in placed],
+            )
 
     work = db.upsert_work(
         {
@@ -298,7 +343,7 @@ def apply_review(
         if reason == REVIEW_NO_PAYLOAD:
             raise ValueError(NO_PAYLOAD_APPLY_ERROR)
         if reason == REVIEW_COLLISION:
-            raise ValueError("A file already exists at the library destination.")
+            raise ValueError(COLLISION_APPLY_ERROR)
     return result
 
 
@@ -323,15 +368,23 @@ def promote_music(db: Database, settings: Settings, work_id: str) -> Dict[str, A
         raise ValueError("Promote collision")
     shutil.move(str(folder), str(dest))
     db.relocate_work_files(work_id, str(folder), str(dest))
+    music_cover = ensure_music_cover(
+        dest,
+        mbid=str(work.get("mbid") or ""),
+    )
     cover = dest / "cover.jpg"
     old_cover = str(work.get("cover_path") or "")
     if old_cover.startswith(str(folder)):
         old_cover = str(dest / Path(old_cover).relative_to(folder))
+    if getattr(settings, "music_write_tags", False):
+        apply_audio_tags_in_folder(dest, work)
     updated = db.upsert_work(
         {
             **work,
             "folder_path": str(dest),
-            "cover_path": str(cover) if cover.is_file() else old_cover or work.get("cover_path"),
+            "cover_path": str(music_cover)
+            if music_cover is not None
+            else (str(cover) if cover.is_file() else old_cover or work.get("cover_path")),
             "music_state": "promoted",
             "review_state": "none",
         }

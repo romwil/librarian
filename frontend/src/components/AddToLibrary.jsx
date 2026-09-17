@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api.js";
 import { ADD_TO_LIBRARY_LEDE, FIELD_HELP, humanError } from "../copy.js";
 import { FieldLabel } from "./FieldHelp.jsx";
-import { filterBrowseEntries } from "../ingest.js";
+import { filterBrowseEntries, ingestResultMessage } from "../ingest.js";
 
 export default function AddToLibrary({ compact = false } = {}) {
   const [path, setPath] = useState("");
@@ -37,17 +37,13 @@ export default function AddToLibrary({ compact = false } = {}) {
     setError("");
     try {
       const data = await api.ingest(path);
-      const job = data.job || {};
-      const word =
-        job.status === "organized"
-          ? "Arrived"
-          : job.status === "review"
-            ? "Needs you"
-            : job.status === "failed"
-              ? "Failed"
-              : "On the way";
-      setStatus(`${word} — ${job.title || path}`);
+      const outcome = ingestResultMessage(data.job || {}, path);
       await load(parent || root || "");
+      if (outcome.kind === "error") {
+        setError(outcome.text);
+      } else {
+        setStatus(outcome.text);
+      }
     } catch (err) {
       setError(humanError(err));
     } finally {

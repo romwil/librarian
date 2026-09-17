@@ -51,9 +51,15 @@ def test_book_isbn_author_title_high():
 
 
 def test_movie_category_refused_as_book_fallback_low():
+    from librarian.indexers.kind_map import newznab_cat_to_kind
+    from librarian.kinds import kind_from_newznab
+
     identity = parse_usenet_name("Some.Movie.2024", category=2000)
     assert identity.kind == "book"
     assert identity.confidence == "low"
+    # Display map knows movie; Hall identify path must not.
+    assert newznab_cat_to_kind(2000) == "movie"
+    assert kind_from_newznab(2000) is None
 
 
 def test_identify_no_payload_review(tmp_path):
@@ -341,13 +347,13 @@ def test_dest_layout_book_and_comic():
         settings,
         filename="Dune.epub",
     )
-    assert book == Path("/data/media/books/Herbert/Dune/Dune.epub")
+    assert book == Path("/data/media/library/books/Herbert/Dune/Dune.epub")
     comic = dest_layout(
         {"kind": "comic", "title": "Saga #1", "series_name": "Saga", "series_index": "1"},
         settings,
         filename="saga.cbz",
     )
-    assert comic == Path("/data/media/comics/Saga/1/Saga #1.cbz")
+    assert comic == Path("/data/media/library/comics/Saga/1/Saga #1.cbz")
 
 
 def test_comic_filename_variants():
@@ -590,3 +596,30 @@ def _flac_with_tags(path: Path, tags: dict[str, str]) -> None:
     body += len(comments).to_bytes(4, "little") + b"".join(comments)
     header = bytes([0x80 | 4]) + len(body).to_bytes(3, "big")
     path.write_bytes(b"fLaC" + header + body)
+
+
+def test_dest_layout_music_disc_folder_when_discnumber_tagged(tmp_path):
+    settings = Settings(
+        incoming_music_root=str(tmp_path / "incoming"),
+        music_root=str(tmp_path / "music"),
+    )
+    source = tmp_path / "track.flac"
+    _flac_with_tags(
+        source,
+        {
+            "ALBUM": "The Wall",
+            "ALBUMARTIST": "Pink Floyd",
+            "TITLE": "Hey You",
+            "TRACKNUMBER": "5",
+            "DISCNUMBER": "2",
+        },
+    )
+    dest = dest_layout(
+        {"kind": "music", "title": "The Wall", "author": "Pink Floyd", "series_name": "The Wall"},
+        settings,
+        filename=source.name,
+        source=source,
+    )
+    assert dest.name == "05 - Hey You.flac"
+    assert dest.parent.name == "Disc 2"
+    assert dest.parent.parent.name == "The Wall"

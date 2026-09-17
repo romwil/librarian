@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { filterBrowseEntries, ingestSourcePath, isSkippedBrowseName } from "./ingest.js";
+import { filterBrowseEntries, ingestResultMessage, ingestSourcePath, isSkippedBrowseName } from "./ingest.js";
 import { ADD_TO_LIBRARY_LEDE, WATCH_FOLDER_LEDE } from "./copy.js";
 
 describe("add to library browse", () => {
@@ -40,5 +40,30 @@ describe("add to library browse", () => {
       ingestSourcePath({ payload: { source: "watch" }, storage_path: "/data/inbox/Album" }),
       "/data/inbox/Album",
     );
+  });
+
+  it("surfaces failed ingest job.error instead of Failed — title only", () => {
+    assert.deepEqual(
+      ingestResultMessage(
+        {
+          status: "failed",
+          title: "books",
+          error: "Nothing to identify in here — empty or only junk files.",
+        },
+        "/data/books",
+      ),
+      {
+        kind: "error",
+        text: "Nothing to identify in here — empty or only junk files.",
+      },
+    );
+    assert.deepEqual(ingestResultMessage({ status: "failed", title: "books" }, "/data/books"), {
+      kind: "error",
+      text: "Failed — books",
+    });
+    assert.deepEqual(ingestResultMessage({ status: "organized", title: "Dune" }, "/data/x"), {
+      kind: "status",
+      text: "Arrived — Dune",
+    });
   });
 });

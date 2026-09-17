@@ -157,3 +157,91 @@ def test_inline_open_serves_magazine_pdf_not_cover(tmp_path, monkeypatch):
     assert inline.content == b"%PDF-fake"
     assert inline.headers.get("content-type", "").startswith("application/pdf")
     assert "inline" in (inline.headers.get("content-disposition") or "")
+
+
+def test_inline_reading_room_serves_epub_never_kindle_or_zip(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    _login(client)
+    db = Database(tmp_path / "librarian.db")
+    folder = tmp_path / "books" / "Stephen King" / "Box Set"
+    folder.mkdir(parents=True)
+    azw3 = folder / "Box Set.azw3"
+    epub = folder / "Box Set.epub"
+    cover = folder / "cover.jpg"
+    azw3.write_bytes(b"AZW3-bytes")
+    epub.write_bytes(b"PK\x03\x04epub")
+    cover.write_bytes(b"jpeg")
+    work = db.upsert_work(
+        {"kind": "book", "title": "Box Set", "author": "Stephen King", "folder_path": str(folder)}
+    )
+    # Kindle first in DB — must not win for Reading Room.
+    db.add_file({"work_id": work["id"], "path": str(azw3), "filename": azw3.name, "kind": "book"})
+    db.add_file({"work_id": work["id"], "path": str(cover), "filename": cover.name, "kind": "book"})
+    db.add_file({"work_id": work["id"], "path": str(epub), "filename": epub.name, "kind": "book"})
+    detail = client.get(f"/api/works/{work['id']}")
+    body = detail.json()
+    assert body["can_read"] is True
+    reading = [row for row in body["files"] if row.get("reading_room")]
+    assert len(reading) == 1
+    assert reading[0]["filename"] == "Box Set.epub"
+    inline = client.get(f"/api/works/{work['id']}/download", params={"inline": 1})
+    assert inline.status_code == 200
+    assert inline.content == b"PK\x03\x04epub"
+    assert inline.headers.get("content-type", "").startswith("application/epub+zip")
+    assert "inline" in (inline.headers.get("content-disposition") or "")
+    assert "Box%20Set.epub" in (inline.headers.get("content-disposition") or "") or "Box Set.epub" in (
+        inline.headers.get("content-disposition") or ""
+    )
+    attachment = client.get(f"/api/works/{work['id']}/download")
+    assert attachment.status_code == 200
+    assert attachment.headers.get("content-type", "").startswith("application/zip")
+
+
+def test_kindle_only_is_download_not_read(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    _login(client)
+    db = Database(tmp_path / "librarian.db")
+    folder = tmp_path / "books" / "Author" / "Title"
+    folder.mkdir(parents=True)
+    azw3 = folder / "Title.azw3"
+    azw3.write_bytes(b"AZW3-only")
+    work = db.upsert_work(
+        {"kind": "book", "title": "Title", "author": "Author", "folder_path": str(folder)}
+    )
+    db.add_file({"work_id": work["id"], "path": str(azw3), "filename": azw3.name, "kind": "book"})
+    detail = client.get(f"/api/works/{work['id']}")
+    body = detail.json()
+    assert body["can_read"] is False
+    assert body["can_download"] is True
+    assert all(not row.get("reading_room") for row in body["files"])
+    inline = client.get(f"/api/works/{work['id']}/download", params={"inline": 1})
+    assert inline.status_code == 422
+    assert "readable EPUB" in inline.json()["detail"]
+    download = client.get(f"/api/works/{work['id']}/download")
+    assert download.status_code == 200
+    assert download.content == b"AZW3-only"
+
+
+def test_stale_epub_path_does_not_enable_read(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    _login(client)
+    db = Database(tmp_path / "librarian.db")
+    folder = tmp_path / "books" / "Author" / "Ghost"
+    folder.mkdir(parents=True)
+    azw3 = folder / "Ghost.azw3"
+    missing = folder / "Ghost.epub"
+    azw3.write_bytes(b"AZW3")
+    work = db.upsert_work(
+        {"kind": "book", "title": "Ghost", "author": "Author", "folder_path": str(folder)}
+    )
+    db.add_file({"work_id": work["id"], "path": str(missing), "filename": missing.name, "kind": "book"})
+    db.add_file({"work_id": work["id"], "path": str(azw3), "filename": azw3.name, "kind": "book"})
+    detail = client.get(f"/api/works/{work['id']}")
+    body = detail.json()
+    assert body["can_read"] is False
+    assert body["can_download"] is True
+    by_name = {row["filename"]: row for row in body["files"]}
+    assert by_name["Ghost.epub"]["on_disk"] is False
+    assert by_name["Ghost.azw3"]["on_disk"] is True
+    inline = client.get(f"/api/works/{work['id']}/download", params={"inline": 1})
+    assert inline.status_code == 422

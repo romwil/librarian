@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  canOpenInlineMedia,
   canReadInApp,
   filenameFromDisposition,
   primaryReadingFile,
   readerEngine,
+  readerOpenError,
   readingFileName,
   workReaderPath,
 } from "./reader.js";
@@ -26,11 +28,39 @@ describe("in-app reader", () => {
     assert.equal(canReadInApp({ kind: "magazine" }, files), true);
   });
 
+  it("prefers the Reading Room badge and ignores missing DB paths", () => {
+    const files = [
+      { filename: "ghost.epub", on_disk: false },
+      { filename: "Title.azw3", on_disk: true },
+      { filename: "Title.epub", on_disk: true, reading_room: true },
+    ];
+    assert.equal(primaryReadingFile(files).filename, "Title.epub");
+    assert.equal(canReadInApp({ kind: "book" }, files), true);
+    assert.equal(
+      canReadInApp({ kind: "book" }, [
+        { filename: "ghost.epub", on_disk: false },
+        { filename: "Title.azw3", on_disk: true },
+      ]),
+      false,
+    );
+  });
+
   it("does not steal Open for music or audiobooks (Phase 2b still owns playback)", () => {
     assert.equal(canReadInApp({ kind: "music" }, [{ filename: "01-track.flac" }]), false);
     assert.equal(canReadInApp({ kind: "audiobook" }, [{ filename: "Dune.m4b" }]), false);
     assert.equal(canReadInApp({ kind: "book" }, [{ filename: "cover.jpg" }]), false);
     assert.equal(canReadInApp({ kind: "book" }, []), false);
+    assert.equal(canReadInApp({ kind: "book" }, [{ filename: "Title.azw3" }]), false);
+  });
+
+  it("Kindle-only books get Download, not inline Open", () => {
+    assert.equal(canOpenInlineMedia({ kind: "book" }, true, false), false);
+    assert.equal(canOpenInlineMedia({ kind: "music" }, true, false), true);
+  });
+
+  it("maps Foliate container failures to honest copy", () => {
+    assert.match(readerOpenError(new Error("Failed to load container file")), /damaged|readable/);
+    assert.equal(readerOpenError(new Error("nope"), 422), "This file isn’t a readable EPUB, CBZ, or PDF.");
   });
 
   it("deep-links peek Open onto the work page reader", () => {

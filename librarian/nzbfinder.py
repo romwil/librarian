@@ -8,7 +8,7 @@ from urllib.parse import urlencode, urljoin
 import httpx
 
 from librarian._version import __version__
-from librarian.kinds import kind_from_newznab, search_category_for_kind
+from librarian.kinds import ALL_KINDS, kind_from_newznab, search_category_for_kind
 
 _UA_VERSION = ".".join(str(__version__).split(".")[:2]) or "0.1"
 DEFAULT_USER_AGENT = f"Librarian/{_UA_VERSION} (Automat; +https://github.com/romwil/librarian)"
@@ -129,7 +129,7 @@ def normalize_item(item: Dict[str, Any]) -> Dict[str, Any]:
         "category": cat_id,
         "cats": cats,
         "category_name": item.get("category_name") or attrs.get("category_name") or "",
-        "kind": kind_from_newznab(cat_id),
+        "kind": kind_from_newznab(cat_id, extra=True),
         "size": _optional_int(size),
         "author": attrs.get("author") or item.get("author") or "",
         "book_title": attrs.get("booktitle") or item.get("book_title") or "",
@@ -229,7 +229,8 @@ class NZBFinderClient:
         items = parse_search_payload(payload)
         if keep_untyped:
             return items
-        return [item for item in items if item.get("kind")]
+        # Shelf searches ignore movie/TV/XXX even when parse maps their cats.
+        return [item for item in items if item.get("kind") in ALL_KINDS]
 
     def latest(self, cat: str, *, limit: int = 25, path: str = "search") -> List[Dict[str, Any]]:
         """Newest items in a category (Discover latest-in-cat).
@@ -305,7 +306,7 @@ class NZBFinderClient:
                 "limit": limit,
             },
         )
-        return [item for item in parse_search_payload(payload) if item.get("kind")]
+        return [item for item in parse_search_payload(payload) if item.get("kind") in ALL_KINDS]
 
     def details(self, guid: str) -> Dict[str, Any]:
         payload = self._get("details", {"id": guid})

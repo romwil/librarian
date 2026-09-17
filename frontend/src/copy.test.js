@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  DISCOVER_CTA,
   FIND_BEYOND_CTA,
   ADD_TO_LIBRARY_LEDE,
   canPromoteIncomingMusic,
@@ -9,12 +10,19 @@ import {
   findStatusLine,
   humanError,
   peekMediaNote,
+  queueNeedsYouHelp,
   searchStatusLine,
   setupComplete,
   setupStepComplete,
 } from "./copy.js";
 
 describe("reading room copy", () => {
+  it("explains Needs you on Queue", () => {
+    assert.match(queueNeedsYouHelp(), /Needs you means Review/);
+    assert.match(queueNeedsYouHelp(), /files are here/);
+    assert.match(queueNeedsYouHelp(), /Open Review/);
+  });
+
   it("turns login failures into door copy", () => {
     assert.match(humanError({ status: 401, message: "Invalid username or password" }, "login"), /join link/);
     assert.match(humanError({ status: 429, message: "Too many requests" }, "login"), /Wait a minute/);
@@ -59,6 +67,7 @@ describe("reading room copy", () => {
 
   it("summarizes Find beyond the shelves without mixing in local hits", () => {
     assert.equal(FIND_BEYOND_CTA, "Find beyond the shelves");
+    assert.equal(DISCOVER_CTA, "What's trending");
     assert.equal(findStatusLine({ q: "" }), "Peruse trending on the indexers, or name a title to find.");
     assert.match(findStatusLine({ q: "dune", phase: "beyond" }), /finding dune · looking beyond/);
     assert.equal(findStatusLine({ q: "dune", kind: "book", beyondCount: 11, phase: "done" }), "finding dune · book · 11 beyond");

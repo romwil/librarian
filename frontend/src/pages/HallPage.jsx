@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useOutletContext } from "react-router-dom";
 import { api } from "../api.js";
+import { browseHref } from "../browse.js";
 import Rail from "../components/Rail.jsx";
-import { emptyHallCopy, humanError, setupComplete } from "../copy.js";
+import { DISCOVER_CTA, emptyHallCopy, humanError, setupComplete } from "../copy.js";
+import { discoverHref } from "../find.js";
 import AddToLibrary from "../components/AddToLibrary.jsx";
 
 export default function HallPage() {
@@ -60,6 +62,11 @@ export default function HallPage() {
           />
           <kbd>/</kbd>
         </form>
+        <p className="find-cta-block">
+          <Link className="muted" to={discoverHref()} data-testid="discover-door">
+            {DISCOVER_CTA}
+          </Link>
+        </p>
       </section>
       {loadError ? <p className="alert hall-alert">{loadError}</p> : null}
       {hall?.empty ? (
@@ -81,12 +88,32 @@ export default function HallPage() {
         empty={hall ? "Open a volume to leave a bookmark." : undefined}
       />
       <Rail title="What’s New" kicker="Recently organized" items={hall?.whats_new} />
-      <Rail title="Favorites" items={hall?.favorites} />
-      <Rail title="Books" items={hall?.areas?.books} />
-      <Rail title="Magazines" kicker="Issue date on the gilt caption" items={hall?.areas?.magazines} />
-      <Rail title="Comics" kicker="Series and issue, square-ish" items={hall?.areas?.comics} />
-      <Rail title="Audiobooks" kicker="Listen — not a book spine" items={hall?.areas?.audiobooks} />
-      <Rail title="Incoming Music" kicker="Promote lives in peek" items={hall?.areas?.incoming_music} />
+      <Rail title="Favorites" items={hall?.favorites} seeAllTo={browseHref({ shelf: "favorites" })} />
+      <Rail title="Books" items={hall?.areas?.books} seeAllTo={browseHref({ kind: "book" })} />
+      <Rail
+        title="Magazines"
+        kicker="Issue date on the gilt caption"
+        items={hall?.areas?.magazines}
+        seeAllTo={browseHref({ kind: "magazine" })}
+      />
+      <Rail
+        title="Comics"
+        kicker="Series and issue, square-ish"
+        items={hall?.areas?.comics}
+        seeAllTo={browseHref({ kind: "comic" })}
+      />
+      <Rail
+        title="Audiobooks"
+        kicker="Listen — not a book spine"
+        items={hall?.areas?.audiobooks}
+        seeAllTo={browseHref({ kind: "audiobook" })}
+      />
+      <Rail
+        title="Incoming Music"
+        kicker="Promote lives in peek"
+        items={hall?.areas?.incoming_music}
+        seeAllTo={browseHref({ kind: "music" })}
+      />
       <Rail
         title="Gaps"
         kicker="Find this hole beyond the shelves"

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from librarian.config import Settings, save_settings
@@ -45,6 +47,34 @@ def test_review_list_fills_folder_from_job_storage(tmp_path, monkeypatch):
     assert row["review_reason"] == "no_payload"
     assert row["storage_path"].endswith("Christine - Stephen King.epub")
     assert row["folder_path"].endswith("Christine - Stephen King.epub")
+
+
+def test_queue_review_job_includes_work_review_reason(tmp_path, monkeypatch):
+    client, app = _client(tmp_path, monkeypatch)
+    db = app.state.db
+    work = db.upsert_work(
+        {
+            "kind": "music",
+            "title": "Guardians Mix",
+            "review_state": "needs_review",
+            "review_reason": "unknown_identity",
+        }
+    )
+    db.create_job(
+        {
+            "status": "review",
+            "work_id": work["id"],
+            "title": "VA-Guardians Mix",
+            "kind": "music",
+            "nzo_id": "3ed43dc9-188e-48db-91ba-487a96bc7084",
+        }
+    )
+    listed = client.get("/api/queue")
+    assert listed.status_code == 200
+    job = next(row for row in listed.json()["jobs"] if row["work_id"] == work["id"])
+    assert job["status"] == "review"
+    assert job["review_reason"] == "unknown_identity"
+    assert job["review_state"] == "needs_review"
 
 
 def test_review_apply_no_payload_is_400(tmp_path, monkeypatch):
@@ -108,3 +138,113 @@ def test_review_apply_identity_organizes(tmp_path, monkeypatch):
     stored = db.get_work(work["id"])
     assert stored["title"] == "The Return of the King"
     assert stored["review_state"] == "none"
+
+
+def test_review_apply_collision_is_400_without_overwrite(tmp_path, monkeypatch):
+    settings = Settings(
+        books_root=str(tmp_path / "books"),
+        magazines_root=str(tmp_path / "magazines"),
+        comics_root=str(tmp_path / "comics"),
+        audiobooks_root=str(tmp_path / "audiobooks"),
+        incoming_music_root=str(tmp_path / "incoming"),
+        music_root=str(tmp_path / "music"),
+    )
+    client, app = _client(tmp_path, monkeypatch, settings=settings)
+    db = app.state.db
+    dest_dir = Path(settings.books_root) / "Le Guin" / "The Left Hand of Darkness"
+    dest_dir.mkdir(parents=True)
+    dest_file = dest_dir / "The Left Hand of Darkness.epub"
+    dest_file.write_bytes(b"old")
+    folder = tmp_path / "complete" / "fresh"
+    folder.mkdir(parents=True)
+    (folder / "book.epub").write_bytes(b"new")
+    work = db.upsert_work(
+        {
+            "kind": "book",
+            "title": "The Left Hand of Darkness",
+            "author": "Le Guin",
+            "isbn": "9780441478125",
+            "review_state": "needs_review",
+            "review_reason": "collision",
+            "folder_path": str(folder),
+        }
+    )
+    resp = client.post(
+        f"/api/review/{work['id']}/apply",
+        json={
+            "title": "The Left Hand of Darkness",
+            "author": "Le Guin",
+            "isbn": "9780441478125",
+            "kind": "book",
+            "folder": str(folder),
+        },
+    )
+    assert resp.status_code == 400
+    detail = resp.json()["detail"]
+    assert "already exists" in detail
+    assert "will not overwrite" in detail.lower()
+    assert dest_file.read_bytes() == b"old"
+    assert (folder / "book.epub").read_bytes() == b"new"
+    stored = db.get_work(work["id"])
+    assert stored["review_state"] == "needs_review"
+    assert stored["review_reason"] == "collision"
+
+
+def test_review_list_links_shelf_work_on_collision(tmp_path, monkeypatch):
+    settings = Settings(
+        books_root=str(tmp_path / "books"),
+        magazines_root=str(tmp_path / "magazines"),
+        comics_root=str(tmp_path / "comics"),
+        audiobooks_root=str(tmp_path / "audiobooks"),
+        incoming_music_root=str(tmp_path / "incoming"),
+        music_root=str(tmp_path / "music"),
+    )
+    client, app = _client(tmp_path, monkeypatch, settings=settings)
+    db = app.state.db
+    shelf = db.upsert_work(
+        {
+            "kind": "book",
+            "title": "The Left Hand of Darkness",
+            "author": "Le Guin",
+            "isbn": "9780441478125",
+            "folder_path": str(Path(settings.books_root) / "Le Guin" / "The Left Hand of Darkness"),
+            "review_state": "none",
+        }
+    )
+    colliding = db.upsert_work(
+        {
+            "kind": "book",
+            "title": "The Left Hand of Darkness",
+            "author": "Le Guin",
+            "isbn": "9780441478125",
+            "folder_path": str(tmp_path / "complete" / "dup"),
+            "review_state": "needs_review",
+            "review_reason": "collision",
+        }
+    )
+    listed = client.get("/api/review")
+    assert listed.status_code == 200
+    row = next(item for item in listed.json()["works"] if item["id"] == colliding["id"])
+    assert row["review_reason"] == "collision"
+    assert row["shelf_work"]["id"] == shelf["id"]
+    assert row["shelf_work"]["title"] == "The Left Hand of Darkness"
+
+
+def test_review_skip_keeps_shelf_and_dismisses(tmp_path, monkeypatch):
+    client, app = _client(tmp_path, monkeypatch)
+    db = app.state.db
+    work = db.upsert_work(
+        {
+            "kind": "book",
+            "title": "To the Edge",
+            "author": "Cindy Gerard",
+            "isbn": "9780312990916",
+            "review_state": "needs_review",
+            "review_reason": "collision",
+            "folder_path": "/data/media/books/Cindy Gerard/To the Edge (1216)",
+        }
+    )
+    resp = client.post(f"/api/review/{work['id']}/skip")
+    assert resp.status_code == 200
+    assert resp.json()["work"]["review_state"] == "resolved"
+    assert client.get("/api/review").json()["works"] == []

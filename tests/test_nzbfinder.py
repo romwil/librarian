@@ -10,14 +10,15 @@ FIXTURE = Path(__file__).parent / "fixtures" / "nzbfinder_search.json"
 V2 = Path(__file__).parent / "fixtures" / "nzbfinder"
 
 
-def test_parse_fixture_strips_movies_and_maps_kinds():
+def test_parse_fixture_maps_movies_and_shelf_kinds():
     payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
     items = parse_search_payload(payload)
     kinds = [item["kind"] for item in items]
-    assert kinds == ["magazine", "comic", None]
+    assert kinds == ["magazine", "comic", "movie"]
     assert "api_token" not in json.dumps(payload)
     assert items[0]["guid"] == "guid-linux-mag-2026-10"
     assert items[1]["kind"] == "comic"
+    assert items[2]["kind"] == "movie"
 
 
 def test_client_sends_user_agent_and_api_token():
@@ -247,9 +248,9 @@ def test_empty_query_v2_is_not_used_for_latest():
 def test_v2_capabilities_fixture_matches_kind_map():
     payload = json.loads((V2 / "capabilities.json").read_text(encoding="utf-8"))
     expected = {
-        2000: None,
-        5000: None,
-        6000: None,
+        2000: "movie",
+        5000: "tv",
+        6000: "xxx",
         7010: "magazine",
         7020: "book",
         7030: "comic",

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
 import { humanError } from "../copy.js";
-import { readerEngine, readingFileName } from "../reader.js";
+import { readerEngine, readerOpenError, readingFileName } from "../reader.js";
 
 function downloadUrl(workId) {
   return `/api/works/${encodeURIComponent(workId)}/download?inline=1`;
@@ -73,13 +73,28 @@ export default function Reader({ work, files = [], progress = null, onClose }) {
     async function open() {
       setError("");
       setStatus("Opening the volume…");
+      if (!engine) {
+        throw Object.assign(new Error("This file isn’t a readable EPUB, CBZ, or PDF."), { status: 422 });
+      }
       const response = await fetch(downloadUrl(work.id), { credentials: "include" });
       if (!response.ok) {
-        throw new Error("This volume could not be opened in the reading room.");
+        const detail = await response.text().catch(() => "");
+        let message = "This volume could not be opened in the reading room.";
+        try {
+          const parsed = JSON.parse(detail);
+          if (parsed?.detail) message = String(parsed.detail);
+        } catch {
+          /* ignore non-JSON bodies */
+        }
+        throw Object.assign(new Error(message), { status: response.status });
       }
       const blob = await response.blob();
       if (cancelled) return;
       const filename = readingFileName(files, response.headers.get("content-disposition"));
+      const ext = filename.includes(".") ? `.${filename.split(".").pop().toLowerCase()}` : "";
+      if (ext && ![".epub", ".cbz", ".pdf"].includes(ext)) {
+        throw Object.assign(new Error("This file isn’t a readable EPUB, CBZ, or PDF."), { status: 422 });
+      }
       if (engine === "pdf") {
         objectUrl = URL.createObjectURL(blob);
         setPdfUrl(objectUrl);
@@ -87,7 +102,7 @@ export default function Reader({ work, files = [], progress = null, onClose }) {
         return;
       }
       if (engine !== "epub" && engine !== "cbz") {
-        throw new Error("This volume isn’t a readable EPUB, CBZ, or PDF.");
+        throw Object.assign(new Error("This volume isn’t a readable EPUB, CBZ, or PDF."), { status: 422 });
       }
       await import("foliate-js/view.js");
       if (cancelled || !stage.current) return;
@@ -108,7 +123,7 @@ export default function Reader({ work, files = [], progress = null, onClose }) {
     open().catch((err) => {
       if (cancelled) return;
       setStatus("");
-      setError(humanError(err) || "This volume could not be opened in the reading room.");
+      setError(readerOpenError(err, err?.status) || humanError(err) || "This volume could not be opened in the reading room.");
     });
 
     return () => {

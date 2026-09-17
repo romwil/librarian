@@ -109,11 +109,11 @@ class Settings:
     sabnzbd_api_key: str = ""
     nzbfinder_url: str = "https://nzbfinder.ws"
     nzbfinder_api_token: str = ""
-    books_root: str = "/data/media/books"
-    magazines_root: str = "/data/media/magazines"
-    comics_root: str = "/data/media/comics"
-    audiobooks_root: str = "/data/media/audiobooks"
-    incoming_music_root: str = "/data/media/incoming-music"
+    books_root: str = "/data/media/library/books"
+    magazines_root: str = "/data/media/library/magazines"
+    comics_root: str = "/data/media/library/comics"
+    audiobooks_root: str = "/data/media/library/audiobooks"
+    incoming_music_root: str = "/data/media/library/incoming-music"
     music_root: str = "/data/media/music"
     complete_root: str = ""
     audiobook_target: str = "plex"
@@ -135,6 +135,7 @@ class Settings:
     sonarr_api_key: str = ""
     sab_movie_category: str = "movies"
     sab_tv_category: str = "tv"
+    music_write_tags: bool = False
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> "Settings":
@@ -144,6 +145,8 @@ class Settings:
             filtered["watch_enabled"] = _as_bool(filtered["watch_enabled"])
         if "show_extra_categories" in filtered:
             filtered["show_extra_categories"] = _as_bool(filtered["show_extra_categories"])
+        if "music_write_tags" in filtered:
+            filtered["music_write_tags"] = _as_bool(filtered["music_write_tags"])
         if "extra_indexers" in filtered:
             from librarian.indexers.hosts import normalize_extra_indexers
 
@@ -193,6 +196,8 @@ def load_merged_settings(data_dir: Path) -> Settings:
         merged["watch_enabled"] = _as_bool(merged["watch_enabled"])
     if "show_extra_categories" in merged:
         merged["show_extra_categories"] = _as_bool(merged["show_extra_categories"])
+    if "music_write_tags" in merged:
+        merged["music_write_tags"] = _as_bool(merged["music_write_tags"])
     return Settings.from_mapping(merged)
 
 
