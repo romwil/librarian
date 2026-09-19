@@ -9,6 +9,8 @@ import {
   listenFraction,
   nextChapter,
   prevChapter,
+  shouldWriteListenProgress,
+  splitContinueRails,
   workListenPath,
 } from "./listen.js";
 
@@ -33,10 +35,45 @@ describe("audiobook Listen helpers", () => {
   });
 
   it("round-trips listen bookmarks and overall fraction", () => {
-    const encoded = encodeListenPosition("f1", 12.5);
-    assert.deepEqual(decodeListenPosition(encoded), { fileId: "f1", seconds: 12.5 });
-    assert.deepEqual(decodeListenPosition("f1:9"), { fileId: "f1", seconds: 9 });
+    const encoded = encodeListenPosition("f1", 12.5, { rate: 1.5 });
+    assert.deepEqual(decodeListenPosition(encoded), { fileId: "f1", seconds: 12.5, rate: 1.5 });
+    assert.deepEqual(decodeListenPosition("f1:9"), { fileId: "f1", seconds: 9, rate: 0 });
     assert.equal(listenFraction({ fileIndex: 1, fileCount: 4, localFraction: 0.5 }), 0.375);
+  });
+
+  it("refuses pre-seek zero writes that would wipe a bookmark", () => {
+    assert.equal(
+      shouldWriteListenProgress({ ready: false, seconds: 0, resumeSeconds: 40 }),
+      false,
+    );
+    assert.equal(
+      shouldWriteListenProgress({ ready: true, seconds: 0.2, resumeSeconds: 40 }),
+      false,
+    );
+    assert.equal(
+      shouldWriteListenProgress({ ready: true, seconds: 41, resumeSeconds: 40 }),
+      true,
+    );
+    assert.equal(
+      shouldWriteListenProgress({ ready: true, seconds: 0, resumeSeconds: 0 }),
+      true,
+    );
+  });
+
+  it("splits Hall continue rails by kind", () => {
+    const { reading, listening } = splitContinueRails([
+      { id: "1", kind: "book", title: "Kindred" },
+      { id: "2", kind: "audiobook", title: "Dune" },
+      { id: "3", kind: "comic", title: "Saga" },
+    ]);
+    assert.deepEqual(
+      reading.map((row) => row.title),
+      ["Kindred", "Saga"],
+    );
+    assert.deepEqual(
+      listening.map((row) => row.title),
+      ["Dune"],
+    );
   });
 
   it("finds chapter neighbors for Media Session skip", () => {

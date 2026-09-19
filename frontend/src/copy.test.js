@@ -123,3 +123,9 @@ describe("reading room copy", () => {
     assert.equal(setupStepComplete({ complete_root: "/downloads" }, 3), true);
   });
 });
+
+  it("turns LLM rate limits into household copy", () => {
+    assert.match(humanError("LLM HTTP 429"), /rate-limited|Wait a minute/i);
+    assert.match(humanError("The reading room’s language model is rate-limited right now. Wait a minute, then try again — shelves and Find still work without it."), /rate-limited/i);
+  });
+

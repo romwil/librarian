@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
+import { busyLabel, enrichIsRunning, enrichProgressSummary } from "../actionBusy.js";
 import { FieldLabel } from "../components/FieldHelp.jsx";
 import SetupWizard from "../components/SetupWizard.jsx";
 import AddToLibrary from "../components/AddToLibrary.jsx";
@@ -7,12 +8,10 @@ import RssPanel from "../components/RssPanel.jsx";
 import ReleaseNotesPanel from "../components/ReleaseNotesPanel.jsx";
 import { FIELD_HELP, WATCH_FOLDER_LEDE, humanError, setupComplete, setupStepComplete } from "../copy.js";
 import { fetchReleaseNotes, normalizeReleaseNotes } from "../lib/releaseNotes.js";
+import LlmSettingsPanel from "../components/LlmSettingsPanel.jsx";
 
 const MORE_FIELDS = [
   ["audiobook_target", "Audiobook target"],
-  ["llm_base_url", "LLM base URL"],
-  ["llm_api_key", "LLM API key", true],
-  ["llm_model", "LLM model"],
   ["hardcover_api_token", "Hardcover token", true],
   ["nyt_books_api_key", "NYT Books API key", true],
   ["comicvine_api_key", "Comic Vine key", true],
@@ -30,6 +29,8 @@ export default function SettingsPage() {
   const [scanning, setScanning] = useState(false);
   const [enrich, setEnrich] = useState("");
   const [enriching, setEnriching] = useState(false);
+  const [enrichStatus, setEnrichStatus] = useState(null);
+  const enrichPollRef = useRef(0);
   const [suggestNote, setSuggestNote] = useState("");
   const [suggesting, setSuggesting] = useState(false);
   const [goodreads, setGoodreads] = useState("");
@@ -83,8 +84,79 @@ export default function SettingsPage() {
     document.getElementById("release-notes")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [notesLoading, releases]);
 
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .enrichStatus()
+      .then((status) => {
+        if (cancelled) return;
+        setEnrichStatus(status);
+        if (enrichIsRunning(status)) {
+          setEnriching(true);
+          setEnrich(enrichProgressSummary(status) || busyLabel("enrich"));
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!enriching) return undefined;
+    let cancelled = false;
+
+    async function poll() {
+      try {
+        const status = await api.enrichStatus();
+        if (cancelled) return;
+        setEnrichStatus(status);
+        const summary = enrichProgressSummary(status);
+        if (summary) setEnrich(summary);
+        if (enrichIsRunning(status)) {
+          enrichPollRef.current = window.setTimeout(poll, 700);
+          return;
+        }
+        setEnriching(false);
+        if (status?.status === "failed") {
+          setEnrich(status.error || "Enrich failed.");
+        } else if (status?.status === "completed") {
+          setEnrich(summary || "Enrich finished.");
+        }
+      } catch (err) {
+        if (cancelled) return;
+        setEnriching(false);
+        setEnrich(humanError(err));
+      }
+    }
+
+    enrichPollRef.current = window.setTimeout(poll, 400);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(enrichPollRef.current);
+    };
+  }, [enriching]);
+
   function patch(key, value) {
     setSettings((prev) => ({ ...prev, [key]: value }));
+  }
+
+  async function startEnrichShelves() {
+    setEnrich("");
+    setEnriching(true);
+    setEnrichStatus({ status: "running", phase: "starting", logs: ["Starting enrich…"], done: 0, total: 0 });
+    try {
+      const started = await api.enrichShelves();
+      setEnrichStatus(started);
+      setEnrich(enrichProgressSummary(started) || busyLabel("enrich"));
+      if (!enrichIsRunning(started) && started?.status === "completed") {
+        setEnriching(false);
+        setEnrich(enrichProgressSummary(started) || "Enrich finished.");
+      }
+    } catch (err) {
+      setEnriching(false);
+      setEnrich(humanError(err));
+    }
   }
 
   async function onSubmit(event) {
@@ -100,10 +172,10 @@ export default function SettingsPage() {
     }
   }
 
-  if (!settings && !error) return <p className="muted admin-room">Lamp is warming…</p>;
+  if (!settings && !error) return <p className="muted admin-room settings-page">Lamp is warming…</p>;
   if (!settings) {
     return (
-      <div className="admin-room">
+      <div className="admin-room settings-page">
         <p className="alert">{error}</p>
       </div>
     );
@@ -112,7 +184,7 @@ export default function SettingsPage() {
   const done = setupComplete(settings);
 
   return (
-    <div className="admin-room">
+    <div className="admin-room settings-page">
       <p className="kicker">Owner</p>
       <h1>Settings</h1>
       <p className="lede">
@@ -124,7 +196,35 @@ export default function SettingsPage() {
       {saved ? <p className="muted">{saved}</p> : null}
       {ping ? <p className={/ok/i.test(ping) ? "muted" : "callout"}>{ping}</p> : null}
       {scan ? <p className={/^Scanned /.test(scan) ? "muted" : "alert"}>{scan}</p> : null}
-      {enrich ? <p className={/^Enriched /.test(enrich) ? "muted" : "alert"}>{enrich}</p> : null}
+      {enrich ? (
+        <p className={/^Enriched |^Enrich finished/.test(enrich) ? "muted" : enriching ? "muted" : "alert"} role="status">
+          {enrich}
+        </p>
+      ) : null}
+      {enrichStatus && (enriching || enrichStatus.status === "completed" || enrichStatus.status === "failed") ? (
+        <section className="enrich-progress" data-testid="enrich-progress" aria-live="polite">
+          <p className="kicker">Enrich progress</p>
+          <p className="muted">
+            {enrichStatus.phase ? `${enrichStatus.phase}` : "enrich"}
+            {enrichStatus.total
+              ? ` · ${enrichStatus.done || 0} of ${enrichStatus.total}`
+              : enrichStatus.done
+                ? ` · ${enrichStatus.done} done`
+                : ""}
+            {enrichStatus.updated ? ` · ${enrichStatus.updated} filled` : ""}
+          </p>
+          {enrichStatus.current_title ? (
+            <p className="lede enrich-progress-title">{enrichStatus.current_title}</p>
+          ) : null}
+          {(enrichStatus.logs || []).length ? (
+            <ol className="enrich-progress-log" data-testid="enrich-progress-log">
+              {[...(enrichStatus.logs || [])].slice(-12).map((line, index) => (
+                <li key={`${index}-${line}`}>{line}</li>
+              ))}
+            </ol>
+          ) : null}
+        </section>
+      ) : null}
       {suggestNote ? <p className={/^Suggestions /.test(suggestNote) ? "muted" : "alert"}>{suggestNote}</p> : null}
       {goodreads ? <p className={/^Imported /.test(goodreads) ? "muted" : "alert"}>{goodreads}</p> : null}
       <form className="settings-form" onSubmit={onSubmit}>
@@ -358,8 +458,12 @@ export default function SettingsPage() {
             />
           </div>
         </details>
+        <details className="more-settings" open>
+          <summary className="kicker">Language model — OpenAI, Anthropic, or Gemini</summary>
+          <LlmSettingsPanel settings={settings} onChange={setSettings} />
+        </details>
         <details className="more-settings">
-          <summary className="kicker">More — listen target, LLM, Hardcover, NYT Books (optional), Comic Vine, household name</summary>
+          <summary className="kicker">More — listen target, Hardcover, NYT Books (optional), Comic Vine, household name</summary>
           {MORE_FIELDS.map(([key, label, secret]) => (
             <div key={key} className="field">
               <FieldLabel htmlFor={`setting-${key}`} label={label} help={FIELD_HELP[key]} />
@@ -444,6 +548,7 @@ export default function SettingsPage() {
             type="button"
             className="cta outline"
             disabled={scanning}
+            aria-busy={scanning || undefined}
             onClick={async () => {
               setScan("");
               setScanning(true);
@@ -459,29 +564,17 @@ export default function SettingsPage() {
               }
             }}
           >
-            {scanning ? "Scanning…" : "Scan the shelves"}
+            {scanning ? busyLabel("scan") : "Scan the shelves"}
           </button>
           <button
             type="button"
             className="cta outline"
             disabled={enriching}
-            onClick={async () => {
-              setEnrich("");
-              setEnriching(true);
-              try {
-                const data = await api.enrichShelves();
-                setEnrich(
-                  `Enriched ${data.updated} of ${data.scanned} thin volumes` +
-                    (data.skipped ? ` · ${data.skipped} skipped` : ""),
-                );
-              } catch (err) {
-                setEnrich(humanError(err));
-              } finally {
-                setEnriching(false);
-              }
-            }}
+            aria-busy={enriching || undefined}
+            onClick={startEnrichShelves}
+            data-testid="settings-enrich"
           >
-            {enriching ? "Enriching…" : "Enrich the shelves"}
+            {enriching ? busyLabel("enrich") : "Enrich the shelves"}
           </button>
           <button
             type="button"

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useOutletContext, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api.js";
+import { busyLabel } from "../actionBusy.js";
 import { browseHref } from "../browse.js";
 import { coverWashStyle, coverWashUrl, isInboundJob } from "../cover.js";
 import { canPromoteIncomingMusic, humanError, peekMediaNote } from "../copy.js";
@@ -25,6 +26,13 @@ export default function WorkPage() {
   const [fmt, setFmt] = useState("");
   const [enriching, setEnriching] = useState(false);
   const [enrichNote, setEnrichNote] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [editDraft, setEditDraft] = useState(null);
+  const [editSaving, setEditSaving] = useState(false);
+  const [fixing, setFixing] = useState(false);
+  const [matchCandidates, setMatchCandidates] = useState([]);
+  const [matchLoading, setMatchLoading] = useState(false);
+  const [matchApplying, setMatchApplying] = useState("");
   const [reading, setReading] = useState(false);
   const [readingFileId, setReadingFileId] = useState("");
   const [listening, setListening] = useState(false);
@@ -43,7 +51,8 @@ export default function WorkPage() {
       .work(id)
       .then((payload) => {
         setData(payload);
-        if (payload?.work?.id) {
+        // Books/comics leave a Continue bookmark on open; audiobooks only on real Listen progress.
+        if (payload?.work?.id && payload.work.kind !== "audiobook") {
           api.progress(payload.work.id).catch(() => {});
         }
       })
@@ -90,9 +99,16 @@ export default function WorkPage() {
     }
   }
 
-  function openListen(fileId = "") {
+  async function openListen(fileId = "") {
     const wanted = String(fileId || "").trim();
     setListeningFileId(wanted);
+    // Refresh per-user progress so resume is not stale after a prior Listen session.
+    try {
+      const fresh = await api.work(id);
+      setData(fresh);
+    } catch {
+      /* keep existing payload */
+    }
     setListening(true);
     const next = new URLSearchParams(searchParams);
     next.delete("read");
@@ -111,6 +127,7 @@ export default function WorkPage() {
       next.delete("file");
       setSearchParams(next, { replace: true });
     }
+    api.work(id).then(setData).catch(() => {});
   }
 
   if (error) {
@@ -126,6 +143,7 @@ export default function WorkPage() {
   const canRead = Boolean(data.can_read) && canReadInApp(work, data.files);
   const canListen =
     Boolean(data.listen?.can_listen) && canListenInApp(work, data.files, Boolean(data.can_download));
+  const listenResume = Boolean(String(data.progress?.position || "").trim()) || Number(data.progress?.fraction) > 0;
   const canInlineOpen = canOpenInlineMedia(work, Boolean(data.can_download), canRead);
   const playerLink = data.listen?.player || null;
   const playerNote = data.listen?.player_note || "";
@@ -138,6 +156,118 @@ export default function WorkPage() {
   const partStatus = incompleteParts ? ownedPartSetStatusLine(work.part_set) : "";
   const audiobookCta = companionAudiobookView(data.audiobook);
   const readLabel = readerCtaLabel(work) || "Read";
+  const canCatalog = user?.role === "owner" || user?.role === "op";
+  const canEnrichKind = work.kind === "book" || work.kind === "audiobook";
+
+  function beginEdit() {
+    setFixing(false);
+    setMatchCandidates([]);
+    setEditing(true);
+    setEditDraft({
+      title: work.title || "",
+      author: work.author || "",
+      year: work.year != null ? String(work.year) : "",
+      description: work.description || "",
+      genre: work.genre || "",
+      series_name: work.series_name || "",
+      series_index: work.series_index || "",
+      kind: work.kind || "book",
+      cover_url: "",
+    });
+    setEnrichNote("");
+  }
+
+  function patchDraft(key, value) {
+    setEditDraft((prev) => ({ ...(prev || {}), [key]: value }));
+  }
+
+  async function saveEdit(event) {
+    event.preventDefault();
+    if (!editDraft || editSaving) return;
+    setEditSaving(true);
+    setEnrichNote(busyLabel("save"));
+    try {
+      const body = {
+        title: editDraft.title,
+        author: editDraft.author,
+        description: editDraft.description,
+        genre: editDraft.genre,
+        series_name: editDraft.series_name,
+        series_index: editDraft.series_index,
+        kind: editDraft.kind,
+      };
+      const yearText = String(editDraft.year || "").trim();
+      if (yearText) body.year = Number(yearText);
+      else body.year = null;
+      if (String(editDraft.cover_url || "").trim()) {
+        body.cover_url = String(editDraft.cover_url).trim();
+      }
+      await api.updateWorkMetadata(work.id, body);
+      const payload = await api.work(work.id);
+      setData(payload);
+      setEditing(false);
+      setEditDraft(null);
+      setEnrichNote("Catalog saved.");
+    } catch (err) {
+      setEnrichNote(humanError(err));
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
+  async function openFixMatch() {
+    setEditing(false);
+    setEditDraft(null);
+    setFixing(true);
+    setMatchLoading(true);
+    setEnrichNote(busyLabel("match"));
+    try {
+      const result = await api.matchCandidates(work.id);
+      setMatchCandidates(result.candidates || []);
+      setEnrichNote(
+        (result.candidates || []).length
+          ? "Pick the correct Open Library match."
+          : "No confident Open Library candidates — edit metadata by hand.",
+      );
+    } catch (err) {
+      setEnrichNote(humanError(err));
+      setMatchCandidates([]);
+    } finally {
+      setMatchLoading(false);
+    }
+  }
+
+  async function chooseMatch(matchKey) {
+    if (!matchKey || matchApplying) return;
+    setMatchApplying(matchKey);
+    setEnrichNote(busyLabel("match"));
+    try {
+      const result = await api.applyMatch(work.id, matchKey);
+      const payload = await api.work(work.id);
+      setData(payload);
+      setFixing(false);
+      setMatchCandidates([]);
+      const conf =
+        result.match_confidence != null ? ` · confidence ${Math.round(Number(result.match_confidence) * 100)}%` : "";
+      setEnrichNote(`Applied ${result.match_key || matchKey}${conf}`);
+    } catch (err) {
+      setEnrichNote(humanError(err));
+    } finally {
+      setMatchApplying("");
+    }
+  }
+
+  async function undoEnrich() {
+    setEnrichNote(busyLabel("clear"));
+    try {
+      await api.clearEnrich(work.id);
+      const payload = await api.work(work.id);
+      setData(payload);
+      setEnrichNote("Cleared enrich blurb.");
+    } catch (err) {
+      setEnrichNote(humanError(err));
+    }
+  }
 
   async function favorite() {
     const next = await api.favorite(work.id);
@@ -218,7 +348,7 @@ export default function WorkPage() {
             </button>
             {canListen ? (
               <button type="button" className="cta compact" onClick={() => openListen()} data-testid="work-listen">
-                Listen
+                {listenResume ? "Continue listening" : "Listen"}
               </button>
             ) : album.enabled ? (
               <button
@@ -354,12 +484,18 @@ export default function WorkPage() {
             </div>
           </section>
         ) : null}
-        {user?.role === "owner" && (work.kind === "book" || work.kind === "audiobook") ? (
-          <section className="work-meta">
+        {canCatalog && canEnrichKind ? (
+          <section className="work-meta" data-testid="work-catalog">
             <h2 className="kicker">Catalog</h2>
             {work.series_name ? (
               <p className="muted">
                 Series · {[work.series_name, work.series_index].filter(Boolean).join(" ")}
+              </p>
+            ) : null}
+            {work.synopsis_source ? (
+              <p className="muted" data-testid="work-synopsis-source">
+                Filled from {work.synopsis_source}
+                {work.genre ? ` · ${work.genre}` : ""}
               </p>
             ) : null}
             <div className="cta-row compact">
@@ -367,16 +503,23 @@ export default function WorkPage() {
                 type="button"
                 className="cta outline compact"
                 disabled={enriching}
+                aria-busy={enriching || undefined}
+                data-testid="work-enrich"
                 onClick={async () => {
-                  setEnrichNote("");
+                  setEnrichNote(busyLabel("enrich"));
                   setEnriching(true);
                   try {
                     const result = await api.enrichWork(work.id);
                     const payload = await api.work(work.id);
                     setData(payload);
+                    const conf =
+                      result.match_confidence != null
+                        ? ` · ${Math.round(Number(result.match_confidence) * 100)}%`
+                        : "";
+                    const key = result.match_key ? ` (${result.match_key})` : "";
                     setEnrichNote(
                       result.updated
-                        ? `Filled from ${result.source || "Open Library"}`
+                        ? `Filled from ${result.source || "Open Library"}${key}${conf}`
                         : "Already as complete as Hardcover and Open Library allow",
                     );
                   } catch (err) {
@@ -386,10 +529,160 @@ export default function WorkPage() {
                   }
                 }}
               >
-                {enriching ? "Enriching…" : "Enrich"}
+                {enriching ? busyLabel("enrich") : "Enrich"}
               </button>
+              <button
+                type="button"
+                className="cta outline compact"
+                data-testid="work-edit-metadata"
+                onClick={beginEdit}
+                disabled={editing}
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                className="cta outline compact"
+                data-testid="work-fix-match"
+                onClick={openFixMatch}
+                disabled={matchLoading}
+              >
+                {matchLoading ? busyLabel("match") : "Fix match"}
+              </button>
+              {work.description || work.synopsis_source || work.llm_blurb ? (
+                <button
+                  type="button"
+                  className="cta ghost compact"
+                  data-testid="work-clear-enrich"
+                  onClick={undoEnrich}
+                >
+                  Undo enrich
+                </button>
+              ) : null}
             </div>
-            {enrichNote ? <p className="muted">{enrichNote}</p> : null}
+            {editing && editDraft ? (
+              <form className="catalog-edit" data-testid="work-edit-form" onSubmit={saveEdit}>
+                <label className="field">
+                  <span>Title</span>
+                  <input value={editDraft.title} onChange={(e) => patchDraft("title", e.target.value)} required />
+                </label>
+                <label className="field">
+                  <span>Author</span>
+                  <input value={editDraft.author} onChange={(e) => patchDraft("author", e.target.value)} />
+                </label>
+                <label className="field">
+                  <span>Year</span>
+                  <input
+                    value={editDraft.year}
+                    onChange={(e) => patchDraft("year", e.target.value)}
+                    inputMode="numeric"
+                  />
+                </label>
+                <label className="field">
+                  <span>Kind</span>
+                  <select value={editDraft.kind} onChange={(e) => patchDraft("kind", e.target.value)}>
+                    <option value="book">book</option>
+                    <option value="audiobook">audiobook</option>
+                    <option value="magazine">magazine</option>
+                    <option value="comic">comic</option>
+                    <option value="music">music</option>
+                  </select>
+                </label>
+                <label className="field">
+                  <span>Genre</span>
+                  <input value={editDraft.genre} onChange={(e) => patchDraft("genre", e.target.value)} />
+                </label>
+                <label className="field">
+                  <span>Series</span>
+                  <input value={editDraft.series_name} onChange={(e) => patchDraft("series_name", e.target.value)} />
+                </label>
+                <label className="field">
+                  <span>Series index</span>
+                  <input
+                    value={editDraft.series_index}
+                    onChange={(e) => patchDraft("series_index", e.target.value)}
+                  />
+                </label>
+                <label className="field field-wide">
+                  <span>Description</span>
+                  <textarea
+                    rows={6}
+                    value={editDraft.description}
+                    onChange={(e) => patchDraft("description", e.target.value)}
+                  />
+                </label>
+                <label className="field field-wide">
+                  <span>Cover URL</span>
+                  <input
+                    value={editDraft.cover_url}
+                    onChange={(e) => patchDraft("cover_url", e.target.value)}
+                    placeholder="Optional — downloads a new cover"
+                  />
+                </label>
+                <div className="cta-row compact">
+                  <button type="submit" className="cta compact" disabled={editSaving} data-testid="work-edit-save">
+                    {editSaving ? busyLabel("save") : "Save"}
+                  </button>
+                  <button
+                    type="button"
+                    className="cta ghost compact"
+                    onClick={() => {
+                      setEditing(false);
+                      setEditDraft(null);
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            ) : null}
+            {fixing ? (
+              <div className="match-candidates" data-testid="work-match-candidates">
+                {matchLoading ? <p className="muted">Searching Open Library…</p> : null}
+                {!matchLoading && !matchCandidates.length ? (
+                  <p className="muted">No ranked candidates. Try Edit and write the blurb by hand.</p>
+                ) : null}
+                <ul className="match-candidate-list">
+                  {matchCandidates.map((row) => (
+                    <li key={row.match_key || `${row.title}-${row.author}`}>
+                      <div>
+                        <strong>{row.title}</strong>
+                        <span className="muted">
+                          {[row.author, row.year, row.match_key].filter(Boolean).join(" · ")}
+                        </span>
+                        {row.match_confidence != null ? (
+                          <span className="chip">{Math.round(Number(row.match_confidence) * 100)}%</span>
+                        ) : null}
+                      </div>
+                      <button
+                        type="button"
+                        className="cta outline compact"
+                        disabled={Boolean(matchApplying)}
+                        data-testid="work-apply-match"
+                        onClick={() => chooseMatch(row.match_key)}
+                      >
+                        {matchApplying === row.match_key ? busyLabel("match") : "Use this"}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  type="button"
+                  className="cta ghost compact"
+                  onClick={() => {
+                    setFixing(false);
+                    setMatchCandidates([]);
+                  }}
+                >
+                  Close
+                </button>
+              </div>
+            ) : null}
+            {enrichNote ? (
+              <p className="muted" role="status" data-testid="work-enrich-note">
+                {enrichNote}
+              </p>
+            ) : null}
           </section>
         ) : work.series_name ? (
           <section className="work-meta">
@@ -538,6 +831,7 @@ export default function WorkPage() {
           player={playerLink}
           playerNote={playerNote}
           onClose={closeListen}
+          onProgress={(row) => setData((prev) => (prev ? { ...prev, progress: row } : prev))}
         />
       ) : null}
       {plexamp ? <PlexampToast handoff={plexamp} onClose={() => setPlexamp(null)} /> : null}

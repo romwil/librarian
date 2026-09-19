@@ -78,6 +78,7 @@ export const api = {
   reviewSkip: (id) => request(`/review/${id}/skip`, { method: "POST" }),
   reviewRepair: (id) => request(`/review/${id}/repair`, { method: "POST" }),
   reviewRetry: (id) => request(`/review/${id}/retry`, { method: "POST" }),
+  reviewSuggest: (id) => request(`/review/${id}/suggest`, { method: "POST" }),
   queue: () => request("/queue"),
   confirmJob: (id) => request(`/queue/${id}/confirm`, { method: "POST" }),
   gaps: () => request("/gaps"),
@@ -121,7 +122,14 @@ export const api = {
     }),
   scanShelves: () => request("/settings/scan", { method: "POST" }),
   enrichShelves: () => request("/settings/enrich", { method: "POST" }),
+  enrichStatus: () => request("/settings/enrich/status"),
   enrichWork: (id) => request(`/works/${id}/enrich`, { method: "POST" }),
+  updateWorkMetadata: (id, body) =>
+    request(`/works/${id}/metadata`, { method: "PATCH", body: JSON.stringify(body) }),
+  matchCandidates: (id) => request(`/works/${id}/match-candidates`),
+  applyMatch: (id, matchKey) =>
+    request(`/works/${id}/apply-match`, { method: "POST", body: JSON.stringify({ match_key: matchKey }) }),
+  clearEnrich: (id) => request(`/works/${id}/clear-enrich`, { method: "POST" }),
   importGoodreads: (file) => {
     const body = new FormData();
     body.append("file", file);

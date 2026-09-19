@@ -1,6 +1,34 @@
 {
-  "generated_at": "2026-09-19T02:41:44Z",
+  "generated_at": "2026-09-19T04:23:18Z",
   "releases": [
+    {
+      "version": "0.3.1",
+      "date": "2026-09-19",
+      "summary": "",
+      "highlights": [
+        "**Edit metadata and Fix match on title pages.** Owners and ops can correct wrong enrich blurbs (like Open Library’s Springsteen+Morpurgo *Born to Run* corruption), pick an alternate catalog match, or undo enrich.",
+        "**Multi-provider BYO LLM.** Settings supports OpenAI, Anthropic, and Gemini profiles; Find uses LLM best-match with remembered alternates, disclosures, and clearer 429 handling.",
+        "**Bestsellers and chase polish.** Cover cards and request-missing chase/auto-request flows; Enrich/Review actions show busy feedback."
+      ],
+      "sections": [
+        {
+          "title": "Added",
+          "bullets": [
+            "Catalog Edit / Fix match / Undo enrich on work pages (`PATCH /api/works/{id}/metadata`, match-candidates, apply-match, clear-enrich).",
+            "Open Library title+author scoring that rejects foreign co-author corruptions and prefers memoir/autobiography when the author matches.",
+            "Native LLM provider catalog (`librarian/llm_providers.py`) + Settings panel.",
+            "Search rank memory + trace disclosures; Bestsellers UI cover improvements; shared action busy labels."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "bullets": [
+            "Enrich no longer blindly takes Open Library’s first search hit when the author list includes unrelated co-authors.",
+            "Pytest isolates maintainer `.env` LLM keys so enrich/review tests stay offline."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.3.0",
       "date": "2026-09-18",

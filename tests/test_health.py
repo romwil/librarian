@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 
+from librarian import __version__
 from librarian.web.app import create_app
 
 
@@ -10,7 +11,7 @@ def test_health_status_ok(tmp_path):
     body = resp.json()
     assert body["status"] == "ok"
     assert body["ok"] is True
-    assert body["version"] == "0.1.0"
+    assert body["version"] == __version__
 
 
 def test_features_public_and_owner_ready(tmp_path):

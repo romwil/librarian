@@ -20,6 +20,18 @@ def _isolate_session_secret(monkeypatch, tmp_path_factory):
     monkeypatch.setenv("LIBRARIAN_SKIP_APP_BOOT", "1")
     monkeypatch.setenv("LIBRARIAN_PBKDF2_ITERATIONS", "1000")
     monkeypatch.delenv("LIBRARIAN_TRUST_PROXY_HEADERS", raising=False)
+    # Block maintainer .env LLM keys (load_dotenv does not override existing env).
+    for key in (
+        "LLM_API_KEY",
+        "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "GEMINI_API_KEY",
+        "GOOGLE_API_KEY",
+        "LLM_BASE_URL",
+        "LLM_MODEL",
+        "LLM_EMBEDDING_MODEL",
+    ):
+        monkeypatch.setenv(key, "")
     clear_session_secret_cache()
     clear_rate_limits()
     yield

@@ -10,6 +10,7 @@ import {
   nextChapter,
   playableTracks,
   prevChapter,
+  shouldWriteListenProgress,
   workStreamUrl,
 } from "../listen.js";
 
@@ -25,14 +26,19 @@ export default function AudiobookPlayer({
   player = null,
   playerNote = "",
   onClose,
+  onProgress,
 }) {
   const audioRef = useRef(null);
   const tracks = playableTracks(files);
   const tracksRef = useRef(tracks);
   const persistTimer = useRef(0);
   const lastPersist = useRef({ fileId: "", seconds: 0, fraction: 0 });
+  const readyRef = useRef(false);
+  const resumeSecondsRef = useRef(0);
+  const bookmarkRef = useRef(decodeListenPosition(progress?.position || ""));
 
   const bookmark = decodeListenPosition(progress?.position || "");
+  bookmarkRef.current = bookmark;
   const initialFile =
     String(fileId || "").trim() ||
     bookmark.fileId ||
@@ -44,7 +50,7 @@ export default function AudiobookPlayer({
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(bookmark.seconds || 0);
   const [duration, setDuration] = useState(0);
-  const [rate, setRate] = useState(1);
+  const [rate, setRate] = useState(bookmark.rate > 0 ? bookmark.rate : 1);
 
   tracksRef.current = tracks;
   const fileIndex = Math.max(
@@ -58,6 +64,16 @@ export default function AudiobookPlayer({
     if (!work?.id || !activeTrack) return;
     const audio = audioRef.current;
     const seconds = audio ? audio.currentTime : currentTime;
+    if (
+      !shouldWriteListenProgress({
+        ready: readyRef.current,
+        seconds,
+        resumeSeconds: resumeSecondsRef.current,
+        force,
+      })
+    ) {
+      return;
+    }
     const dur = audio && audio.duration > 0 ? audio.duration : duration;
     const local = dur > 0 ? seconds / dur : 0;
     const fraction = listenFraction({
@@ -66,7 +82,7 @@ export default function AudiobookPlayer({
       localFraction: local,
     });
     const body = {
-      position: encodeListenPosition(String(activeTrack.id), seconds),
+      position: encodeListenPosition(String(activeTrack.id), seconds, { rate }),
       fraction,
     };
     const prev = lastPersist.current;
@@ -80,14 +96,26 @@ export default function AudiobookPlayer({
     }
     lastPersist.current = { fileId: String(activeTrack.id), seconds, fraction };
     window.clearTimeout(persistTimer.current);
-    const run = () => api.progress(work.id, body).catch(() => {});
+    const run = () =>
+      api
+        .progress(work.id, body)
+        .then((res) => {
+          if (res?.progress && typeof onProgress === "function") onProgress(res.progress);
+        })
+        .catch(() => {});
     if (force) run();
     else persistTimer.current = window.setTimeout(run, 900);
   }
 
   function flushProgress() {
     window.clearTimeout(persistTimer.current);
+    // Skip Strict Mode remount / pre-metadata teardowns so we never write t=0 over a bookmark.
+    if (!readyRef.current) return;
     persist(true);
+  }
+
+  function markReady() {
+    readyRef.current = true;
   }
 
   function loadTrack(nextId, seekSeconds = 0) {
@@ -95,6 +123,8 @@ export default function AudiobookPlayer({
     const id = String(nextId || "");
     const src = workStreamUrl(work.id, id);
     if (!audio || !src) return;
+    readyRef.current = false;
+    resumeSecondsRef.current = Math.max(0, Number(seekSeconds) || 0);
     setActiveId(id);
     setStatus("Opening the volume…");
     setError("");
@@ -102,12 +132,25 @@ export default function AudiobookPlayer({
     audio.playbackRate = rate;
     const onMeta = () => {
       audio.removeEventListener("loadedmetadata", onMeta);
-      if (seekSeconds > 0 && Number.isFinite(seekSeconds)) {
+      const target = resumeSecondsRef.current;
+      if (target > 0 && Number.isFinite(target)) {
+        const arm = () => {
+          audio.removeEventListener("seeked", arm);
+          markReady();
+          setCurrentTime(audio.currentTime || target);
+        };
+        audio.addEventListener("seeked", arm);
         try {
-          audio.currentTime = seekSeconds;
+          audio.currentTime = target;
         } catch {
-          /* ignore seek before ready */
+          markReady();
         }
+        // Some engines never fire seeked for a no-op seek; arm after a beat.
+        window.setTimeout(() => {
+          if (!readyRef.current) markReady();
+        }, 400);
+      } else {
+        markReady();
       }
       setDuration(audio.duration || 0);
       setStatus("");
@@ -136,6 +179,8 @@ export default function AudiobookPlayer({
   function seekTo(seconds) {
     const audio = audioRef.current;
     if (!audio || !Number.isFinite(seconds)) return;
+    markReady();
+    resumeSecondsRef.current = 0;
     audio.currentTime = Math.max(0, seconds);
     setCurrentTime(audio.currentTime);
     persist();
@@ -159,6 +204,7 @@ export default function AudiobookPlayer({
     const next = options[(options.indexOf(rate) + 1) % options.length];
     setRate(next);
     if (audioRef.current) audioRef.current.playbackRate = next;
+    if (readyRef.current) persist(true);
   }
 
   useEffect(() => {
@@ -204,11 +250,23 @@ export default function AudiobookPlayer({
         if (!alive) return;
         setChapters([]);
       });
+    const mark = bookmarkRef.current;
     const resume =
-      String(activeTrack.id) === String(bookmark.fileId || activeTrack.id) ? bookmark.seconds : 0;
+      String(activeTrack.id) === String(mark.fileId || activeTrack.id) ? mark.seconds : 0;
+    if (mark.rate > 0) setRate(mark.rate);
     loadTrack(activeTrack.id, resume);
+    function onPageHide() {
+      flushProgress();
+    }
+    function onVisibility() {
+      if (document.visibilityState === "hidden") flushProgress();
+    }
+    window.addEventListener("pagehide", onPageHide);
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       alive = false;
+      window.removeEventListener("pagehide", onPageHide);
+      document.removeEventListener("visibilitychange", onVisibility);
       flushProgress();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mount / file change only
@@ -238,7 +296,9 @@ export default function AudiobookPlayer({
       }
       setPlaying(false);
       if (work?.id) {
-        api.progress(work.id, { finished: true }).catch(() => {});
+        api.progress(work.id, { finished: true }).then((res) => {
+          if (res?.progress && typeof onProgress === "function") onProgress(res.progress);
+        }).catch(() => {});
       }
     }
     function onError() {

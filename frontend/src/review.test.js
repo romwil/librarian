@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   applyBodyFromDraft,
+  applySuggestionToDraft,
   collisionActionCopy,
   collisionApplyAllowed,
   collisionDraftUnchanged,
   effectiveReviewReason,
   fieldsFromWork,
+  looksLikeDumpTitle,
   queueReviewReasonCopy,
   reviewActionsFromWork,
   reviewDiagnosisCopy,
@@ -148,5 +150,47 @@ describe("review recovery actions", () => {
       unpackStuckWorks(works).map((row) => row.id),
       ["a", "c"],
     );
+  });
+});
+
+describe("review LLM suggest helpers", () => {
+  it("detects dotted Usenet dump titles", () => {
+    assert.equal(
+      looksLikeDumpTitle(
+        "102.Minutes.The.Untold.Story.of.the.Fight.to.Survive.Inside.the.Twin.Towers.Audio.book.MP3",
+      ),
+      true,
+    );
+    assert.equal(looksLikeDumpTitle("Piranesi"), false);
+  });
+
+  it("applies LLM suggestion onto a draft without inventing blank ISBN", () => {
+    const draft = applySuggestionToDraft(
+      { title: "dump", author: "", kind: "book", isbn: "", series_name: "", series_index: "", year: "", folder: "/x" },
+      { title: "102 Minutes", author: "Jim Dwyer", kind: "audiobook", series_name: "History" },
+    );
+    assert.equal(draft.title, "102 Minutes");
+    assert.equal(draft.author, "Jim Dwyer");
+    assert.equal(draft.kind, "audiobook");
+    assert.equal(draft.series_name, "History");
+    assert.equal(draft.isbn, "");
+    assert.equal(draft.folder, "/x");
+  });
+
+  it("exposes Suggest with LLM flags from work.actions", () => {
+    const actions = reviewActionsFromWork({
+      title: "102.Minutes.Dump.Audio.book",
+      author: "",
+      review_reason: "unknown_identity",
+      actions: {
+        can_suggest_llm: true,
+        needs_llm_suggest: true,
+        llm_configured: true,
+        find_query: "102",
+      },
+    });
+    assert.equal(actions.canSuggestLlm, true);
+    assert.equal(actions.needsLlmSuggest, true);
+    assert.equal(actions.llmConfigured, true);
   });
 });

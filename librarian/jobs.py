@@ -36,7 +36,17 @@ def _job_payload(item: Dict[str, Any], *, details: Optional[Dict[str, Any]] = No
     sought = item.get("sought") if isinstance(item.get("sought"), dict) else item
     selected = item.get("selected") if isinstance(item.get("selected"), dict) else item
     retrieved = item.get("retrieved") if isinstance(item.get("retrieved"), dict) else {}
-    return build_job_payload(sought=sought, selected=selected, retrieved=retrieved, details=details)
+    candidates = item.get("candidates") if isinstance(item.get("candidates"), list) else []
+    payload = build_job_payload(
+        sought=sought,
+        selected=selected,
+        retrieved=retrieved,
+        details=details,
+        candidates=candidates,
+        rank_method=str(item.get("rank_method") or ""),
+        rank_reason=str(item.get("rank_reason") or ""),
+    )
+    return payload
 
 
 def _queue_download(

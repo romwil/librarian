@@ -28,37 +28,84 @@ def abs_item_href(base_url: str, item_id: str) -> str:
     return f"{base}/item/{item}"
 
 
-def encode_listen_position(*, file_id: str = "", seconds: float = 0.0) -> str:
+def encode_listen_position(
+    *,
+    file_id: str = "",
+    seconds: float = 0.0,
+    rate: float = 0.0,
+) -> str:
     """Compact bookmark stored in progress.position."""
     fid = _text(file_id)
     secs = max(0.0, float(seconds or 0.0))
     if not fid and secs <= 0:
         return ""
-    return json.dumps({"file": fid, "t": round(secs, 3)}, separators=(",", ":"))
+    payload: Dict[str, Any] = {"file": fid, "t": round(secs, 3)}
+    try:
+        playback = float(rate or 0.0)
+    except (TypeError, ValueError):
+        playback = 0.0
+    if playback > 0 and abs(playback - 1.0) > 0.001:
+        payload["rate"] = round(playback, 2)
+    return json.dumps(payload, separators=(",", ":"))
 
 
 def decode_listen_position(raw: Any) -> Dict[str, Any]:
     text = _text(raw)
+    empty = {"file_id": "", "seconds": 0.0, "rate": 0.0}
     if not text:
-        return {"file_id": "", "seconds": 0.0}
+        return empty
     if text.startswith("{"):
         try:
             data = json.loads(text)
         except json.JSONDecodeError:
-            return {"file_id": "", "seconds": 0.0}
+            return empty
         if isinstance(data, dict):
+            try:
+                rate = float(data.get("rate") or 0.0)
+            except (TypeError, ValueError):
+                rate = 0.0
             return {
                 "file_id": _text(data.get("file") or data.get("file_id")),
                 "seconds": max(0.0, float(data.get("t") or data.get("seconds") or 0.0)),
+                "rate": rate if rate > 0 else 0.0,
             }
     # Legacy "fileId:seconds"
     if ":" in text:
         left, right = text.rsplit(":", 1)
         try:
-            return {"file_id": _text(left), "seconds": max(0.0, float(right))}
+            return {"file_id": _text(left), "seconds": max(0.0, float(right)), "rate": 0.0}
         except ValueError:
-            return {"file_id": _text(text), "seconds": 0.0}
-    return {"file_id": text, "seconds": 0.0}
+            return {"file_id": _text(text), "seconds": 0.0, "rate": 0.0}
+    return {"file_id": text, "seconds": 0.0, "rate": 0.0}
+
+
+def should_write_listen_progress(
+    *,
+    ready: bool = False,
+    seconds: float = 0.0,
+    resume_seconds: float = 0.0,
+    force: bool = False,
+) -> bool:
+    """Refuse pre-seek / remount zeros that would wipe a stored bookmark."""
+    if not ready and not force:
+        return False
+    now = max(0.0, float(seconds or 0.0))
+    resume = max(0.0, float(resume_seconds or 0.0))
+    if resume >= 2.0 and now < 1.0:
+        return False
+    return True
+
+
+def split_continue_rails(rows: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+    """Hall Continue vs Continue listening."""
+    reading: List[Dict[str, Any]] = []
+    listening: List[Dict[str, Any]] = []
+    for row in rows or []:
+        if _text(row.get("kind")) == KIND_AUDIOBOOK:
+            listening.append(row)
+        else:
+            reading.append(row)
+    return {"reading": reading, "listening": listening}
 
 
 def listen_fraction(*, file_index: int, file_count: int, local_fraction: float) -> float:

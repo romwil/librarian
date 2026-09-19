@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import logging
 import os
+import threading
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -45,12 +47,25 @@ from librarian.delight import (
     series_ribbon,
     tonight_shelf,
 )
-from librarian.enrich import enrich_library, enrich_work
+from librarian.enrich import (
+    apply_openlibrary_match,
+    clear_enrichment,
+    enrich_library,
+    enrich_work,
+    list_match_candidates,
+    update_work_metadata,
+)
+from librarian.enrich_progress import (
+    EnrichProgressReporter,
+    begin_enrich_run,
+    is_enrich_running,
+    read_enrich_progress,
+)
 from librarian.gaps import catalog_gaps, gap_cards, gaps_for_series
 from librarian.goodreads import MAX_GOODREADS_BYTES, import_goodreads_csv
 from librarian.identify import diagnose_review_folder
 from librarian.indexers.discover import discover_beyond, resolve_feed_limit
-from librarian.indexers.hosts import search_beyond
+from librarian.indexers.rank import remember_candidates, search_and_rank
 from librarian.indexers.sync import ping_nzbfinder, sync_nzbfinder
 from librarian.ingest import (
     PathDenied,
@@ -68,7 +83,7 @@ from librarian.invites import (
 )
 from librarian.jobs import confirm_asked_job, enqueue_indexer_item, poll_active_jobs, poll_job
 from librarian.kinds import ALL_KINDS, EXTRA_KINDS
-from librarian.listen import extract_chapters, listen_payload
+from librarian.listen import extract_chapters, listen_payload, split_continue_rails
 from librarian.lists import (
     chase_missing_items,
     curated_list_payload,
@@ -91,6 +106,7 @@ from librarian.organize import (
     retry_review,
     review_slip_actions,
     shelf_work_for_collision,
+    suggest_review_identity,
 )
 from librarian.parts import build_part_set
 from librarian.poller import JobPoller
@@ -117,6 +133,8 @@ from librarian.sessions import (
     is_dev_session_secret,
 )
 from librarian.suggest import SUGGEST_FIELDS, refresh_suggest_cache, suggest_items
+
+logger = logging.getLogger(__name__)
 
 FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 
@@ -175,6 +193,9 @@ class RequestPayload(BaseModel):
     sought: Optional[Dict[str, Any]] = None
     selected: Optional[Dict[str, Any]] = None
     retrieved: Optional[Dict[str, Any]] = None
+    candidates: Optional[List[Dict[str, Any]]] = None
+    rank_method: str = ""
+    rank_reason: str = ""
 
 
 class ReviewApplyPayload(BaseModel):
@@ -216,9 +237,11 @@ class SettingsPayload(BaseModel):
     music_root: Optional[str] = None
     complete_root: Optional[str] = None
     audiobook_target: Optional[str] = None
+    llm_provider: Optional[str] = None
     llm_base_url: Optional[str] = None
     llm_api_key: Optional[str] = None
     llm_model: Optional[str] = None
+    llm_profiles: Optional[Dict[str, Any]] = None
     household_name: Optional[str] = None
     hardcover_api_token: Optional[str] = None
     nyt_books_api_key: Optional[str] = None
@@ -260,6 +283,24 @@ class PrefsPayload(BaseModel):
 
 class WhisperPayload(BaseModel):
     body: str
+
+
+class WorkMetadataPayload(BaseModel):
+    title: Optional[str] = None
+    author: Optional[str] = None
+    year: Optional[int] = None
+    description: Optional[str] = None
+    genre: Optional[str] = None
+    series_name: Optional[str] = None
+    series_index: Optional[str] = None
+    kind: Optional[str] = None
+    synopsis_source: Optional[str] = None
+    llm_blurb: Optional[str] = None
+    cover_url: Optional[str] = None
+
+
+class ApplyMatchPayload(BaseModel):
+    match_key: str = ""
 
 
 class CelebrationSeenPayload(BaseModel):
@@ -341,6 +382,8 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
     )
     app.state.data_dir = root
     app.state.db = db
+    enrich_lock = threading.Lock()
+    enrich_thread: Dict[str, Optional[threading.Thread]] = {"thread": None}
 
     def settings():
         return load_merged_settings(root)
@@ -481,6 +524,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         if user["role"] in ("owner", "op"):
             gaps = gap_cards(catalog_gaps(db, settings()))
         continue_rows = db.continue_works(user["id"], limit=18)
+        continue_split = split_continue_rails(continue_rows)
         surprise = None
         if recent:
             surprise = public_work(recent[0])
@@ -503,7 +547,8 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             "favorites": public_works(favorites),
             "areas": {key: public_works(value) for key, value in areas.items()},
             "gaps": gaps,
-            "continue": continue_rows,
+            "continue": continue_split["reading"],
+            "continue_listening": continue_split["listening"],
             "tonight": tonight,
             "celebrations": celebrations,
             "owner_ready": True,
@@ -547,15 +592,45 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             str(sought[key] or "").strip() for key in sought if key != "kind"
         )
         extra_on = bool(settings().show_extra_categories)
+        search_trace = None
+        pick = None
+        candidates: List[Dict[str, Any]] = []
+        rank_method = ""
+        rank_reason = ""
         if kind in EXTRA_KINDS and not extra_on:
             indexer, beyond_error = [], None
         elif has_beyond_query:
-            indexer, beyond_error = search_beyond(settings(), **sought)
+            ranked = search_and_rank(settings(), **sought)
+            indexer = list(ranked.get("hits") or [])
+            beyond_error = ranked.get("error")
+            if beyond_error:
+                from librarian.llm import friendly_llm_error
+
+                beyond_error = friendly_llm_error(RuntimeError(str(beyond_error)))
+            pick = ranked.get("pick")
+            candidates = list(ranked.get("candidates") or [])
+            rank_method = str(ranked.get("rank_method") or "")
+            rank_reason = str(ranked.get("rank_reason") or "")
+            search_trace = {
+                "conversation": list(ranked.get("conversation") or []),
+                "steps": list(ranked.get("steps") or []),
+                "results": list(ranked.get("results") or []),
+                "plan": ranked.get("plan"),
+                "raw_count": ranked.get("raw_count"),
+                "rejected_count": ranked.get("rejected_count"),
+                "rank_method": rank_method,
+                "rank_reason": rank_reason,
+            }
         return {
             "q": q,
             "local": local,
             "beyond": indexer,
             "beyond_error": beyond_error,
+            "pick": pick,
+            "candidates": candidates,
+            "rank_method": rank_method,
+            "rank_reason": rank_reason,
+            "search_trace": search_trace,
             "can_request": user["role"] in ("owner", "op", "reader"),
         }
 
@@ -654,7 +729,9 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
     def curated_list_presets(request: Request):
         require_role(request.state.user, "owner", "op", "reader")
         cfg = settings()
-        llm_ok = bool(str(cfg.llm_base_url or "").strip() and str(cfg.llm_api_key or "").strip())
+        from librarian.llm_providers import resolve_llm_connection
+
+        llm_ok = bool(resolve_llm_connection(cfg).get("api_key"))
         return {
             "presets": list_presets(),
             "configured": llm_ok,
@@ -1248,6 +1325,9 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
     def review_list(request: Request):
         require_role(request.state.user, "owner", "op")
         cfg = settings()
+        from librarian.llm_providers import resolve_llm_connection
+
+        llm_ok = bool(resolve_llm_connection(cfg).get("api_key"))
         works = public_works(db.list_works(review_state="needs_review", limit=80))
         jobs_by_work: Dict[str, Any] = {}
         for job in db.list_jobs(limit=200):
@@ -1271,8 +1351,24 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
                 db.upsert_work({**db.get_work(work["id"]), "review_reason": "unpack_stuck"})
             shelf = shelf_work_for_collision(db, work)
             work["shelf_work"] = shelf
-            work["actions"] = review_slip_actions(work, diagnosis)
-        return {"works": works}
+            work["actions"] = review_slip_actions(work, diagnosis, llm_configured=llm_ok)
+        return {"works": works, "llm_configured": llm_ok}
+
+    @app.post("/api/review/{work_id}/suggest")
+    def review_suggest(work_id: str, request: Request):
+        """BYO LLM title/author suggest for a Review slip. Pre-fills only — never Apply."""
+        require_role(request.state.user, "owner", "op")
+        if db.get_work(work_id) is None:
+            raise HTTPException(status_code=404, detail="Work not found")
+        job = None
+        for row in db.list_jobs(limit=200):
+            if row.get("work_id") == work_id:
+                job = row
+                break
+        try:
+            return suggest_review_identity(db, settings(), work_id=work_id, job=job)
+        except ValueError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
 
     @app.post("/api/review/{work_id}/apply")
     def review_apply(work_id: str, payload: ReviewApplyPayload, request: Request):
@@ -1314,13 +1410,6 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             for part in [str(work.get("title") or "").strip(), str(work.get("author") or "").strip()]
             if part
         )
-        hits, beyond_error = search_beyond(
-            settings(),
-            q=q,
-            kind=str(work.get("kind") or ""),
-            title=str(work.get("title") or ""),
-            author=str(work.get("author") or ""),
-        )
         failed_guid = str(work.get("indexer_guid") or "").strip()
         failed_ctx: Dict[str, Any] = {
             "guid": failed_guid,
@@ -1335,6 +1424,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         ]
         if file_sizes:
             failed_ctx["size"] = sum(file_sizes)
+        remembered: List[Dict[str, Any]] = []
         if failed_guid:
             prior = db.get_job_by_indexer_guid(failed_guid)
             if prior:
@@ -1352,7 +1442,48 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
                     or selected.get("indexer")
                     or ""
                 ).strip()
+                if isinstance(payload.get("candidates"), list):
+                    remembered = remember_candidates(payload["candidates"])
         exclude = db.tried_indexer_guids_for_work(work)
+        beyond_error = None
+        hits: List[Dict[str, Any]] = []
+        search_trace = None
+        rank_method = ""
+        rank_reason = ""
+        ranked_candidates: List[Dict[str, Any]] = []
+        if remembered:
+            hits = [row for row in remembered if str(row.get("guid") or "").strip() not in set(exclude)]
+        if len(hits) < 3:
+            ranked = search_and_rank(
+                settings(),
+                q=q,
+                kind=str(work.get("kind") or ""),
+                title=str(work.get("title") or ""),
+                author=str(work.get("author") or ""),
+            )
+            beyond_error = ranked.get("error")
+            if beyond_error:
+                from librarian.llm import friendly_llm_error
+
+                beyond_error = friendly_llm_error(RuntimeError(str(beyond_error)))
+            rank_method = str(ranked.get("rank_method") or "")
+            rank_reason = str(ranked.get("rank_reason") or "")
+            ranked_candidates = list(ranked.get("candidates") or [])
+            search_trace = {
+                "conversation": list(ranked.get("conversation") or []),
+                "steps": list(ranked.get("steps") or []),
+                "results": list(ranked.get("results") or []),
+                "rank_method": rank_method,
+                "rank_reason": rank_reason,
+            }
+            fresh = list(ranked.get("hits") or [])
+            seen = {str(row.get("guid") or "") for row in hits}
+            for row in fresh:
+                guid = str(row.get("guid") or "").strip()
+                if not guid or guid in seen or guid in set(exclude):
+                    continue
+                hits.append(row)
+                seen.add(guid)
         candidates = rank_regrab_candidates(
             hits or [],
             failed_guid=failed_guid,
@@ -1360,11 +1491,18 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             exclude_guids=exclude,
             limit=3,
         )
+        # Prefer full ranked memory for dud-primary fallback on the next request.
+        memory = ranked_candidates or remember_candidates(hits)
         return {
             "candidates": candidates,
+            "remembered_candidates": memory,
             "repair_fail_count": fails,
             "ready": True,
             "beyond_error": beyond_error,
+            "from_memory": bool(remembered),
+            "rank_method": rank_method,
+            "rank_reason": rank_reason,
+            "search_trace": search_trace,
         }
 
     @app.post("/api/review/{work_id}/retry")
@@ -1537,7 +1675,32 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
     @app.post("/api/settings/enrich")
     def enrich_settings(request: Request):
         require_role(request.state.user, "owner")
-        return enrich_library(db, settings(), data_dir=root)
+        with enrich_lock:
+            live = enrich_thread.get("thread")
+            alive = live is not None and live.is_alive()
+            if is_enrich_running(root) and alive:
+                payload = read_enrich_progress(root)
+                return {**payload, "kicked_off": False}
+            begin_enrich_run(root, source="manual", total=0, phase="starting")
+
+            def run_enrich() -> None:
+                reporter = EnrichProgressReporter(root, source="manual")
+                try:
+                    enrich_library(db, settings(), data_dir=root, progress=reporter)
+                except Exception as error:
+                    logger.exception("Enrich shelves failed")
+                    reporter.fail(str(error) or "Enrich failed")
+
+            thread = threading.Thread(target=run_enrich, name="librarian-enrich", daemon=True)
+            enrich_thread["thread"] = thread
+            thread.start()
+        payload = read_enrich_progress(root)
+        return {**payload, "kicked_off": True}
+
+    @app.get("/api/settings/enrich/status")
+    def enrich_settings_status(request: Request):
+        require_role(request.state.user, "owner")
+        return read_enrich_progress(root)
 
     @app.post("/api/settings/suggest-cache")
     def suggest_cache_settings(request: Request, external: int = 0):
@@ -1546,7 +1709,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
 
     @app.post("/api/works/{work_id}/enrich")
     def work_enrich(work_id: str, request: Request):
-        require_role(request.state.user, "owner")
+        require_role(request.state.user, "owner", "op")
         try:
             result = enrich_work(db, settings(), work_id, data_dir=root)
         except ValueError as error:
@@ -1554,6 +1717,58 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             status = 404 if detail == "Work not found" else 400
             raise HTTPException(status_code=status, detail=detail) from error
         return result
+
+    @app.patch("/api/works/{work_id}/metadata")
+    def work_metadata(work_id: str, payload: WorkMetadataPayload, request: Request):
+        require_role(request.state.user, "owner", "op")
+        fields = payload.model_dump(exclude_unset=True)
+        if not fields:
+            raise HTTPException(status_code=400, detail="No metadata fields to update")
+        try:
+            work = update_work_metadata(db, work_id, fields, data_dir=root)
+        except ValueError as error:
+            detail = str(error)
+            status = 404 if detail == "Work not found" else 400
+            raise HTTPException(status_code=status, detail=detail) from error
+        return {"work": public_work(work)}
+
+    @app.get("/api/works/{work_id}/match-candidates")
+    def work_match_candidates(work_id: str, request: Request):
+        require_role(request.state.user, "owner", "op")
+        work = db.get_work(work_id)
+        if work is None:
+            raise HTTPException(status_code=404, detail="Work not found")
+        if str(work.get("kind") or "") not in ("book", "audiobook"):
+            raise HTTPException(status_code=400, detail="Only books and audiobooks can be matched")
+        candidates = list_match_candidates(work)
+        return {"candidates": candidates, "title": work.get("title"), "author": work.get("author")}
+
+    @app.post("/api/works/{work_id}/apply-match")
+    def work_apply_match(work_id: str, payload: ApplyMatchPayload, request: Request):
+        require_role(request.state.user, "owner", "op")
+        try:
+            result = apply_openlibrary_match(
+                db,
+                settings(),
+                work_id,
+                payload.match_key,
+                data_dir=root,
+            )
+        except ValueError as error:
+            detail = str(error)
+            status = 404 if detail in ("Work not found", "Open Library match not found") else 400
+            raise HTTPException(status_code=status, detail=detail) from error
+        result["work"] = public_work(result.get("work"))
+        return result
+
+    @app.post("/api/works/{work_id}/clear-enrich")
+    def work_clear_enrich(work_id: str, request: Request):
+        require_role(request.state.user, "owner", "op")
+        try:
+            work = clear_enrichment(db, work_id)
+        except ValueError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        return {"work": public_work(work)}
 
     @app.post("/api/settings/goodreads")
     async def goodreads_settings(request: Request, file: UploadFile = File(...)):

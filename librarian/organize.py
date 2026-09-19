@@ -14,20 +14,31 @@ from librarian.db import Database
 from librarian.delight import REVIEW_QUIET_HOURS, in_quiet_hours
 from librarian.identify import (
     REVIEW_COLLISION,
+    REVIEW_LOW,
     REVIEW_MISSING_FOLDER,
     REVIEW_NO_PAYLOAD,
+    REVIEW_UNKNOWN,
     REVIEW_UNPACK_STUCK,
+    Identity,
     dest_layout,
     diagnose_review_folder,
     identify_completed,
     inspect_complete_folder,
     list_payload_files,
+    looks_like_dump_title,
     music_state_for_folder,
     resolve_storage_path,
     usable_folder,
 )
 from librarian.kinds import KIND_BOOK, KIND_COMIC, KIND_MAGAZINE, KIND_MUSIC
-from librarian.llm import client_from_settings
+from librarian.llm import (
+    LLM_FAIL_COPY,
+    LLM_UNSET_COPY,
+    LLMError,
+    client_from_settings,
+    merge_llm_identity,
+    suggestion_fields,
+)
 from librarian.metadata import apply_audio_tags_in_folder, comicinfo_xml, write_comicinfo, write_opf
 from librarian.parts import infer_part_fields, merge_part_fields_for_work, part_for_filename
 
@@ -156,8 +167,13 @@ def review_find_query(work: Dict[str, Any]) -> str:
     return " ".join(parts)
 
 
-def review_slip_actions(work: Dict[str, Any], diagnosis: Dict[str, Any]) -> Dict[str, Any]:
-    """Flags for Review CTAs: Repair / Retry / Request new version / re-grab."""
+def review_slip_actions(
+    work: Dict[str, Any],
+    diagnosis: Dict[str, Any],
+    *,
+    llm_configured: bool = False,
+) -> Dict[str, Any]:
+    """Flags for Review CTAs: Repair / Retry / Request new version / re-grab / LLM suggest."""
     problem = str(diagnosis.get("problem") or work.get("review_reason") or "")
     par2_count = int(diagnosis.get("par2_count") or 0)
     folder_hint = str(
@@ -165,6 +181,11 @@ def review_slip_actions(work: Dict[str, Any], diagnosis: Dict[str, Any]) -> Dict
     )
     can_retry = problem != REVIEW_MISSING_FOLDER and usable_folder(folder_hint)
     fails = int(work.get("repair_fail_count") or 0)
+    title = str(work.get("title") or "")
+    author = str(work.get("author") or "").strip()
+    reason = str(work.get("review_reason") or problem or "")
+    dumpish = looks_like_dump_title(title) or (not author and reason in {REVIEW_UNKNOWN, REVIEW_LOW, ""})
+    identity_weak = reason in {REVIEW_UNKNOWN, REVIEW_LOW, "unexpected_kind"} or dumpish
     return {
         "can_repair": problem == REVIEW_UNPACK_STUCK and par2_count > 0,
         "can_retry": can_retry,
@@ -172,6 +193,111 @@ def review_slip_actions(work: Dict[str, Any], diagnosis: Dict[str, Any]) -> Dict
         "quiet_hours": problem == REVIEW_QUIET_HOURS,
         "can_regrab": fails >= 2 and problem == REVIEW_UNPACK_STUCK,
         "repair_fail_count": fails,
+        "llm_configured": bool(llm_configured),
+        "can_suggest_llm": bool(llm_configured) and identity_weak and problem not in {
+            REVIEW_MISSING_FOLDER,
+            REVIEW_NO_PAYLOAD,
+            REVIEW_UNPACK_STUCK,
+        },
+        "needs_llm_suggest": bool(llm_configured) and dumpish and problem not in {
+            REVIEW_MISSING_FOLDER,
+            REVIEW_NO_PAYLOAD,
+            REVIEW_UNPACK_STUCK,
+        },
+    }
+
+
+def suggest_review_identity(
+    db: Database,
+    settings: Settings,
+    *,
+    work_id: str,
+    llm_client: Any = None,
+    job: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """BYO LLM identity suggest for a Review slip. Pre-fill only — never Apply.
+
+    Fail closed when LLM is unset. Never invents an ISBN.
+    """
+    work = db.get_work(work_id)
+    if work is None:
+        raise ValueError("Work not found")
+    llm = llm_client if llm_client is not None else client_from_settings(settings)
+    if llm is None:
+        return {
+            "configured": False,
+            "suggestion": None,
+            "note": LLM_UNSET_COPY,
+            "work_id": work_id,
+        }
+
+    folder_raw = str(work.get("folder_path") or "")
+    folder = Path(folder_raw) if folder_raw else Path()
+    resolved = resolve_storage_path(folder, settings.complete_root) if usable_folder(folder) else folder
+    files = list_payload_files(resolved) if usable_folder(resolved) and resolved.exists() else []
+
+    payload = dict(job or {})
+    if not payload.get("title"):
+        payload["title"] = work.get("title") or ""
+    if not payload.get("author"):
+        payload["author"] = work.get("author") or ""
+    if not payload.get("kind"):
+        payload["kind"] = work.get("kind") or ""
+    sought = {
+        "kind": work.get("kind") or payload.get("kind") or "",
+        "title": work.get("title") or payload.get("title") or "",
+        "author": work.get("author") or payload.get("author") or "",
+        "isbn": work.get("isbn") or "",
+    }
+    payload["sought"] = sought
+
+    identity = Identity(
+        kind=str(work.get("kind") or ""),
+        title=str(work.get("title") or ""),
+        author=str(work.get("author") or ""),
+        series_name=str(work.get("series_name") or ""),
+        series_index=str(work.get("series_index") or ""),
+        year=work.get("year") if isinstance(work.get("year"), int) else None,
+        isbn=str(work.get("isbn") or ""),
+        confidence="low",
+        review_reason=str(work.get("review_reason") or REVIEW_UNKNOWN),
+        source="review",
+    )
+    evidence_folder = resolved if usable_folder(resolved) else Path(str(work.get("title") or "unknown"))
+    from librarian.identify import _identify_evidence
+
+    evidence = _identify_evidence(evidence_folder, payload, files, identity)
+    try:
+        parsed = llm.identify(evidence)
+    except LLMError:
+        return {
+            "configured": True,
+            "suggestion": None,
+            "note": LLM_FAIL_COPY,
+            "work_id": work_id,
+        }
+    if not parsed:
+        return {
+            "configured": True,
+            "suggestion": None,
+            "note": LLM_FAIL_COPY,
+            "work_id": work_id,
+        }
+    merged = merge_llm_identity(identity, parsed, evidence)
+    suggestion = suggestion_fields(merged)
+    if not suggestion.get("title") or looks_like_dump_title(str(suggestion.get("title") or "")):
+        return {
+            "configured": True,
+            "suggestion": suggestion if suggestion.get("title") else None,
+            "note": LLM_FAIL_COPY,
+            "work_id": work_id,
+        }
+    return {
+        "configured": True,
+        "suggestion": suggestion,
+        "note": "",
+        "work_id": work_id,
+        "auto_apply": False,
     }
 
 

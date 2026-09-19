@@ -1,4 +1,5 @@
 import json
+import time
 from pathlib import Path
 
 import httpx
@@ -30,9 +31,34 @@ def _client(tmp_path, monkeypatch):
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
     monkeypatch.setenv("LIBRARIAN_OWNER_USERNAME", "owner")
     monkeypatch.setenv("LIBRARIAN_OWNER_PASSWORD", "password123")
+    # Block maintainer .env LLM keys (load_dotenv does not override existing env).
+    for key in (
+        "LLM_API_KEY",
+        "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "GEMINI_API_KEY",
+        "GOOGLE_API_KEY",
+        "LLM_BASE_URL",
+        "LLM_MODEL",
+    ):
+        monkeypatch.setenv(key, "")
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
     clear_session_secret_cache()
     clear_rate_limits()
     return TestClient(create_app(tmp_path))
+
+
+def _wait_enrich_status(client, *, timeout=5.0):
+    deadline = time.time() + timeout
+    last = {}
+    while time.time() < deadline:
+        resp = client.get("/api/settings/enrich/status")
+        assert resp.status_code == 200
+        last = resp.json()
+        if last.get("status") in ("completed", "failed", "idle"):
+            return last
+        time.sleep(0.05)
+    return last
 
 
 def _hardcover_edition():
@@ -416,8 +442,14 @@ def test_enrich_api_fills_thin_book(tmp_path, monkeypatch):
     resp = client.post("/api/settings/enrich")
     assert resp.status_code == 200
     body = resp.json()
-    assert body["scanned"] == 1
-    assert body["updated"] == 1
+    assert body["kicked_off"] is True
+    assert body["status"] in ("running", "completed")
+    status = _wait_enrich_status(client)
+    assert status["status"] == "completed"
+    result = status.get("result") or {}
+    assert int(result.get("scanned") or status.get("done") or 0) == 1
+    assert int(result.get("updated") or status.get("updated") or 0) == 1
+    assert status.get("logs")
     detail = client.get(f"/api/works/{work['id']}")
     assert detail.status_code == 200
     assert detail.json()["work"]["description"] == BLURB
@@ -425,6 +457,42 @@ def test_enrich_api_fills_thin_book(tmp_path, monkeypatch):
     one = client.post(f"/api/works/{work['id']}/enrich")
     assert one.status_code == 200
     assert one.json()["work"]["description"] == BLURB
+
+
+def test_enrich_status_idle_then_running(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    client.post("/api/auth/local/login", json={"username": "owner", "password": "password123"})
+    idle = client.get("/api/settings/enrich/status")
+    assert idle.status_code == 200
+    assert idle.json()["status"] == "idle"
+    assert idle.json()["logs"] == []
+
+    save_settings(tmp_path, Settings(hardcover_api_token="hardcover-test-token"))
+    db = Database(tmp_path / "librarian.db")
+    db.upsert_work(
+        {
+            "kind": "book",
+            "title": "The Left Hand of Darkness",
+            "author": "Le Guin",
+            "isbn": ISBN13,
+        }
+    )
+    monkeypatch.setattr(
+        "librarian.enrich._http_client",
+        lambda transport=None: httpx.Client(
+            timeout=20.0, transport=httpx.MockTransport(_handler), follow_redirects=True
+        ),
+    )
+    started = client.post("/api/settings/enrich")
+    assert started.status_code == 200
+    assert started.json()["kicked_off"] is True
+    again = client.post("/api/settings/enrich")
+    assert again.status_code == 200
+    # Second kick while running (or just finished) must not error.
+    assert "status" in again.json()
+    status = _wait_enrich_status(client)
+    assert status["status"] == "completed"
+    assert status["source"] == "manual"
 
 
 def test_goodreads_api_import(tmp_path, monkeypatch):
@@ -618,3 +686,225 @@ def test_enrich_backlog_batch_updates_thin_work(tmp_path):
     )
     assert result["enriched"] == 1
     assert db.get_work(work["id"])["description"] == BLURB
+
+
+def _born_to_run_docs():
+    return [
+        {
+            "title": "Born to Run",
+            "key": "/works/OL1943602W",
+            "first_publish_year": 1975,
+            "author_name": ["Bruce Springsteen", "Michael Morpurgo"],
+            "subject": [],
+            "cover_i": 1,
+        },
+        {
+            "title": "Born to Run",
+            "key": "/works/OL44173969W",
+            "first_publish_year": 2016,
+            "author_name": ["Bruce Springsteen"],
+            "subject": ["Autobiography", "Rock musicians", "Memoir"],
+            "cover_i": 2,
+        },
+    ]
+
+
+def _born_to_run_handler(request: httpx.Request) -> httpx.Response:
+    url = str(request.url)
+    if "search.json" in url:
+        return httpx.Response(200, json={"docs": _born_to_run_docs()})
+    if "/works/OL44173969W" in url:
+        return httpx.Response(
+            200,
+            json={
+                "title": "Born to Run",
+                "description": {
+                    "value": "Bruce Springsteen's memoir of growing up and making music."
+                },
+                "first_publish_date": "2016",
+                "subjects": ["Autobiography", "Memoir"],
+                "covers": [2],
+            },
+        )
+    if "/works/OL1943602W" in url:
+        return httpx.Response(
+            200,
+            json={
+                "title": "Born to Run",
+                "description": {
+                    "value": "There was something inside the bag, squeaking and squealing in terror."
+                },
+                "first_publish_date": "1975",
+                "subjects": ["Dogs", "Greyhounds"],
+                "covers": [1],
+            },
+        )
+    if request.headers.get("accept", "").startswith("image") or url.endswith(".jpg"):
+        return httpx.Response(200, content=JPEG, headers={"content-type": "image/jpeg"})
+    return httpx.Response(404, json={"error": "missing"})
+
+
+def test_openlibrary_rejects_foreign_coauthor_corruption():
+    from librarian.openlibrary import (
+        MIN_TITLE_MATCH_SCORE,
+        pick_openlibrary_doc,
+        score_openlibrary_doc,
+    )
+
+    bad, good = _born_to_run_docs()
+    assert score_openlibrary_doc(bad, title="Born to Run", author="Bruce Springsteen", year=1975) < MIN_TITLE_MATCH_SCORE
+    assert score_openlibrary_doc(good, title="Born to Run", author="Bruce Springsteen", year=1975) >= MIN_TITLE_MATCH_SCORE
+    picked, score = pick_openlibrary_doc(
+        [bad, good],
+        title="Born to Run",
+        author="Bruce Springsteen",
+        year=1975,
+    )
+    assert picked is not None
+    assert picked["key"] == "/works/OL44173969W"
+    assert score >= MIN_TITLE_MATCH_SCORE
+
+
+def test_openlibrary_title_lookup_skips_morpurgo_corruption(tmp_path):
+    from librarian.openlibrary import OpenLibraryClient
+
+    client = OpenLibraryClient(transport=httpx.MockTransport(_born_to_run_handler))
+    try:
+        hit = client.lookup_by_title("Born to Run", "Bruce Springsteen", year=1975)
+    finally:
+        client.close()
+    assert hit.get("match_key") == "/works/OL44173969W"
+    assert "greyhound" not in (hit.get("description") or "").lower()
+    assert "Springsteen" in (hit.get("description") or "")
+    assert hit.get("match_confidence", 0) >= 0.55
+
+
+def test_enrich_born_to_run_prefers_memoir_not_greyhound(tmp_path):
+    db = Database(tmp_path / "librarian.db")
+    work = db.upsert_work(
+        {
+            "kind": "audiobook",
+            "title": "Born to Run",
+            "author": "Bruce Springsteen",
+            "year": 1975,
+        }
+    )
+    result = enrich_work(
+        db,
+        Settings(hardcover_api_token=""),
+        work["id"],
+        data_dir=tmp_path,
+        transport=httpx.MockTransport(_born_to_run_handler),
+    )
+    assert result["updated"] is True
+    assert result["match_key"] == "/works/OL44173969W"
+    assert "greyhound" not in (result["work"].get("description") or "").lower()
+    assert "Springsteen" in (result["work"].get("description") or "")
+
+
+def test_metadata_patch_and_clear_enrich_api(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    client.post("/api/auth/local/login", json={"username": "owner", "password": "password123"})
+    db = Database(tmp_path / "librarian.db")
+    work = db.upsert_work(
+        {
+            "kind": "audiobook",
+            "title": "Born to Run",
+            "author": "Bruce Springsteen",
+            "year": 1975,
+            "description": "Wrong greyhound blurb.",
+            "synopsis_source": "openlibrary",
+            "llm_blurb": "Polished wrong blurb.",
+        }
+    )
+    patched = client.patch(
+        f"/api/works/{work['id']}/metadata",
+        json={
+            "title": "Born to Run",
+            "author": "Bruce Springsteen",
+            "year": 2016,
+            "description": "The Boss tells his own story.",
+            "genre": "Memoir",
+        },
+    )
+    assert patched.status_code == 200, patched.text
+    body = patched.json()["work"]
+    assert body["year"] == 2016
+    assert body["description"] == "The Boss tells his own story."
+    assert body["genre"] == "Memoir"
+
+    cleared = client.post(f"/api/works/{work['id']}/clear-enrich")
+    assert cleared.status_code == 200, cleared.text
+    cleared_work = cleared.json()["work"]
+    assert cleared_work["description"] in (None, "")
+    assert cleared_work["synopsis_source"] in (None, "")
+    assert cleared_work["llm_blurb"] in (None, "")
+    assert cleared_work["title"] == "Born to Run"
+    assert cleared_work["year"] == 2016
+
+
+def test_fix_match_apply_api(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    client.post("/api/auth/local/login", json={"username": "owner", "password": "password123"})
+    db = Database(tmp_path / "librarian.db")
+    work = db.upsert_work(
+        {
+            "kind": "audiobook",
+            "title": "Born to Run",
+            "author": "Bruce Springsteen",
+            "year": 1975,
+            "description": "There was something inside the bag, squeaking and squealing in terror.",
+            "synopsis_source": "openlibrary",
+        }
+    )
+    monkeypatch.setattr(
+        "librarian.enrich._http_client",
+        lambda transport=None: httpx.Client(
+            timeout=20.0, transport=httpx.MockTransport(_born_to_run_handler), follow_redirects=True
+        ),
+    )
+    monkeypatch.setattr(
+        "librarian.web.app.list_match_candidates",
+        lambda work, **kwargs: __import__("librarian.enrich", fromlist=["list_match_candidates"]).list_match_candidates(
+            work, transport=httpx.MockTransport(_born_to_run_handler), **kwargs
+        ),
+    )
+    candidates = client.get(f"/api/works/{work['id']}/match-candidates")
+    assert candidates.status_code == 200, candidates.text
+    rows = candidates.json()["candidates"]
+    assert rows
+    assert rows[0]["match_key"] == "/works/OL44173969W"
+    assert all(row["match_key"] != "/works/OL1943602W" or row["match_confidence"] < 0.55 for row in rows)
+
+    applied = client.post(
+        f"/api/works/{work['id']}/apply-match",
+        json={"match_key": "/works/OL44173969W"},
+    )
+    assert applied.status_code == 200, applied.text
+    payload = applied.json()
+    assert payload["match_key"] == "/works/OL44173969W"
+    assert "Springsteen" in (payload["work"].get("description") or "")
+    assert "greyhound" not in (payload["work"].get("description") or "").lower()
+    assert payload["work"]["year"] == 2016
+
+
+def test_metadata_endpoints_forbid_readers(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    client.post("/api/auth/local/login", json={"username": "owner", "password": "password123"})
+    db = Database(tmp_path / "librarian.db")
+    work = db.upsert_work({"kind": "book", "title": "Dune", "author": "Frank Herbert"})
+    reader_token = client.post("/api/invites", json={"role": "reader"}).json()["token"]
+    client.post("/api/auth/logout")
+    client.cookies.clear()
+    assert (
+        client.post(
+            "/api/invites/redeem/local",
+            json={"token": reader_token, "username": "reader1", "password": "password123"},
+        ).status_code
+        == 200
+    )
+    assert client.patch(f"/api/works/{work['id']}/metadata", json={"description": "Nope"}).status_code == 403
+    assert client.get(f"/api/works/{work['id']}/match-candidates").status_code == 403
+    assert client.post(f"/api/works/{work['id']}/apply-match", json={"match_key": "/works/x"}).status_code == 403
+    assert client.post(f"/api/works/{work['id']}/clear-enrich").status_code == 403
+    assert client.post(f"/api/works/{work['id']}/enrich").status_code == 403

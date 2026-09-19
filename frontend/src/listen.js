@@ -14,35 +14,67 @@ export function workListenPath(workId, fileId = "") {
   return wanted ? `${base}&file=${encodeURIComponent(wanted)}` : base;
 }
 
-export function encodeListenPosition(fileId = "", seconds = 0) {
+export function encodeListenPosition(fileId = "", seconds = 0, extras = {}) {
   const fid = String(fileId || "").trim();
   const secs = Math.max(0, Number(seconds) || 0);
+  const rate = Number(extras?.rate);
   if (!fid && secs <= 0) return "";
-  return JSON.stringify({ file: fid, t: Math.round(secs * 1000) / 1000 });
+  const payload = { file: fid, t: Math.round(secs * 1000) / 1000 };
+  if (Number.isFinite(rate) && rate > 0 && rate !== 1) {
+    payload.rate = Math.round(rate * 100) / 100;
+  }
+  return JSON.stringify(payload);
 }
 
 export function decodeListenPosition(raw = "") {
   const text = String(raw || "").trim();
-  if (!text) return { fileId: "", seconds: 0 };
+  if (!text) return { fileId: "", seconds: 0, rate: 0 };
   if (text.startsWith("{")) {
     try {
       const data = JSON.parse(text);
+      const rate = Number(data?.rate);
       return {
         fileId: String(data?.file || data?.file_id || "").trim(),
         seconds: Math.max(0, Number(data?.t ?? data?.seconds) || 0),
+        rate: Number.isFinite(rate) && rate > 0 ? rate : 0,
       };
     } catch {
-      return { fileId: "", seconds: 0 };
+      return { fileId: "", seconds: 0, rate: 0 };
     }
   }
   const colon = text.lastIndexOf(":");
   if (colon > 0) {
     const secs = Number(text.slice(colon + 1));
     if (Number.isFinite(secs)) {
-      return { fileId: text.slice(0, colon).trim(), seconds: Math.max(0, secs) };
+      return { fileId: text.slice(0, colon).trim(), seconds: Math.max(0, secs), rate: 0 };
     }
   }
-  return { fileId: text, seconds: 0 };
+  return { fileId: text, seconds: 0, rate: 0 };
+}
+
+/** Gate writes so pre-seek / Strict Mode remount at t=0 cannot wipe a bookmark. */
+export function shouldWriteListenProgress({
+  ready = false,
+  seconds = 0,
+  resumeSeconds = 0,
+  force = false,
+} = {}) {
+  if (!ready && !force) return false;
+  const now = Math.max(0, Number(seconds) || 0);
+  const resume = Math.max(0, Number(resumeSeconds) || 0);
+  // Never replace a real bookmark with a near-zero write before playback has advanced.
+  if (resume >= 2 && now < 1) return false;
+  return true;
+}
+
+export function splitContinueRails(items = []) {
+  const reading = [];
+  const listening = [];
+  for (const row of items || []) {
+    if (String(row?.kind || "") === "audiobook") listening.push(row);
+    else reading.push(row);
+  }
+  return { reading, listening };
 }
 
 export function listenFraction({ fileIndex = 0, fileCount = 1, localFraction = 0 } = {}) {

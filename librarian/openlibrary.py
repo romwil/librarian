@@ -55,6 +55,142 @@ def _title_key(value: Any) -> str:
     return re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
 
 
+_NAME_STOP = frozenset({"the", "a", "an", "and", "of", "jr", "sr"})
+_MEMOIR_HINTS = ("memoir", "autobiograph", "biograph")
+# Below this, title+author search returns no enrichment (reject low-confidence hits).
+MIN_TITLE_MATCH_SCORE = 0.55
+_SEARCH_CANDIDATE_LIMIT = 12
+
+
+def _name_tokens(value: Any) -> frozenset[str]:
+    tokens = re.findall(r"[a-z0-9]+", str(value or "").lower())
+    return frozenset(token for token in tokens if token and token not in _NAME_STOP)
+
+
+def _author_overlap(want: str, candidate: str) -> float:
+    left = _name_tokens(want)
+    right = _name_tokens(candidate)
+    if not left or not right:
+        return 0.0
+    if left == right:
+        return 1.0
+    if left.issubset(right) or right.issubset(left):
+        return 0.9
+    shared = len(left & right)
+    if shared == 0:
+        return 0.0
+    return shared / max(len(left), len(right))
+
+
+def _doc_authors(doc: Mapping[str, Any]) -> List[str]:
+    raw = doc.get("author_name") or []
+    if isinstance(raw, list):
+        return [str(item).strip() for item in raw if str(item or "").strip()]
+    text = str(raw or "").strip()
+    return [text] if text else []
+
+
+def _doc_subjects(doc: Mapping[str, Any]) -> List[str]:
+    raw = doc.get("subject") or []
+    if isinstance(raw, list):
+        return [str(item).strip() for item in raw if str(item or "").strip()]
+    text = str(raw or "").strip()
+    return [text] if text else []
+
+
+def _has_memoir_subject(subjects: List[str]) -> bool:
+    for subject in subjects:
+        key = _title_key(subject)
+        if any(hint in key for hint in _MEMOIR_HINTS):
+            return True
+    return False
+
+
+def score_openlibrary_doc(
+    doc: Mapping[str, Any],
+    *,
+    title: str,
+    author: str = "",
+    year: Optional[int] = None,
+) -> float:
+    """Score an Open Library search doc for title+author enrich matching.
+
+    Hard-rejects wrong titles and authors that don't overlap. Caps scores when the
+    hit lists foreign co-authors (e.g. Springsteen+Morpurgo corruption for
+    *Born to Run*) so sole-author memoir hits can win.
+    """
+    want_title = _title_key(title)
+    got_title = _title_key(doc.get("title"))
+    if not want_title or not got_title:
+        return 0.0
+    if want_title == got_title:
+        title_score = 1.0
+    elif want_title in got_title or got_title in want_title:
+        title_score = 0.72
+    else:
+        return 0.0
+
+    authors = _doc_authors(doc)
+    want_author = str(author or "").strip()
+    author_score = 0.5
+    if want_author:
+        overlaps = [_author_overlap(want_author, name) for name in authors]
+        best = max(overlaps) if overlaps else 0.0
+        if best < 0.5:
+            return 0.0
+        author_score = best
+        if len(authors) == 1 and best >= 0.85:
+            author_score = min(1.0, best + 0.05)
+        elif len(authors) > 1:
+            foreign = any(overlap < 0.4 for overlap in overlaps)
+            if foreign:
+                # Corrupted multi-author OL records must not beat a clean hit.
+                return min(0.4, title_score * 0.35 + best * 0.4)
+
+    subjects = _doc_subjects(doc)
+    memoir_bonus = 0.0
+    if want_author and _has_memoir_subject(subjects):
+        memoir_bonus = 0.15
+
+    year_bonus = 0.0
+    if year is not None:
+        doc_year = _year_from(doc.get("first_publish_year"))
+        if doc_year is not None:
+            delta = abs(int(doc_year) - int(year))
+            if delta == 0:
+                year_bonus = 0.1
+            elif delta <= 2:
+                year_bonus = 0.05
+            elif delta >= 30:
+                # Album-year shelving (1975) vs memoir (2016) — soft preference only.
+                year_bonus = -0.02
+
+    score = title_score * 0.35 + author_score * 0.5 + memoir_bonus + year_bonus
+    return min(1.0, max(0.0, score))
+
+
+def pick_openlibrary_doc(
+    docs: List[Mapping[str, Any]],
+    *,
+    title: str,
+    author: str = "",
+    year: Optional[int] = None,
+    min_score: float = MIN_TITLE_MATCH_SCORE,
+) -> Tuple[Optional[Dict[str, Any]], float]:
+    best_doc: Optional[Dict[str, Any]] = None
+    best_score = 0.0
+    for doc in docs:
+        if not isinstance(doc, dict):
+            continue
+        score = score_openlibrary_doc(doc, title=title, author=author, year=year)
+        if score > best_score:
+            best_score = score
+            best_doc = doc
+    if best_doc is None or best_score < min_score:
+        return None, best_score
+    return best_doc, best_score
+
+
 def _sort_index(value: str) -> Tuple[int, str]:
     if re.fullmatch(r"\d+", value):
         return (int(value), "")
@@ -223,40 +359,41 @@ class OpenLibraryClient:
             out["genre"] = genre
         return out
 
-    def lookup_by_title(self, title: str, author: str = "") -> Dict[str, Any]:
-        name = str(title or "").strip()
-        if not name:
-            return {}
-        params = {"title": name, "limit": "1"}
-        if str(author or "").strip():
-            params["author"] = str(author).strip()
-        payload = self._get_json(f"{OPENLIB_SEARCH}?{urlencode(params)}")
-        docs = payload.get("docs") if isinstance(payload.get("docs"), list) else []
-        if not docs or not isinstance(docs[0], dict):
-            return {}
-        doc = docs[0]
-        work = self._work_payload(str(doc.get("key") or ""))
-        description = _description(work.get("description"))
-        year = _year_from(doc.get("first_publish_year") or work.get("first_publish_date"))
+    def _enrichment_from_doc(
+        self,
+        doc: Mapping[str, Any],
+        *,
+        fallback_title: str = "",
+        fallback_author: str = "",
+        match_confidence: Optional[float] = None,
+        work: Optional[Mapping[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        work_payload = work if isinstance(work, Mapping) else self._work_payload(str(doc.get("key") or ""))
+        description = _description(work_payload.get("description"))
+        year = _year_from(doc.get("first_publish_year") or work_payload.get("first_publish_date"))
         cover_id = doc.get("cover_i")
         cover = ""
         if isinstance(cover_id, int) or str(cover_id or "").isdigit():
             cover = OPENLIB_COVER_ID.format(cover_id=cover_id)
-        authors = doc.get("author_name") or []
-        author_name = authors[0] if isinstance(authors, list) and authors else str(author or "")
+        authors = _doc_authors(doc)
+        author_name = authors[0] if authors else str(fallback_author or "")
         series = ""
         series_raw = doc.get("series")
         if isinstance(series_raw, list) and series_raw:
             series = str(series_raw[0]).strip()
-        series = series or _series_name(work.get("series"))
-        genre = _subjects_to_genre(work.get("subjects") or doc.get("subject"))
+        series = series or _series_name(work_payload.get("series"))
+        genre = _subjects_to_genre(work_payload.get("subjects") or doc.get("subject"))
+        key = str(doc.get("key") or work_payload.get("key") or "").strip()
         out: Dict[str, Any] = {
-            "title": str(doc.get("title") or work.get("title") or name).strip(),
+            "title": str(doc.get("title") or work_payload.get("title") or fallback_title).strip(),
             "author": str(author_name or "").strip(),
             "description": description,
             "cover_url": cover,
             "source": "openlibrary",
+            "match_key": key,
         }
+        if match_confidence is not None:
+            out["match_confidence"] = round(float(match_confidence), 3)
         if year:
             out["year"] = year
         if series:
@@ -265,6 +402,114 @@ class OpenLibraryClient:
             out["genre"] = genre
         # Title search may include ISBNs on the hit — we deliberately do not copy them.
         return out
+
+    def lookup_by_key(self, work_key: str) -> Dict[str, Any]:
+        key = str(work_key or "").strip()
+        if not key:
+            return {}
+        if not key.startswith("/"):
+            key = f"/works/{key}"
+        work = self._work_payload(key)
+        if not work:
+            return {}
+        authors: List[str] = []
+        raw_authors = work.get("authors") or []
+        if isinstance(raw_authors, list):
+            for item in raw_authors:
+                if isinstance(item, dict):
+                    # Work payloads often nest {"author": {"key": "..."}} without names.
+                    name = str(item.get("name") or "").strip()
+                    if name:
+                        authors.append(name)
+        doc = {
+            "key": key,
+            "title": work.get("title"),
+            "author_name": authors,
+            "first_publish_year": _year_from(
+                work.get("first_publish_date") or work.get("first_publish_year")
+            ),
+            "subject": work.get("subjects") or [],
+            "cover_i": (work.get("covers") or [None])[0] if isinstance(work.get("covers"), list) else None,
+            "series": work.get("series"),
+        }
+        return self._enrichment_from_doc(doc, work=work, match_confidence=1.0)
+
+    def lookup_by_title(
+        self,
+        title: str,
+        author: str = "",
+        *,
+        year: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        name = str(title or "").strip()
+        if not name:
+            return {}
+        params = {"title": name, "limit": str(_SEARCH_CANDIDATE_LIMIT)}
+        if str(author or "").strip():
+            params["author"] = str(author).strip()
+        payload = self._get_json(f"{OPENLIB_SEARCH}?{urlencode(params)}")
+        docs = payload.get("docs") if isinstance(payload.get("docs"), list) else []
+        doc, score = pick_openlibrary_doc(
+            [row for row in docs if isinstance(row, dict)],
+            title=name,
+            author=author,
+            year=year,
+        )
+        if doc is None:
+            return {}
+        return self._enrichment_from_doc(
+            doc,
+            fallback_title=name,
+            fallback_author=author,
+            match_confidence=score,
+        )
+
+    def search_title_candidates(
+        self,
+        title: str,
+        author: str = "",
+        *,
+        year: Optional[int] = None,
+        limit: int = 8,
+    ) -> List[Dict[str, Any]]:
+        """Ranked alternate Open Library hits for Fix match UI (no description fetch)."""
+        name = str(title or "").strip()
+        if not name:
+            return []
+        params = {"title": name, "limit": str(max(_SEARCH_CANDIDATE_LIMIT, int(limit)))}
+        if str(author or "").strip():
+            params["author"] = str(author).strip()
+        payload = self._get_json(f"{OPENLIB_SEARCH}?{urlencode(params)}")
+        docs = payload.get("docs") if isinstance(payload.get("docs"), list) else []
+        ranked: List[Tuple[float, Dict[str, Any]]] = []
+        for doc in docs:
+            if not isinstance(doc, dict):
+                continue
+            score = score_openlibrary_doc(doc, title=name, author=author, year=year)
+            if score <= 0:
+                continue
+            authors = _doc_authors(doc)
+            cover_id = doc.get("cover_i")
+            cover = ""
+            if isinstance(cover_id, int) or str(cover_id or "").isdigit():
+                cover = OPENLIB_COVER_ID.format(cover_id=cover_id)
+            ranked.append(
+                (
+                    score,
+                    {
+                        "match_key": str(doc.get("key") or "").strip(),
+                        "title": str(doc.get("title") or "").strip(),
+                        "author": ", ".join(authors),
+                        "year": _year_from(doc.get("first_publish_year")),
+                        "cover_url": cover,
+                        "match_confidence": round(float(score), 3),
+                        "subjects": _doc_subjects(doc)[:6],
+                        "source": "openlibrary",
+                    },
+                )
+            )
+        ranked.sort(key=lambda item: item[0], reverse=True)
+        return [row for _, row in ranked[: max(1, int(limit))]]
 
     def series_volumes(self, series_name: str) -> List[Dict[str, Any]]:
         """Expected volumes for a series. No invented ISBNs; only catalog digits if present."""

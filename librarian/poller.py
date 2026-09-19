@@ -78,15 +78,22 @@ class JobPoller:
         if self._tick_count % _ENRICH_EVERY_TICKS == 0:
             try:
                 from librarian.enrich import enrich_backlog_batch
+                from librarian.enrich_progress import EnrichProgressReporter, read_enrich_progress
 
-                result = enrich_backlog_batch(
-                    self.db,
-                    settings,
-                    data_dir=self.data_dir,
-                    limit=_ENRICH_BATCH,
-                    pause_seconds=0.5,
-                )
-                count += int(result.get("enriched") or 0)
+                current = read_enrich_progress(self.data_dir)
+                if current.get("status") == "running" and current.get("source") == "manual":
+                    logger.debug("Enrich trickle skipped — manual enrich is running")
+                else:
+                    reporter = EnrichProgressReporter(self.data_dir, source="trickle")
+                    result = enrich_backlog_batch(
+                        self.db,
+                        settings,
+                        data_dir=self.data_dir,
+                        limit=_ENRICH_BATCH,
+                        pause_seconds=0.5,
+                        progress=reporter,
+                    )
+                    count += int(result.get("enriched") or 0)
             except Exception:
                 logger.exception("Enrich backlog tick failed")
         try:

@@ -422,7 +422,7 @@ export function beyondHostName(item = {}) {
   return String(item.host_name || "").trim();
 }
 
-export function requestBodyFromHit(item = {}, sought = {}) {
+export function requestBodyFromHit(item = {}, sought = {}, extras = {}) {
   const fields = pruneFieldsForKind(sought.kind || item.kind || "", sought);
   const selected = selectedFromHit(item);
   const title =
@@ -432,6 +432,11 @@ export function requestBodyFromHit(item = {}, sought = {}) {
     (fields.series && fields.issue ? `${fields.series} #${fields.issue}` : fields.series) ||
     item.title ||
     "";
+  const candidates = Array.isArray(extras.candidates)
+    ? extras.candidates
+    : Array.isArray(item.candidates)
+      ? item.candidates
+      : [];
   return {
     title,
     guid: selected.guid,
@@ -455,5 +460,8 @@ export function requestBodyFromHit(item = {}, sought = {}) {
     selected,
     host_id: selected.host_id,
     host_name: selected.host_name,
+    candidates,
+    rank_method: extras.rank_method || item.rank_method || "",
+    rank_reason: extras.rank_reason || item.rank_reason || "",
   };
 }

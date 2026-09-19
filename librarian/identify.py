@@ -31,6 +31,13 @@ REVIEW_MISSING_FOLDER = "missing_folder"
 
 _DOT_GROUP = re.compile(r"[\.\-_]+")
 _ISBN = re.compile(r"\b(?:97[89][-\s]?)?(?:\d[-\s]?){9}[\dXx]\b")
+_AUDIOBOOK_HINT = re.compile(r"(?i)\baudio[\.\s_\-]*book\b|\bunabridged\b|\bm4b\b")
+_DUMP_RELEASE_TOKEN = re.compile(
+    r"(?i)\b("
+    r"audio[\.\s_\-]*book|ebook|epub|mobi|azw3|hybrid|retail|proper|repack|"
+    r"bitbook|comic|cbr|cbz|mp3|flac|m4b|unabridged|abridged|web[\.\-]?rip"
+    r")\b"
+)
 _COMIC_HASH_YEAR = re.compile(
     r"^(?P<series>.+?)[\.\s]+(?:#|No\.?)\s*(?P<issue>\d{1,4})\s*\((?P<year>19\d{2}|20\d{2})\)(?:[\.\s].*)?$",
     re.IGNORECASE,
@@ -171,6 +178,24 @@ def tidy_title(value: str) -> str:
     text = _DOT_GROUP.sub(" ", value or "").strip()
     text = re.sub(r"\s+", " ", text)
     return text
+
+
+def looks_like_dump_title(value: str) -> bool:
+    """True for dotted Usenet dumps / release tokens that should not stay as shelf titles."""
+    text = str(value or "").strip()
+    if not text:
+        return True
+    if text.count(".") >= 3:
+        return True
+    if _DUMP_RELEASE_TOKEN.search(text):
+        return True
+    # Humanized dump: many Title Case tokens, no Author - Title separator.
+    if " - " not in text and len(text) >= 48 and text.count(" ") >= 6:
+        words = [w for w in text.split() if w]
+        titled = sum(1 for w in words if w[:1].isupper())
+        if titled >= 6 and titled >= len(words) * 0.6:
+            return True
+    return False
 
 
 def usenet_basename(name: str) -> str:
@@ -384,7 +409,7 @@ def parse_usenet_name(name: str, *, category: object = None, kind: object = None
 
     inferred = hinted
     if not inferred:
-        if any(token in stem.lower() for token in ("m4b", "audiobook", "unabridged")):
+        if _AUDIOBOOK_HINT.search(stem):
             inferred = KIND_AUDIOBOOK
         elif any(token in stem.lower() for token in ("flac", "mp3", "vinyl", "album")):
             inferred = KIND_MUSIC
@@ -393,6 +418,8 @@ def parse_usenet_name(name: str, *, category: object = None, kind: object = None
 
     if inferred == KIND_AUDIOBOOK and title:
         title = tidy_title(_AUDIO_PART.sub("", title)) or title
+        title = _AUDIOBOOK_HINT.sub(" ", title)
+        title = re.sub(r"\s+", " ", title).strip() or title
 
     high = bool(isbn and author and title) if inferred == KIND_BOOK else False
     return Identity(
@@ -914,7 +941,9 @@ def identify_completed(
     identity.source = identity.source or "stack"
     _apply_review_gates(identity, files)
 
-    if identity.confidence != "high" and llm_client is not None:
+    needs_author = identity.kind in (KIND_BOOK, KIND_AUDIOBOOK) and not identity.author
+    needs_llm = identity.confidence != "high" or looks_like_dump_title(identity.title) or needs_author
+    if needs_llm and llm_client is not None:
         evidence = _identify_evidence(folder, indexer_item, files, identity)
         try:
             from librarian.llm import merge_llm_identity
@@ -1115,7 +1144,7 @@ def _kind_from_payload(files: Sequence[Path], folder: Path) -> str:
     names = " ".join([folder.name, *(path.name for path in files)]).lower()
     if suffixes & {".cbz", ".cbr", ".cbt"}:
         return KIND_COMIC
-    if suffixes & {".m4b"} or "audiobook" in names:
+    if suffixes & {".m4b"} or _AUDIOBOOK_HINT.search(names):
         return KIND_AUDIOBOOK
     if suffixes & {".flac", ".mp3", ".m4a", ".ogg", ".opus"} and ".epub" not in suffixes:
         return KIND_MUSIC

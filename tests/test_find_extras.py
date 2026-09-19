@@ -67,12 +67,23 @@ def test_extra_host_502_keeps_nzbfinder_hits(tmp_path, monkeypatch):
     )
     _login(client)
 
-    def fake_books(self, *, query="", title="", author="", isbn="", cat=None, limit=25):
+    def fake_books_traced(
+        self,
+        *,
+        query="",
+        title="",
+        author="",
+        isbn="",
+        cat=None,
+        limit=25,
+        default_kind="book",
+    ):
         if "extra.example" in self.base_url:
             raise NZBFinderError("Extra HTTP 502 returned non-JSON")
-        return [{"title": "Dune", "kind": "book", "guid": "g-dune", "host_name": self.label}]
+        rows = [{"title": "Dune", "kind": "book", "guid": "g-dune", "host_name": self.label}]
+        return {"accepted": rows, "rejected": [], "raw": rows, "default_kind": default_kind}
 
-    monkeypatch.setattr("librarian.nzbfinder.NZBFinderClient.books", fake_books)
+    monkeypatch.setattr("librarian.nzbfinder.NZBFinderClient.books_traced", fake_books_traced)
     resp = client.get("/api/search", params={"beyond": 1, "kind": "book", "title": "Dune"})
     assert resp.status_code == 200
     body = resp.json()
@@ -101,11 +112,22 @@ def test_extra_host_is_queried_and_deduped(tmp_path, monkeypatch):
     _login(client)
     hosts = []
 
-    def fake_books(self, *, query="", title="", author="", isbn="", cat=None, limit=25):
+    def fake_books_traced(
+        self,
+        *,
+        query="",
+        title="",
+        author="",
+        isbn="",
+        cat=None,
+        limit=25,
+        default_kind="book",
+    ):
         hosts.append(self.label)
-        return [{"title": "Dune", "kind": "book", "guid": "g-dune"}]
+        rows = [{"title": "Dune", "kind": "book", "guid": "g-dune"}]
+        return {"accepted": rows, "rejected": [], "raw": rows, "default_kind": default_kind}
 
-    monkeypatch.setattr("librarian.nzbfinder.NZBFinderClient.books", fake_books)
+    monkeypatch.setattr("librarian.nzbfinder.NZBFinderClient.books_traced", fake_books_traced)
     resp = client.get("/api/search", params={"beyond": 1, "kind": "book", "title": "Dune"})
     assert resp.status_code == 200
     assert hosts == ["NZBFinder", "Books.nzb"]

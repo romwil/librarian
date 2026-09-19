@@ -18,7 +18,13 @@ import httpx
 
 from librarian.audiobook_match import audiobook_find_fields, match_companion_audiobook
 from librarian.identify import isbn_match_keys, tidy_title, validated_isbn
-from librarian.llm import LLMClient, LLMError, client_from_settings, parse_json_object
+from librarian.llm import (
+    LLMClient,
+    LLMError,
+    client_from_settings,
+    friendly_llm_error,
+    parse_json_object,
+)
 from librarian.nyt_books import (
     DEFAULT_LIST_NAMES,
     match_local_work,
@@ -329,14 +335,48 @@ def public_beyond_hit(hit: Optional[Mapping[str, Any]]) -> Optional[Dict[str, An
     }
 
 
+def pick_chase_hit(hits: Sequence[Mapping[str, Any]]) -> Optional[Dict[str, Any]]:
+    """First shelf hit with a real guid — never invent one, never prefer a blank guid."""
+    for hit in hits or []:
+        if not isinstance(hit, Mapping):
+            continue
+        if str(hit.get("guid") or "").strip():
+            return dict(hit)
+    return None
+
+
+def _lane_trace(traced: Mapping[str, Any], *, lane: str) -> Dict[str, Any]:
+    plan = traced.get("plan") if isinstance(traced.get("plan"), Mapping) else None
+    return {
+        "lane": lane,
+        "plan": {
+            "endpoint": str((plan or {}).get("endpoint") or ""),
+            "params": dict((plan or {}).get("params") or {}),
+            "sought": dict((plan or {}).get("sought") or {}),
+        }
+        if plan
+        else None,
+        "steps": list(traced.get("steps") or []),
+        "results": list(traced.get("results") or []),
+        "raw_count": int(traced.get("raw_count") or 0),
+        "rejected_count": int(traced.get("rejected_count") or 0),
+        "error": traced.get("error"),
+        "candidates": list(traced.get("candidates") or []),
+        "rank_method": str(traced.get("rank_method") or ""),
+        "rank_reason": str(traced.get("rank_reason") or ""),
+        "conversation": list(traced.get("conversation") or []),
+    }
+
+
 def chase_missing_item(
     settings: Any,
     book: Mapping[str, Any],
     *,
     transport: Optional[httpx.BaseTransport] = None,
+    llm: Optional[LLMClient] = None,
 ) -> Dict[str, Any]:
     """Find beyond for book and audiobook. Does not enqueue — Confirm still required."""
-    from librarian.indexers.hosts import search_beyond
+    from librarian.indexers.rank import search_and_rank
 
     title = str(book.get("title") or "").strip()
     author = str(book.get("author") or "").strip()
@@ -356,14 +396,48 @@ def chase_missing_item(
         "author": author,
         "isbn": isbn,
     }
-    book_hits, book_error = search_beyond(settings, transport=transport, **sought_book)
-    audio_hits, audio_error = search_beyond(settings, transport=transport, **sought_audio)
-    book_hit = public_beyond_hit(book_hits[0] if book_hits else None)
-    audio_hit = public_beyond_hit(audio_hits[0] if audio_hits else None)
+    book_traced = search_and_rank(settings, transport=transport, llm=llm, **sought_book)
+    audio_llm = None if llm is not None and _traced_rate_limited(book_traced) else llm
+    audio_traced = search_and_rank(settings, transport=transport, llm=audio_llm, **sought_audio)
+    book_error = book_traced.get("error")
+    audio_error = audio_traced.get("error")
+    book_pick = book_traced.get("pick") or pick_chase_hit(book_traced.get("hits") or [])
+    audio_pick = audio_traced.get("pick") or pick_chase_hit(audio_traced.get("hits") or [])
+    book_hit = public_beyond_hit(book_pick)
+    audio_hit = public_beyond_hit(audio_pick)
     if book_hit and not book_hit.get("kind"):
         book_hit["kind"] = "book"
     if audio_hit and not audio_hit.get("kind"):
         audio_hit["kind"] = "audiobook"
+    if book_hit:
+        book_hit["candidates"] = list(book_traced.get("candidates") or [])
+        book_hit["rank_method"] = str(book_traced.get("rank_method") or "")
+        book_hit["rank_reason"] = str(book_traced.get("rank_reason") or "")
+    if audio_hit:
+        audio_hit["candidates"] = list(audio_traced.get("candidates") or [])
+        audio_hit["rank_method"] = str(audio_traced.get("rank_method") or "")
+        audio_hit["rank_reason"] = str(audio_traced.get("rank_reason") or "")
+    conversation = [
+        {"role": "system", "content": "Bestsellers Request missing — search + rank (LLM when configured)."},
+        {
+            "role": "user",
+            "content": f"Find ebook and audiobook for {title!r} by {author!r}"
+            + (f" (isbn {isbn})" if isbn else ""),
+        },
+    ]
+    conversation.extend(book_traced.get("conversation") or [])
+    conversation.extend(audio_traced.get("conversation") or [])
+    conversation.append(
+        {
+            "role": "assistant",
+            "content": (
+                f"Book pick={(book_hit or {}).get('guid') or 'none'} "
+                f"method={book_traced.get('rank_method')}; "
+                f"Audiobook pick={(audio_hit or {}).get('guid') or 'none'} "
+                f"method={audio_traced.get('rank_method')}"
+            ),
+        }
+    )
     return {
         "title": title,
         "author": author,
@@ -371,9 +445,16 @@ def chase_missing_item(
         "sought": {"book": sought_book, "audiobook": sought_audio},
         "book_hit": book_hit,
         "audiobook_hit": audio_hit,
+        "book_candidates": list(book_traced.get("candidates") or []),
+        "audiobook_candidates": list(audio_traced.get("candidates") or []),
         "book_error": book_error,
         "audiobook_error": audio_error,
         "audiobook_available": bool(audio_hit and audio_hit.get("guid")),
+        "trace": {
+            "conversation": conversation,
+            "book": _lane_trace(book_traced, lane="book"),
+            "audiobook": _lane_trace(audio_traced, lane="audiobook"),
+        },
     }
 
 
@@ -383,16 +464,59 @@ def chase_missing_items(
     *,
     transport: Optional[httpx.BaseTransport] = None,
     limit: int = 20,
+    llm: Optional[LLMClient] = None,
 ) -> List[Dict[str, Any]]:
-    """Chase several missing list rows. Caps work; never auto-queues."""
+    """Chase several missing list rows. Caps work; never auto-queues.
+
+    One shared LLM client is reused serially (process gate in LLMClient). After a
+    rate-limit signal from ranking, remaining titles use heuristic only.
+    """
+    own_client = False
+    client = llm
+    if client is None:
+        client = client_from_settings(settings, transport=transport)
+        own_client = client is not None
     out: List[Dict[str, Any]] = []
-    for row in items[: max(0, int(limit))]:
-        if not isinstance(row, Mapping):
-            continue
-        if not str(row.get("title") or "").strip() or not str(row.get("author") or "").strip():
-            continue
-        out.append(chase_missing_item(settings, row, transport=transport))
+    llm_ok = client
+    try:
+        for row in items[: max(0, int(limit))]:
+            if not isinstance(row, Mapping):
+                continue
+            if not str(row.get("title") or "").strip() or not str(row.get("author") or "").strip():
+                continue
+            result = chase_missing_item(settings, row, transport=transport, llm=llm_ok)
+            if llm_ok is not None and _chase_saw_rate_limit(result):
+                logger.info("LLM chase rate-limited — heuristic for remaining titles")
+                llm_ok = None
+            out.append(result)
+    finally:
+        if own_client and client is not None:
+            client.close()
     return out
+
+
+def _traced_rate_limited(traced: Mapping[str, Any]) -> bool:
+    blob = " ".join(
+        [
+            str(traced.get("rank_reason") or ""),
+            str(traced.get("error") or ""),
+            " ".join(
+                str(m.get("content") or "")
+                for m in (traced.get("conversation") or [])
+                if isinstance(m, Mapping)
+            ),
+        ]
+    ).lower()
+    return "rate-limited" in blob or "429" in blob
+
+
+def _chase_saw_rate_limit(result: Mapping[str, Any]) -> bool:
+    trace = result.get("trace") if isinstance(result.get("trace"), Mapping) else {}
+    for lane in ("book", "audiobook"):
+        lane_trace = trace.get(lane) if isinstance(trace.get(lane), Mapping) else {}
+        if _traced_rate_limited(lane_trace):
+            return True
+    return False
 
 
 def curated_list_payload(
@@ -447,8 +571,8 @@ def curated_list_payload(
         return {
             **empty_base,
             "configured": True,
-            "empty_reason": "error",
-            "empty_copy": str(error) or "The reading room could not reach the LLM.",
+            "empty_reason": "rate_limited" if error.rate_limited else "error",
+            "empty_copy": friendly_llm_error(error),
         }
     finally:
         if own_client and client is not None:

@@ -11,6 +11,38 @@ export function fieldsFromWork(work) {
   };
 }
 
+/** Dotted Usenet dumps / release tokens that should not stay as shelf titles. */
+export function looksLikeDumpTitle(value) {
+  const text = String(value || "").trim();
+  if (!text) return true;
+  const dots = (text.match(/\./g) || []).length;
+  if (dots >= 3) return true;
+  if (
+    /\b(audio[\.\s_\-]*book|ebook|epub|mobi|azw3|hybrid|retail|proper|repack|bitbook|comic|cbr|cbz|mp3|flac|m4b|unabridged|abridged)\b/i.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+  if (!text.includes(" - ") && text.length >= 48 && (text.match(/ /g) || []).length >= 6) {
+    const words = text.split(/\s+/).filter(Boolean);
+    const titled = words.filter((w) => /^[A-Z]/.test(w)).length;
+    if (titled >= 6 && titled >= words.length * 0.6) return true;
+  }
+  return false;
+}
+
+export function applySuggestionToDraft(draft, suggestion) {
+  if (!suggestion || typeof suggestion !== "object") return draft || {};
+  const next = { ...(draft || {}) };
+  for (const key of ["title", "author", "kind", "series_name", "series_index", "isbn", "year"]) {
+    const value = suggestion[key];
+    if (value == null || value === "") continue;
+    next[key] = value;
+  }
+  return next;
+}
+
 export function applyBodyFromDraft(draft) {
   const body = {
     title: draft.title,
@@ -52,10 +84,10 @@ export function reviewReasonCopy(reason) {
     return "No book, comic, or audio file at this path. Apply cannot invent a payload — Request a new version beyond the shelves if the dump is empty.";
   }
   if (reason === "unknown_identity") {
-    return "Identity is missing. Fill title, author, ISBN or series/issue, then Apply.";
+    return "Identity is missing. Suggest with LLM when configured, or fill title and author by hand, then Apply.";
   }
   if (reason === "low_confidence") {
-    return "Identify was unsure. Confirm or correct the fields, then Apply.";
+    return "Identify was unsure. Confirm the suggestion or correct the fields, then Apply.";
   }
   if (reason === "unexpected_kind") {
     return "Kind does not match a library shelf. Pick book, magazine, comic, audiobook, or music.";
@@ -110,6 +142,9 @@ export function reviewActionsFromWork(work = {}) {
     findQuery: findQuery || [work?.title, work?.author].filter(Boolean).join(" "),
     findKind: String(work?.kind || "").trim(),
     reason,
+    llmConfigured: Boolean(actions.llm_configured),
+    canSuggestLlm: Boolean(actions.can_suggest_llm),
+    needsLlmSuggest: Boolean(actions.needs_llm_suggest) || looksLikeDumpTitle(work?.title),
   };
 }
 

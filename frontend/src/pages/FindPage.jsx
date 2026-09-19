@@ -8,10 +8,10 @@ import CoverCard from "../components/CoverCard.jsx";
 import BestsellersPanel from "../components/BestsellersPanel.jsx";
 import { FIELD_HELP, discoverKindNote, discoverStatusLine, findStatusLine, humanError } from "../copy.js";
 import PartSetCard from "../components/PartSetCard.jsx";
+import SearchTraceDisclosure from "../components/SearchTraceDisclosure.jsx";
 import {
   DISCOVER_BROWSE_LIMIT,
   bestsellersFromSearchParams,
-  bestsellersHref,
   buildFindSearchParams,
   catalogGapFanoutQueries,
   composeSearchQuery,
@@ -103,6 +103,7 @@ export default function FindPage() {
   const [priorMissing, setPriorMissing] = useState({});
   const [bestMatches, setBestMatches] = useState([]);
   const [fanoutPhase, setFanoutPhase] = useState("idle");
+  const [fanoutCandidates, setFanoutCandidates] = useState([]);
   const [discover, setDiscover] = useState({ items: [], categories: [], limit: 0 });
   const [jobs, setJobs] = useState({});
   const [phase, setPhase] = useState("idle");
@@ -112,6 +113,8 @@ export default function FindPage() {
   const openDiscover = shouldShowDiscover(urlFields);
   const browsing = Boolean(discoverCat) && openDiscover;
   const catalogGap = isCatalogGapQuery(urlFields);
+  /** Idle Find or explicit `/find?preset=nyt` — never hide behind a muted link. */
+  const showBestsellers = Boolean(nytPreset) || (openDiscover && !browsing);
 
   useEffect(() => {
     setDraft(urlFields.q);
@@ -154,7 +157,14 @@ export default function FindPage() {
       .search(urlFields.q, { beyond: true, ...urlFields })
       .then((data) => {
         if (!alive) return;
-        setResult({ beyond: data.beyond || [] });
+        setResult({
+          beyond: data.beyond || [],
+          candidates: data.candidates || [],
+          pick: data.pick || null,
+          search_trace: data.search_trace || null,
+          rank_method: data.rank_method || "",
+          rank_reason: data.rank_reason || "",
+        });
         if (data.beyond_error) {
           setError(humanError(data.beyond_error));
           setPhase((data.beyond || []).length ? "done" : "beyond_error");
@@ -220,6 +230,9 @@ export default function FindPage() {
             const data = await api.search(q, { beyond: true, kind: set.kind || urlFields.kind });
             extras.push(...(data.beyond || []));
             if (alive) setChaseHits([...extras]);
+            if (/rate-limited|429/i.test(`${data.beyond_error || ""} ${data.rank_reason || ""}`)) {
+              break;
+            }
           } catch {
             /* keep chasing */
           }
@@ -242,6 +255,7 @@ export default function FindPage() {
   useEffect(() => {
     if (phase !== "done" || !catalogGap) {
       setBestMatches([]);
+      setFanoutCandidates([]);
       setFanoutPhase("idle");
       return undefined;
     }
@@ -251,11 +265,17 @@ export default function FindPage() {
     setFanoutPhase("searching");
     (async () => {
       const extras = [];
+      const remembered = [];
       for (const fields of queries) {
         if (!alive) return;
         try {
           const data = await api.search(fields.q, { beyond: true, ...fields });
           extras.push(...(data.beyond || []));
+          if (Array.isArray(data.candidates)) remembered.push(...data.candidates);
+          const rateHit = /rate-limited|429/i.test(
+            `${data.beyond_error || ""} ${data.rank_reason || ""} ${data.search_trace?.rank_reason || ""}`,
+          );
+          if (rateHit) break; // don't stampede the BYO LLM after a 429
         } catch {
           /* continue */
         }
@@ -268,6 +288,7 @@ export default function FindPage() {
         ...singles.map((item) => ({ ...item, _rankType: "single", found: 1, total: 1 })),
       ]).slice(0, 8);
       setBestMatches(ranked);
+      setFanoutCandidates(remembered);
       setFanoutPhase("done");
     })();
     return () => {
@@ -324,7 +345,22 @@ export default function FindPage() {
 
   async function request(item) {
     const sought = fieldsFromState(draft, kind, advanced);
-    const data = await api.requestItem(requestBodyFromHit(item, sought));
+    const candidates = [...(result.candidates || []), ...(fanoutCandidates || [])];
+    const seen = new Set();
+    const deduped = [];
+    for (const row of candidates) {
+      const guid = String(row?.guid || "").trim();
+      if (!guid || seen.has(guid)) continue;
+      seen.add(guid);
+      deduped.push(row);
+    }
+    const data = await api.requestItem(
+      requestBodyFromHit(item, sought, {
+        candidates: deduped,
+        rank_method: result.rank_method || "",
+        rank_reason: result.rank_reason || "",
+      }),
+    );
     const key = item.guid || item.title;
     setJobs((prev) => ({ ...prev, [key]: data.job?.status || "asked" }));
     return data;
@@ -566,14 +602,14 @@ export default function FindPage() {
             Search the stacks instead
           </Link>
         </p>
-      ) : (
-        <p className="find-cta-block">
-          <Link className="muted" to={bestsellersHref()} data-testid="bestsellers-door">
-            Bestsellers / curated lists
-          </Link>
-        </p>
-      )}
-      {nytPreset ? <BestsellersPanel list={nytPreset.list} date={nytPreset.date} /> : null}
+      ) : null}
+      {showBestsellers ? (
+        <BestsellersPanel
+          list={nytPreset?.list || "hardcover-fiction"}
+          date={nytPreset?.date || "current"}
+          embedded
+        />
+      ) : null}
       {error ? (
         <p className="callout" role="status" data-testid="beyond-error">
           {error}
@@ -585,6 +621,26 @@ export default function FindPage() {
             <SkeletonRail label="Looking beyond the shelves…" />
           ) : null}
           {renderBestMatches()}
+          {result.search_trace || (result.candidates && result.candidates.length) ? (
+            <SearchTraceDisclosure
+              conversation={result.search_trace?.conversation || []}
+              steps={result.search_trace?.steps || []}
+              results={result.search_trace?.results || []}
+              candidates={result.candidates || []}
+              rankMethod={result.rank_method || ""}
+              rankReason={result.rank_reason || ""}
+              summary={
+                [
+                  result.rank_method ? `rank ${result.rank_method}` : "",
+                  result.rank_reason || "",
+                  result.beyond?.length ? `${result.beyond.length} hits` : "",
+                ]
+                  .filter(Boolean)
+                  .join(" · ")
+              }
+              testId="find-search-trace"
+            />
+          ) : null}
           {partSets.length ? (
             <section className="part-sets" data-testid="part-sets">
               <header className="rail-head">

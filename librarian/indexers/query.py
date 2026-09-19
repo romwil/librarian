@@ -214,41 +214,115 @@ def plan_beyond_search(
     }
 
 
+def default_kind_for_plan(plan: Optional[Dict[str, Any]]) -> str:
+    """Kind to assume when an indexer omits Newznab category on a typed endpoint."""
+    if not plan:
+        return ""
+    sought_kind = _text((plan.get("sought") or {}).get("kind"))
+    endpoint = _text(plan.get("endpoint"))
+    if endpoint == "books":
+        if sought_kind == KIND_MAGAZINE:
+            return KIND_MAGAZINE
+        return KIND_BOOK
+    if sought_kind in REQUEST_KINDS and sought_kind not in EXTRA_KINDS:
+        return sought_kind
+    return ""
+
+
 def run_beyond_search(client: Any, **fields: Any) -> List[Dict[str, Any]]:
+    return run_beyond_search_traced(client, **fields)["accepted"]
+
+
+def run_beyond_search_traced(client: Any, **fields: Any) -> Dict[str, Any]:
+    """Run a beyond plan and return accepted hits plus rejected/raw diagnostics."""
     plan = plan_beyond_search(**fields)
+    empty = {
+        "plan": plan,
+        "accepted": [],
+        "rejected": [],
+        "raw": [],
+        "default_kind": "",
+        "notes": [],
+    }
     if plan is None:
-        return []
+        empty["notes"] = ["nothing to seek"]
+        return empty
+    default_kind = default_kind_for_plan(plan)
     if plan["endpoint"] == "books":
         params = plan["params"]
-        return client.books(
-            title=params.get("title") or "",
-            author=params.get("author") or "",
-            isbn=params.get("isbn") or "",
-            cat=params.get("cat"),
-            limit=int(params.get("limit") or 25),
-        )
+        if hasattr(client, "books_traced"):
+            traced = client.books_traced(
+                title=params.get("title") or "",
+                author=params.get("author") or "",
+                isbn=params.get("isbn") or "",
+                cat=params.get("cat"),
+                limit=int(params.get("limit") or 25),
+                default_kind=default_kind or KIND_BOOK,
+            )
+        else:
+            rows = client.books(
+                title=params.get("title") or "",
+                author=params.get("author") or "",
+                isbn=params.get("isbn") or "",
+                cat=params.get("cat"),
+                limit=int(params.get("limit") or 25),
+            )
+            traced = {"accepted": rows, "rejected": [], "raw": [], "default_kind": default_kind}
+        return {
+            "plan": plan,
+            "accepted": traced.get("accepted") or [],
+            "rejected": traced.get("rejected") or [],
+            "raw": traced.get("raw") or [],
+            "default_kind": traced.get("default_kind") or default_kind,
+            "notes": [],
+        }
     params = plan["params"]
     keep_untyped = (plan.get("sought") or {}).get("kind") in EXTRA_KINDS
-    rows = client.search(
-        str(params.get("query") or ""),
-        cat=params.get("cat"),
-        limit=int(params.get("limit") or 25),
-        offset=int(params.get("offset") or 0),
-        keep_untyped=keep_untyped,
-    )
+    if hasattr(client, "search_traced"):
+        traced = client.search_traced(
+            str(params.get("query") or ""),
+            cat=params.get("cat"),
+            kind=(plan.get("sought") or {}).get("kind") or "",
+            limit=int(params.get("limit") or 25),
+            offset=int(params.get("offset") or 0),
+            keep_untyped=keep_untyped,
+        )
+    else:
+        rows = client.search(
+            str(params.get("query") or ""),
+            cat=params.get("cat"),
+            limit=int(params.get("limit") or 25),
+            offset=int(params.get("offset") or 0),
+            keep_untyped=keep_untyped,
+        )
+        traced = {"accepted": rows, "rejected": [], "raw": [], "default_kind": default_kind}
     if not keep_untyped:
-        return rows
+        return {
+            "plan": plan,
+            "accepted": traced.get("accepted") or [],
+            "rejected": traced.get("rejected") or [],
+            "raw": traced.get("raw") or [],
+            "default_kind": traced.get("default_kind") or default_kind,
+            "notes": [],
+        }
     from librarian.kinds import kind_from_newznab
 
     out = []
     want = (plan.get("sought") or {}).get("kind")
-    for row in rows:
+    for row in traced.get("accepted") or []:
         tagged = dict(row)
         kind = kind_from_newznab(tagged.get("category"), extra=True) or want
         if kind in EXTRA_KINDS:
             tagged["kind"] = kind
             out.append(tagged)
-    return out
+    return {
+        "plan": plan,
+        "accepted": out,
+        "rejected": traced.get("rejected") or [],
+        "raw": traced.get("raw") or [],
+        "default_kind": traced.get("default_kind") or default_kind,
+        "notes": [],
+    }
 
 
 def strip_secret_query(url: str) -> str:
@@ -352,8 +426,11 @@ def build_job_payload(
     selected: Optional[Dict[str, Any]] = None,
     retrieved: Optional[Dict[str, Any]] = None,
     details: Optional[Dict[str, Any]] = None,
+    candidates: Optional[List[Dict[str, Any]]] = None,
+    rank_method: str = "",
+    rank_reason: str = "",
 ) -> Dict[str, Any]:
-    """Persist what was sought, what was picked, and indexer-returned metadata."""
+    """Persist what was sought, what was picked, alternates, and indexer metadata."""
     sought_clean = clean_sought(sought or {})
     selected_clean = selected_from_hit(selected or {})
     retrieved_clean = retrieved_from_hit(selected or {})
@@ -368,10 +445,18 @@ def build_job_payload(
     if sought_clean.get("kind") == KIND_MUSIC:
         isbn = ""
     kind = _text(sought_clean.get("kind") or selected_clean.get("kind"))
+    remembered: List[Dict[str, Any]] = []
+    if isinstance(candidates, list):
+        from librarian.indexers.rank import remember_candidates
+
+        remembered = remember_candidates(candidates)
     payload = {
         "sought": sought_clean,
         "selected": selected_clean,
         "retrieved": retrieved_clean,
+        "candidates": remembered,
+        "rank_method": _text(rank_method),
+        "rank_reason": _text(rank_reason),
         "title": title,
         "author": author,
         "isbn": isbn,

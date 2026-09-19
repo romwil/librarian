@@ -169,6 +169,69 @@ def parse_search_payload(payload: Any) -> List[Dict[str, Any]]:
     return [normalize_item(item) for item in _as_list(items) if isinstance(item, dict)]
 
 
+def _hit_summary(item: Dict[str, Any]) -> Dict[str, Any]:
+    """Compact indexer row for chase / Find diagnostics (never invents fields)."""
+    return {
+        "guid": str(item.get("guid") or "").strip(),
+        "title": str(item.get("title") or item.get("book_title") or "").strip(),
+        "book_title": str(item.get("book_title") or "").strip(),
+        "author": str(item.get("author") or "").strip(),
+        "kind": str(item.get("kind") or "").strip(),
+        "category": item.get("category"),
+        "category_name": str(item.get("category_name") or "").strip(),
+        "size": item.get("size"),
+        "isbn": str(item.get("isbn") or "").strip(),
+        "host_id": str(item.get("host_id") or "").strip(),
+        "host_name": str(item.get("host_name") or "").strip(),
+    }
+
+
+def filter_shelf_items(
+    items: List[Dict[str, Any]],
+    *,
+    default_kind: str = "",
+) -> Dict[str, Any]:
+    """Split normalized hits into shelf-accepted vs rejected (with reasons).
+
+    Movie/TV/XXX stay rejected for shelf searches. Missing category on a books
+    endpoint result can assume ``default_kind`` so legitimate ebooks are not
+    dropped as if the indexer returned nothing.
+    """
+    accepted: List[Dict[str, Any]] = []
+    rejected: List[Dict[str, Any]] = []
+    raw_summaries: List[Dict[str, Any]] = []
+    want = default_kind if default_kind in ALL_KINDS else ""
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        row = dict(item)
+        notes: List[str] = []
+        if not row.get("kind") and want:
+            row["kind"] = want
+            notes.append(f"assumed kind={want} (missing category)")
+        summary = _hit_summary(row)
+        raw_summaries.append(summary)
+        kind = row.get("kind")
+        if kind not in ALL_KINDS:
+            rejected.append(
+                {
+                    **summary,
+                    "decision": "rejected",
+                    "reason": f"kind {kind!r} not shelfable",
+                    "notes": notes,
+                }
+            )
+            continue
+        accepted.append(row)
+        # Accepted rows are listed again in chase results with decision=accepted.
+    return {
+        "raw": raw_summaries,
+        "accepted": accepted,
+        "rejected": rejected,
+        "default_kind": want,
+    }
+
+
 class NZBFinderClient:
     def __init__(
         self,
@@ -233,6 +296,26 @@ class NZBFinderClient:
         offset: int = 0,
         keep_untyped: bool = False,
     ) -> List[Dict[str, Any]]:
+        return self.search_traced(
+            query,
+            cat=cat,
+            kind=kind,
+            limit=limit,
+            offset=offset,
+            keep_untyped=keep_untyped,
+        )["accepted"]
+
+    def search_traced(
+        self,
+        query: str,
+        *,
+        cat: Optional[str] = None,
+        kind: Optional[str] = None,
+        limit: int = 25,
+        offset: int = 0,
+        keep_untyped: bool = False,
+    ) -> Dict[str, Any]:
+        """Search with accepted/rejected split for chase diagnostics."""
         category = cat or (search_category_for_kind(kind) if kind else None)
         payload = self._get(
             "search",
@@ -240,9 +323,20 @@ class NZBFinderClient:
         )
         items = parse_search_payload(payload)
         if keep_untyped:
-            return items
-        # Shelf searches ignore movie/TV/XXX even when parse maps their cats.
-        return [item for item in items if item.get("kind") in ALL_KINDS]
+            return {
+                "raw": items,
+                "accepted": items,
+                "rejected": [],
+                "default_kind": "",
+            }
+        default_kind = ""
+        if kind and kind in ALL_KINDS:
+            default_kind = kind
+        else:
+            mapped = kind_from_newznab(category, extra=True) if category not in (None, "") else None
+            if mapped in ALL_KINDS:
+                default_kind = mapped
+        return filter_shelf_items(items, default_kind=default_kind)
 
     def latest(self, cat: str, *, limit: int = 25, path: str = "search") -> List[Dict[str, Any]]:
         """Newest items in a category (Discover latest-in-cat).
@@ -308,6 +402,26 @@ class NZBFinderClient:
         cat: Optional[str] = None,
         limit: int = 25,
     ) -> List[Dict[str, Any]]:
+        return self.books_traced(
+            query=query, title=title, author=author, isbn=isbn, cat=cat, limit=limit
+        )["accepted"]
+
+    def books_traced(
+        self,
+        *,
+        query: str = "",
+        title: str = "",
+        author: str = "",
+        isbn: str = "",
+        cat: Optional[str] = None,
+        limit: int = 25,
+        default_kind: str = "book",
+    ) -> Dict[str, Any]:
+        """Books endpoint with accepted/rejected split for chase diagnostics.
+
+        Items from `/books` often omit Newznab category; without a default kind they
+        were previously dropped by the ALL_KINDS filter and looked like “no hit.”
+        """
         payload = self._get(
             "books",
             {
@@ -318,7 +432,13 @@ class NZBFinderClient:
                 "limit": limit,
             },
         )
-        return [item for item in parse_search_payload(payload) if item.get("kind") in ALL_KINDS]
+        items = parse_search_payload(payload)
+        want = default_kind if default_kind in ALL_KINDS else "book"
+        if cat not in (None, ""):
+            mapped = kind_from_newznab(cat, extra=True)
+            if mapped in ALL_KINDS:
+                want = mapped
+        return filter_shelf_items(items, default_kind=want)
 
     def details(self, guid: str) -> Dict[str, Any]:
         nzb_id = normalize_indexer_guid(guid)

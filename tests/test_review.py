@@ -380,3 +380,96 @@ def test_review_retry_force_organizes_after_payload(tmp_path, monkeypatch):
     stored = db.get_work(work["id"])
     assert stored["review_state"] == "none"
     assert stored["title"] == "The Return of the King"
+
+
+def test_review_suggest_fail_closed_without_llm(tmp_path, monkeypatch):
+    settings = Settings(
+        books_root=str(tmp_path / "books"),
+        complete_root=str(tmp_path / "usenet" / "complete"),
+        llm_base_url="",
+        llm_api_key="",
+    )
+    client, app = _client(tmp_path, monkeypatch, settings=settings)
+    db = app.state.db
+    work = db.upsert_work(
+        {
+            "kind": "audiobook",
+            "title": "102.Minutes.The.Untold.Story.Audio.book",
+            "author": "",
+            "review_state": "needs_review",
+            "review_reason": "unknown_identity",
+            "folder_path": str(tmp_path / "missing"),
+        }
+    )
+    response = client.post(f"/api/review/{work['id']}/suggest")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["configured"] is False
+    assert body["suggestion"] is None
+    assert "BYO LLM" in body["note"]
+
+
+def test_review_suggest_prefills_from_mocked_llm(tmp_path, monkeypatch):
+    import httpx
+
+    from librarian.llm import LLMClient
+    from librarian.organize import suggest_review_identity
+
+    folder = tmp_path / "usenet" / "complete" / "102.Minutes.Dump"
+    folder.mkdir(parents=True)
+    (folder / "01.mp3").write_bytes(b"ID3")
+    settings = Settings(
+        books_root=str(tmp_path / "books"),
+        audiobooks_root=str(tmp_path / "audiobooks"),
+        complete_root=str(tmp_path / "usenet" / "complete"),
+        llm_base_url="http://llm.example/v1",
+        llm_api_key="k",
+        llm_model="gpt-test",
+    )
+    client, app = _client(tmp_path, monkeypatch, settings=settings)
+    db = app.state.db
+    work = db.upsert_work(
+        {
+            "kind": "audiobook",
+            "title": "102.Minutes.The.Untold.Story.of.the.Fight.to.Survive.Inside.the.Twin.Towers.Audio.book",
+            "author": "",
+            "review_state": "needs_review",
+            "review_reason": "unknown_identity",
+            "folder_path": str(folder),
+        }
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": (
+                                '{"kind":"audiobook","title":"102 Minutes",'
+                                '"author_or_artist":"Jim Dwyer","series":null,'
+                                '"isbn":"9780805076820","confidence":0.91,'
+                                '"rationale":"famous title"}'
+                            )
+                        }
+                    }
+                ]
+            },
+        )
+
+    llm = LLMClient("http://llm.example/v1", "k", "gpt-test", transport=httpx.MockTransport(handler))
+    result = suggest_review_identity(db, settings, work_id=work["id"], llm_client=llm)
+    assert result["configured"] is True
+    assert result["auto_apply"] is False
+    assert result["suggestion"]["title"] == "102 Minutes"
+    assert result["suggestion"]["author"] == "Jim Dwyer"
+    assert result["suggestion"]["kind"] == "audiobook"
+    assert "isbn" not in result["suggestion"]
+
+    listed = client.get("/api/review")
+    assert listed.status_code == 200
+    row = next(w for w in listed.json()["works"] if w["id"] == work["id"])
+    assert row["actions"]["llm_configured"] is True
+    assert row["actions"]["needs_llm_suggest"] is True
+    assert row["actions"]["can_suggest_llm"] is True

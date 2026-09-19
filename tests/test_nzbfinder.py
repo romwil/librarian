@@ -314,3 +314,23 @@ def test_v2_capabilities_fixture_matches_kind_map():
         assert newznab_cat_to_kind(cat) == kind
     names = {row["name"] for row in payload["categories"]}
     assert {"Movies", "TV", "XXX", "Books", "Audio"} <= names
+
+
+def test_books_traced_keeps_uncategorized_ebook_and_rejects_movie():
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "results": [
+                    {"title": "The Art of War", "guid": "art-1", "author": "Sun Tzu"},
+                    {"title": "Some Film", "guid": "mov-1", "category": 2000},
+                ]
+            },
+        )
+
+    client = NZBFinderClient("https://nzbfinder.example", "tok", transport=httpx.MockTransport(handler))
+    traced = client.books_traced(title="The Art of War", author="Sun Tzu")
+    assert [row["guid"] for row in traced["accepted"]] == ["art-1"]
+    assert traced["accepted"][0]["kind"] == "book"
+    assert any(row.get("decision") == "rejected" for row in traced["rejected"])
+    assert len(traced["raw"]) == 2

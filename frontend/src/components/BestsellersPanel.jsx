@@ -1,7 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api.js";
+import {
+  chaseCandidateRows,
+  chaseConversationLines,
+  chaseResultRows,
+  chaseStepLines,
+  chaseTraceSummary,
+} from "../chaseTrace.js";
 import { humanError } from "../copy.js";
+import { jobChipTone, jobHouseholdLabel, listRowCoverUrl } from "../cover.js";
 import {
   bestsellersHref,
   nytHitFindHref,
@@ -12,6 +20,45 @@ import { useWorkPeek } from "./WorkPeekProvider.jsx";
 
 function bookKey(book = {}) {
   return `${book.title || ""}|${book.author || ""}|${book.isbn || ""}|${book.rank || ""}`;
+}
+
+function StatusChip({ status, lane = "" }) {
+  const label = jobHouseholdLabel(status);
+  if (!label) return null;
+  const tone = jobChipTone(status);
+  const text = lane ? `${lane} · ${label}` : label;
+  return (
+    <span className={`live-chip bestsellers-status${tone ? ` ${tone}` : ""}`} data-testid="bestsellers-job-status">
+      {text}
+    </span>
+  );
+}
+
+function ListCover({ book, chase }) {
+  const src = listRowCoverUrl(book, chase);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    setFailed(false);
+  }, [src]);
+  const show = Boolean(src) && !failed;
+  return (
+    <div className="bestsellers-cover" aria-hidden="true">
+      {show ? (
+        <img
+          src={src}
+          alt=""
+          loading="lazy"
+          onError={() => setFailed(true)}
+          onLoad={(event) => {
+            // Open Library serves a 1×1 placeholder when no cover exists.
+            if (event.currentTarget.naturalWidth < 3) setFailed(true);
+          }}
+        />
+      ) : (
+        <span className="bestsellers-cover-blank" />
+      )}
+    </div>
+  );
 }
 
 export default function BestsellersPanel({ list = "hardcover-fiction", date = "current", embedded = false }) {
@@ -28,6 +75,7 @@ export default function BestsellersPanel({ list = "hardcover-fiction", date = "c
   const [chaseByKey, setChaseByKey] = useState({});
   const [requestJobs, setRequestJobs] = useState({});
   const [requestError, setRequestError] = useState("");
+  const [batchNote, setBatchNote] = useState("");
 
   useEffect(() => {
     setListSlug(list || "hardcover-fiction");
@@ -59,6 +107,7 @@ export default function BestsellersPanel({ list = "hardcover-fiction", date = "c
     setChaseByKey({});
     setChasePhase("idle");
     setRequestJobs({});
+    setBatchNote("");
     api
       .llmList({ preset: listSlug, date: listDate })
       .then((data) => {
@@ -107,15 +156,39 @@ export default function BestsellersPanel({ list = "hardcover-fiction", date = "c
     () => missing.filter((book) => selected.has(bookKey(book))),
     [missing, selected],
   );
-  const emptyCopy =
+  const rawEmpty =
     payload?.empty_copy ||
     (phase === "done" && !books.length ? "No titles on this list yet." : "");
+  const emptyCopy = rawEmpty ? humanError(rawEmpty) : "";
   const canRequest = Boolean(payload?.can_request);
   const chasedCount = Object.keys(chaseByKey).length;
+  const batchBusy = chasePhase === "searching" || chasePhase === "requesting";
+  const requestedCount = Object.keys(requestJobs).length;
 
-  async function chaseMissing() {
-    if (!missingSelected.length) return;
+  async function requestHit(hit, sought, jobKey, chaseRow = null) {
+    if (!hit?.guid || !canRequest) return null;
+    const lane = String(jobKey).endsWith(":audiobook") ? "audiobook" : "book";
+    const candidates =
+      hit.candidates ||
+      chaseRow?.[`${lane}_candidates`] ||
+      chaseRow?.trace?.[lane]?.candidates ||
+      [];
+    const data = await api.requestItem(
+      requestBodyFromHit(hit, sought, {
+        candidates,
+        rank_method: hit.rank_method || chaseRow?.trace?.[lane]?.rank_method || "",
+        rank_reason: hit.rank_reason || chaseRow?.trace?.[lane]?.rank_reason || "",
+      }),
+    );
+    const status = data.job?.status || "asked";
+    setRequestJobs((prev) => ({ ...prev, [jobKey]: status }));
+    return status;
+  }
+
+  async function requestMissing() {
+    if (!missingSelected.length || batchBusy) return;
     setChasePhase("searching");
+    setBatchNote("Searching…");
     setRequestError("");
     try {
       const data = await api.llmListChase(
@@ -137,20 +210,73 @@ export default function BestsellersPanel({ list = "hardcover-fiction", date = "c
         if (hit) mapped[bookKey(book)] = hit;
       }
       setChaseByKey(mapped);
+
+      const pending = [];
+      for (const book of missingSelected) {
+        const key = bookKey(book);
+        const chase = mapped[key];
+        if (!chase) continue;
+        if (chase.book_hit?.guid) {
+          pending.push({
+            hit: chase.book_hit,
+            sought: chase.sought?.book || { kind: "book", title: book.title, author: book.author, isbn: book.isbn },
+            jobKey: `${key}:book`,
+            chase,
+          });
+        }
+        if (chase.audiobook_hit?.guid) {
+          pending.push({
+            hit: chase.audiobook_hit,
+            sought:
+              chase.sought?.audiobook || {
+                kind: "audiobook",
+                title: book.title,
+                author: book.author,
+                isbn: book.isbn,
+              },
+            jobKey: `${key}:audiobook`,
+            chase,
+          });
+        }
+      }
+
+      const toRequest = pending.filter((row) => !requestJobs[row.jobKey]);
+      if (!toRequest.length) {
+        setChasePhase("done");
+        setBatchNote(
+          Object.keys(mapped).length
+            ? "Find finished — no new hits with a guid to request."
+            : "Find finished — nothing beyond the shelves yet.",
+        );
+        return;
+      }
+      if (!canRequest) {
+        setChasePhase("done");
+        setBatchNote("Hits ready below — you cannot request from this account.");
+        return;
+      }
+
+      setChasePhase("requesting");
+      let filed = 0;
+      for (let index = 0; index < toRequest.length; index += 1) {
+        const row = toRequest[index];
+        setBatchNote(`Requesting ${index + 1}/${toRequest.length}…`);
+        try {
+          await requestHit(row.hit, row.sought, row.jobKey, row.chase);
+          filed += 1;
+        } catch (err) {
+          setRequestError(humanError(err));
+        }
+      }
       setChasePhase("done");
+      setBatchNote(
+        filed
+          ? `Requested ${filed} of ${toRequest.length} — status on each row.`
+          : "Find finished — requests did not go through.",
+      );
     } catch (err) {
       setChasePhase("error");
-      setRequestError(humanError(err));
-    }
-  }
-
-  async function requestHit(hit, sought, jobKey) {
-    if (!hit?.guid || !canRequest) return;
-    setRequestError("");
-    try {
-      const data = await api.requestItem(requestBodyFromHit(hit, sought));
-      setRequestJobs((prev) => ({ ...prev, [jobKey]: data.job?.status || "asked" }));
-    } catch (err) {
+      setBatchNote("");
       setRequestError(humanError(err));
     }
   }
@@ -162,7 +288,7 @@ export default function BestsellersPanel({ list = "hardcover-fiction", date = "c
           <p className="kicker">Bestsellers · curated lists</p>
           <h2>{payload?.display_name || "Bestsellers"}</h2>
           <p className="lede">
-            BYO LLM names the list · shelves first · Find book and audiobook for misses · Confirm before SAB.
+            BYO LLM names the list · shelves first · Request missing Finds and requests book and audiobook hits.
             {payload?.published_date ? ` · Published ${payload.published_date}` : ""}
           </p>
         </div>
@@ -220,26 +346,37 @@ export default function BestsellersPanel({ list = "hardcover-fiction", date = "c
         </p>
       ) : null}
       {missing.length && phase === "done" ? (
-        <div className="bestsellers-batch cta-row" data-testid="bestsellers-batch">
+        <div className="bestsellers-batch" data-testid="bestsellers-batch">
           <button
             type="button"
             className="cta compact"
-            disabled={!missingSelected.length || chasePhase === "searching"}
-            onClick={chaseMissing}
+            disabled={!missingSelected.length || batchBusy}
+            aria-busy={batchBusy || undefined}
+            onClick={requestMissing}
             data-testid="bestsellers-request-missing"
           >
             {chasePhase === "searching"
-              ? "Looking beyond the shelves…"
-              : `Request missing (${missingSelected.length})`}
+              ? "Searching…"
+              : chasePhase === "requesting"
+                ? batchNote || "Requesting…"
+                : `Request missing (${missingSelected.length})`}
           </button>
           <p className="muted">
-            Finds ebook and audiobook hits for the selected gaps. Nothing queues until you Confirm each Request.
+            Finds ebook and audiobook hits for the selected gaps, then requests each hit found (owners/ops queue SAB;
+            readers file Asked slips).
           </p>
+          {batchNote ? (
+            <p className="lede" role="status" data-testid="bestsellers-batch-note">
+              {batchNote}
+            </p>
+          ) : null}
         </div>
       ) : null}
-      {chasePhase === "done" && chasedCount ? (
+      {chasePhase === "done" && chasedCount && !batchNote ? (
         <p className="lede" data-testid="bestsellers-chase-ready">
-          Hits ready below — Request the book, and the audiobook when one is listed.
+          {requestedCount
+            ? "Requested what Find found — status on each row."
+            : "Hits ready below — Request the book, and the audiobook when one is listed."}
         </p>
       ) : null}
       {books.length ? (
@@ -254,23 +391,26 @@ export default function BestsellersPanel({ list = "hardcover-fiction", date = "c
             const bookJob = requestJobs[`${key}:book`];
             const audioJob = requestJobs[`${key}:audiobook`];
             return (
-              <li key={key} className="bestsellers-row">
-                <span className="bestsellers-rank" aria-hidden="true">
+              <li key={key} className={`bestsellers-row${shelved ? " is-shelved" : ""}`}>
+                <div className="bestsellers-rank-col">
                   {!shelved ? (
                     <input
                       type="checkbox"
+                      className="bestsellers-select"
                       checked={selected.has(key)}
                       onChange={() => toggleSelected(key)}
+                      disabled={batchBusy}
                       aria-label={`Select ${book.title}`}
                       data-testid="bestsellers-select"
                     />
                   ) : (
-                    book.rank || "·"
+                    <span className="bestsellers-select-spacer" aria-hidden="true" />
                   )}
-                </span>
-                <div className="bestsellers-cover" aria-hidden="true">
-                  {book.cover ? <img src={book.cover} alt="" /> : <span className="bestsellers-cover-blank" />}
+                  <span className="bestsellers-rank" aria-hidden="true">
+                    {book.rank || "·"}
+                  </span>
                 </div>
+                <ListCover book={book} chase={chase} />
                 <div className="bestsellers-copy">
                   <Link
                     to={href}
@@ -284,25 +424,27 @@ export default function BestsellersPanel({ list = "hardcover-fiction", date = "c
                   >
                     {book.title}
                   </Link>
-                  <p className="muted">{[book.author, book.publisher].filter(Boolean).join(" · ")}</p>
-                  <div className="cta-row compact">
+                  <p className="muted bestsellers-byline">
+                    {[book.author, book.publisher].filter(Boolean).join(" · ")}
+                  </p>
+                  <div className="bestsellers-actions">
                     {shelved ? (
-                      <Link className="cta compact" to={href} data-testid="bestsellers-shelved">
+                      <Link className="bestsellers-link is-solid" to={href} data-testid="bestsellers-shelved">
                         On the shelves
                       </Link>
                     ) : (
                       <>
-                        <Link className="cta compact" to={href} data-testid="bestsellers-search">
+                        <Link className="bestsellers-link" to={href} data-testid="bestsellers-search">
                           Search shelves
                         </Link>
-                        <Link className="cta outline compact" to={findHrefValue} data-testid="bestsellers-find">
+                        <Link className="bestsellers-link" to={findHrefValue} data-testid="bestsellers-find">
                           Find beyond
                         </Link>
                       </>
                     )}
                     {audioShelved ? (
                       <Link
-                        className="cta outline compact"
+                        className="bestsellers-link"
                         to={`/works/${encodeURIComponent(book.shelved_audiobook.id)}`}
                         data-testid="bestsellers-audio-shelved"
                       >
@@ -311,46 +453,147 @@ export default function BestsellersPanel({ list = "hardcover-fiction", date = "c
                     ) : null}
                   </div>
                   {chase ? (
-                    <div className="bestsellers-chase cta-row compact" data-testid="bestsellers-chase">
+                    <div className="bestsellers-chase" data-testid="bestsellers-chase">
                       {chase.book_hit?.guid ? (
-                        <button
-                          type="button"
-                          className="cta compact"
-                          disabled={Boolean(bookJob) || !canRequest}
-                          onClick={() =>
-                            requestHit(chase.book_hit, chase.sought?.book || { kind: "book", ...book }, `${key}:book`)
-                          }
-                          data-testid="bestsellers-request-book"
-                        >
-                          {bookJob ? (bookJob === "asked" ? "Asked" : "Queued") : "Request book"}
-                        </button>
+                        bookJob ? (
+                          <StatusChip status={bookJob} lane="Book" />
+                        ) : (
+                          <button
+                            type="button"
+                            className="cta compact"
+                            disabled={!canRequest || batchBusy}
+                            onClick={() => {
+                              setRequestError("");
+                              requestHit(
+                                chase.book_hit,
+                                chase.sought?.book || {
+                                  kind: "book",
+                                  title: book.title,
+                                  author: book.author,
+                                  isbn: book.isbn,
+                                },
+                                `${key}:book`,
+                                chase,
+                              ).catch((err) => setRequestError(humanError(err)));
+                            }}
+                            data-testid="bestsellers-request-book"
+                          >
+                            Request book
+                          </button>
+                        )
                       ) : (
-                        <span className="muted">No ebook hit yet</span>
+                        <span className="muted">
+                          {chase.book_error ? `Ebook: ${chase.book_error}` : "No ebook hit yet"}
+                        </span>
                       )}
                       {chase.audiobook_hit?.guid ? (
-                        <button
-                          type="button"
-                          className="cta outline compact"
-                          disabled={Boolean(audioJob) || !canRequest}
-                          onClick={() =>
-                            requestHit(
-                              chase.audiobook_hit,
-                              chase.sought?.audiobook || { kind: "audiobook", ...book },
-                              `${key}:audiobook`,
-                            )
-                          }
-                          data-testid="bestsellers-request-audiobook"
-                        >
-                          {audioJob
-                            ? audioJob === "asked"
-                              ? "Asked"
-                              : "Queued"
-                            : "Audiobook available to request"}
-                        </button>
+                        audioJob ? (
+                          <StatusChip status={audioJob} lane="Audiobook" />
+                        ) : (
+                          <button
+                            type="button"
+                            className="cta outline compact"
+                            disabled={!canRequest || batchBusy}
+                            onClick={() => {
+                              setRequestError("");
+                              requestHit(
+                                chase.audiobook_hit,
+                                chase.sought?.audiobook || {
+                                  kind: "audiobook",
+                                  title: book.title,
+                                  author: book.author,
+                                  isbn: book.isbn,
+                                },
+                                `${key}:audiobook`,
+                                chase,
+                              ).catch((err) => setRequestError(humanError(err)));
+                            }}
+                            data-testid="bestsellers-request-audiobook"
+                          >
+                            Request audiobook
+                          </button>
+                        )
                       ) : chase.audiobook_available === false ? (
-                        <span className="muted">No audiobook hit</span>
+                        <span className="muted">
+                          {chase.audiobook_error
+                            ? `Audiobook: ${chase.audiobook_error}`
+                            : "No audiobook hit"}
+                        </span>
                       ) : null}
                     </div>
+                  ) : null}
+                  {chase?.trace ? (
+                    <details className="bestsellers-chase-trace" data-testid="bestsellers-chase-trace">
+                      <summary>
+                        Chase details
+                        {chaseTraceSummary(chase) ? (
+                          <span className="muted"> — {chaseTraceSummary(chase)}</span>
+                        ) : null}
+                      </summary>
+                      <div className="bestsellers-chase-trace-body">
+                        {chaseConversationLines(chase).length ? (
+                          <section>
+                            <p className="kicker">Conversation</p>
+                            <ol className="bestsellers-chase-log">
+                              {chaseConversationLines(chase).map((row, index) => (
+                                <li key={`${row.role}-${index}`}>
+                                  <span className="muted">{row.role}</span> {row.content}
+                                </li>
+                              ))}
+                            </ol>
+                          </section>
+                        ) : null}
+                        {chaseStepLines(chase).length ? (
+                          <section>
+                            <p className="kicker">Queries / steps</p>
+                            <ol className="bestsellers-chase-log">
+                              {chaseStepLines(chase).map((row, index) => (
+                                <li key={`${row.lane}-${row.step}-${index}`}>
+                                  <span className="muted">
+                                    {row.lane} · {row.step}
+                                  </span>{" "}
+                                  {row.detail}
+                                </li>
+                              ))}
+                            </ol>
+                          </section>
+                        ) : null}
+                        {chaseResultRows(chase).length ? (
+                          <section>
+                            <p className="kicker">Result set</p>
+                            <ol className="bestsellers-chase-log" data-testid="bestsellers-chase-results">
+                              {chaseResultRows(chase).map((row, index) => (
+                                <li key={`${row.lane}-${row.guid || row.title}-${index}`}>
+                                  <strong>{row.decision}</strong>
+                                  {row.reason ? ` — ${row.reason}` : ""} · {row.lane} · {row.title}
+                                  {row.guid ? ` · ${row.guid}` : ""}
+                                  {row.kind ? ` · ${row.kind}` : ""}
+                                  {row.host ? ` · ${row.host}` : ""}
+                                  {row.notes.length ? ` · ${row.notes.join("; ")}` : ""}
+                                </li>
+                              ))}
+                            </ol>
+                          </section>
+                        ) : (
+                          <p className="muted">No indexer rows returned for this title.</p>
+                        )}
+                        {chaseCandidateRows(chase).length ? (
+                          <section>
+                            <p className="kicker">Remembered alternates</p>
+                            <ol className="bestsellers-chase-log" data-testid="bestsellers-chase-candidates">
+                              {chaseCandidateRows(chase).map((row, index) => (
+                                <li key={`${row.lane}-${row.guid}-${index}`}>
+                                  {row.rank ? `#${row.rank} ` : ""}
+                                  {row.lane} · {row.title} · {row.guid}
+                                  {row.note ? ` · ${row.note}` : ""}
+                                  {row.method ? ` · ${row.method}` : ""}
+                                </li>
+                              ))}
+                            </ol>
+                          </section>
+                        ) : null}
+                      </div>
+                    </details>
                   ) : null}
                 </div>
               </li>

@@ -7,8 +7,8 @@ import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
 from librarian.config import Settings
-from librarian.indexers.query import run_beyond_search
-from librarian.nzbfinder import NZBFinderClient, NZBFinderError
+from librarian.indexers.query import run_beyond_search_traced
+from librarian.nzbfinder import NZBFinderClient, NZBFinderError, _hit_summary
 
 NZBFINDER_ID = "nzbfinder"
 MAX_EXTRA_INDEXERS = 12
@@ -161,12 +161,61 @@ def search_beyond(
     **fields: Any,
 ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
     """Query every enabled host. One 502 must not blank the others."""
+    traced = search_beyond_traced(settings, transport=transport, **fields)
+    return traced["hits"], traced.get("error")
+
+
+def search_beyond_traced(
+    settings: Settings,
+    *,
+    transport: Optional[Any] = None,
+    **fields: Any,
+) -> Dict[str, Any]:
+    """Beyond search with a decision trail for Bestsellers chase diagnostics."""
+    from librarian.indexers.query import plan_beyond_search
+
+    plan = plan_beyond_search(**fields)
     hosts = enabled_hosts(settings)
+    steps: List[Dict[str, str]] = []
+    if plan is None:
+        steps.append({"step": "plan", "detail": "nothing to seek"})
+        return {
+            "hits": [],
+            "error": None,
+            "plan": None,
+            "steps": steps,
+            "results": [],
+            "raw_count": 0,
+            "rejected_count": 0,
+        }
+    endpoint = str(plan.get("endpoint") or "")
+    params = plan.get("params") or {}
+    steps.append(
+        {
+            "step": "plan",
+            "detail": f"{endpoint} " + ", ".join(
+                f"{key}={params.get(key)!r}" for key in params if params.get(key) not in (None, "")
+            ),
+        }
+    )
     if not hosts:
-        return [], "NZBFinder api_token is not configured"
+        steps.append({"step": "hosts", "detail": "NZBFinder api_token is not configured"})
+        return {
+            "hits": [],
+            "error": "NZBFinder api_token is not configured",
+            "plan": plan,
+            "steps": steps,
+            "results": [],
+            "raw_count": 0,
+            "rejected_count": 0,
+        }
+
     hits: List[Dict[str, Any]] = []
+    results: List[Dict[str, Any]] = []
     errors: List[str] = []
     seen: set[str] = set()
+    raw_count = 0
+    rejected_count = 0
     for host in hosts:
         client = NZBFinderClient(
             host["url"],
@@ -175,22 +224,83 @@ def search_beyond(
             label=host["name"],
         )
         try:
-            rows = run_beyond_search(client, **fields)
+            traced = run_beyond_search_traced(client, **fields)
         except NZBFinderError as error:
             errors.append(str(error))
+            steps.append({"step": "host", "detail": f"{host['name']}: {error}"})
             continue
         finally:
             client.close()
-        for row in rows:
-            if not isinstance(row, dict):
-                continue
-            key = _hit_key(row)
-            if key in seen:
-                continue
-            seen.add(key)
+        host_raw = list(traced.get("raw") or [])
+        host_rejected = list(traced.get("rejected") or [])
+        host_accepted = list(traced.get("accepted") or [])
+        raw_count += len(host_raw)
+        rejected_count += len(host_rejected)
+        default_kind = str(traced.get("default_kind") or "")
+        if default_kind:
+            steps.append(
+                {
+                    "step": "normalize",
+                    "detail": f"{host['name']}: default_kind={default_kind}",
+                }
+            )
+        steps.append(
+            {
+                "step": "host",
+                "detail": (
+                    f"{host['name']}: raw={len(host_raw)} accepted={len(host_accepted)} "
+                    f"rejected={len(host_rejected)}"
+                ),
+            }
+        )
+        for row in host_rejected:
             tagged = dict(row)
             tagged["host_id"] = host["id"]
             tagged["host_name"] = host["name"]
+            results.append(tagged)
+        for row in host_accepted:
+            if not isinstance(row, dict):
+                continue
+            tagged = dict(row)
+            tagged["host_id"] = host["id"]
+            tagged["host_name"] = host["name"]
+            summary = _hit_summary(tagged)
+            key = _hit_key(tagged)
+            if key in seen:
+                results.append(
+                    {
+                        **summary,
+                        "decision": "rejected",
+                        "reason": "duplicate guid/title",
+                        "notes": [],
+                    }
+                )
+                rejected_count += 1
+                continue
+            seen.add(key)
             hits.append(tagged)
+            guid = _text(tagged.get("guid"))
+            if not guid:
+                results.append(
+                    {
+                        **summary,
+                        "decision": "skipped",
+                        "reason": "missing guid (shown but not requestable)",
+                        "notes": [],
+                    }
+                )
+            else:
+                results.append({**summary, "decision": "accepted", "reason": "", "notes": []})
+
     beyond_error = "; ".join(errors) if errors else None
-    return hits, beyond_error
+    if beyond_error:
+        steps.append({"step": "error", "detail": beyond_error})
+    return {
+        "hits": hits,
+        "error": beyond_error,
+        "plan": plan,
+        "steps": steps,
+        "results": results,
+        "raw_count": raw_count,
+        "rejected_count": rejected_count,
+    }

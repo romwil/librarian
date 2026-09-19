@@ -64,15 +64,17 @@ export default function HallPage() {
           />
           <kbd>/</kbd>
         </form>
-        <p className="find-cta-block">
-          <Link className="muted" to={discoverHref()} data-testid="discover-door">
-            {DISCOVER_CTA}
-          </Link>
-          {" · "}
-          <Link className="muted" to={bestsellersHref()} data-testid="bestsellers-door">
+        <div className="hall-doors find-cta-block" data-testid="hall-doors">
+          <Link className="cta outline" to={bestsellersHref()} data-testid="bestsellers-door">
             Bestsellers / curated lists
           </Link>
-        </p>
+          <p className="muted">
+            <Link className="muted" to={discoverHref()} data-testid="discover-door">
+              {DISCOVER_CTA}
+            </Link>
+            {" · beyond the shelves without a search"}
+          </p>
+        </div>
       </section>
       {loadError ? <p className="alert hall-alert">{loadError}</p> : null}
       <CelebrationBanner items={hall?.celebrations || []} />
@@ -93,8 +95,14 @@ export default function HallPage() {
       {keeper ? <AddToLibrary compact /> : null}
       <TonightShelf tonight={hall?.tonight} role={user?.role} />
       <Rail
+        title="Continue listening"
+        kicker="Pick up an audiobook where you left off"
+        items={hall?.continue_listening}
+        empty={hall ? "Start listening to leave a bookmark." : undefined}
+      />
+      <Rail
         title="Continue"
-        kicker="In-progress reads and listens"
+        kicker="In-progress reads"
         items={hall?.continue}
         empty={hall ? "Open a volume to leave a bookmark." : undefined}
       />

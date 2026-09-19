@@ -1,15 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api.js";
+import { busyLabel, doneLabel, ticketStatusNote } from "../actionBusy.js";
 import { FieldLabel } from "../components/FieldHelp.jsx";
 import { FIELD_HELP, emptyReviewCopy, humanError } from "../copy.js";
 import { requestBodyFromHit } from "../find.js";
+import SearchTraceDisclosure from "../components/SearchTraceDisclosure.jsx";
 import {
   applyBodyFromDraft,
+  applySuggestionToDraft,
   collisionActionCopy,
   collisionApplyAllowed,
   effectiveReviewReason,
   fieldsFromWork,
+  looksLikeDumpTitle,
   reviewActionsFromWork,
   reviewDiagnosisCopy,
   reviewFindHref,
@@ -26,13 +30,16 @@ export default function ReviewPage() {
   const [drafts, setDrafts] = useState({});
   const [errors, setErrors] = useState({});
   const [busy, setBusy] = useState({});
+  const [actionNotes, setActionNotes] = useState({});
   const [bulkNote, setBulkNote] = useState("");
   const [error, setError] = useState("");
   const [regrabs, setRegrabs] = useState({});
   const [quiet, setQuiet] = useState(null);
   const [quietNote, setQuietNote] = useState("");
+  const [suggestNotes, setSuggestNotes] = useState({});
   const focusRef = useRef(null);
   const autoRegrabTried = useRef(new Set());
+  const autoSuggestTried = useRef(new Set());
 
   function reload() {
     api
@@ -90,75 +97,99 @@ export default function ReviewPage() {
     }));
   }
 
-  function setWorkBusy(workId, on) {
-    setBusy((prev) => ({ ...prev, [workId]: on }));
+  function setWorkBusy(workId, action) {
+    setBusy((prev) => {
+      const next = { ...prev };
+      if (action) next[workId] = action;
+      else delete next[workId];
+      return next;
+    });
+  }
+
+  function setTicketNote(workId, note) {
+    setActionNotes((prev) => ({ ...prev, [workId]: note || "" }));
+  }
+
+  async function runTicketAction(work, action, runner, { successNote } = {}) {
+    if (busy[work.id]) return;
+    setWorkBusy(work.id, action);
+    setErrors((prev) => ({ ...prev, [work.id]: "" }));
+    setTicketNote(work.id, busyLabel(action));
+    try {
+      await runner();
+      setTicketNote(work.id, successNote || doneLabel(action));
+    } catch (err) {
+      const message = humanError(err);
+      setErrors((prev) => ({ ...prev, [work.id]: message }));
+      setTicketNote(work.id, message);
+      throw err;
+    } finally {
+      setWorkBusy(work.id, "");
+    }
   }
 
   async function apply(work) {
-    setErrors((prev) => ({ ...prev, [work.id]: "" }));
     try {
-      await api.reviewApply(work.id, applyBodyFromDraft(drafts[work.id] || fieldsFromWork(work)));
-      setDrafts((prev) => {
-        const next = { ...prev };
-        delete next[work.id];
-        return next;
+      await runTicketAction(work, "apply", async () => {
+        await api.reviewApply(work.id, applyBodyFromDraft(drafts[work.id] || fieldsFromWork(work)));
+        setDrafts((prev) => {
+          const next = { ...prev };
+          delete next[work.id];
+          return next;
+        });
+        reload();
       });
-      reload();
-    } catch (err) {
-      setErrors((prev) => ({ ...prev, [work.id]: humanError(err) }));
+    } catch {
+      /* note already set */
     }
   }
 
   async function skip(work) {
     try {
-      await api.reviewSkip(work.id);
-      setDrafts((prev) => {
-        const next = { ...prev };
-        delete next[work.id];
-        return next;
+      await runTicketAction(work, "skip", async () => {
+        await api.reviewSkip(work.id);
+        setDrafts((prev) => {
+          const next = { ...prev };
+          delete next[work.id];
+          return next;
+        });
+        reload();
       });
-      reload();
-    } catch (err) {
-      setErrors((prev) => ({ ...prev, [work.id]: humanError(err) }));
+    } catch {
+      /* note already set */
     }
   }
 
   async function repair(work) {
-    setWorkBusy(work.id, true);
-    setErrors((prev) => ({ ...prev, [work.id]: "" }));
     try {
-      await api.reviewRepair(work.id);
-      reload();
-    } catch (err) {
-      setErrors((prev) => ({ ...prev, [work.id]: humanError(err) }));
-    } finally {
-      setWorkBusy(work.id, false);
+      await runTicketAction(work, "repair", async () => {
+        await api.reviewRepair(work.id);
+        reload();
+      });
+    } catch {
+      /* note already set */
     }
   }
 
   async function retry(work) {
-    setWorkBusy(work.id, true);
-    setErrors((prev) => ({ ...prev, [work.id]: "" }));
     try {
-      await api.reviewRetry(work.id);
-      reload();
-    } catch (err) {
-      setErrors((prev) => ({ ...prev, [work.id]: humanError(err) }));
-    } finally {
-      setWorkBusy(work.id, false);
+      await runTicketAction(work, "retry", async () => {
+        await api.reviewRetry(work.id);
+        reload();
+      });
+    } catch {
+      /* note already set */
     }
   }
 
   async function loadRegrab(work) {
-    setWorkBusy(work.id, true);
-    setErrors((prev) => ({ ...prev, [work.id]: "" }));
     try {
-      const data = await api.reviewRegrab(work.id);
-      setRegrabs((prev) => ({ ...prev, [work.id]: data }));
-    } catch (err) {
-      setErrors((prev) => ({ ...prev, [work.id]: humanError(err) }));
-    } finally {
-      setWorkBusy(work.id, false);
+      await runTicketAction(work, "regrab", async () => {
+        const data = await api.reviewRegrab(work.id);
+        setRegrabs((prev) => ({ ...prev, [work.id]: data }));
+      });
+    } catch {
+      /* note already set */
     }
   }
 
@@ -175,23 +206,77 @@ export default function ReviewPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [works]);
 
-  async function requestRegrab(work, candidate) {
-    setWorkBusy(work.id, true);
-    setErrors((prev) => ({ ...prev, [work.id]: "" }));
+  async function suggestWithLlm(work, { silent = false } = {}) {
+    if (busy[work.id]) return;
+    setWorkBusy(work.id, "suggest");
+    if (!silent) setErrors((prev) => ({ ...prev, [work.id]: "" }));
+    setSuggestNotes((prev) => ({ ...prev, [work.id]: silent ? "" : busyLabel("suggest") }));
+    setTicketNote(work.id, silent ? "" : busyLabel("suggest"));
     try {
-      // Explicit Request click → existing /api/request path (Confirm for readers; never auto-queue).
-      await api.requestItem(
-        requestBodyFromHit(candidate, {
-          kind: work.kind || candidate.kind || "",
-          title: work.title || "",
-          author: work.author || "",
-        }),
-      );
-      reload();
+      const data = await api.reviewSuggest(work.id);
+      if (data?.suggestion) {
+        setDrafts((prev) => ({
+          ...prev,
+          [work.id]: applySuggestionToDraft(prev[work.id] || fieldsFromWork(work), data.suggestion),
+        }));
+        const note = data.note || doneLabel("suggest");
+        setSuggestNotes((prev) => ({ ...prev, [work.id]: note }));
+        setTicketNote(work.id, note);
+      } else {
+        const note = data?.note || "No suggestion returned.";
+        setSuggestNotes((prev) => ({ ...prev, [work.id]: note }));
+        setTicketNote(work.id, note);
+      }
     } catch (err) {
-      setErrors((prev) => ({ ...prev, [work.id]: humanError(err) }));
+      if (!silent) setErrors((prev) => ({ ...prev, [work.id]: humanError(err) }));
+      const message = humanError(err);
+      setSuggestNotes((prev) => ({ ...prev, [work.id]: message }));
+      setTicketNote(work.id, message);
     } finally {
-      setWorkBusy(work.id, false);
+      setWorkBusy(work.id, "");
+    }
+  }
+
+  useEffect(() => {
+    for (const work of works) {
+      const actions = reviewActionsFromWork(work);
+      if (!actions.canSuggestLlm && !actions.needsLlmSuggest) continue;
+      if (!actions.llmConfigured) continue;
+      if (autoSuggestTried.current.has(work.id)) continue;
+      const draft = drafts[work.id] || fieldsFromWork(work);
+      if (!looksLikeDumpTitle(draft.title) && draft.author) continue;
+      if (!actions.needsLlmSuggest && !looksLikeDumpTitle(draft.title)) continue;
+      autoSuggestTried.current.add(work.id);
+      suggestWithLlm(work, { silent: true });
+    }
+    // Auto-suggest once for dump-looking slips so the form is not pre-filled with junk.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [works, drafts]);
+
+  async function requestRegrab(work, candidate) {
+    try {
+      await runTicketAction(work, "request", async () => {
+        const bag = regrabs[work.id] || {};
+        const candidates = bag.remembered_candidates || bag.candidates || [];
+        await api.requestItem(
+          requestBodyFromHit(
+            candidate,
+            {
+              kind: work.kind || candidate.kind || "",
+              title: work.title || "",
+              author: work.author || "",
+            },
+            {
+              candidates,
+              rank_method: bag.rank_method || "",
+              rank_reason: bag.rank_reason || "",
+            },
+          ),
+        );
+        reload();
+      });
+    } catch {
+      /* note already set */
     }
   }
 
@@ -302,6 +387,8 @@ export default function ReviewPage() {
           const actions = reviewActionsFromWork(work);
           const findTo = reviewFindHref(work);
           const workBusy = Boolean(busy[work.id]);
+          const activeAction = typeof busy[work.id] === "string" ? busy[work.id] : "";
+          const statusNote = ticketStatusNote(busy, actionNotes, work.id) || suggestNotes[work.id] || "";
           return (
             <li
               key={work.id}
@@ -311,6 +398,7 @@ export default function ReviewPage() {
               data-work-id={work.id}
               data-focused={focused ? "true" : "false"}
               data-reason={reason || ""}
+              aria-busy={workBusy || undefined}
             >
               <header className="ticket-head">
                 <p className="kicker">{focused ? "From Queue" : "Slip"}</p>
@@ -374,17 +462,34 @@ export default function ReviewPage() {
                   </Link>
                 </p>
               ) : null}
-              {(actions.canRepair || actions.canRetry || actions.canRequestNew || actions.canRegrab) && (
+              {(actions.canRepair ||
+                actions.canRetry ||
+                actions.canRequestNew ||
+                actions.canRegrab ||
+                actions.canSuggestLlm) && (
                 <div className="cta-row ticket-recovery" data-testid="review-recovery">
+                  {actions.canSuggestLlm ? (
+                    <button
+                      type="button"
+                      className="cta outline compact"
+                      disabled={workBusy}
+                      aria-busy={activeAction === "suggest" || undefined}
+                      onClick={() => suggestWithLlm(work)}
+                      data-testid="review-suggest-llm"
+                    >
+                      {activeAction === "suggest" ? busyLabel("suggest") : "Suggest with LLM"}
+                    </button>
+                  ) : null}
                   {actions.canRepair ? (
                     <button
                       type="button"
                       className="cta compact"
                       disabled={workBusy}
+                      aria-busy={activeAction === "repair" || undefined}
                       onClick={() => repair(work)}
                       data-testid="review-repair"
                     >
-                      Repair
+                      {activeAction === "repair" ? busyLabel("repair") : "Repair"}
                     </button>
                   ) : null}
                   {actions.canRetry ? (
@@ -392,10 +497,11 @@ export default function ReviewPage() {
                       type="button"
                       className={`cta compact${actions.canRepair ? " outline" : ""}`}
                       disabled={workBusy}
+                      aria-busy={activeAction === "retry" || undefined}
                       onClick={() => retry(work)}
                       data-testid="review-retry"
                     >
-                      Retry
+                      {activeAction === "retry" ? busyLabel("retry") : "Retry"}
                     </button>
                   ) : null}
                   {actions.canRegrab ? (
@@ -403,10 +509,11 @@ export default function ReviewPage() {
                       type="button"
                       className="cta outline compact"
                       disabled={workBusy}
+                      aria-busy={activeAction === "regrab" || undefined}
                       onClick={() => loadRegrab(work)}
                       data-testid="review-regrab"
                     >
-                      Smart re-grab
+                      {activeAction === "regrab" ? busyLabel("regrab") : "Smart re-grab"}
                     </button>
                   ) : null}
                   {actions.canRequestNew ? (
@@ -420,6 +527,27 @@ export default function ReviewPage() {
                   ) : null}
                 </div>
               )}
+              {statusNote ? (
+                <p className="muted" data-testid="review-action-note" role="status">
+                  {statusNote}
+                </p>
+              ) : null}
+              {regrabs[work.id]?.beyond_error ? (
+                <p className="muted" role="status" data-testid="regrab-beyond-error">
+                  {humanError(regrabs[work.id].beyond_error)}
+                </p>
+              ) : null}
+              {regrabs[work.id]?.search_trace || regrabs[work.id]?.remembered_candidates?.length ? (
+                <SearchTraceDisclosure
+                  conversation={regrabs[work.id]?.search_trace?.conversation || []}
+                  steps={regrabs[work.id]?.search_trace?.steps || []}
+                  results={regrabs[work.id]?.search_trace?.results || []}
+                  candidates={regrabs[work.id]?.remembered_candidates || regrabs[work.id]?.candidates || []}
+                  rankMethod={regrabs[work.id]?.rank_method || ""}
+                  rankReason={regrabs[work.id]?.rank_reason || ""}
+                  testId={`regrab-trace-${work.id}`}
+                />
+              ) : null}
               {regrabs[work.id]?.candidates?.length ? (
                 <ul className="regrab-list" data-testid="regrab-candidates">
                   {regrabs[work.id].candidates.map((candidate, index) => (
@@ -429,10 +557,11 @@ export default function ReviewPage() {
                         type="button"
                         className={index === 0 ? "cta compact" : "cta compact outline"}
                         disabled={workBusy}
+                        aria-busy={activeAction === "request" || undefined}
                         onClick={() => requestRegrab(work, candidate)}
                         data-testid="regrab-request"
                       >
-                        Request this
+                        {activeAction === "request" ? busyLabel("request") : "Request this"}
                       </button>
                     </li>
                   ))}
@@ -520,6 +649,7 @@ export default function ReviewPage() {
                     type="submit"
                     className="cta"
                     disabled={!canApply || workBusy}
+                    aria-busy={activeAction === "apply" || undefined}
                     title={
                       collision && !canApply
                         ? "Change title, author, series, or folder so the destination is free — Apply will not overwrite."
@@ -527,10 +657,17 @@ export default function ReviewPage() {
                     }
                     data-testid="review-apply"
                   >
-                    Apply
+                    {activeAction === "apply" ? busyLabel("apply") : "Apply"}
                   </button>
-                  <button type="button" className="cta ghost" onClick={() => skip(work)} data-testid="review-skip">
-                    Skip
+                  <button
+                    type="button"
+                    className="cta ghost"
+                    disabled={workBusy}
+                    aria-busy={activeAction === "skip" || undefined}
+                    onClick={() => skip(work)}
+                    data-testid="review-skip"
+                  >
+                    {activeAction === "skip" ? busyLabel("skip") : "Skip"}
                   </button>
                 </div>
               </form>

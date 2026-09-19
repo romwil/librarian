@@ -16,6 +16,11 @@ function isUnreachable(error, raw) {
   );
 }
 
+const LLM_COPY = [
+  [/rate-limited|LLM HTTP 429|\b429\b/i, "The language model is rate-limited right now. Wait a minute — shelves and Find still work."],
+  [/LLM HTTP 503|overloaded/i, "The language model is busy. Try again in a moment."],
+];
+
 const INDEXER_COPY = [
   [/api_token is not configured/i, "Beyond the shelves needs an NZBFinder token in Settings."],
   [/invalid or missing api_token/i, "The indexer token was refused. Check NZBFinder in Settings."],
@@ -57,9 +62,10 @@ export const FIELD_HELP = {
   music_root: "Plexamp library. Promote copies incoming albums here.",
   complete_root: "If SAB finishes at /downloads, map that path to files this process can read.",
   audiobook_target: "Where listeners open titles: Plex, Audiobookshelf, or Librarian only.",
-  llm_base_url: "Optional. BYO OpenAI-compatible endpoint for identify help and curated bestseller lists.",
-  llm_api_key: "Optional. Never invents an ISBN; assists Review and Bestsellers lists.",
-  llm_model: "Optional model name for identify and curated lists.",
+  llm_provider: "OpenAI, Anthropic (Claude), or Google Gemini. Each uses its native API — not an OpenAI shim.",
+  llm_base_url: "Optional. Provider default is fine. Override only for a reverse proxy.",
+  llm_api_key: "Optional. Paste the provider key (or set GEMINI_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY in .env). Never invents an ISBN.",
+  llm_model: "Model id for the selected provider. Use a recommended chip for a sensible household default.",
   nyt_books_api_key: "Optional soft-deprecated fallback. Prefer BYO LLM for Bestsellers.",
   hardcover_api_token: "Optional Hardcover GraphQL token. Fills thin books and series gaps; stays on this host.",
   comicvine_api_key: "Optional Comic Vine key. Fills comic issue lists beyond local holes. Stays on this host.",
@@ -234,11 +240,13 @@ export function humanError(error, context = "") {
   if (context === "join" && /invite|token|not found/i.test(raw)) {
     return "That join link is missing or already used. Ask the owner for a new invite.";
   }
-  for (const table of [INDEXER_COPY, SAB_COPY]) {
+  for (const table of [LLM_COPY, INDEXER_COPY, SAB_COPY]) {
     for (const [, copy] of table) {
       if (raw === copy) return raw;
     }
   }
+  const llm = matchCopy(raw, LLM_COPY);
+  if (llm) return llm;
   const indexer = matchCopy(raw, INDEXER_COPY);
   if (indexer) return indexer;
   const sab = matchCopy(raw, SAB_COPY);

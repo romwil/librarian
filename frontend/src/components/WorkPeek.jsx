@@ -275,7 +275,7 @@ export default function WorkPeek({ work, onClose, onRequest }) {
                         }}
                         data-testid="peek-listen"
                       >
-                        Listen
+                        {Number(catalog.progress) > 0 ? "Continue listening" : "Listen"}
                       </Link>
                     ) : canRead ? (
                       <Link

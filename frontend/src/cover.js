@@ -345,6 +345,28 @@ export function coverWashUrl(work) {
   return remote;
 }
 
+/**
+ * Cover for a curated-list row: list/NYT image → shelved local art → chase hit
+ * cover → Open Library by ISBN (same URL shape as librarian.covers).
+ */
+export function listRowCoverUrl(book = {}, chase = null) {
+  const remote = String(book.cover || book.book_image || book.cover_url || "").trim();
+  if (remote) return remote;
+  for (const stub of [book.shelved, book.shelved_audiobook]) {
+    if (!stub) continue;
+    if (stub.has_cover && stub.id) return `/api/works/${encodeURIComponent(stub.id)}/cover`;
+    const stubRemote = String(stub.cover || stub.cover_url || "").trim();
+    if (stubRemote) return stubRemote;
+  }
+  const hitCover = String(chase?.book_hit?.cover || chase?.audiobook_hit?.cover || "").trim();
+  if (hitCover) return hitCover;
+  const isbn = String(book.isbn || "").replace(/[^0-9Xx]/g, "");
+  if (isbn.length === 10 || isbn.length === 13) {
+    return `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`;
+  }
+  return "";
+}
+
 /** CSS custom-property style for `--work-wash`, or undefined when no art. */
 export function coverWashStyle(work) {
   const url = coverWashUrl(work);
