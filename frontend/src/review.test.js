@@ -127,6 +127,17 @@ describe("review recovery actions", () => {
     assert.equal(reviewFindHref(work), "/find?q=Guardians+Mix&kind=music");
   });
 
+  it("exposes canRegrab when repair_fail_count qualifies", () => {
+    const work = {
+      title: "Stuck Dump",
+      kind: "book",
+      actions: { can_regrab: true, repair_fail_count: 2 },
+    };
+    const actions = reviewActionsFromWork(work);
+    assert.equal(actions.canRegrab, true);
+    assert.equal(actions.repairFailCount, 2);
+  });
+
   it("filters unpack_stuck slips for bulk Repair/Retry", () => {
     const works = [
       { id: "a", review_reason: "unpack_stuck", folder_diagnosis: { problem: "unpack_stuck" } },

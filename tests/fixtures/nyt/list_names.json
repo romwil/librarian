@@ -1,0 +1,39 @@
+{
+  "status": "OK",
+  "copyright": "Copyright (c) 2026 The New York Times Company. All Rights Reserved.",
+  "num_results": 4,
+  "results": [
+    {
+      "list_name": "Hardcover Fiction",
+      "display_name": "Hardcover Fiction",
+      "list_name_encoded": "hardcover-fiction",
+      "oldest_published_date": "2008-06-08",
+      "newest_published_date": "2026-09-13",
+      "updated": "WEEKLY"
+    },
+    {
+      "list_name": "Hardcover Nonfiction",
+      "display_name": "Hardcover Nonfiction",
+      "list_name_encoded": "hardcover-nonfiction",
+      "oldest_published_date": "2008-06-08",
+      "newest_published_date": "2026-09-13",
+      "updated": "WEEKLY"
+    },
+    {
+      "list_name": "Combined Print and E-Book Fiction",
+      "display_name": "Combined Print & E-Book Fiction",
+      "list_name_encoded": "combined-print-and-e-book-fiction",
+      "oldest_published_date": "2011-02-13",
+      "newest_published_date": "2026-09-13",
+      "updated": "WEEKLY"
+    },
+    {
+      "list_name": "Young Adult Hardcover",
+      "display_name": "Young Adult Hardcover",
+      "list_name_encoded": "young-adult-hardcover",
+      "oldest_published_date": "2015-08-23",
+      "newest_published_date": "2026-09-13",
+      "updated": "MONTHLY"
+    }
+  ]
+}

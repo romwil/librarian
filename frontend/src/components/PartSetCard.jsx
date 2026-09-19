@@ -30,6 +30,7 @@ export default function PartSetCard({
   const [error, setError] = useState("");
   const [progress, setProgress] = useState("");
   const [etaMinutes, setEtaMinutes] = useState(null);
+  const [etaApproximate, setEtaApproximate] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
 
   const enriched = useMemo(
@@ -42,8 +43,8 @@ export default function PartSetCard({
   const status = partSetStatusLine(enriched);
   const beads = useMemo(() => partBeadStates(enriched), [enriched]);
   const finish = useMemo(
-    () => finishThisSetAction(enriched, { etaMinutes }),
-    [enriched, etaMinutes],
+    () => finishThisSetAction(enriched, { etaMinutes, approximate: etaApproximate }),
+    [enriched, etaMinutes, etaApproximate],
   );
   const selectable = useMemo(() => {
     const listed = enriched.parts.map((row) => row.item);
@@ -78,18 +79,33 @@ export default function PartSetCard({
     }
     setCollapsed(true);
     let alive = true;
+    const gaps = enriched.missingItems || [];
+    const totalBytes = gaps.reduce((sum, item) => {
+      const n = Number(item?.size);
+      return Number.isFinite(n) && n > 0 ? sum + n : sum;
+    }, 0);
     api
-      .finishEta((enriched.missingItems || []).length)
+      .finishEta({
+        missingCount: gaps.length,
+        kind: enriched.kind || "",
+        totalBytes: totalBytes > 0 ? totalBytes : null,
+        multipart: true,
+      })
       .then((data) => {
-        if (alive) setEtaMinutes(data.eta_minutes || null);
+        if (!alive) return;
+        const minutes = Number(data?.eta_minutes);
+        setEtaMinutes(Number.isFinite(minutes) && minutes > 0 ? minutes : null);
+        setEtaApproximate(Boolean(data?.approximate) && Number.isFinite(minutes) && minutes > 0);
       })
       .catch(() => {
-        if (alive) setEtaMinutes(null);
+        if (!alive) return;
+        setEtaMinutes(null);
+        setEtaApproximate(false);
       });
     return () => {
       alive = false;
     };
-  }, [showFinish, enriched.missingItems?.length, set.id]);
+  }, [showFinish, enriched.missingItems?.length, enriched.kind, set.id]);
 
   function toggle(key) {
     setSelected((prev) => {

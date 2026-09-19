@@ -14,6 +14,7 @@ const MORE_FIELDS = [
   ["llm_api_key", "LLM API key", true],
   ["llm_model", "LLM model"],
   ["hardcover_api_token", "Hardcover token", true],
+  ["nyt_books_api_key", "NYT Books API key", true],
   ["comicvine_api_key", "Comic Vine key", true],
   ["audiobookshelf_url", "Audiobookshelf URL"],
   ["audiobookshelf_api_token", "Audiobookshelf token", true],
@@ -358,7 +359,7 @@ export default function SettingsPage() {
           </div>
         </details>
         <details className="more-settings">
-          <summary className="kicker">More — listen target, LLM, Hardcover, Comic Vine, household name</summary>
+          <summary className="kicker">More — listen target, LLM, Hardcover, NYT Books (optional), Comic Vine, household name</summary>
           {MORE_FIELDS.map(([key, label, secret]) => (
             <div key={key} className="field">
               <FieldLabel htmlFor={`setting-${key}`} label={label} help={FIELD_HELP[key]} />

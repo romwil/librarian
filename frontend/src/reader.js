@@ -78,11 +78,19 @@ export function canReadInApp(work, files = []) {
   return Boolean(primaryReadingFile(files));
 }
 
-/** Kindle-only (and similar) stay on Download — not an inline Open. */
+/** Kindle-only (and similar) stay on Download — not an inline Read.
+ *  Audiobooks use Listen (Phase 2b), not a raw inline Read. */
 export function canOpenInlineMedia(work, canDownload = false, canRead = false) {
   if (canRead) return false;
   if (!canDownload) return false;
+  if (work?.kind === "audiobook") return false;
   return !READABLE_KINDS.includes(work?.kind);
+}
+
+/** In-browser reader CTA for books/comics/mags — never Listen. */
+export function readerCtaLabel(work) {
+  if (work?.kind === "audiobook" || work?.kind === "music") return "";
+  return "Read";
 }
 
 export function readerEngine(files = [], fileId = "") {

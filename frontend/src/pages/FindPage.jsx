@@ -5,10 +5,13 @@ import QueryForm from "../components/QueryForm.jsx";
 import Rail from "../components/Rail.jsx";
 import RssPanel from "../components/RssPanel.jsx";
 import CoverCard from "../components/CoverCard.jsx";
+import BestsellersPanel from "../components/BestsellersPanel.jsx";
 import { FIELD_HELP, discoverKindNote, discoverStatusLine, findStatusLine, humanError } from "../copy.js";
 import PartSetCard from "../components/PartSetCard.jsx";
 import {
   DISCOVER_BROWSE_LIMIT,
+  bestsellersFromSearchParams,
+  bestsellersHref,
   buildFindSearchParams,
   catalogGapFanoutQueries,
   composeSearchQuery,
@@ -89,6 +92,7 @@ export default function FindPage() {
     findFieldsFromSearchParams(params),
   );
   const discoverCat = discoverCatFromSearchParams(params);
+  const nytPreset = bestsellersFromSearchParams(params);
   const composed = composeSearchQuery(urlFields);
   const [draft, setDraft] = useState(urlFields.q);
   const [kind, setKind] = useState(urlFields.kind);
@@ -562,7 +566,14 @@ export default function FindPage() {
             Search the stacks instead
           </Link>
         </p>
-      ) : null}
+      ) : (
+        <p className="find-cta-block">
+          <Link className="muted" to={bestsellersHref()} data-testid="bestsellers-door">
+            Bestsellers / curated lists
+          </Link>
+        </p>
+      )}
+      {nytPreset ? <BestsellersPanel list={nytPreset.list} date={nytPreset.date} /> : null}
       {error ? (
         <p className="callout" role="status" data-testid="beyond-error">
           {error}

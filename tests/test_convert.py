@@ -183,6 +183,29 @@ def test_maybe_unpack_archives_calls_unar(tmp_path):
     assert calls[0][4] == str(archive)
 
 
+def test_maybe_unpack_skips_rar_continuations(tmp_path):
+    from librarian.convert import list_archive_files
+
+    folder = tmp_path / "Multi"
+    folder.mkdir()
+    part1 = folder / "Book.part1.rar"
+    part2 = folder / "Book.part2.rar"
+    part1.write_bytes(b"Rar1")
+    part2.write_bytes(b"Rar2")
+    assert [p.name for p in list_archive_files(folder)] == ["Book.part1.rar"]
+    calls = []
+
+    def runner(argv, timeout=300):
+        calls.append(list(argv))
+        (folder / "chapter.mp3").write_bytes(b"mp3")
+        return SimpleNamespace(returncode=0)
+
+    result = maybe_unpack_archives(folder, runner=runner, unar="/usr/bin/unar")
+    assert result["unpacked"] is True
+    assert len(calls) == 1
+    assert calls[0][-1] == str(part1)
+
+
 def test_maybe_unpack_archives_noop_without_archives(tmp_path):
     folder = tmp_path / "empty"
     folder.mkdir()

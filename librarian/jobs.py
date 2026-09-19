@@ -8,7 +8,7 @@ from typing import Any, Dict, Optional
 from librarian.arr import ArrError, expect_on_arr, notify_arr_downloaded, sab_category_for_kind
 from librarian.config import Settings
 from librarian.db import Database
-from librarian.identify import UNPACK_STUCK, inspect_complete_folder, resolve_storage_path
+from librarian.identify import inspect_complete_folder, resolve_storage_path
 from librarian.indexers.hosts import client_for_host
 from librarian.indexers.query import build_job_payload, catalog_author, catalog_title
 from librarian.kinds import EXTRA_KINDS, KIND_MOVIE, KIND_TV, KIND_XXX
@@ -288,19 +288,17 @@ def poll_job(
                 return updated or job
             updated = db.update_job(job_id, status="organized", error=None, **sab_fields)
             return updated or job
+        # Missing folder is a hard fail (nothing to unpack). Archives-only /
+        # empty dumps go through organize_identified — it runs par2+unar and
+        # parks a Review slip when still stuck. Never mark failed with no work_id
+        # for unpack_stuck: that hid audiobooks from Review/Queue recovery.
         inspection = inspect_complete_folder(storage)
         problem = inspection.get("problem")
-        if problem:
-            if problem == UNPACK_STUCK:
-                reason = snapshot.get("fail_message") or UNPACK_STUCK_ERROR
-            elif problem == "missing_folder":
-                reason = MISSING_FOLDER_ERROR + f" ({storage})"
-            else:
-                reason = snapshot.get("fail_message") or NO_PAYLOAD_ERROR
+        if problem == "missing_folder":
             updated = db.update_job(
                 job_id,
                 status="failed",
-                error=str(reason),
+                error=MISSING_FOLDER_ERROR + f" ({storage})",
                 **sab_fields,
             )
             return updated or job

@@ -6,7 +6,7 @@ import Rail from "../components/Rail.jsx";
 import TonightShelf from "../components/TonightShelf.jsx";
 import CelebrationBanner from "../components/CelebrationBanner.jsx";
 import { DISCOVER_CTA, emptyHallCopy, humanError, setupComplete } from "../copy.js";
-import { discoverHref } from "../find.js";
+import { bestsellersHref, discoverHref } from "../find.js";
 import AddToLibrary from "../components/AddToLibrary.jsx";
 
 export default function HallPage() {
@@ -67,6 +67,10 @@ export default function HallPage() {
         <p className="find-cta-block">
           <Link className="muted" to={discoverHref()} data-testid="discover-door">
             {DISCOVER_CTA}
+          </Link>
+          {" · "}
+          <Link className="muted" to={bestsellersHref()} data-testid="bestsellers-door">
+            Bestsellers / curated lists
           </Link>
         </p>
       </section>

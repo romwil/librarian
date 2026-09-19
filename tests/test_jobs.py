@@ -239,7 +239,8 @@ def test_history_fail_message_marks_job_failed(tmp_path):
     assert polled["work_id"] is None
 
 
-def test_unpack_stuck_archives_are_not_organized(tmp_path):
+def test_unpack_stuck_archives_go_to_review_not_silent_fail(tmp_path):
+    """SAB-complete folders with only rar/par2 must park a Review slip (not failed/no work)."""
     complete = tmp_path / "usenet" / "complete" / "VA-Dump.Name-202"
     complete.mkdir(parents=True)
     (complete / "cd1.rar").write_bytes(b"Rar!")
@@ -275,12 +276,79 @@ def test_unpack_stuck_archives_are_not_organized(tmp_path):
         nzb=nzb,
     )
     polled = poll_job(db, settings, job["id"], sab=sab)
-    assert polled["status"] == "failed"
-    assert "archives remain" in polled["error"]
-    assert polled["work_id"] is None
+    assert polled["status"] == "review"
+    assert polled["work_id"]
+    assert polled["error"] is None
     assert polled["storage_path"] == str(complete)
-    assert db.list_works() == []
+    work = db.get_work(polled["work_id"])
+    assert work["review_state"] == "needs_review"
+    assert work["review_reason"] == "unpack_stuck"
+    assert work["folder_path"] == str(complete)
 
+
+def test_unpack_stuck_audiobook_unar_then_organizes(tmp_path, monkeypatch):
+    """When SAB leaves multipart rar, poll_job must unar before giving up."""
+    complete = tmp_path / "usenet" / "complete" / "Born.to.Run.mp3.audiobook"
+    complete.mkdir(parents=True)
+    part1 = complete / "Born.part1.rar"
+    part2 = complete / "Born.part2.rar"
+    part1.write_bytes(b"Rar!\x01")
+    part2.write_bytes(b"Rar!\x02")
+    (complete / "Born.par2").write_bytes(b"par2")
+    sab_storage = "/downloads/downloads/Born.to.Run.mp3.audiobook"
+    settings = _sab_settings(tmp_path)
+    calls = []
+
+    def runner(argv, timeout=300):
+        calls.append(list(argv))
+        if argv and "unar" in str(argv[0]):
+            (complete / "Born-Part01.mp3").write_bytes(b"mp3-audio")
+            return type("R", (), {"returncode": 0})()
+        return type("R", (), {"returncode": 1})()
+
+    monkeypatch.setattr("librarian.organize.maybe_par2_repair", lambda folder, **kw: {"repaired": False})
+    monkeypatch.setattr(
+        "librarian.organize.maybe_unpack_archives",
+        lambda folder, **kw: __import__("librarian.convert", fromlist=["maybe_unpack_archives"]).maybe_unpack_archives(
+            folder, runner=runner, unar="/usr/bin/unar"
+        ),
+    )
+    sab = SABClient(
+        "http://downloader.sl",
+        "sab",
+        transport=httpx.MockTransport(
+            _history_handler(
+                "SABnzbd_nzo_ab",
+                status="Completed",
+                storage=sab_storage,
+                name="Born.to.Run.mp3.audiobook",
+            )
+        ),
+    )
+    nzb = NZBFinderClient("https://nzbfinder.example", "tok", transport=_nzb_transport())
+    db = Database(tmp_path / "librarian.db")
+    job = enqueue_indexer_item(
+        db,
+        settings,
+        item={
+            "title": "Born to Run",
+            "guid": "g-ab",
+            "kind": "audiobook",
+            "download_url": "https://example.test/ab.nzb",
+        },
+        requested_by="owner-1",
+        role="owner",
+        sab=sab,
+        nzb=nzb,
+    )
+    polled = poll_job(db, settings, job["id"], sab=sab)
+    assert any("unar" in str(call[0]) for call in calls)
+    assert calls[0][-1] == str(part1)  # first volume only — not part2
+    assert polled["status"] in {"organized", "review"}
+    assert polled["work_id"]
+    work = db.get_work(polled["work_id"])
+    assert work["kind"] == "audiobook"
+    assert work["review_reason"] != "unpack_stuck"
 
 def test_requested_title_survives_usenet_nzo_name(tmp_path):
     complete = tmp_path / "usenet" / "complete" / "VA-Guardians.Of.The.Galaxy.Awesome.Mix.Vol.1-202"

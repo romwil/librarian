@@ -79,7 +79,7 @@ SPA ──no session──► /login (foyer) or /join?token=
 2. Set **`LIBRARIAN_TRUST_PROXY_HEADERS=1` only behind that trusted proxy.** Untrusted `X-Forwarded-*` is ignored for client IP, rate limits, `Secure` cookies, and any “this is HTTPS” decision.
 3. Set **`LIBRARIAN_SESSION_SECRET`** to a long random value (or accept auto-generated secret under Config). Invite HMACs use this secret. Never commit it. The public development default is refused.
 4. Set **`LIBRARIAN_OWNER_PASSWORD`** (≥ 8) in the Unraid template / `.env`. Do not log it.
-5. Keep NZBFinder / SAB / Hardcover / Comic Vine keys out of git and out of backups you share. `settings.json` is `0600`.
+5. Keep NZBFinder / SAB / Hardcover / NYT Books / Comic Vine keys out of git and out of backups you share. `settings.json` is `0600`.
 6. Restrict who can mount/read the `/config` volume (session secret + recovery).
 7. Automat LAN hosts: [ops/AUTOMAT.md](ops/AUTOMAT.md). Never treat public DNS as version truth.
 
@@ -97,8 +97,9 @@ WAL-safe database backup steps live in [DOCKER.md](DOCKER.md).
 | Owner password | `LIBRARIAN_OWNER_PASSWORD` | Same username on restart updates the hash (lockout recovery) |
 | NZBFinder | `nzbfinder_api_token` | Settings or env; never in git |
 | SABnzbd | `sabnzbd_api_key` | Settings or env |
-| LLM | `llm_api_key` | Optional |
+| LLM | `llm_api_key` | Optional; identify + curated Bestsellers lists |
 | Hardcover | `hardcover_api_token` | Optional GraphQL token; Settings or `HARDCOVER_API_TOKEN` |
+| NYT Books | `nyt_books_api_key` | Optional soft-deprecated fallback; prefer BYO LLM for Bestsellers |
 | Comic Vine | `comicvine_api_key` | Optional; Settings or `COMICVINE_API_KEY`. Needed for comic issue lists beyond local holes |
 | Audiobookshelf | `audiobookshelf_api_token` | Optional; Settings or `AUDIOBOOKSHELF_API_TOKEN` |
 

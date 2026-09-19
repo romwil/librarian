@@ -101,6 +101,24 @@ export const api = {
     const qs = params.toString();
     return request(`/discover${qs ? `?${qs}` : ""}`);
   },
+  nytListNames: () => request("/lists/nyt/names"),
+  nytList: ({ list = "hardcover-fiction", date = "current" } = {}) => {
+    const params = new URLSearchParams();
+    if (list) params.set("list", list);
+    if (date) params.set("date", date);
+    return request(`/lists/nyt?${params.toString()}`);
+  },
+  listPresets: () => request("/lists/presets"),
+  llmList: ({ preset = "hardcover-fiction", date = "current", query = "" } = {}) =>
+    request("/lists/llm", {
+      method: "POST",
+      body: JSON.stringify({ preset, date, query: query || "" }),
+    }),
+  llmListChase: (items = []) =>
+    request("/lists/llm/chase", {
+      method: "POST",
+      body: JSON.stringify({ items }),
+    }),
   scanShelves: () => request("/settings/scan", { method: "POST" }),
   enrichShelves: () => request("/settings/enrich", { method: "POST" }),
   enrichWork: (id) => request(`/works/${id}/enrich`, { method: "POST" }),
@@ -124,6 +142,12 @@ export const api = {
   },
   indexers: () => request("/indexers"),
   progress: (id, body = {}) => request(`/works/${id}/progress`, { method: "POST", body: JSON.stringify(body) }),
+  chapters: (id, fileId = "") => {
+    const params = new URLSearchParams();
+    if (fileId) params.set("file", String(fileId));
+    const qs = params.toString();
+    return request(`/works/${id}/chapters${qs ? `?${qs}` : ""}`);
+  },
   convert: (id, format) => request(`/works/${id}/convert`, { method: "POST", body: JSON.stringify({ format }) }),
   fs: (path = "") => request(`/fs?path=${encodeURIComponent(path || "")}`),
   ingest: (path) => request("/ingest", { method: "POST", body: JSON.stringify({ path }) }),
@@ -132,8 +156,16 @@ export const api = {
   whispers: (id) => request(`/works/${id}/whispers`),
   addWhisper: (id, body) => request(`/works/${id}/whispers`, { method: "POST", body: JSON.stringify({ body }) }),
   celebrationSeen: (key) => request("/celebrations/seen", { method: "POST", body: JSON.stringify({ key }) }),
-  finishEta: (missingCount) =>
-    request("/find/finish-eta", { method: "POST", body: JSON.stringify({ missing_count: missingCount }) }),
+  finishEta: ({ missingCount, kind = "", totalBytes = null, multipart = false } = {}) =>
+    request("/find/finish-eta", {
+      method: "POST",
+      body: JSON.stringify({
+        missing_count: missingCount,
+        kind: kind || "",
+        total_bytes: totalBytes != null ? totalBytes : undefined,
+        multipart: Boolean(multipart),
+      }),
+    }),
   reviewRegrab: (id) => request(`/review/${id}/regrab`),
   quietHours: () => request("/settings/quiet-hours"),
   saveQuietHours: (body) => request("/settings/quiet-hours", { method: "PUT", body: JSON.stringify(body) }),

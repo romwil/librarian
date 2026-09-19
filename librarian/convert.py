@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 import zipfile
@@ -210,6 +211,15 @@ def convert_ebook(
 
 
 ARCHIVE_SUFFIXES = {".rar", ".7z"}
+_PART_RAR = re.compile(r"\.part(\d+)\.rar$", re.IGNORECASE)
+
+
+def archive_is_first_volume(path: Path) -> bool:
+    """True for single-volume archives and multipart RAR part1/part01 only."""
+    match = _PART_RAR.search(path.name)
+    if match:
+        return int(match.group(1)) == 1
+    return path.suffix.lower() in ARCHIVE_SUFFIXES
 
 
 def list_archive_files(folder: Path) -> List[Path]:
@@ -218,7 +228,7 @@ def list_archive_files(folder: Path) -> List[Path]:
         return []
     found: List[Path] = []
     for path in sorted(folder.iterdir()):
-        if path.is_file() and path.suffix.lower() in ARCHIVE_SUFFIXES:
+        if path.is_file() and path.suffix.lower() in ARCHIVE_SUFFIXES and archive_is_first_volume(path):
             found.append(path)
     return found
 

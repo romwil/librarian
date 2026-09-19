@@ -30,6 +30,7 @@ ENV_TO_FIELD = {
     "LLM_MODEL": "llm_model",
     "HOUSEHOLD_NAME": "household_name",
     "HARDCOVER_API_TOKEN": "hardcover_api_token",
+    "NYT_BOOKS_API_KEY": "nyt_books_api_key",
     "COMICVINE_API_KEY": "comicvine_api_key",
     "WATCH_ROOT": "watch_root",
     "WATCH_ENABLED": "watch_enabled",
@@ -58,6 +59,7 @@ SECRET_FIELDS = (
     "nzbfinder_api_token",
     "llm_api_key",
     "hardcover_api_token",
+    "nyt_books_api_key",
     "comicvine_api_key",
     "audiobookshelf_api_token",
     "radarr_api_key",
@@ -122,6 +124,7 @@ class Settings:
     llm_model: str = "gpt-4o-mini"
     household_name: str = "The Hall"
     hardcover_api_token: str = ""
+    nyt_books_api_key: str = ""
     comicvine_api_key: str = ""
     watch_root: str = ""
     watch_enabled: bool = False

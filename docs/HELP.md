@@ -16,6 +16,8 @@ Find can query more than NZBFinder. Extra Newznab v2 hosts live in Settings; res
 
 **Discover** reads each host’s capabilities category tree (comics `7030`, magazines `7010`, other books `70xx`, audiobooks `3030`, music `3010`/`3040`/`3999`, and real subcats the indexer lists). Latest-in-category uses category RSS (`/rss/category?id=` on NZBFinder, then classic `/rss?t=` or `/api?t=search&cat=`). NZBFinder v2 search needs a real query, so Discover does not call empty-query v2. It does not scrape HTML and does not auto-queue SAB. Each rail is a short latest slice — click the category title or **See all** to open that feed (`/find?discover=7030`) and browse many more results with the same Request / peek chips.
 
+**Bestsellers / curated lists** is a Find preset (`/find?preset=nyt&list=hardcover-fiction`). Hall and idle Find link to it. With a BYO LLM in Settings, Librarian asks the model for the chosen category — most recent, or the list closest to a date you pick — then matches each title against the local shelves (ISBN when the model returns a check-digit-valid one; otherwise title+author). ISBN is never invented. Without an LLM the panel stays honest and empty. Shelved titles deep-link to the work; missing ones can be multi-selected. **Request missing** Finds beyond for the ebook and the audiobook together, then shows Request / “Audiobook available to request” — Confirm still required before SAB (readers file Asked slips). Brief list+match cache under `/config/lists-cache`. An optional `nyt_books_api_key` remains as a soft-deprecated fallback path only.
+
 Owners can turn on **Show categories** in Settings. Then Discover and fielded Find also offer Movies, TV, and XXX if the indexer lists those feeds — Discover chips group under Newznab parents (Movies, Audio, TV, XXX, Books, …). Those extra kinds never become Hall works.
 
 - **Movies:** Request queues SABnzbd in the Radarr-watched category (default `movies`), then tells Radarr to expect the title (`POST /api/v3/movie` with search off). When SAB finishes, Radarr gets `DownloadedMoviesScan`.
@@ -30,7 +32,7 @@ Optional Audiobookshelf URL and token in Settings match catalog audiobooks by IS
 
 ## The Hall
 
-After sign-in you land on **The Hall**, not Settings. The hero is search (the stacks, not “then the world”). Rails below: **Continue** (volumes you opened), What’s New, Favorites, Books, Magazines, Comics, Audiobooks, Incoming Music. Owners and ops also see a **Gaps** rail. Opening a work leaves a bookmark on Continue; **Finished** means you have read it and clears that bookmark. Finished is not a download status.
+After sign-in you land on **The Hall**, not Settings. The hero is search (the stacks, not “then the world”). Rails below: **Continue** (volumes you opened), What’s New, Favorites, Books, Magazines, Comics, Audiobooks, Incoming Music. Owners and ops also see a **Gaps** rail. Opening a work leaves a bookmark on Continue; **Finished** means you have read it and clears that bookmark. Finished is not a download status. Audiobook Listen writes the same Continue progress (file + seconds), so in-progress listens sit on the Continue rail beside books.
 
 Chrome stays Hall / Search / Favorites / You. Queue and Review are op links, not extra tabs.
 
@@ -90,6 +92,10 @@ Cards on The Hall are the *missing* set — honest holes between what you alread
 ## Music and audiobooks
 
 Music organizes into Incoming (`library/incoming-music`), then **Promote** moves the album into the Plexamp library at `/data/media/music`. Audiobooks never go there.
+
+**Listen** opens the Listening room on an audiobook work (HTML5 audio + Media Session, chapter skip when tags exist, Continue bookmark). Peek and the work page use **Listen** as the primary CTA — never Promote to Plexamp. **Open in player** appears when Audiobookshelf has matched the title, or as a soft Plex handoff when that is the audiobook target. With Audiobookshelf configured but unmatched, the note stays honest.
+
+On a **book** work page (and peek when the detail has loaded), Librarian surfaces a companion audiobook when the same ISBN, title+author, or series index is already on the shelves (**Audiobook on the shelves** → Listen), or offers **Find audiobook** with kind=audiobook and title/author/ISBN prefilled. Books, comics, and magazines use **Read** for the in-browser reader (not Open); audiobooks keep Listen.
 
 Plex has **no** dedicated Audiobooks library type. Point a Plex **Music** library (named e.g. “Audiobooks”) at `audiobooks_root` (`/data/media/library/audiobooks`), enable store track progress / long-form, and use Plexamp speed + skip on that library. Folder layout is `{Author}/{Title}/`. Keep audiobooks out of the music library root. Optional Audiobookshelf remains a catalog match link when configured. Hide Finished on music — albums are not “read.” Shared Automat folder ownership and the Plex Music filename rule: [automat-media-contract.md](automat-media-contract.md). Library cutover from old flat `/data/media/books`: [ops/LIBRARY_MIGRATE.md](ops/LIBRARY_MIGRATE.md).
 

@@ -317,17 +317,8 @@ def progress_ingest_job(db: Database, settings: Settings, job_id: str) -> Dict[s
     if not folder.exists():
         updated = db.update_job(job_id, status="failed", error=f"{INGEST_MISSING_FOLDER_ERROR} ({folder})")
         return updated or job
-    inspection = inspect_complete_folder(folder)
-    problem = inspection.get("problem")
-    if problem:
-        if problem == UNPACK_STUCK:
-            reason = INGEST_UNPACK_STUCK_ERROR
-        elif problem == "missing_folder":
-            reason = f"{INGEST_MISSING_FOLDER_ERROR} ({folder})"
-        else:
-            reason = INGEST_NO_PAYLOAD_ERROR
-        updated = db.update_job(job_id, status="failed", error=str(reason))
-        return updated or job
+    # Archives-only dumps: organize runs par2+unar and parks Review when stuck.
+    # Only a truly missing path is a hard fail (handled above when folder.exists is false).
     organized = organize_identified(db, settings, folder=folder, move_source=True)
     identity = organized.get("identity") or {}
     final = "organized" if organized["organized"] else "review"

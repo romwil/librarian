@@ -266,6 +266,25 @@ def isbn_match_keys(*values: str) -> List[str]:
     return keys
 
 
+def validated_isbn(raw: str) -> str:
+    """Return a check-digit-valid ISBN-10/13, else empty. Never invents digits."""
+    digits = extract_isbn(raw or "")
+    if not digits:
+        return ""
+    if len(digits) == 13 and digits.isdigit():
+        if digits[-1] == _isbn13_check_digit(digits[:12]):
+            return digits
+        return ""
+    if len(digits) == 10:
+        core = digits[:9]
+        if not core.isdigit():
+            return ""
+        if digits[-1].upper() == _isbn10_check_digit(core):
+            return digits.upper()
+        return ""
+    return ""
+
+
 def parse_usenet_name(name: str, *, category: object = None, kind: object = None) -> Identity:
     """Deterministic Usenet / folder parse. Never invents an ISBN. Filename layer is weak."""
     raw = usenet_basename(name)

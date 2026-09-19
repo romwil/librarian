@@ -2,6 +2,32 @@
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-09-18
+
+### Highlights
+
+- **Listen to audiobooks in the Reading Room.** Phase 2b ships an in-app player (chapters, progress) with deep-links when Plex/ABS is configured — peeks and work pages say Listen, not a raw Read.
+- **Bestsellers from your BYO LLM.** Curated list presets match the household shelves, then chase missing titles as books and audiobooks (confirm before SAB). Optional NYT Books API remains a soft-deprecated fallback.
+- **Stuck unpacks can recover.** Archive-only / empty SAB dumps go through organize (par2+unar) and land a Review slip instead of failing with no work — so audiobook RAR recoveries stay visible in Queue/Review.
+- **Finish-set ETA and smart re-grab deepen.** Size-aware approximate ETAs when samples are thin; re-grab ranks by series/base, part markers, size, and host with clearer diffs.
+- **Community UX polish.** Clear Read CTAs, peeks that open the full work page, and book→audiobook companion Listen when the matching title is already shelved.
+
+### Added
+
+- In-app audiobook Listen (`librarian/listen.py`, `AudiobookPlayer`) + chapter API; book→audiobook companion CTAs.
+- LLM curated lists (`librarian/lists.py`) + chase (book and audiobook); Bestsellers panel on Find; optional NYT Books client as fallback.
+- `NYT_BOOKS_API_KEY` env wiring in `docker-run.sh` / Automat playbook.
+
+### Changed
+
+- Finish-set ETA returns approximate size-scaled minutes when median samples are scarce; labels use `≈` vs `~`.
+- Review re-grab candidate ranking and human diffs (same series, part markers, % size, host).
+- Phase 2b Listen marked done on the living roadmap.
+
+### Fixed
+
+- `poll_job` no longer marks `unpack_stuck` failed with no `work_id` — organize/Review recovery stays available for audiobook archives.
+
 ## [0.2.3] — 2026-09-17
 
 ### Fixed

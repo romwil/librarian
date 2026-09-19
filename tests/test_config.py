@@ -53,6 +53,7 @@ def test_mask_settings_never_returns_token():
             nzbfinder_api_token="secret-token",
             sabnzbd_api_key="sab",
             hardcover_api_token="hardcover-test-token",
+            nyt_books_api_key="nyt-test-key",
             comicvine_api_key="comicvine-test-key",
         )
     )
@@ -61,10 +62,13 @@ def test_mask_settings_never_returns_token():
     assert masked["sabnzbd_api_key"] == ""
     assert masked["hardcover_api_token"] == ""
     assert masked["hardcover_api_token_set"] is True
+    assert masked["nyt_books_api_key"] == ""
+    assert masked["nyt_books_api_key_set"] is True
     assert masked["comicvine_api_key"] == ""
     assert masked["comicvine_api_key_set"] is True
     assert "secret-token" not in str(masked)
     assert "hardcover-test-token" not in str(masked)
+    assert "nyt-test-key" not in str(masked)
     assert "comicvine-test-key" not in str(masked)
 
 
@@ -94,6 +98,7 @@ def test_watch_enabled_coerces_from_env(tmp_path, monkeypatch):
 
 def test_env_to_field_includes_settings_seeded_secrets():
     assert ENV_TO_FIELD["HARDCOVER_API_TOKEN"] == "hardcover_api_token"
+    assert ENV_TO_FIELD["NYT_BOOKS_API_KEY"] == "nyt_books_api_key"
     assert ENV_TO_FIELD["COMICVINE_API_KEY"] == "comicvine_api_key"
     assert ENV_TO_FIELD["AUDIOBOOKSHELF_URL"] == "audiobookshelf_url"
     assert ENV_TO_FIELD["AUDIOBOOKSHELF_API_TOKEN"] == "audiobookshelf_api_token"

@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api.js";
 import { FieldLabel } from "../components/FieldHelp.jsx";
 import { FIELD_HELP, emptyReviewCopy, humanError } from "../copy.js";
+import { requestBodyFromHit } from "../find.js";
 import {
   applyBodyFromDraft,
   collisionActionCopy,
@@ -31,6 +32,7 @@ export default function ReviewPage() {
   const [quiet, setQuiet] = useState(null);
   const [quietNote, setQuietNote] = useState("");
   const focusRef = useRef(null);
+  const autoRegrabTried = useRef(new Set());
 
   function reload() {
     api
@@ -160,16 +162,31 @@ export default function ReviewPage() {
     }
   }
 
+  useEffect(() => {
+    for (const work of works) {
+      const actions = reviewActionsFromWork(work);
+      if (!actions.canRegrab) continue;
+      if (autoRegrabTried.current.has(work.id)) continue;
+      if (regrabs[work.id]) continue;
+      autoRegrabTried.current.add(work.id);
+      loadRegrab(work);
+    }
+    // Auto-fetch once per slip when can_regrab; manual Smart re-grab still refreshes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [works]);
+
   async function requestRegrab(work, candidate) {
     setWorkBusy(work.id, true);
+    setErrors((prev) => ({ ...prev, [work.id]: "" }));
     try {
-      await api.requestItem({
-        title: candidate.title || candidate.name || work.title,
-        guid: candidate.guid,
-        kind: work.kind || candidate.kind,
-        download_url: candidate.download_url,
-        author: work.author || candidate.author,
-      });
+      // Explicit Request click → existing /api/request path (Confirm for readers; never auto-queue).
+      await api.requestItem(
+        requestBodyFromHit(candidate, {
+          kind: work.kind || candidate.kind || "",
+          title: work.title || "",
+          author: work.author || "",
+        }),
+      );
       reload();
     } catch (err) {
       setErrors((prev) => ({ ...prev, [work.id]: humanError(err) }));
@@ -405,20 +422,25 @@ export default function ReviewPage() {
               )}
               {regrabs[work.id]?.candidates?.length ? (
                 <ul className="regrab-list" data-testid="regrab-candidates">
-                  {regrabs[work.id].candidates.map((candidate) => (
+                  {regrabs[work.id].candidates.map((candidate, index) => (
                     <li key={candidate.guid || candidate.title}>
                       <span>{candidate.diff || candidate.title}</span>
                       <button
                         type="button"
-                        className="cta compact outline"
+                        className={index === 0 ? "cta compact" : "cta compact outline"}
                         disabled={workBusy}
                         onClick={() => requestRegrab(work, candidate)}
+                        data-testid="regrab-request"
                       >
-                        Ask for this
+                        Request this
                       </button>
                     </li>
                   ))}
                 </ul>
+              ) : regrabs[work.id]?.ready && !regrabs[work.id]?.candidates?.length ? (
+                <p className="muted" data-testid="regrab-empty">
+                  No alternate releases yet — try Request new version on Find.
+                </p>
               ) : null}
               <form
                 className="identify-form"

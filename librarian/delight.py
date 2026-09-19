@@ -139,69 +139,220 @@ def _num_key(value: str) -> float:
         return 0.0
 
 
+# Conservative household Usenet average for size-only ETA fallback (~0.35 MB/s).
+_SIZE_BYTES_PER_SEC = 350_000.0
+
+
 def estimate_finish_eta_minutes(
     *,
     missing_count: int,
     recent_seconds: Sequence[float] = (),
-) -> Optional[int]:
-    """Cheap ETA from recent SAB/job durations (median), when sample exists."""
+    total_bytes: Optional[int] = None,
+) -> Dict[str, Any]:
+    """ETA from recent job durations (median), with size-scaled fallback.
+
+    Returns ``{"eta_minutes": Optional[int], "approximate": bool}``.
+    Never invents ``0`` minutes — unknown stays ``None`` (CTA without a fake clock).
+    """
     miss = max(0, int(missing_count or 0))
+    if miss < 1:
+        return {"eta_minutes": None, "approximate": False}
     samples = [float(s) for s in recent_seconds if s is not None and float(s) > 0]
-    if miss < 1 or len(samples) < 2:
-        return None
-    samples.sort()
-    mid = samples[len(samples) // 2]
-    minutes = int(round((mid * miss) / 60.0))
-    return max(1, minutes)
+    if len(samples) >= 2:
+        samples.sort()
+        mid = samples[len(samples) // 2]
+        minutes = max(1, int(round((mid * miss) / 60.0)))
+        return {"eta_minutes": minutes, "approximate": False}
+
+    total = _as_int(total_bytes)
+    if total is not None and total > 0:
+        secs = float(total) / _SIZE_BYTES_PER_SEC
+        if len(samples) == 1:
+            secs = (samples[0] * miss + secs) / 2.0
+        minutes = max(1, int(round(secs / 60.0)))
+        return {"eta_minutes": minutes, "approximate": True}
+
+    if len(samples) == 1:
+        minutes = max(1, int(round((samples[0] * miss) / 60.0)))
+        return {"eta_minutes": minutes, "approximate": True}
+
+    return {"eta_minutes": None, "approximate": False}
 
 
-def finish_set_label(*, missing_count: int, eta_minutes: Optional[int] = None) -> str:
+def finish_set_label(
+    *,
+    missing_count: int,
+    eta_minutes: Optional[int] = None,
+    approximate: bool = False,
+) -> str:
     n = max(0, int(missing_count or 0))
     base = f"Request missing ({n})" if n else "Request missing"
-    if eta_minutes:
-        return f"{base} · ~{eta_minutes} min"
+    if eta_minutes and int(eta_minutes) > 0:
+        mark = "≈" if approximate else "~"
+        return f"{base} · {mark}{int(eta_minutes)} min"
     return base
 
 
 def regrab_diff(failed: Mapping[str, Any], candidate: Mapping[str, Any]) -> str:
-    """Short human diff between failed NZB and next-best alternate."""
+    """Human diff: series/base, part markers, % size delta, host."""
+    from librarian.parts import normalize_part_base, parse_part_marker
+
     bits: List[str] = []
     ft = str(failed.get("title") or failed.get("name") or "").strip()
     ct = str(candidate.get("title") or candidate.get("name") or "").strip()
-    if ct and ct != ft:
+    fb = normalize_part_base(ft) if ft else ""
+    cb = normalize_part_base(ct) if ct else ""
+    if fb and cb and fb == cb:
+        bits.append("Same series")
+    elif ct and ct != ft:
         bits.append(ct[:72] + ("…" if len(ct) > 72 else ""))
+
+    fm = parse_part_marker(ft) if ft else None
+    cm = parse_part_marker(ct) if ct else None
+    if cm:
+        if fm and cm.get("part") != fm.get("part"):
+            total = cm.get("total")
+            label = f"Part {cm['part']}" + (f"/{total}" if total is not None else "")
+            bits.append(label)
+        elif not fm:
+            raw = str(cm.get("raw") or "").strip()
+            if raw:
+                bits.append(raw)
+
     fs = _as_int(failed.get("size"))
     cs = _as_int(candidate.get("size"))
     if fs and cs and fs != cs:
-        delta = cs - fs
-        sign = "+" if delta > 0 else ""
-        bits.append(f"{sign}{_fmt_bytes(delta)}")
-    host = str(candidate.get("host") or candidate.get("indexer") or "").strip()
+        pct = int(round(100.0 * (cs - fs) / float(fs)))
+        if pct != 0:
+            sign = "+" if pct > 0 else ""
+            bits.append(f"{sign}{pct}% size")
+        else:
+            delta = cs - fs
+            sign = "+" if delta > 0 else ""
+            bits.append(f"{sign}{_fmt_bytes(delta)}")
+
+    host = str(
+        candidate.get("host")
+        or candidate.get("host_name")
+        or candidate.get("indexer")
+        or ""
+    ).strip()
+    failed_host = str(
+        failed.get("host") or failed.get("host_name") or failed.get("indexer") or ""
+    ).strip()
     if host:
-        bits.append(host)
+        if failed_host and host.lower() == failed_host.lower():
+            bits.append(f"Same host · {host}")
+        else:
+            bits.append(host)
     return " · ".join(bits) if bits else "Different release"
+
+
+def _regrab_title_score(failed_title: str, cand_title: str) -> float:
+    from librarian.parts import normalize_part_base
+
+    a = set(normalize_part_base(failed_title).split()) if failed_title else set()
+    b = set(normalize_part_base(cand_title).split()) if cand_title else set()
+    if not a or not b:
+        return 0.0
+    return len(a & b) / float(len(a | b))
+
+
+def _regrab_fingerprint_bonus(failed: Mapping[str, Any], candidate: Mapping[str, Any]) -> float:
+    from librarian.parts import normalize_part_base, parse_part_marker
+
+    ft = str(failed.get("title") or failed.get("name") or "")
+    ct = str(candidate.get("title") or candidate.get("name") or "")
+    fm = parse_part_marker(ft)
+    cm = parse_part_marker(ct)
+    if not fm or not cm:
+        return 0.0
+    fb = normalize_part_base(ft)
+    cb = normalize_part_base(ct)
+    if not fb or fb != cb:
+        return 0.0
+    bonus = 0.35
+    if fm.get("total") is not None and fm.get("total") == cm.get("total"):
+        bonus += 0.25
+    if fm.get("part") == cm.get("part"):
+        bonus += 0.1
+    return bonus
+
+
+def _regrab_size_score(failed_size: Optional[int], cand_size: Optional[int]) -> float:
+    if not failed_size or not cand_size:
+        return 0.35
+    ratio = min(failed_size, cand_size) / float(max(failed_size, cand_size))
+    return ratio
+
+
+def _regrab_host_score(failed_host: str, cand_host: str) -> float:
+    if failed_host and cand_host and failed_host.lower() == cand_host.lower():
+        return 1.0
+    if cand_host and not failed_host:
+        return 0.2
+    return 0.0
 
 
 def rank_regrab_candidates(
     hits: Sequence[Mapping[str, Any]],
     *,
     failed_guid: str = "",
+    failed: Optional[Mapping[str, Any]] = None,
+    exclude_guids: Sequence[str] = (),
     limit: int = 3,
 ) -> List[Dict[str, Any]]:
-    """Next-best indexer hits with a different guid than the failed repair."""
-    failed = str(failed_guid or "").strip()
-    out: List[Dict[str, Any]] = []
+    """Rank alternate indexer hits: exclude tried guids, prefer title/size/host fit."""
+    failed_ctx: Dict[str, Any] = dict(failed or {})
+    primary = str(failed_guid or failed_ctx.get("guid") or failed_ctx.get("indexer_guid") or "").strip()
+    if primary and not failed_ctx.get("guid"):
+        failed_ctx["guid"] = primary
+    blocked = {primary} if primary else set()
+    for raw in exclude_guids or ():
+        text = str(raw or "").strip()
+        if text:
+            blocked.add(text)
+
+    failed_title = str(failed_ctx.get("title") or failed_ctx.get("name") or "").strip()
+    failed_size = _as_int(failed_ctx.get("size"))
+    failed_host = str(
+        failed_ctx.get("host") or failed_ctx.get("host_name") or failed_ctx.get("indexer") or ""
+    ).strip()
+
+    scored: List[tuple[float, Dict[str, Any]]] = []
     seen = set()
     for raw in hits or []:
         guid = str(raw.get("guid") or raw.get("indexer_guid") or "").strip()
-        if not guid or guid == failed or guid in seen:
+        if not guid or guid in blocked or guid in seen:
             continue
         seen.add(guid)
         item = dict(raw)
-        item["diff"] = regrab_diff({"guid": failed}, item)
+        cand_title = str(item.get("title") or item.get("name") or "").strip()
+        cand_size = _as_int(item.get("size"))
+        cand_host = str(
+            item.get("host") or item.get("host_name") or item.get("indexer") or ""
+        ).strip()
+        score = (
+            3.0 * _regrab_title_score(failed_title, cand_title)
+            + 2.0 * _regrab_size_score(failed_size, cand_size)
+            + 1.5 * _regrab_host_score(failed_host, cand_host)
+            + _regrab_fingerprint_bonus(failed_ctx, item)
+        )
+        item["diff"] = regrab_diff(failed_ctx, item)
+        item["_regrab_score"] = round(score, 4)
+        scored.append((score, item))
+
+    scored.sort(
+        key=lambda row: (
+            -row[0],
+            abs((_as_int(row[1].get("size")) or 0) - (failed_size or 0)),
+            str(row[1].get("title") or ""),
+        )
+    )
+    out: List[Dict[str, Any]] = []
+    for _score, item in scored[: max(0, int(limit))]:
+        item.pop("_regrab_score", None)
         out.append(item)
-        if len(out) >= limit:
-            break
     return out
 
 

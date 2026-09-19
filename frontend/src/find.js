@@ -23,7 +23,7 @@ export const FIND_FIELDS_BY_KIND = {
   magazine: ["title", "author", "isbn", "year"],
   comic: ["series", "issue", "year"],
   music: ["artist", "album", "year"],
-  audiobook: ["title", "author"],
+  audiobook: ["title", "author", "isbn"],
   movie: ["title", "year"],
   tv: ["title", "year"],
   xxx: ["title", "year"],
@@ -103,6 +103,49 @@ export function discoverHref({ discover = "", cat = "", kind = "" } = {}) {
   if (kindValue) params.set("kind", kindValue);
   const qs = params.toString();
   return qs ? `/find?${qs}` : "/find";
+}
+
+/** Bestsellers / curated lists preset on Find (`?preset=nyt&list=&date=`). */
+export function bestsellersHref({ list = "hardcover-fiction", date = "current" } = {}) {
+  const params = new URLSearchParams();
+  params.set("preset", "nyt");
+  const slug = trimmed(list) || "hardcover-fiction";
+  params.set("list", slug);
+  const when = trimmed(date) || "current";
+  if (when && when !== "current") params.set("date", when);
+  return `/find?${params.toString()}`;
+}
+
+export function bestsellersFromSearchParams(params) {
+  const read = (key) => {
+    if (!params) return "";
+    if (typeof params.get === "function") return trimmed(params.get(key));
+    return trimmed(params[key]);
+  };
+  if (read("preset") !== "nyt") return null;
+  return {
+    list: read("list") || "hardcover-fiction",
+    date: read("date") || "current",
+  };
+}
+
+/** Local shelves first; Find beyond when the title is not owned. */
+export function nytHitHref(book = {}) {
+  const shelvedId = trimmed(book?.shelved?.id);
+  if (shelvedId) return `/works/${encodeURIComponent(shelvedId)}`;
+  const title = trimmed(book?.title);
+  const author = trimmed(book?.author);
+  const isbn = trimmed(book?.isbn);
+  const q = [author, title].filter(Boolean).join(" ") || title || isbn;
+  return searchHref({ q, kind: "book", title, author, isbn });
+}
+
+export function nytHitFindHref(book = {}) {
+  const title = trimmed(book?.title);
+  const author = trimmed(book?.author);
+  const isbn = trimmed(book?.isbn);
+  const q = [author, title].filter(Boolean).join(" ") || title || isbn;
+  return findHref({ q, kind: "book", title, author, isbn });
 }
 
 /** Newznab top-level parents (approx) for Discover chip grouping. */

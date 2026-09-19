@@ -133,8 +133,12 @@ class LLMClient:
     def close(self) -> None:
         self._client.close()
 
-    def identify(self, evidence: str) -> Dict[str, Any]:
-        if not self.base_url or not self.api_key:
+    def configured(self) -> bool:
+        return bool(self.base_url and self.api_key)
+
+    def chat_raw(self, *, system: str, user: str, temperature: float = 0.1) -> str:
+        """OpenAI-compatible chat completion — returns message content text."""
+        if not self.configured():
             raise LLMError("LLM is not configured")
         url = f"{self.base_url}/chat/completions"
         try:
@@ -146,47 +150,9 @@ class LLMClient:
                 },
                 json={
                     "model": self.model,
-                    "temperature": 0.1,
+                    "temperature": temperature,
                     "messages": [
-                        {"role": "system", "content": IDENTIFY_PROMPT},
-                        {"role": "user", "content": evidence},
-                    ],
-                },
-            )
-        except httpx.HTTPError as error:
-            raise LLMError(str(error)) from error
-        if response.status_code >= 400:
-            raise LLMError(f"LLM HTTP {response.status_code}")
-        try:
-            payload = response.json()
-        except ValueError as error:
-            raise LLMError("LLM returned non-JSON") from error
-        message = ((payload or {}).get("choices") or [{}])[0].get("message") or {}
-        return parse_json_object(str(message.get("content") or ""))
-
-    def polish_blurb(self, *, title: str, author: str, source_text: str) -> str:
-        """Short blurb from existing catalog text only. Fail closed; never invents ISBN."""
-        text = re.sub(r"\s+", " ", str(source_text or "")).strip()
-        if not text or not self.base_url or not self.api_key:
-            return ""
-        url = f"{self.base_url}/chat/completions"
-        user = (
-            f"Title: {str(title or '').strip()}\n"
-            f"Author: {str(author or '').strip()}\n\n"
-            f"Source description:\n{text}"
-        )
-        try:
-            response = self._client.post(
-                url,
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": self.model,
-                    "temperature": 0.2,
-                    "messages": [
-                        {"role": "system", "content": POLISH_PROMPT},
+                        {"role": "system", "content": system},
                         {"role": "user", "content": user},
                     ],
                 },
@@ -200,7 +166,29 @@ class LLMClient:
         except ValueError as error:
             raise LLMError("LLM returned non-JSON") from error
         message = ((payload or {}).get("choices") or [{}])[0].get("message") or {}
-        return _clean_blurb(str(message.get("content") or ""))
+        return str(message.get("content") or "")
+
+    def chat_json(self, *, system: str, user: str, temperature: float = 0.1) -> Dict[str, Any]:
+        """Chat completion parsed as a JSON object (empty dict on soft parse failure)."""
+        return parse_json_object(self.chat_raw(system=system, user=user, temperature=temperature))
+
+    def identify(self, evidence: str) -> Dict[str, Any]:
+        return self.chat_json(system=IDENTIFY_PROMPT, user=evidence, temperature=0.1)
+
+    def polish_blurb(self, *, title: str, author: str, source_text: str) -> str:
+        """Short blurb from existing catalog text only. Fail closed; never invents ISBN."""
+        text = re.sub(r"\s+", " ", str(source_text or "")).strip()
+        if not text or not self.configured():
+            return ""
+        user = (
+            f"Title: {str(title or '').strip()}\n"
+            f"Author: {str(author or '').strip()}\n\n"
+            f"Source description:\n{text}"
+        )
+        try:
+            return _clean_blurb(self.chat_raw(system=POLISH_PROMPT, user=user, temperature=0.2))
+        except LLMError as error:
+            raise LLMError(str(error)) from error
 
 
 def _clean_blurb(text: str) -> str:

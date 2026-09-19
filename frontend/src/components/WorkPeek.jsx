@@ -20,7 +20,9 @@ import { canPromoteIncomingMusic, humanError, peekMediaNote } from "../copy.js";
 import { looksLikeHtml, sanitizeDescriptionHtml } from "../description.js";
 import { beyondHostName, findHref } from "../find.js";
 import { isIncompleteOwnedPartSet, partSetFindFields } from "../findParts.js";
-import { canOpenInlineMedia, canReadInApp, workReaderPath } from "../reader.js";
+import { canListenInApp, workListenPath } from "../listen.js";
+import { canOpenInlineMedia, canReadInApp, readerCtaLabel, workReaderPath } from "../reader.js";
+import { companionAudiobookView } from "../audiobookCompanion.js";
 import PlexampToast from "./PlexampToast.jsx";
 
 export default function WorkPeek({ work, onClose, onRequest }) {
@@ -90,6 +92,9 @@ export default function WorkPeek({ work, onClose, onRequest }) {
   const detailMatches = Boolean(work?.id) && detail?.work?.id === work.id;
   const canDownload = Boolean(detailMatches && detail?.can_download);
   const canRead = Boolean(detailMatches && detail?.can_read && canReadInApp(catalog, detail?.files));
+  const canListen = Boolean(
+    detailMatches && detail?.listen?.can_listen && canListenInApp(catalog, detail?.files, canDownload),
+  );
   const canInlineOpen = canOpenInlineMedia(catalog, canDownload, canRead);
   const fileCount = detailMatches ? detail?.file_count || 0 : 0;
   const mediaNote = peekMediaNote(catalog, {
@@ -98,12 +103,16 @@ export default function WorkPeek({ work, onClose, onRequest }) {
   });
   const openHref = catalog.id ? `/api/works/${catalog.id}/download?inline=1` : "";
   const downloadHref = catalog.id ? `/api/works/${catalog.id}/download` : "";
+  const playerLink = detailMatches ? detail?.listen?.player : null;
+  const playerNote = detailMatches ? detail?.listen?.player_note || "" : "";
   const canPromote = canPromoteIncomingMusic(catalog, role);
   const descriptionHtml = looksLikeHtml(catalog.description)
     ? sanitizeDescriptionHtml(catalog.description)
     : "";
   const incompleteParts = isIncompleteOwnedPartSet(catalog.part_set);
   const findMissingHref = incompleteParts ? findHref(partSetFindFields(catalog)) : "";
+  const audiobookCta = companionAudiobookView(detailMatches ? detail?.audiobook : null);
+  const readLabel = readerCtaLabel(catalog) || "Read";
 
   async function favorite() {
     if (!catalog.id) return;
@@ -256,7 +265,19 @@ export default function WorkPeek({ work, onClose, onRequest }) {
               <div className="cta-row compact peek-actions" data-testid="peek-actions">
                 {href ? (
                   <>
-                    {canRead ? (
+                    {canListen ? (
+                      <Link
+                        className="cta compact"
+                        to={workListenPath(catalog.id)}
+                        onClick={(event) => {
+                          if (event.metaKey || event.ctrlKey) return;
+                          onClose();
+                        }}
+                        data-testid="peek-listen"
+                      >
+                        Listen
+                      </Link>
+                    ) : canRead ? (
                       <Link
                         className="cta compact"
                         to={workReaderPath(catalog.id)}
@@ -266,11 +287,48 @@ export default function WorkPeek({ work, onClose, onRequest }) {
                         }}
                         data-testid="peek-open"
                       >
-                        Open
+                        {readLabel}
                       </Link>
                     ) : canInlineOpen ? (
                       <a className="cta compact" href={openHref} target="_blank" rel="noreferrer" data-testid="peek-open">
-                        Open
+                        {readLabel}
+                      </a>
+                    ) : null}
+                    {audiobookCta.show && audiobookCta.shelved ? (
+                      <Link
+                        className="cta outline compact"
+                        to={audiobookCta.listenHref}
+                        onClick={(event) => {
+                          if (event.metaKey || event.ctrlKey) return;
+                          onClose();
+                        }}
+                        data-testid="peek-audiobook-listen"
+                      >
+                        {audiobookCta.secondaryLabel}
+                      </Link>
+                    ) : null}
+                    {audiobookCta.show && !audiobookCta.shelved ? (
+                      <Link
+                        className="cta outline compact"
+                        to={audiobookCta.findHref}
+                        onClick={(event) => {
+                          if (event.metaKey || event.ctrlKey) return;
+                          onClose();
+                        }}
+                        data-testid="peek-find-audiobook"
+                      >
+                        {audiobookCta.primaryLabel}
+                      </Link>
+                    ) : null}
+                    {canListen && playerLink?.href ? (
+                      <a
+                        className="cta outline compact"
+                        href={playerLink.href}
+                        target="_blank"
+                        rel="noreferrer"
+                        data-testid="peek-open-player"
+                      >
+                        {playerLink.label || "Open in player"}
                       </a>
                     ) : null}
                     {canDownload ? (
@@ -313,19 +371,26 @@ export default function WorkPeek({ work, onClose, onRequest }) {
                   </button>
                 ) : null}
               </div>
+              {canListen && !playerLink?.href && playerNote ? (
+                <p className="muted" data-testid="peek-player-note">
+                  {playerNote}
+                </p>
+              ) : null}
               {href ? (
-                <p className="peek-full">
+                <div className="peek-full" data-testid="peek-full-page">
                   <Link
+                    className="cta outline"
                     to={href}
                     onClick={(event) => {
                       if (event.metaKey || event.ctrlKey) return;
                       onClose();
                     }}
+                    data-testid="peek-open-full"
                   >
                     Open full page
                   </Link>
-                  <span className="muted"> · same-tab dismisses peek · ⌘-click keeps peek</span>
-                </p>
+                  <p className="muted peek-full-hint">Same-tab dismisses peek · ⌘-click keeps peek</p>
+                </div>
               ) : null}
             </div>
           </div>

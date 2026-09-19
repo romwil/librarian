@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   buildFindSearchParams,
+  bestsellersFromSearchParams,
+  bestsellersHref,
   composeSearchQuery,
   discoverCatFromSearchParams,
   discoverHref,
@@ -10,6 +12,8 @@ import {
   gapFindFields,
   catalogGapFanoutQueries,
   isCatalogGapQuery,
+  nytHitFindHref,
+  nytHitHref,
   rankBeyondByCompleteness,
   groupDiscoverCategories,
   pruneFieldsForKind,
@@ -214,7 +218,7 @@ describe("Find query builder", () => {
     assert.deepEqual(visibleFindFields("magazine"), ["title", "author", "isbn", "year"]);
     assert.deepEqual(visibleFindFields("comic"), ["series", "issue", "year"]);
     assert.deepEqual(visibleFindFields("music"), ["artist", "album", "year"]);
-    assert.deepEqual(visibleFindFields("audiobook"), ["title", "author"]);
+    assert.deepEqual(visibleFindFields("audiobook"), ["title", "author", "isbn"]);
     assert.deepEqual(visibleFindFields(""), []);
   });
 
@@ -291,5 +295,32 @@ describe("catalog gap fan-out", () => {
     ]);
     assert.equal(ranked[0].complete, true);
     assert.equal(ranked[1].found, 3);
+  });
+});
+
+describe("NYT bestsellers presets", () => {
+  it("builds Find deep links for list and date", () => {
+    assert.equal(bestsellersHref(), "/find?preset=nyt&list=hardcover-fiction");
+    assert.equal(
+      bestsellersHref({ list: "hardcover-nonfiction", date: "2024-01-07" }),
+      "/find?preset=nyt&list=hardcover-nonfiction&date=2024-01-07",
+    );
+    assert.deepEqual(bestsellersFromSearchParams(new URLSearchParams("preset=nyt&list=hardcover-fiction")), {
+      list: "hardcover-fiction",
+      date: "current",
+    });
+    assert.equal(bestsellersFromSearchParams(new URLSearchParams("discover=7030")), null);
+  });
+
+  it("deep-links shelved hits to the work and misses to Search then Find", () => {
+    assert.equal(nytHitHref({ shelved: { id: "w1" }, title: "Dune" }), "/works/w1");
+    assert.equal(
+      nytHitHref({ title: "Dune", author: "Frank Herbert", isbn: "9780441172719" }),
+      "/search?q=Frank+Herbert+Dune&kind=book&author=Frank+Herbert&title=Dune&isbn=9780441172719",
+    );
+    assert.equal(
+      nytHitFindHref({ title: "Dune", author: "Frank Herbert", isbn: "9780441172719" }),
+      "/find?q=Frank+Herbert+Dune&kind=book&author=Frank+Herbert&title=Dune&isbn=9780441172719",
+    );
   });
 });

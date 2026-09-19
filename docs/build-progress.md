@@ -39,6 +39,7 @@ Plan: [librarian_automat_rss](file:///Users/willrompala/.cursor/plans/librarian_
 - **2026-09-15** — Search / Find split: Search is local FTS only (Hall hero + `/search`; Peek / Open / Favorite). **Find beyond the shelves** opens `/find` with `q`/kind and kind-appropriate fields, then Beyond. Find is not a nav tab. Five job words: Asked / On the way / Arrived / Needs you / Failed. SAB raw stays on Queue detail. Job payload sought / selected / retrieved — catalog title is what was asked.
 - **2026-09-15** — Scan the shelves: owner Settings walks `/data` roots into works+files. Idempotent. Does not move files. Collisions → Review. Separate from ingest/watch, which may move when identify is confident.
 - **2026-09-15** — In-browser reader: foliate-js EPUB + CBZ `comic-book.js` (and PDF) on `can_download` book/magazine/comic. Open on the work page; peek Open deep-links `?read=1`. Not Calibre-web. Audiobooks/music stay out (Phase 2b).
+- **2026-09-18** — Phase 2b Listen: Listening room (HTML5 + Media Session, mutagen chapters), Work/peek **Listen** primary + ABS/Plex **Open in player**, Continue rail for audiobook progress. Never Promote audiobooks to Plexamp.
 - **2026-09-15** — Work/peek honesty: Incoming / Review chips, media note when there is no file, hide Finished on music. Continue bookmarks; Finished is reading progress, not a job word.
 - **2026-09-15** — Discover: empty Find shows trending indexer category feeds from capabilities (v2 search or `/rss?t=`). Not a second Hall, not auto-SAB, no HTML scrape. Owner `show_extra_categories` (default off) adds Movies/TV/XXX — SAB then Radarr/Sonarr for movies/TV, SAB folder only for XXX; no arr token still queues SAB and chips Needs you. Never Hall works.
 - **2026-09-15** — Docker layer cache: npm ci / pip extras before source. `docker-run.sh` passes HARDCOVER, COMICVINE, ABS, SHOW_EXTRA_CATEGORIES, RADARR/SONARR, SAB_MOVIE/TV_CATEGORY, COMPLETE_ROOT. Does not wipe `./config`.
@@ -49,7 +50,6 @@ Plan: [librarian_automat_rss](file:///Users/willrompala/.cursor/plans/librarian_
 Library-first Phase 2 is landed. Do not list scan, Search/Find, job chips, Discover, ingest, or the reader here.
 
 - Hub `romwil/librarian` published (later; `rollout.sh` stays a stub)
-- In-app audiobook player or deep-link to Plex/ABS (Phase 2b)
 - Shared Python package with Smart Map — **only if** mutagen + filename agreement proves high reuse; contract first
 - Shared JSON+NZB grab/traffic service (fourth container) — **only if** two apps actually emit the same envelope; until then each app keeps its own indexer/SAB/arr client
 - OIDC / Plex sign-in (not v1, not Phase 2)

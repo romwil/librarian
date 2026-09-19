@@ -338,12 +338,16 @@ export function partSetRequestAction(set, selectedCount = 0) {
 }
 
 /** One-tap finish CTA when missing NZBs are listed after chase. */
-export function finishThisSetAction(set, { etaMinutes = null } = {}) {
+export function finishThisSetAction(set, { etaMinutes = null, approximate = false } = {}) {
   const gapItems = set?.missingItems || [];
   if (!gapItems.length) return null;
   const n = gapItems.length;
   let label = n === 1 ? "Finish this set" : `Finish this set (${n})`;
-  if (etaMinutes) label = `${label} · ~${etaMinutes} min`;
+  const minutes = Number(etaMinutes);
+  if (Number.isFinite(minutes) && minutes > 0) {
+    const mark = approximate ? "≈" : "~";
+    label = `${label} · ${mark}${Math.round(minutes)} min`;
+  }
   return {
     kind: "finish-set",
     style: "primary",

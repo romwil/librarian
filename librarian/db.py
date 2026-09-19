@@ -9,7 +9,7 @@ import threading
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 SQLITE_BUSY_TIMEOUT_MS = 30000
 FAVORITES_SHELF = "Favorites"
@@ -1798,25 +1798,94 @@ class Database:
                 (user_id, celebration_key, time.time()),
             )
 
-    def recent_job_durations(self, *, limit: int = 12) -> List[float]:
-        """Seconds between job created_at and updated_at for finished-ish slips."""
+    def recent_job_durations(
+        self,
+        *,
+        limit: int = 12,
+        kind: Optional[str] = None,
+        multipart: Optional[bool] = None,
+    ) -> List[float]:
+        """Seconds between created_at and updated_at for finished downloads.
+
+        Prefers real terminal statuses (``organized`` / ``review``). When ``kind``
+        is set, only that kind is sampled. When ``multipart`` is True, keep jobs
+        whose title (or selected payload title) carries a part marker.
+        """
+        from librarian.parts import parse_part_marker
+
+        kind_key = str(kind or "").strip() or None
+        fetch_limit = int(limit)
+        if kind_key or multipart is not None:
+            fetch_limit = max(fetch_limit * 4, 48)
         with self._connect() as conn:
-            rows = conn.execute(
-                """
-                SELECT created_at, updated_at FROM jobs
-                WHERE status IN ('complete', 'arrived', 'done', 'finished')
-                  AND updated_at > created_at
-                ORDER BY updated_at DESC
-                LIMIT ?
-                """,
-                (int(limit),),
-            ).fetchall()
+            if kind_key:
+                rows = conn.execute(
+                    """
+                    SELECT created_at, updated_at, title, payload_json FROM jobs
+                    WHERE status IN ('organized', 'review')
+                      AND updated_at > created_at
+                      AND kind = ?
+                    ORDER BY updated_at DESC
+                    LIMIT ?
+                    """,
+                    (kind_key, fetch_limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT created_at, updated_at, title, payload_json FROM jobs
+                    WHERE status IN ('organized', 'review')
+                      AND updated_at > created_at
+                    ORDER BY updated_at DESC
+                    LIMIT ?
+                    """,
+                    (fetch_limit,),
+                ).fetchall()
         out: List[float] = []
         for row in rows:
+            if multipart is not None:
+                title = str(row["title"] or "")
+                payload = _loads(row["payload_json"], {})
+                selected = payload.get("selected") if isinstance(payload, dict) else {}
+                sel_title = ""
+                if isinstance(selected, dict):
+                    sel_title = str(selected.get("title") or selected.get("name") or "")
+                has_part = bool(parse_part_marker(title) or parse_part_marker(sel_title))
+                if multipart and not has_part:
+                    continue
+                if multipart is False and has_part:
+                    continue
             try:
                 delta = float(row["updated_at"]) - float(row["created_at"])
             except (TypeError, ValueError):
                 continue
             if delta > 0:
                 out.append(delta)
+            if len(out) >= int(limit):
+                break
         return out
+
+    def tried_indexer_guids_for_work(self, work: Mapping[str, Any], *, limit: int = 80) -> List[str]:
+        """Failed + previously queued guids for a Review re-grab (exclude from ranking)."""
+        guids: List[str] = []
+        seen = set()
+
+        def _add(value: object) -> None:
+            text = str(value or "").strip()
+            if text and text not in seen:
+                seen.add(text)
+                guids.append(text)
+
+        _add(work.get("indexer_guid"))
+        work_id = str(work.get("id") or "").strip()
+        title = str(work.get("title") or "").strip()
+        for job in self.list_jobs(limit=int(limit)):
+            jg = job.get("indexer_guid")
+            if not jg:
+                continue
+            if work_id and str(job.get("work_id") or "") == work_id:
+                _add(jg)
+                continue
+            if title and str(job.get("title") or "").strip() == title:
+                _add(jg)
+        return guids

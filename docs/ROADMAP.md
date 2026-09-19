@@ -175,7 +175,7 @@ Sequence (history): scan → enrich/Hardcover → reader → catalog gaps → RS
 
 ### Phase 2b
 
-- [ ] In-app audiobook player or deep-link to Plex/ABS
+- [x] In-app audiobook player or deep-link to Plex/ABS
 
 ### Later
 

@@ -115,7 +115,7 @@ See [SECURITY.md](../../SECURITY.md). One owner. Last owner cannot be demoted. P
 ## OSS stack
 
 - Read: **foliate-js** for EPUB; CBZ via `comic-book.js`. Open on the work page when `can_download` and kind is book/magazine/comic. Not Calibre-web. Shipped.
-- Listen: HTML5 audio + Media Session; **music-metadata** / mutagen for chapters. Dest remains Plex/ABS. Phase 2b still owns in-app audiobook playback.
+- Listen: HTML5 audio + Media Session; mutagen chapters via `GET /api/works/{id}/chapters`. Dest remains Plex/ABS. Phase 2b shipped (Listening room + Continue bookmarks).
 - Metadata: isbnlib, Open Library, **Hardcover** (live token in settings), MusicBrainz, ebooklib, calibre `ebook-convert` when present. **Goodreads CSV / shelf export** import onto Favorites, matched by ISBN — not live Goodreads OAuth (the public API is effectively dead).
 - Do not vendor Calibre-web, Kavita, or Audiobookshelf as the product.
 
@@ -123,7 +123,7 @@ See [SECURITY.md](../../SECURITY.md). One owner. Last owner cannot be demoted. P
 
 - **v1 (this repo):** kit + auth + NZBFinder + SAB + identify/organize + Review + local gaps + Reading Room SPA + Automat `docker-run.sh`.
 - **Library first (landed):** scan `/data` roots; enrich (Open Library + Hardcover; Goodreads CSV); in-browser reader (foliate-js EPUB + CBZ); catalog gaps (Hardcover/OL, Comic Vine, MusicBrainz); Find extras (RSS, extra Newznab hosts, Audiobookshelf match); Search = local only; Find = post-search Beyond + Discover; five household job words.
-- **Phase 2b:** in-app audiobook player or deep-link to Plex/ABS
+- **Phase 2b (landed):** in-app audiobook player + deep-link to Plex/ABS
 - **Later / out:** OIDC / Plex sign-in. Hub publish. Shared Python package only if reuse is proven. Shared grab/traffic service only if two apps emit the same envelope. NZBGet, Calibre-web skin.
 - **Out of v1:** Hub publish, NZBGet, Plex/OIDC login, Movies/TV/XXX as Hall kinds, Goodreads live OAuth, genre enrichment if slow. (Scan, Hardcover/Goodreads CSV, and the built-in reader shipped in Library first.)
 

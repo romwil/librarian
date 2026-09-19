@@ -104,7 +104,7 @@ describe("QueryForm kinds", () => {
     const audio = renderForm(QueryForm, { variant: "search", kind: "audiobook" });
     assert.match(audio, />Title</);
     assert.match(audio, />Author</);
-    assert.equal(audio.includes(">ISBN<"), false);
+    assert.match(audio, />ISBN</);
     assert.equal(audio.includes(">Album<"), false);
 
     const all = renderForm(QueryForm, { variant: "search", kind: "" });

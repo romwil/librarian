@@ -9,6 +9,7 @@ import {
   filenameFromDisposition,
   pageTurnSide,
   primaryReadingFile,
+  readerCtaLabel,
   readerEngine,
   readerOpenError,
   readingFileName,
@@ -67,15 +68,24 @@ describe("in-app reader", () => {
     );
   });
 
-  it("does not steal Open for music or audiobooks (Phase 2b still owns playback)", () => {
+  it("does not steal Read for music or audiobooks (Listen owns audiobook playback)", () => {
     assert.equal(canReadInApp({ kind: "music" }, [{ filename: "01-track.flac" }]), false);
     assert.equal(canReadInApp({ kind: "audiobook" }, [{ filename: "Dune.m4b" }]), false);
+    assert.equal(canOpenInlineMedia({ kind: "audiobook" }, true, false), false);
     assert.equal(canReadInApp({ kind: "book" }, [{ filename: "cover.jpg" }]), false);
     assert.equal(canReadInApp({ kind: "book" }, []), false);
     assert.equal(canReadInApp({ kind: "book" }, [{ filename: "Title.azw3" }]), false);
   });
 
-  it("Kindle-only books get Download, not inline Open", () => {
+  it("labels the in-browser reader CTA Read for books and comics", () => {
+    assert.equal(readerCtaLabel({ kind: "book" }), "Read");
+    assert.equal(readerCtaLabel({ kind: "comic" }), "Read");
+    assert.equal(readerCtaLabel({ kind: "magazine" }), "Read");
+    assert.equal(readerCtaLabel({ kind: "audiobook" }), "");
+    assert.equal(readerCtaLabel({ kind: "music" }), "");
+  });
+
+  it("Kindle-only books get Download, not inline Read", () => {
     assert.equal(canOpenInlineMedia({ kind: "book" }, true, false), false);
     assert.equal(canOpenInlineMedia({ kind: "music" }, true, false), true);
   });

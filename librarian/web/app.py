@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from starlette.background import BackgroundTask
 
 from librarian import __version__
+from librarian.audiobook_match import companion_audiobook_payload
 from librarian.audiobookshelf import abs_match_counts, match_audiobooks
 from librarian.auth import (
     clear_session_cookie,
@@ -67,6 +68,20 @@ from librarian.invites import (
 )
 from librarian.jobs import confirm_asked_job, enqueue_indexer_item, poll_active_jobs, poll_job
 from librarian.kinds import ALL_KINDS, EXTRA_KINDS
+from librarian.listen import extract_chapters, listen_payload
+from librarian.lists import (
+    chase_missing_items,
+    curated_list_payload,
+    list_presets,
+)
+from librarian.nyt_books import (
+    NytBooksClient,
+    NytBooksError,
+    default_list_names,
+    match_local_work,
+    normalize_list_date,
+    normalize_list_name,
+)
 from librarian.nzbfinder import NZBFinderError
 from librarian.organize import (
     apply_review,
@@ -206,6 +221,7 @@ class SettingsPayload(BaseModel):
     llm_model: Optional[str] = None
     household_name: Optional[str] = None
     hardcover_api_token: Optional[str] = None
+    nyt_books_api_key: Optional[str] = None
     comicvine_api_key: Optional[str] = None
     watch_root: Optional[str] = None
     watch_enabled: Optional[bool] = None
@@ -252,6 +268,25 @@ class CelebrationSeenPayload(BaseModel):
 
 class FinishSetEtaPayload(BaseModel):
     missing_count: int = 0
+    kind: str = ""
+    total_bytes: Optional[int] = None
+    multipart: bool = False
+
+
+class LlmListPayload(BaseModel):
+    preset: str = "hardcover-fiction"
+    date: str = "current"
+    query: str = ""
+
+
+class LlmListChaseItem(BaseModel):
+    title: str
+    author: str
+    isbn: str = ""
+
+
+class LlmListChasePayload(BaseModel):
+    items: List[LlmListChaseItem] = []
 
 
 def public_work(row: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -615,6 +650,180 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             "can_request": request.state.user["role"] in ("owner", "op", "reader"),
         }
 
+    @app.get("/api/lists/presets")
+    def curated_list_presets(request: Request):
+        require_role(request.state.user, "owner", "op", "reader")
+        cfg = settings()
+        llm_ok = bool(str(cfg.llm_base_url or "").strip() and str(cfg.llm_api_key or "").strip())
+        return {
+            "presets": list_presets(),
+            "configured": llm_ok,
+            "source": "llm",
+            "empty_copy": (
+                ""
+                if llm_ok
+                else "Add a BYO LLM in Settings to load curated bestseller lists."
+            ),
+        }
+
+    @app.post("/api/lists/llm")
+    def curated_llm_list(payload: LlmListPayload, request: Request):
+        """BYO LLM curated list → match local shelves. Fail closed without LLM."""
+        require_role(request.state.user, "owner", "op", "reader")
+        when = normalize_list_date(payload.date)
+        if not when:
+            raise HTTPException(status_code=400, detail="Date must be YYYY-MM-DD or current")
+        result = curated_list_payload(
+            settings(),
+            db,
+            preset=payload.preset,
+            date=when,
+            query=payload.query,
+            data_dir=root,
+        )
+        # Enrich shelved stubs with public_work cover flags.
+        for entry in result.get("books") or []:
+            for key in ("shelved", "shelved_audiobook"):
+                stub = entry.get(key)
+                if not stub or not stub.get("id"):
+                    continue
+                work = public_work(db.get_work(str(stub["id"])))
+                if work:
+                    entry[key] = {
+                        "id": work.get("id"),
+                        "title": work.get("title"),
+                        "author": work.get("author"),
+                        "kind": stub.get("kind") or work.get("kind"),
+                        "has_cover": bool(work.get("has_cover") or work.get("cover_path")),
+                    }
+        result["can_request"] = request.state.user["role"] in ("owner", "op", "reader")
+        result["can_confirm"] = request.state.user["role"] in ("owner", "op")
+        return result
+
+    @app.post("/api/lists/llm/chase")
+    def curated_llm_chase(payload: LlmListChasePayload, request: Request):
+        """Find beyond for missing list titles (book + audiobook). Never auto-queues."""
+        require_role(request.state.user, "owner", "op", "reader")
+        items = [row.model_dump() for row in (payload.items or [])]
+        results = chase_missing_items(settings(), items)
+        return {
+            "results": results,
+            "can_request": request.state.user["role"] in ("owner", "op", "reader"),
+            "can_confirm": request.state.user["role"] in ("owner", "op"),
+        }
+
+    @app.get("/api/lists/nyt/names")
+    def nyt_list_names(request: Request):
+        """Optional NYT Books API names — soft-deprecated; prefer POST /api/lists/llm."""
+        require_role(request.state.user, "owner", "op", "reader")
+        cfg = settings()
+        key = str(cfg.nyt_books_api_key or "").strip()
+        if not key:
+            return {
+                "configured": False,
+                "names": default_list_names(),
+                "empty_reason": "missing_key",
+                "empty_copy": "Add a BYO LLM in Settings for curated bestseller lists (NYT Books API key is optional fallback).",
+                "deprecated": True,
+            }
+        client = NytBooksClient(key, data_dir=root)
+        try:
+            names = client.list_names()
+        except NytBooksError as error:
+            return {
+                "configured": True,
+                "names": default_list_names(),
+                "empty_reason": "error",
+                "empty_copy": str(error),
+                "deprecated": True,
+            }
+        finally:
+            client.close()
+        return {
+            "configured": True,
+            "names": names or default_list_names(),
+            "empty_reason": "",
+            "empty_copy": "",
+            "deprecated": True,
+        }
+
+    @app.get("/api/lists/nyt")
+    def nyt_bestseller_list(
+        request: Request,
+        list: str = "hardcover-fiction",  # noqa: A002 — query param name matches NYT docs
+        date: str = "current",
+    ):
+        require_role(request.state.user, "owner", "op", "reader")
+        slug = normalize_list_name(list) or "hardcover-fiction"
+        when = normalize_list_date(date)
+        if not when:
+            raise HTTPException(status_code=400, detail="Date must be YYYY-MM-DD or current")
+        cfg = settings()
+        key = str(cfg.nyt_books_api_key or "").strip()
+        client = NytBooksClient(key, data_dir=root)
+        try:
+            payload = client.bestseller_list(slug, date=when)
+        except NytBooksError as error:
+            client.close()
+            return {
+                "configured": bool(key),
+                "list_name": slug,
+                "date": when,
+                "published_date": "",
+                "display_name": slug,
+                "books": [],
+                "empty_reason": "error",
+                "empty_copy": str(error),
+            }
+        client.close()
+        books = []
+        for book in payload.get("books") or []:
+            query = " ".join(
+                part for part in (str(book.get("author") or "").strip(), str(book.get("title") or "").strip()) if part
+            )
+            candidates: List[Dict[str, Any]] = []
+            isbn = str(book.get("isbn") or "").strip()
+            if isbn:
+                candidates.extend(db.search_works(isbn, limit=8, kind="book"))
+            if query:
+                candidates.extend(db.search_works(query, limit=12, kind="book"))
+            # Deduplicate by id while preserving order.
+            seen: set[str] = set()
+            uniq: List[Dict[str, Any]] = []
+            for row in candidates:
+                wid = str(row.get("id") or "")
+                if not wid or wid in seen:
+                    continue
+                seen.add(wid)
+                uniq.append(row)
+            local = match_local_work(book, uniq)
+            entry = dict(book)
+            if local:
+                pub = public_work(local)
+                entry["shelved"] = {
+                    "id": pub.get("id") if pub else local.get("id"),
+                    "title": (pub or local).get("title"),
+                    "author": (pub or local).get("author"),
+                    "has_cover": bool((pub or local).get("has_cover") or (pub or local).get("cover_path")),
+                }
+            else:
+                entry["shelved"] = None
+            books.append(entry)
+        empty_reason = str(payload.get("empty_reason") or "")
+        empty_copy = ""
+        if empty_reason == "missing_key":
+            empty_copy = "Add a BYO LLM in Settings for curated bestseller lists (NYT Books API key is optional fallback)."
+        elif empty_reason == "empty_list":
+            empty_copy = "That list came back empty for this date."
+        elif not books and not empty_reason:
+            empty_copy = "No titles on this list yet."
+        return {
+            **payload,
+            "books": books,
+            "empty_copy": empty_copy,
+            "deprecated": True,
+        }
+
     @app.get("/api/works/{work_id}")
     def work_detail(work_id: str, request: Request):
         work = public_work(db.get_work(work_id))
@@ -649,13 +858,20 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
                 current=work.get("series_index"),
             )
         whispers = db.list_whispers(work_id, limit=WHISPER_LIST_LIMIT)
+        can_download = bool(on_disk)
+        audiobook = companion_audiobook_payload(
+            work,
+            audiobooks=db.list_works(kind="audiobook", limit=500) if kind == "book" else [],
+        )
         return {
             "work": work,
             "files": annotate_work_files(files, on_disk),
             "file_count": len(on_disk),
             "can_open": bool(on_disk),
-            "can_download": bool(on_disk),
+            "can_download": can_download,
             "can_read": can_read_work(str(work.get("kind") or ""), on_disk),
+            "listen": listen_payload(work, can_download=can_download, settings=settings()),
+            "audiobook": audiobook,
             "favorite": db.is_favorite(request.state.user["id"], work_id),
             "related": related,
             "progress": progress,
@@ -713,15 +929,44 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
     @app.post("/api/find/finish-eta")
     def finish_eta(payload: FinishSetEtaPayload, request: Request):
         require_role(request.state.user, "owner", "op", "reader")
-        minutes = estimate_finish_eta_minutes(
-            missing_count=int(payload.missing_count or 0),
-            recent_seconds=db.recent_job_durations(),
+        miss = int(payload.missing_count or 0)
+        kind = str(payload.kind or "").strip()
+        multipart = bool(payload.multipart)
+        kind_samples = (
+            db.recent_job_durations(kind=kind, multipart=True if multipart else None)
+            if kind
+            else []
         )
+        pool_approximate = False
+        if len(kind_samples) >= 2:
+            samples = kind_samples
+        else:
+            global_samples = db.recent_job_durations(
+                multipart=True if multipart else None
+            )
+            if len(global_samples) >= 2:
+                samples = global_samples
+                pool_approximate = bool(kind)
+            elif kind_samples:
+                samples = kind_samples
+                pool_approximate = True
+            else:
+                samples = global_samples
+                pool_approximate = True
+        eta = estimate_finish_eta_minutes(
+            missing_count=miss,
+            recent_seconds=samples,
+            total_bytes=payload.total_bytes,
+        )
+        minutes = eta.get("eta_minutes")
+        approximate = bool(eta.get("approximate")) or (bool(minutes) and pool_approximate)
         return {
             "eta_minutes": minutes,
+            "approximate": approximate if minutes else False,
             "label": finish_set_label(
-                missing_count=int(payload.missing_count or 0),
+                missing_count=miss,
                 eta_minutes=minutes,
+                approximate=approximate if minutes else False,
             ),
             "quiet_hours": in_quiet_hours(settings()),
         }
@@ -888,6 +1133,29 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             content_disposition_type="inline",
         )
 
+    @app.get("/api/works/{work_id}/chapters")
+    def work_chapters(work_id: str, request: Request, file: str = ""):
+        """Mutagen chapter markers for an audiobook file (empty list when none)."""
+        require_role(request.state.user, "owner", "op", "reader")
+        work = db.get_work(work_id)
+        if work is None:
+            raise HTTPException(status_code=404, detail="Work not found")
+        rows = db.files_for_work(work_id)
+        wanted = str(file or "").strip()
+        if wanted:
+            chosen = resolve_catalog_file(rows, wanted)
+            if chosen is None:
+                raise HTTPException(status_code=404, detail="File not found")
+        else:
+            on_disk = existing_file_paths(rows)
+            streamable = [path for path in on_disk if is_streamable_audio(path)]
+            if not streamable:
+                raise HTTPException(status_code=404, detail="File not found")
+            chosen = streamable[0]
+        if not is_streamable_audio(chosen):
+            raise HTTPException(status_code=422, detail="Not a streamable audio file")
+        return {"chapters": extract_chapters(chosen), "file": wanted or chosen.name}
+
     @app.post("/api/works/{work_id}/convert")
     def work_convert(work_id: str, payload: ConvertPayload, request: Request):
         require_role(request.state.user, "owner", "op", "reader")
@@ -1053,9 +1321,43 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             title=str(work.get("title") or ""),
             author=str(work.get("author") or ""),
         )
+        failed_guid = str(work.get("indexer_guid") or "").strip()
+        failed_ctx: Dict[str, Any] = {
+            "guid": failed_guid,
+            "title": str(work.get("title") or "").strip(),
+            "host": "",
+            "size": None,
+        }
+        file_sizes = [
+            int(row["size"])
+            for row in db.files_for_work(work_id)
+            if row.get("size") is not None
+        ]
+        if file_sizes:
+            failed_ctx["size"] = sum(file_sizes)
+        if failed_guid:
+            prior = db.get_job_by_indexer_guid(failed_guid)
+            if prior:
+                payload = prior.get("payload") if isinstance(prior.get("payload"), dict) else {}
+                selected = payload.get("selected") if isinstance(payload.get("selected"), dict) else {}
+                if selected.get("title"):
+                    failed_ctx["title"] = str(selected.get("title") or "")
+                if selected.get("size") is not None:
+                    failed_ctx["size"] = selected.get("size")
+                elif prior.get("bytes") is not None:
+                    failed_ctx["size"] = prior.get("bytes")
+                failed_ctx["host"] = str(
+                    selected.get("host_name")
+                    or selected.get("host")
+                    or selected.get("indexer")
+                    or ""
+                ).strip()
+        exclude = db.tried_indexer_guids_for_work(work)
         candidates = rank_regrab_candidates(
             hits or [],
-            failed_guid=str(work.get("indexer_guid") or ""),
+            failed_guid=failed_guid,
+            failed=failed_ctx,
+            exclude_guids=exclude,
             limit=3,
         )
         return {

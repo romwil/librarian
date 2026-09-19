@@ -76,9 +76,36 @@ def test_quiet_hours_overnight_window():
 
 
 def test_estimate_finish_eta_and_label():
-    minutes = estimate_finish_eta_minutes(missing_count=2, recent_seconds=[120, 180, 240])
-    assert minutes == 6
-    assert "Request missing (2)" in finish_set_label(missing_count=2, eta_minutes=minutes)
+    eta = estimate_finish_eta_minutes(missing_count=2, recent_seconds=[120, 180, 240])
+    assert eta["eta_minutes"] == 6
+    assert eta["approximate"] is False
+    assert "Request missing (2)" in finish_set_label(missing_count=2, eta_minutes=eta["eta_minutes"])
+    assert "~6 min" in finish_set_label(missing_count=2, eta_minutes=6)
+
+
+def test_estimate_finish_eta_size_fallback_and_honest_empty():
+    empty = estimate_finish_eta_minutes(missing_count=3, recent_seconds=[])
+    assert empty["eta_minutes"] is None
+    assert empty["approximate"] is False
+    assert finish_set_label(missing_count=3, eta_minutes=None) == "Request missing (3)"
+    assert "min" not in finish_set_label(missing_count=3, eta_minutes=0)
+
+    sized = estimate_finish_eta_minutes(
+        missing_count=2,
+        recent_seconds=[90],
+        total_bytes=70_000_000,
+    )
+    assert sized["eta_minutes"] is not None and sized["eta_minutes"] >= 1
+    assert sized["approximate"] is True
+    assert "≈" in finish_set_label(
+        missing_count=2,
+        eta_minutes=sized["eta_minutes"],
+        approximate=True,
+    )
+
+    only_size = estimate_finish_eta_minutes(missing_count=1, recent_seconds=[], total_bytes=21_000_000)
+    assert only_size["approximate"] is True
+    assert only_size["eta_minutes"] == 1  # 21e6 / 350e3 / 60 ≈ 1
 
 
 def test_rank_regrab_skips_failed_guid():
@@ -88,10 +115,56 @@ def test_rank_regrab_skips_failed_guid():
             {"guid": "b", "title": "Alt", "size": 2_000_000, "host": "nzb.example"},
         ],
         failed_guid="a",
+        failed={"guid": "a", "title": "Same", "size": 2_000_000},
     )
     assert len(ranked) == 1
     assert ranked[0]["guid"] == "b"
     assert "Alt" in ranked[0]["diff"]
+
+
+def test_rank_regrab_orders_by_similarity_size_host():
+    failed = {
+        "guid": "fail",
+        "title": "Guardians of the Night Part 1/4",
+        "size": 100_000_000,
+        "host": "nzbfinder",
+    }
+    ranked = rank_regrab_candidates(
+        [
+            {
+                "guid": "far",
+                "title": "Totally Unrelated Cookbook",
+                "size": 5_000_000,
+                "host": "other",
+            },
+            {
+                "guid": "close-other-host",
+                "title": "Guardians of the Night Part 1/4",
+                "size": 102_000_000,
+                "host": "alt-indexer",
+            },
+            {
+                "guid": "best",
+                "title": "Guardians of the Night Part 1/4",
+                "size": 101_000_000,
+                "host": "nzbfinder",
+            },
+            {"guid": "fail", "title": "Guardians of the Night Part 1/4", "size": 100_000_000},
+            {
+                "guid": "tried",
+                "title": "Guardians of the Night Part 1/4",
+                "size": 100_000_000,
+                "host": "nzbfinder",
+            },
+        ],
+        failed=failed,
+        exclude_guids=["tried"],
+        limit=3,
+    )
+    assert [row["guid"] for row in ranked] == ["best", "close-other-host", "far"]
+    assert "Same series" in ranked[0]["diff"]
+    assert "%" in ranked[0]["diff"] or "size" in ranked[0]["diff"].lower()
+    assert "Same host" in ranked[0]["diff"]
 
 
 def test_plexamp_handoff_never_audiobook():
@@ -203,3 +276,93 @@ def test_db_prefs_and_celebrations(tmp_path):
     if unseen:
         db.mark_celebration_seen(user["id"], unseen[0]["key"])
         assert db.unseen_celebrations(user["id"], notes) != unseen
+
+
+def test_recent_job_durations_kind_and_multipart(tmp_path):
+    db = Database(tmp_path / "librarian.db")
+    now = 1_700_000_000.0
+    book = db.create_job(
+        {
+            "status": "organized",
+            "title": "Plain Book",
+            "kind": "book",
+            "indexer_guid": "g-book",
+        }
+    )
+    multi = db.create_job(
+        {
+            "status": "organized",
+            "title": "Series Dump Part 2/4",
+            "kind": "audiobook",
+            "indexer_guid": "g-multi",
+        }
+    )
+    other = db.create_job(
+        {
+            "status": "organized",
+            "title": "Album Night",
+            "kind": "music",
+            "indexer_guid": "g-music",
+        }
+    )
+    with db._connect() as conn:
+        conn.execute(
+            "UPDATE jobs SET created_at = ?, updated_at = ? WHERE id = ?",
+            (now, now + 120, book["id"]),
+        )
+        conn.execute(
+            "UPDATE jobs SET created_at = ?, updated_at = ? WHERE id = ?",
+            (now, now + 300, multi["id"]),
+        )
+        conn.execute(
+            "UPDATE jobs SET created_at = ?, updated_at = ? WHERE id = ?",
+            (now, now + 180, other["id"]),
+        )
+    assert db.recent_job_durations(kind="book") == [120.0]
+    assert db.recent_job_durations(kind="audiobook", multipart=True) == [300.0]
+    assert 120.0 in db.recent_job_durations()
+    assert db.recent_job_durations(kind="comic") == []
+
+
+def test_finish_eta_api_kind_and_size(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    assert client.post("/api/auth/local/login", json={"username": "owner", "password": "password123"}).status_code == 200
+    db = Database(Path(tmp_path) / "librarian.db")
+    now = 1_700_000_100.0
+    for i, secs in enumerate((100, 200, 300)):
+        job = db.create_job(
+            {
+                "status": "organized",
+                "title": f"Book {i}",
+                "kind": "book",
+                "indexer_guid": f"g-{i}",
+            }
+        )
+        with db._connect() as conn:
+            conn.execute(
+                "UPDATE jobs SET created_at = ?, updated_at = ? WHERE id = ?",
+                (now, now + secs, job["id"]),
+            )
+    median = client.post(
+        "/api/find/finish-eta",
+        json={"missing_count": 2, "kind": "book", "multipart": False},
+    )
+    assert median.status_code == 200
+    body = median.json()
+    assert body["eta_minutes"] == 7  # median 200s * 2 / 60
+    assert body["approximate"] is False
+
+    empty = client.post("/api/find/finish-eta", json={"missing_count": 2, "kind": "comic"})
+    # Falls back to book samples (global) → approximate when kind-scoped was thin
+    assert empty.status_code == 200
+    assert empty.json()["eta_minutes"] == 7
+    assert empty.json()["approximate"] is True
+
+    sized = client.post(
+        "/api/find/finish-eta",
+        json={"missing_count": 2, "kind": "magazine", "total_bytes": 70_000_000},
+    )
+    # No magazine samples; global book samples exist (≥2) so median path, approximate
+    assert sized.status_code == 200
+    assert sized.json()["eta_minutes"] == 7
+    assert sized.json()["approximate"] is True

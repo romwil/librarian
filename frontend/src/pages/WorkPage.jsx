@@ -6,11 +6,14 @@ import { coverWashStyle, coverWashUrl, isInboundJob } from "../cover.js";
 import { canPromoteIncomingMusic, humanError, peekMediaNote } from "../copy.js";
 import { looksLikeHtml, sanitizeDescriptionHtml } from "../description.js";
 import { findHref } from "../find.js";
+import { companionAudiobookView } from "../audiobookCompanion.js";
 import { isIncompleteOwnedPartSet, ownedPartSetStatusLine, partSetFindFields } from "../findParts.js";
 import { useAlbumPlayer } from "../hooks/useAlbumPlayer.js";
-import { canOpenInlineMedia, canReadInApp, workDownloadUrl } from "../reader.js";
+import { canListenInApp, isAudioFile } from "../listen.js";
+import { canOpenInlineMedia, canReadInApp, readerCtaLabel, workDownloadUrl } from "../reader.js";
 import Rail from "../components/Rail.jsx";
 import Reader from "../components/Reader.jsx";
+import AudiobookPlayer from "../components/AudiobookPlayer.jsx";
 import PlexampToast from "../components/PlexampToast.jsx";
 
 export default function WorkPage() {
@@ -24,6 +27,8 @@ export default function WorkPage() {
   const [enrichNote, setEnrichNote] = useState("");
   const [reading, setReading] = useState(false);
   const [readingFileId, setReadingFileId] = useState("");
+  const [listening, setListening] = useState(false);
+  const [listeningFileId, setListeningFileId] = useState("");
   const [whisperBody, setWhisperBody] = useState("");
   const [whisperNote, setWhisperNote] = useState("");
   const [plexamp, setPlexamp] = useState(null);
@@ -48,6 +53,13 @@ export default function WorkPage() {
   useEffect(() => {
     if (!data) return;
     const readable = Boolean(data.can_read) && canReadInApp(data.work, data.files);
+    const listenable =
+      Boolean(data.listen?.can_listen) && canListenInApp(data.work, data.files, Boolean(data.can_download));
+    if (searchParams.get("listen") === "1" && listenable) {
+      setListeningFileId(searchParams.get("file") || "");
+      setListening(true);
+      return;
+    }
     if (searchParams.get("read") === "1" && readable) {
       setReadingFileId(searchParams.get("file") || "");
       setReading(true);
@@ -60,6 +72,7 @@ export default function WorkPage() {
     setReading(true);
     // Shareable deep link — same `?read=1&file=` contract as WorkPeek (`workReaderPath`).
     const next = new URLSearchParams(searchParams);
+    next.delete("listen");
     next.set("read", "1");
     if (wanted) next.set("file", wanted);
     else next.delete("file");
@@ -77,6 +90,29 @@ export default function WorkPage() {
     }
   }
 
+  function openListen(fileId = "") {
+    const wanted = String(fileId || "").trim();
+    setListeningFileId(wanted);
+    setListening(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete("read");
+    next.set("listen", "1");
+    if (wanted) next.set("file", wanted);
+    else next.delete("file");
+    setSearchParams(next, { replace: true });
+  }
+
+  function closeListen() {
+    setListening(false);
+    setListeningFileId("");
+    if (searchParams.get("listen") || searchParams.get("file")) {
+      const next = new URLSearchParams(searchParams);
+      next.delete("listen");
+      next.delete("file");
+      setSearchParams(next, { replace: true });
+    }
+  }
+
   if (error) {
     return (
       <div className="admin-room">
@@ -88,7 +124,11 @@ export default function WorkPage() {
 
   const work = data.work;
   const canRead = Boolean(data.can_read) && canReadInApp(work, data.files);
+  const canListen =
+    Boolean(data.listen?.can_listen) && canListenInApp(work, data.files, Boolean(data.can_download));
   const canInlineOpen = canOpenInlineMedia(work, Boolean(data.can_download), canRead);
+  const playerLink = data.listen?.player || null;
+  const playerNote = data.listen?.player_note || "";
   const mediaNote = peekMediaNote(work, { canDownload: Boolean(data.can_download), ready: true });
   const descriptionHtml = looksLikeHtml(work.description) ? sanitizeDescriptionHtml(work.description) : "";
   const washUrl = coverWashUrl(work);
@@ -96,6 +136,8 @@ export default function WorkPage() {
   const incompleteParts = isIncompleteOwnedPartSet(work.part_set);
   const findMissingHref = incompleteParts ? findHref(partSetFindFields(work)) : "";
   const partStatus = incompleteParts ? ownedPartSetStatusLine(work.part_set) : "";
+  const audiobookCta = companionAudiobookView(data.audiobook);
+  const readLabel = readerCtaLabel(work) || "Read";
 
   async function favorite() {
     const next = await api.favorite(work.id);
@@ -174,7 +216,11 @@ export default function WorkPage() {
             <button type="button" className="cta outline compact" onClick={favorite}>
               {data.favorite ? "In Favorites" : "Favorite"}
             </button>
-            {album.enabled ? (
+            {canListen ? (
+              <button type="button" className="cta compact" onClick={() => openListen()} data-testid="work-listen">
+                Listen
+              </button>
+            ) : album.enabled ? (
               <button
                 type="button"
                 className="cta compact"
@@ -185,7 +231,7 @@ export default function WorkPage() {
               </button>
             ) : canRead ? (
               <button type="button" className="cta compact" onClick={() => openReader()} data-testid="work-open">
-                Open
+                {readLabel}
               </button>
             ) : canInlineOpen ? (
               <a
@@ -195,7 +241,32 @@ export default function WorkPage() {
                 rel="noreferrer"
                 data-testid="work-open"
               >
-                Open
+                {readLabel}
+              </a>
+            ) : null}
+            {audiobookCta.show && audiobookCta.shelved ? (
+              <Link
+                className="cta outline compact"
+                to={audiobookCta.listenHref}
+                data-testid="work-audiobook-listen"
+              >
+                {audiobookCta.secondaryLabel}
+              </Link>
+            ) : null}
+            {audiobookCta.show && !audiobookCta.shelved ? (
+              <Link className="cta outline compact" to={audiobookCta.findHref} data-testid="work-find-audiobook">
+                {audiobookCta.primaryLabel}
+              </Link>
+            ) : null}
+            {canListen && playerLink?.href ? (
+              <a
+                className="cta outline compact"
+                href={playerLink.href}
+                target="_blank"
+                rel="noreferrer"
+                data-testid="work-open-player"
+              >
+                {playerLink.label || "Open in player"}
               </a>
             ) : null}
             {data.can_download ? (
@@ -249,6 +320,11 @@ export default function WorkPage() {
               Back to The Hall
             </Link>
           </div>
+          {canListen && !playerLink?.href && playerNote ? (
+            <p className="muted" data-testid="work-player-note">
+              {playerNote}
+            </p>
+          ) : null}
         </div>
       </section>
       <div className="work-body">
@@ -400,6 +476,16 @@ export default function WorkPage() {
                       Reading Room
                     </button>
                   ) : null}
+                  {canListen && file.on_disk !== false && isAudioFile(file) ? (
+                    <button
+                      type="button"
+                      className="chip"
+                      onClick={() => openListen(file.id)}
+                      data-testid="file-listen"
+                    >
+                      Listen
+                    </button>
+                  ) : null}
                   {album.canPlayFile(file) ? (
                     <button
                       type="button"
@@ -441,6 +527,17 @@ export default function WorkPage() {
           fileId={readingFileId}
           progress={data.progress}
           onClose={closeReader}
+        />
+      ) : null}
+      {listening && canListen ? (
+        <AudiobookPlayer
+          work={work}
+          files={data.files}
+          fileId={listeningFileId}
+          progress={data.progress}
+          player={playerLink}
+          playerNote={playerNote}
+          onClose={closeListen}
         />
       ) : null}
       {plexamp ? <PlexampToast handoff={plexamp} onClose={() => setPlexamp(null)} /> : null}

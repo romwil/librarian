@@ -251,16 +251,20 @@ def test_ingest_refuses_library_root_with_honest_copy(tmp_path, monkeypatch):
     assert "scan" in detail
 
 
-def test_ingest_empty_dump_fails_with_reason(tmp_path, monkeypatch):
+def test_ingest_empty_dump_parks_review_slip(tmp_path, monkeypatch):
     monkeypatch.setenv("LIBRARIAN_FS_ROOT", str(tmp_path))
     settings = _settings(tmp_path)
     empty = tmp_path / "inbox" / "books"
     empty.mkdir(parents=True)
     db = Database(tmp_path / "librarian.db")
     job = enqueue_ingest(db, settings, path=empty, requested_by="owner-1")
-    assert job["status"] == "failed"
-    assert "nothing to identify" in str(job["error"]).lower()
+    assert job["status"] == "review"
+    assert job["work_id"]
+    assert job["error"] is None
     assert job["title"] == "books"
+    work = db.get_work(job["work_id"])
+    assert work["review_state"] == "needs_review"
+    assert work["review_reason"] in {"no_payload", "unknown_identity", "low_confidence"}
 
 
 def test_ingest_allows_dump_under_complete_root(tmp_path, monkeypatch):

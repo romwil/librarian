@@ -57,7 +57,7 @@ On first boot `seed_env_owner` reads:
 
 Rotating the env password on restart updates the **same** username’s hash (Unraid lockout recovery). It never clobbers a different existing owner. The container serves `/api/health` before an owner exists; library APIs return 503 until one is seeded.
 
-`settings.json` wins for keys already saved in the UI. Env fills missing keys. Blank secrets still take env until you save a key. `docker-run.sh` also passes optional `HARDCOVER_API_TOKEN`, `COMICVINE_API_KEY`, `AUDIOBOOKSHELF_URL`, `AUDIOBOOKSHELF_API_TOKEN`, `RADARR_URL`, `RADARR_API_KEY`, `SONARR_URL`, `SONARR_API_KEY`, and `SHOW_EXTRA_CATEGORIES` from `.env` (names only — never log values).
+`settings.json` wins for keys already saved in the UI. Env fills missing keys. Blank secrets still take env until you save a key. `docker-run.sh` also passes optional `HARDCOVER_API_TOKEN`, `NYT_BOOKS_API_KEY`, `COMICVINE_API_KEY`, `AUDIOBOOKSHELF_URL`, `AUDIOBOOKSHELF_API_TOKEN`, `RADARR_URL`, `RADARR_API_KEY`, `SONARR_URL`, `SONARR_API_KEY`, and `SHOW_EXTRA_CATEGORIES` from `.env` (names only — never log values).
 
 ## Unraid (no Compose)
 

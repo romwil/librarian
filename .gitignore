@@ -31,6 +31,9 @@ playwright-report/
 secrets.json
 session_secret
 
+# Local code intelligence index — never commit.
+.codegraph/
+
 # Reference checkouts must never land in this worktree (copies or symlinks).
 /smart.map/
 /projectionist/

@@ -412,5 +412,20 @@ describe("finish this set (E5)", () => {
     assert.equal(action.enabled, true);
     assert.match(action.label, /Finish this set \(2\)/);
     assert.match(action.label, /12 min/);
+    assert.match(action.label, /~/);
+  });
+
+  it("marks approximate ETA and never shows ~0 min", () => {
+    const approx = finishThisSetAction(
+      { missingItems: [{ guid: "g1", title: "Part 2" }], missing: [2] },
+      { etaMinutes: 8, approximate: true },
+    );
+    assert.match(approx.label, /≈8 min/);
+    const zero = finishThisSetAction(
+      { missingItems: [{ guid: "g1", title: "Part 2" }], missing: [2] },
+      { etaMinutes: 0 },
+    );
+    assert.equal(zero.label, "Finish this set");
+    assert.doesNotMatch(zero.label, /min/);
   });
 });
