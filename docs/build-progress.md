@@ -57,3 +57,4 @@ Library-first Phase 2 is landed. Do not list scan, Search/Find, job chips, Disco
 
 Personalized recs and HTML scrape of indexer Discover stay skipped on purpose.
 - **2026-09-18** `203962d` — Ship **0.3.0**: Phase 2b Listen player, LLM bestsellers (+ audiobook chase), finish-ETA/smart re-grab deepen, community Read/peek/companion UX, `unpack_stuck` Review recovery for audiobook archives. Automat rebuild to follow.
+- **2026-09-18** — Automat `docker-run.sh` rebuilt `librarian` to **`f343292`** (0.3.0). Health ok on `:8793`. `./config` kept.
