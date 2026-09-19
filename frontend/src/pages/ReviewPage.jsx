@@ -34,11 +34,13 @@ export default function ReviewPage() {
   const [bulkNote, setBulkNote] = useState("");
   const [error, setError] = useState("");
   const [regrabs, setRegrabs] = useState({});
+  const [matchBags, setMatchBags] = useState({});
   const [quiet, setQuiet] = useState(null);
   const [quietNote, setQuietNote] = useState("");
   const [suggestNotes, setSuggestNotes] = useState({});
   const focusRef = useRef(null);
   const autoRegrabTried = useRef(new Set());
+  const autoMatchTried = useRef(new Set());
   const autoSuggestTried = useRef(new Set());
 
   function reload() {
@@ -192,6 +194,47 @@ export default function ReviewPage() {
       /* note already set */
     }
   }
+
+  async function loadAuthorityMatches(work) {
+    try {
+      await runTicketAction(work, "match", async () => {
+        const data = await api.matchCandidates(work.id);
+        setMatchBags((prev) => ({ ...prev, [work.id]: data }));
+      });
+    } catch {
+      /* note already set */
+    }
+  }
+
+  async function applyAuthorityMatch(work, candidate) {
+    const key = candidate?.match_key || candidate?.asin || "";
+    if (!key) return;
+    try {
+      await runTicketAction(work, "applyMatch", async () => {
+        await api.applyMatch(work.id, key);
+        setMatchBags((prev) => {
+          const next = { ...prev };
+          delete next[work.id];
+          return next;
+        });
+        reload();
+      }, { successNote: "Match applied." });
+    } catch {
+      /* note already set */
+    }
+  }
+
+  useEffect(() => {
+    for (const work of works) {
+      const reason = effectiveReviewReason(work);
+      if (!String(reason || "").match(/^(audnexus|comicvine)_/)) continue;
+      if (matchBags[work.id]) continue;
+      if (autoMatchTried.current.has(work.id)) continue;
+      autoMatchTried.current.add(work.id);
+      loadAuthorityMatches(work);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [works]);
 
   useEffect(() => {
     for (const work of works) {
@@ -462,6 +505,66 @@ export default function ReviewPage() {
                   </Link>
                 </p>
               ) : null}
+              {Array.isArray(work.match_candidates) && work.match_candidates.length ? (
+                <div className="match-candidates" data-testid="review-match-candidates">
+                  <p className="kicker">Match candidates</p>
+                  <ul className="match-candidate-list">
+                    {work.match_candidates.map((row) => (
+                      <li key={row.match_key || `${row.title}-${row.series_name}`}>
+                        <div>
+                          <strong>{row.title || row.series_name}</strong>
+                          <span className="muted">
+                            {[
+                              row.series_name,
+                              row.series_index ? `#${row.series_index}` : "",
+                              row.volume_year || row.year,
+                              row.publisher,
+                              row.match_confidence != null
+                                ? `${Math.round(Number(row.match_confidence) * 100)}%`
+                                : "",
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          className="cta outline compact"
+                          disabled={workBusy}
+                          data-testid="review-apply-match"
+                          onClick={async () => {
+                            setWorkBusy(work.id, "match");
+                            setErrors((prev) => ({ ...prev, [work.id]: "" }));
+                            try {
+                              const result = await api.applyMatch(work.id, row.match_key);
+                              const next = result?.work || {};
+                              setDrafts((prev) => ({
+                                ...prev,
+                                [work.id]: applySuggestionToDraft(prev[work.id] || fieldsFromWork(work), {
+                                  title: next.title,
+                                  author: next.author,
+                                  series_name: next.series_name,
+                                  series_index: next.series_index,
+                                  year: next.year,
+                                  kind: "comic",
+                                }),
+                              }));
+                              setTicketNote(work.id, "Match applied — confirm folder and Apply to file.");
+                              reload();
+                            } catch (err) {
+                              setErrors((prev) => ({ ...prev, [work.id]: humanError(err) }));
+                            } finally {
+                              setWorkBusy(work.id, "");
+                            }
+                          }}
+                        >
+                          Use this
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
               {(actions.canRepair ||
                 actions.canRetry ||
                 actions.canRequestNew ||
@@ -531,6 +634,32 @@ export default function ReviewPage() {
                 <p className="muted" data-testid="review-action-note" role="status">
                   {statusNote}
                 </p>
+              ) : null}
+              {matchBags[work.id]?.candidates?.length ? (
+                <ul className="regrab-list" data-testid="authority-match-candidates">
+                  {matchBags[work.id].candidates.map((candidate, index) => (
+                    <li key={candidate.match_key || candidate.asin || candidate.title || index}>
+                      <span>
+                        {candidate.title || "Untitled"}
+                        {candidate.author ? ` — ${candidate.author}` : ""}
+                        {candidate.asin ? ` · ${candidate.asin}` : ""}
+                        {candidate.score != null || candidate.match_confidence != null
+                          ? ` · ${Math.round(Number(candidate.score ?? candidate.match_confidence) * 100)}%`
+                          : ""}
+                      </span>
+                      <button
+                        type="button"
+                        className={index === 0 ? "cta compact" : "cta compact outline"}
+                        disabled={workBusy}
+                        aria-busy={activeAction === "applyMatch" || undefined}
+                        onClick={() => applyAuthorityMatch(work, candidate)}
+                        data-testid="authority-match-apply"
+                      >
+                        {activeAction === "applyMatch" ? busyLabel("applyMatch") : "Use this match"}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
               ) : null}
               {regrabs[work.id]?.beyond_error ? (
                 <p className="muted" role="status" data-testid="regrab-beyond-error">

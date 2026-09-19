@@ -3,13 +3,18 @@ import { describe, it } from "node:test";
 import {
   canListenInApp,
   chapterAt,
+  chapterRemainingSeconds,
   decodeListenPosition,
   encodeListenPosition,
   formatListenClock,
   listenFraction,
   nextChapter,
+  nextListenRate,
+  nextSleepTimerId,
   prevChapter,
+  shouldPersistListenCadence,
   shouldWriteListenProgress,
+  sleepTimerLabel,
   splitContinueRails,
   workListenPath,
 } from "./listen.js";
@@ -60,6 +65,32 @@ describe("audiobook Listen helpers", () => {
     );
   });
 
+  it("cycles rates through 2.5× and sleep timer options", () => {
+    assert.equal(nextListenRate(2), 2.5);
+    assert.equal(nextListenRate(2.5), 0.75);
+    assert.equal(nextSleepTimerId("off"), "15");
+    assert.equal(nextSleepTimerId("45"), "chapter");
+    assert.equal(sleepTimerLabel("chapter"), "Sleep end of chapter");
+  });
+
+  it("reports chapter remaining and persist cadence", () => {
+    const chapters = [
+      { index: 0, title: "One", start: 0 },
+      { index: 1, title: "Two", start: 100 },
+    ];
+    assert.equal(chapterRemainingSeconds(chapters, 40, 200), 60);
+    assert.equal(chapterRemainingSeconds(chapters, 150, 200), 50);
+    assert.equal(shouldPersistListenCadence({ force: true, lastPersistMs: Date.now() }), true);
+    assert.equal(
+      shouldPersistListenCadence({ force: false, lastPersistMs: Date.now(), nowMs: Date.now() + 50 }),
+      false,
+    );
+    assert.equal(
+      shouldPersistListenCadence({ force: false, lastPersistMs: 0, nowMs: 2000, minIntervalMs: 900 }),
+      true,
+    );
+  });
+
   it("splits Hall continue rails by kind", () => {
     const { reading, listening } = splitContinueRails([
       { id: "1", kind: "book", title: "Kindred" },
@@ -78,15 +109,15 @@ describe("audiobook Listen helpers", () => {
 
   it("finds chapter neighbors for Media Session skip", () => {
     const chapters = [
-      { title: "Prologue", start: 0 },
-      { title: "One", start: 100 },
-      { title: "Two", start: 250 },
+      { index: 0, title: "One", start: 0 },
+      { index: 1, title: "Two", start: 100 },
+      { index: 2, title: "Three", start: 200 },
     ];
-    assert.equal(chapterAt(chapters, 120)?.title, "One");
-    assert.equal(nextChapter(chapters, 120)?.title, "Two");
-    // Mid-chapter skip-back restarts the current chapter.
-    assert.equal(prevChapter(chapters, 120)?.title, "One");
-    assert.equal(prevChapter(chapters, 100.5)?.title, "Prologue");
-    assert.equal(formatListenClock(3661), "1:01:01");
+    assert.equal(chapterAt(chapters, 120)?.title, "Two");
+    assert.equal(nextChapter(chapters, 120)?.title, "Three");
+    // Mid-chapter: prev restarts current; early in chapter: prev goes back.
+    assert.equal(prevChapter(chapters, 120)?.title, "Two");
+    assert.equal(prevChapter(chapters, 100.2)?.title, "One");
+    assert.equal(formatListenClock(3723), "1:02:03");
   });
 });

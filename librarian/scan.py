@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -292,11 +293,39 @@ def _layout_identity(kind: str, folder: Path, root: Path) -> Dict[str, Any]:
         if len(parts) >= 2:
             return {"author": parts[-2], "title": parts[-1]}
         return {"title": parts[-1]}
-    if kind in (KIND_COMIC, KIND_MAGAZINE):
+    if kind == KIND_COMIC:
+        if len(parts) >= 2:
+            first, second = parts[0], parts[1]
+            vol_match = re.match(
+                r"^(?P<series>.+?)\s*\((?P<year>19\d{2}|20\d{2})\)$",
+                second,
+            )
+            if vol_match:
+                series = tidy_title(vol_match.group("series"))
+                out: Dict[str, Any] = {
+                    "publisher": tidy_title(first),
+                    "series_name": series,
+                    "volume_year": int(vol_match.group("year")),
+                    "title": series,
+                    "author": tidy_title(first),
+                }
+                if len(parts) >= 3 and parts[2]:
+                    out["series_index"] = parts[2]
+                    out["title"] = f"{series} #{parts[2]}"
+                return out
+            # Legacy {Series}/{Issue}/
+            series, index = first, second
+            return {
+                "series_name": series,
+                "series_index": index,
+                "title": f"{series} #{index}",
+                "author": series,
+            }
+        return {"title": parts[-1], "series_name": parts[-1]}
+    if kind == KIND_MAGAZINE:
         if len(parts) >= 2:
             series, index = parts[-2], parts[-1]
-            title = f"{series} #{index}" if kind == KIND_COMIC else f"{series} {index}"
-            return {"series_name": series, "series_index": index, "title": title, "author": series}
+            return {"series_name": series, "series_index": index, "title": f"{series} {index}", "author": series}
         return {"title": parts[-1], "series_name": parts[-1]}
     if kind == KIND_MUSIC:
         if len(parts) >= 2:

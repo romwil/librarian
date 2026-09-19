@@ -28,6 +28,11 @@ REVIEW_EXTRA = "extra_files"
 REVIEW_CONVERT = "convert_failed"
 REVIEW_COLLISION = "collision"
 REVIEW_MISSING_FOLDER = "missing_folder"
+REVIEW_COMICVINE_AMBIGUOUS = "comicvine_ambiguous"
+REVIEW_COMICVINE_UNMATCHED = "comicvine_unmatched"
+# Audiobook Audnexus match bands (see audiobook_normalize / audnexus).
+REVIEW_AUDNEXUS_AMBIGUOUS = "audnexus_ambiguous"
+REVIEW_AUDNEXUS_UNMATCHED = "audnexus_unmatched"
 
 _DOT_GROUP = re.compile(r"[\.\-_]+")
 _ISBN = re.compile(r"\b(?:97[89][-\s]?)?(?:\d[-\s]?){9}[\dXx]\b")
@@ -133,6 +138,7 @@ class Identity:
     series_index: str = ""
     year: Optional[int] = None
     isbn: str = ""
+    asin: str = ""
     mbid: str = ""
     album: str = ""
     track_title: str = ""
@@ -142,11 +148,28 @@ class Identity:
     publisher: str = ""
     description: str = ""
     genre: str = ""
+    narrator: str = ""
+    volume_year: Optional[int] = None
+    comic_format: str = ""
+    comic_subtitle: str = ""
+    comic_variant: str = ""
+    comicvine_volume_id: Optional[int] = None
+    comicvine_issue_id: Optional[int] = None
+    penciller: str = ""
+    inker: str = ""
+    colorist: str = ""
+    cover_artist: str = ""
+    letterer: str = ""
+    web: str = ""
+    month: Optional[int] = None
+    day: Optional[int] = None
     confidence: str = "low"
     rationale: str = ""
     query_terms: List[str] = field(default_factory=list)
     review_reason: Optional[str] = None
     source: str = "parse"
+    match_candidates: List[Dict[str, Any]] = field(default_factory=list)
+    match_confidence: Optional[float] = None
 
     def as_dict(self) -> Dict[str, Any]:
         return {
@@ -157,6 +180,7 @@ class Identity:
             "series_index": self.series_index,
             "year": self.year,
             "isbn": self.isbn,
+            "asin": self.asin,
             "mbid": self.mbid,
             "album": self.album,
             "track_title": self.track_title,
@@ -166,11 +190,28 @@ class Identity:
             "publisher": self.publisher,
             "description": self.description,
             "genre": self.genre,
+            "narrator": self.narrator,
+            "volume_year": self.volume_year,
+            "comic_format": self.comic_format,
+            "comic_subtitle": self.comic_subtitle,
+            "comic_variant": self.comic_variant,
+            "comicvine_volume_id": self.comicvine_volume_id,
+            "comicvine_issue_id": self.comicvine_issue_id,
+            "penciller": self.penciller,
+            "inker": self.inker,
+            "colorist": self.colorist,
+            "cover_artist": self.cover_artist,
+            "letterer": self.letterer,
+            "web": self.web,
+            "month": self.month,
+            "day": self.day,
             "confidence": self.confidence,
             "rationale": self.rationale,
             "query_terms": list(self.query_terms),
             "review_reason": self.review_reason,
             "source": self.source,
+            "match_candidates": list(self.match_candidates),
+            "match_confidence": self.match_confidence,
         }
 
 
@@ -341,34 +382,43 @@ def parse_usenet_name(name: str, *, category: object = None, kind: object = None
             source="parse",
         )
 
-    comic = None
-    if hinted != KIND_MAGAZINE:
-        comic = (
+    comic_hint = hinted in ("", KIND_COMIC) or "comic" in stem.lower()
+    if hinted != KIND_MAGAZINE and comic_hint:
+        from librarian.comic_normalize import comic_identity_fields, normalize_comic_name
+
+        tokens = normalize_comic_name(stem)
+        # Keep legacy regex gate so magazine-like stems without comic markers stay out.
+        legacy = (
             _COMIC_HASH_YEAR.search(stem)
             or _COMIC_VOLUME.search(stem)
             or _COMIC_YEAR_ISSUE.search(stem)
             or _COMIC_HASH.search(stem)
         )
-        if comic is None and hinted in ("", KIND_COMIC):
+        if legacy is None and hinted in ("", KIND_COMIC):
             padded = _COMIC_PADDED.search(stem)
             if padded and (hinted == KIND_COMIC or padded.group("issue").startswith("0")):
-                comic = padded
-    if comic and (hinted in ("", KIND_COMIC) or "comic" in stem.lower()):
-        series = tidy_title(comic.group("series"))
-        issue = str(int(comic.group("issue")))
-        year = int(comic.group("year")) if "year" in comic.groupdict() and comic.groupdict().get("year") else None
-        return Identity(
-            kind=hinted or KIND_COMIC,
-            title=f"{series} #{issue}",
-            series_name=series,
-            series_index=issue,
-            year=year,
-            isbn=isbn,
-            confidence="high" if series and issue else "low",
-            rationale="comic series/issue parse",
-            query_terms=[series, issue],
-            source="parse",
-        )
+                legacy = padded
+        if legacy is not None or (hinted == KIND_COMIC and tokens.series):
+            fields = comic_identity_fields(tokens)
+            series = str(fields.get("series_name") or "")
+            issue = str(fields.get("series_index") or "")
+            title = str(fields.get("title") or (f"{series} #{issue}" if series and issue else series))
+            return Identity(
+                kind=hinted or KIND_COMIC,
+                title=title,
+                series_name=series,
+                series_index=issue,
+                year=fields.get("year") if isinstance(fields.get("year"), int) else None,
+                volume_year=fields.get("volume_year") if isinstance(fields.get("volume_year"), int) else None,
+                comic_format=str(fields.get("comic_format") or ""),
+                comic_subtitle=str(fields.get("comic_subtitle") or ""),
+                comic_variant=str(fields.get("comic_variant") or ""),
+                isbn=isbn,
+                confidence="high" if series and issue else "low",
+                rationale="comic series/issue parse",
+                query_terms=[part for part in (series, issue) if part],
+                source="parse",
+            )
 
     year_match = _YEAR.search(stem)
     year = int(year_match.group(1)) if year_match else None
@@ -420,22 +470,40 @@ def parse_usenet_name(name: str, *, category: object = None, kind: object = None
         title = tidy_title(_AUDIO_PART.sub("", title)) or title
         title = _AUDIOBOOK_HINT.sub(" ", title)
         title = re.sub(r"\s+", " ", title).strip() or title
+        from librarian.audiobook_normalize import normalize_audiobook_name
+
+        tokens = normalize_audiobook_name(stem)
+        author = tokens.author or author
+        title = tokens.title or title
+        year = tokens.year if tokens.year is not None else year
+        series_name = tokens.series_name
+        series_index = tokens.series_index
+        asin = tokens.asin
+        narrator = tokens.narrator
+    else:
+        series_name = album
+        series_index = ""
+        asin = ""
+        narrator = ""
 
     high = bool(isbn and author and title) if inferred == KIND_BOOK else False
     return Identity(
         kind=inferred,
         title=title or track_title or tidy_title(stem),
         author=author,
-        series_name=album,
+        series_name=series_name if inferred == KIND_AUDIOBOOK else album,
+        series_index=series_index if inferred == KIND_AUDIOBOOK else "",
         album=album,
         track_title=track_title,
         tracknumber=tracknumber,
         discnumber=discnumber,
         year=year,
-        isbn=isbn,
+        isbn=isbn or asin,
+        asin=asin,
+        narrator=narrator,
         confidence="high" if high else "low",
         rationale="indexer/parse fields" if isbn else "filename parse",
-        query_terms=[part for part in (author, title, isbn) if part],
+        query_terms=[part for part in (author, title, isbn or asin) if part],
         source="parse",
     )
 
@@ -450,6 +518,7 @@ def fill_identity_holes(identity: Identity, layer: Optional[Mapping[str, Any]]) 
         "series_name",
         "series_index",
         "isbn",
+        "asin",
         "mbid",
         "album",
         "track_title",
@@ -459,6 +528,16 @@ def fill_identity_holes(identity: Identity, layer: Optional[Mapping[str, Any]]) 
         "publisher",
         "description",
         "genre",
+        "narrator",
+        "comic_format",
+        "comic_subtitle",
+        "comic_variant",
+        "penciller",
+        "inker",
+        "colorist",
+        "cover_artist",
+        "letterer",
+        "web",
     )
     for key in fields:
         incoming = layer.get(key)
@@ -470,6 +549,24 @@ def fill_identity_holes(identity: Identity, layer: Optional[Mapping[str, Any]]) 
     year = layer.get("year")
     if identity.year is None and str(year or "").isdigit():
         identity.year = int(year)
+    volume_year = layer.get("volume_year")
+    if identity.volume_year is None and str(volume_year or "").isdigit():
+        identity.volume_year = int(volume_year)
+    for int_key in ("comicvine_volume_id", "comicvine_issue_id", "month", "day"):
+        incoming = layer.get(int_key)
+        if getattr(identity, int_key, None) is None and str(incoming or "").lstrip("-").isdigit():
+            setattr(identity, int_key, int(incoming))
+    score = layer.get("match_confidence")
+    if score is None:
+        score = layer.get("match_score")
+    if identity.match_confidence is None and score is not None:
+        try:
+            identity.match_confidence = float(score)
+        except (TypeError, ValueError):
+            pass
+    candidates = layer.get("match_candidates")
+    if candidates and not identity.match_candidates:
+        identity.match_candidates = list(candidates) if isinstance(candidates, list) else []
     kind = str(layer.get("kind") or "").strip().lower()
     if kind in ALL_KINDS and identity.kind not in ALL_KINDS:
         identity.kind = kind
@@ -556,7 +653,33 @@ def _apply_stack_confidence(identity: Identity) -> Identity:
         identity.confidence = "high"
         identity.rationale = identity.rationale or "ISBN + author + title"
         identity.review_reason = None
-    elif identity.kind in (KIND_COMIC, KIND_MAGAZINE) and identity.series_name and identity.series_index:
+    elif identity.kind == KIND_COMIC and identity.series_name and identity.series_index:
+        score = identity.match_confidence
+        if score is not None:
+            if score >= 0.85:
+                identity.confidence = "high"
+                identity.rationale = identity.rationale or "comicvine match ≥0.85"
+                if identity.review_reason in (
+                    REVIEW_COMICVINE_AMBIGUOUS,
+                    REVIEW_COMICVINE_UNMATCHED,
+                    REVIEW_LOW,
+                    None,
+                ):
+                    identity.review_reason = None
+            elif score >= 0.65:
+                identity.confidence = "low"
+                identity.rationale = identity.rationale or "comicvine ambiguous"
+                identity.review_reason = identity.review_reason or REVIEW_COMICVINE_AMBIGUOUS
+            else:
+                identity.confidence = "low"
+                identity.rationale = identity.rationale or "comicvine unmatched"
+                identity.review_reason = identity.review_reason or REVIEW_COMICVINE_UNMATCHED
+        else:
+            # No ComicVine key / lookup — legacy series+issue gate.
+            identity.confidence = "high"
+            identity.rationale = identity.rationale or "series + issue"
+            identity.review_reason = None
+    elif identity.kind == KIND_MAGAZINE and identity.series_name and identity.series_index:
         identity.confidence = "high"
         identity.rationale = identity.rationale or "series + issue"
         identity.review_reason = None
@@ -570,10 +693,15 @@ def _apply_stack_confidence(identity: Identity) -> Identity:
             identity.series_name = identity.album
         if not identity.title:
             identity.title = identity.album
-    elif identity.kind == KIND_AUDIOBOOK and identity.author and identity.title:
+    elif identity.kind == KIND_AUDIOBOOK and identity.asin and identity.author and identity.title:
+        # ASIN-resolved identity (Audnexus). Filename author+title alone is no longer enough.
         identity.confidence = "high"
-        identity.rationale = identity.rationale or "audiobook author + title"
+        identity.rationale = identity.rationale or "audiobook ASIN + author + title"
         identity.review_reason = None
+    elif identity.kind == KIND_AUDIOBOOK and identity.author and identity.title:
+        # Provisional until Audnexus scoring runs in identify_completed.
+        identity.confidence = "low"
+        identity.rationale = identity.rationale or "audiobook author + title (pending Audnexus)"
     else:
         identity.confidence = "low"
     return identity
@@ -938,6 +1066,9 @@ def identify_completed(
     elif settings is not None:
         fill_identity_holes(identity, catalog_fill(identity, settings, transport=catalog_transport))
 
+    if identity.kind == KIND_AUDIOBOOK and settings is not None:
+        _apply_audnexus_match(identity, settings, transport=catalog_transport)
+
     identity.source = identity.source or "stack"
     _apply_review_gates(identity, files)
 
@@ -1031,9 +1162,12 @@ def catalog_fill(identity: Identity, settings: Any, *, transport: Any = None) ->
     """Layer 4: Hardcover/OL by ISBN, MusicBrainz by MBID or artist+album, Comic Vine if keyed.
 
     Fail closed on HTTP errors. Never writes an ISBN from a title-only match. Never invents an MBID.
+    Audiobooks use Audnexus (see ``_apply_audnexus_match``) — not Hardcover/Open Library.
     """
     kind = identity.kind
-    if kind in (KIND_BOOK, KIND_MAGAZINE, KIND_AUDIOBOOK) and identity.isbn:
+    if kind == KIND_AUDIOBOOK:
+        return {}
+    if kind in (KIND_BOOK, KIND_MAGAZINE) and identity.isbn:
         if identity.title and identity.author:
             return {}
         return _catalog_isbn(identity, settings, transport=transport)
@@ -1042,6 +1176,71 @@ def catalog_fill(identity: Identity, settings: Any, *, transport: Any = None) ->
     if kind == KIND_COMIC:
         return _catalog_comic(identity, settings, transport=transport)
     return {}
+
+
+def _apply_audnexus_match(identity: Identity, settings: Any, *, transport: Any = None) -> None:
+    """Score Audnexus candidates for audiobooks. Sets review bands; no remux until resolved."""
+    if identity.kind != KIND_AUDIOBOOK or settings is None:
+        return
+    try:
+        from librarian.audnexus import (
+            AudnexusError,
+            client_from_settings,
+            identity_from_candidate,
+            match_audiobook_tokens,
+        )
+    except Exception:
+        return
+    tokens = {
+        "title": identity.title,
+        "author": identity.author,
+        "asin": identity.asin or identity.isbn,
+        "narrator": identity.narrator,
+        "series_name": identity.series_name,
+        "series_index": identity.series_index,
+        "year": identity.year,
+    }
+    client = client_from_settings(settings, transport=transport)
+    try:
+        matched = match_audiobook_tokens(tokens, client=client)
+    except AudnexusError:
+        if not identity.review_reason:
+            identity.review_reason = REVIEW_AUDNEXUS_UNMATCHED
+            identity.confidence = "low"
+        return
+    finally:
+        client.close()
+
+    candidates = list(matched.get("candidates") or [])
+    identity.match_candidates = candidates[:8]
+    identity.match_confidence = float(matched.get("score") or 0)
+    reason = matched.get("review_reason")
+    best = matched.get("best")
+    if reason is None and best:
+        filled = identity_from_candidate(best)
+        fill_identity_holes(identity, filled)
+        # Strong fields from authority win for title/author/asin once auto-matched.
+        for key in ("title", "author", "asin", "series_name", "series_index", "description", "narrator"):
+            value = filled.get(key)
+            if value not in (None, ""):
+                setattr(identity, key, value)
+        if filled.get("year") is not None:
+            identity.year = filled["year"]
+        identity.isbn = identity.asin or identity.isbn
+        identity.confidence = "high"
+        identity.rationale = "Audnexus ASIN match"
+        identity.review_reason = None
+        identity.source = "audnexus"
+        return
+    identity.confidence = "low"
+    identity.review_reason = reason or REVIEW_AUDNEXUS_UNMATCHED
+    if best and not identity.asin:
+        # Surface best guess into the Review form without auto-filing.
+        hint = identity_from_candidate(best)
+        if not identity.title and hint.get("title"):
+            identity.title = str(hint["title"])
+        if not identity.author and hint.get("author"):
+            identity.author = str(hint["author"])
 
 
 def _catalog_isbn(identity: Identity, settings: Any, *, transport: Any = None) -> Dict[str, Any]:
@@ -1115,28 +1314,85 @@ def _catalog_comic(identity: Identity, settings: Any, *, transport: Any = None) 
     key = str(getattr(settings, "comicvine_api_key", "") or "").strip()
     if not key or not (identity.series_name and identity.series_index):
         return {}
-    if identity.year is not None and identity.author:
-        return {}
     try:
+        import os
+
         from librarian.comicvine import ComicVineClient, ComicVineError
 
-        client = ComicVineClient(key, transport=transport)
+        cache_path = Path(os.environ.get("DATA_DIR", "/config")) / "comicvine-cache.db"
+        client = ComicVineClient(
+            key,
+            transport=transport,
+            cache_path=cache_path,
+            rate_limit=transport is None,
+        )
         try:
-            issues = client.series_issues(identity.series_name)
+            matched = client.match_issue(
+                identity.series_name,
+                identity.series_index,
+                volume_year=identity.volume_year,
+                cover_year=identity.year,
+            )
         except ComicVineError:
-            issues = []
+            return {
+                "match_confidence": 0.0,
+                "match_candidates": [],
+                "review_reason": REVIEW_COMICVINE_UNMATCHED,
+            }
         finally:
             client.close()
     except Exception:
         return {}
-    want = str(identity.series_index)
-    for row in issues:
-        if str(row.get("series_index") or "") != want:
-            continue
-        out = {key: row[key] for key in ("title", "author", "year", "publisher") if row.get(key) not in (None, "")}
-        out.pop("isbn", None)
-        return out
-    return {}
+
+    best = matched.get("best") if isinstance(matched.get("best"), dict) else {}
+    score = float(matched.get("match_score") or 0)
+    candidates = list(matched.get("candidates") or [])
+    out: Dict[str, Any] = {
+        "match_confidence": score,
+        "match_candidates": candidates,
+    }
+    if best:
+        for key_name in (
+            "title",
+            "author",
+            "year",
+            "publisher",
+            "description",
+            "web",
+            "penciller",
+            "inker",
+            "colorist",
+            "cover_artist",
+            "letterer",
+            "month",
+            "day",
+        ):
+            if best.get(key_name) not in (None, ""):
+                out[key_name] = best[key_name]
+        if best.get("volume_year") not in (None, ""):
+            out["volume_year"] = best["volume_year"]
+        if best.get("volume_id") not in (None, ""):
+            out["comicvine_volume_id"] = best["volume_id"]
+        if best.get("issue_id") not in (None, ""):
+            out["comicvine_issue_id"] = best["issue_id"]
+        if best.get("series_name"):
+            out["series_name"] = best["series_name"]
+        if best.get("series_index"):
+            out["series_index"] = best["series_index"]
+
+    band = str(matched.get("band") or "low")
+    if band == "high":
+        out["confidence"] = "high"
+        out["rationale"] = "comicvine match ≥0.85"
+    elif band == "mid":
+        out["confidence"] = "low"
+        out["review_reason"] = REVIEW_COMICVINE_AMBIGUOUS
+        out["rationale"] = "comicvine ambiguous volume"
+    else:
+        out["confidence"] = "low"
+        out["review_reason"] = REVIEW_COMICVINE_UNMATCHED
+        out["rationale"] = "comicvine unmatched"
+    return out
 
 
 def _kind_from_payload(files: Sequence[Path], folder: Path) -> str:
@@ -1185,15 +1441,29 @@ def _apply_review_gates(identity: Identity, files: Sequence[Path]) -> None:
             identity.review_reason = identity.review_reason or REVIEW_UNKNOWN
             identity.confidence = "low"
         suffixes = {path.suffix.lower() for path in files}
-        # PDF comics are Reading Room–ready. Only CBR (RAR) needs CBZ conversion.
-        if identity.kind == KIND_COMIC and ".cbr" in suffixes and ".cbz" not in suffixes:
-            identity.review_reason = identity.review_reason or REVIEW_CONVERT
-            identity.confidence = "low"
+        # Final shelf is CBZ only — CBR and PDF comics must remux before auto-organize.
+        if identity.kind == KIND_COMIC:
+            has_cbz = ".cbz" in suffixes
+            needs_cbz = (".cbr" in suffixes or ".pdf" in suffixes) and not has_cbz
+            if needs_cbz:
+                identity.review_reason = identity.review_reason or REVIEW_CONVERT
+                identity.confidence = "low"
+            if identity.review_reason in (REVIEW_COMICVINE_AMBIGUOUS, REVIEW_COMICVINE_UNMATCHED):
+                identity.confidence = "low"
 
     if identity.kind == KIND_AUDIOBOOK and not (identity.author and identity.title):
         identity.review_reason = identity.review_reason or REVIEW_UNKNOWN
         identity.confidence = "low"
-
+    elif identity.kind == KIND_AUDIOBOOK and identity.review_reason in (
+        REVIEW_AUDNEXUS_AMBIGUOUS,
+        REVIEW_AUDNEXUS_UNMATCHED,
+    ):
+        identity.confidence = "low"
+    elif identity.kind == KIND_AUDIOBOOK and identity.confidence != "high":
+        identity.review_reason = identity.review_reason or (
+            REVIEW_AUDNEXUS_UNMATCHED if not identity.asin else REVIEW_LOW
+        )
+        identity.confidence = "low"
     if identity.kind == KIND_MUSIC and identity.confidence != "high":
         identity.review_reason = identity.review_reason or (REVIEW_LOW if identity.title else REVIEW_UNKNOWN)
         identity.confidence = "low"
@@ -1230,10 +1500,19 @@ def _apply_post_llm_review(identity: Identity, folder: Path) -> List[Path]:
             identity.review_reason = None
     if identity.kind in (KIND_COMIC, KIND_MAGAZINE) and identity.series_name and identity.series_index:
         suffixes = {path.suffix.lower() for path in files}
-        # PDF comics are Reading Room–ready. Only CBR (RAR) needs CBZ conversion.
-        if identity.kind == KIND_COMIC and ".cbr" in suffixes and ".cbz" not in suffixes:
-            identity.review_reason = identity.review_reason or REVIEW_CONVERT
-            identity.confidence = "low"
+        # Final shelf is CBZ only — CBR and PDF comics must remux before auto-organize.
+        if identity.kind == KIND_COMIC:
+            has_cbz = ".cbz" in suffixes
+            needs_cbz = (".cbr" in suffixes or ".pdf" in suffixes) and not has_cbz
+            if needs_cbz:
+                identity.review_reason = identity.review_reason or REVIEW_CONVERT
+                identity.confidence = "low"
+            elif identity.confidence == "high" and identity.review_reason not in (
+                REVIEW_EXTRA,
+                REVIEW_COMICVINE_AMBIGUOUS,
+                REVIEW_COMICVINE_UNMATCHED,
+            ):
+                identity.review_reason = None
         elif identity.confidence == "high" and identity.review_reason != REVIEW_EXTRA:
             identity.review_reason = None
     return files
@@ -1286,11 +1565,46 @@ def dest_layout(identity: Dict[str, Any], settings: Any, *, filename: str, sourc
     if kind == KIND_MAGAZINE:
         return Path(settings.magazines_root) / series / index / Path(filename).name
     if kind == KIND_COMIC:
-        dest_name = f"{series} #{identity.get('series_index') or index}.cbz" if suffix == ".cbz" else Path(filename).name
-        return Path(settings.comics_root) / series / index / dest_name
+        publisher = safe_path_part(str(identity.get("publisher") or ""), fallback="Unknown Publisher")
+        volume_year = identity.get("volume_year")
+        vol = str(int(volume_year)) if str(volume_year or "").isdigit() else ""
+        series_folder = f"{series} ({vol})" if vol else series
+        year = identity.get("year")
+        year_bit = f" ({int(year)})" if str(year or "").isdigit() else ""
+        fmt = str(identity.get("comic_format") or "").lower()
+        subtitle = safe_path_part(str(identity.get("comic_subtitle") or ""))
+        issue = str(identity.get("series_index") or index)
+        if fmt in ("tpb", "omnibus", "compendium", "hc", "gn", "oneshot") or (
+            not issue and subtitle
+        ):
+            label = subtitle or title
+            if vol:
+                dest_name = f"{series} - {label}{year_bit}.cbz"
+            else:
+                dest_name = f"{series} - {label}{year_bit}.cbz"
+        else:
+            if vol:
+                dest_name = f"{series} v{vol} #{issue}{year_bit}.cbz"
+            else:
+                dest_name = f"{series} #{issue}{year_bit}.cbz"
+        if suffix != ".cbz":
+            dest_name = Path(filename).name
+        return Path(settings.comics_root) / publisher / series_folder / dest_name
     if kind == KIND_AUDIOBOOK:
-        dest_name = Path(filename).name
-        return Path(settings.audiobooks_root) / author / title / dest_name
+        year_val = identity.get("year")
+        year_bit = f" ({year_val})" if year_val not in (None, "") else ""
+        series = str(identity.get("series_name") or "").strip()
+        index = str(identity.get("series_index") or "").strip()
+        # Prefer canonical Title.m4b when shelving a remuxed book; otherwise keep source name.
+        if suffix == ".m4b" or str(identity.get("asin") or "").strip():
+            dest_name = f"{title}.m4b"
+        else:
+            dest_name = Path(filename).name
+        root = Path(settings.audiobooks_root)
+        if series:
+            index_label = f"{index} - {title}{year_bit}" if index else f"{title}{year_bit}"
+            return root / author / series / index_label / dest_name
+        return root / author / f"{title}{year_bit}" / dest_name
     if kind == KIND_MUSIC:
         dest_name = _music_track_filename(identity, filename=filename, source=source)
         existing = existing_album_folder(identity, settings)

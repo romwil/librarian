@@ -178,15 +178,16 @@ def audiobook_player_link(
     work: Optional[Mapping[str, Any]],
     settings: Settings,
 ) -> Optional[Dict[str, Any]]:
-    """Deep-link to ABS item when matched; soft Plex handoff when that is the target."""
+    """Deep-link to ABS when matched; soft Plex handoff when that is the target."""
     if not work or _text(work.get("kind")) != KIND_AUDIOBOOK:
         return None
     abs_url = _text(getattr(settings, "audiobookshelf_url", ""))
     item_id = _text(work.get("abs_item_id"))
-    href = abs_item_href(abs_url, item_id)
-    if href:
-        return {"href": href, "label": "Open in player", "provider": "audiobookshelf"}
     target = _text(getattr(settings, "audiobook_target", "plex")).lower() or "plex"
+    href = abs_item_href(abs_url, item_id)
+    # Prefer ABS when target is Audiobookshelf, or whenever the title is already matched.
+    if href and (target == "audiobookshelf" or item_id):
+        return {"href": href, "label": "Open in player", "provider": "audiobookshelf"}
     if target == "plex":
         return {"href": "plex://", "label": "Open in Plex", "provider": "plex"}
     if target == "audiobookshelf" and abs_url and not item_id:

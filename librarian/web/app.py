@@ -48,6 +48,8 @@ from librarian.delight import (
     tonight_shelf,
 )
 from librarian.enrich import (
+    apply_audnexus_match,
+    apply_comicvine_match,
     apply_openlibrary_match,
     clear_enrichment,
     enrich_library,
@@ -83,6 +85,7 @@ from librarian.invites import (
 )
 from librarian.jobs import confirm_asked_job, enqueue_indexer_item, poll_active_jobs, poll_job
 from librarian.kinds import ALL_KINDS, EXTRA_KINDS
+from librarian.komga import komga_payload
 from librarian.listen import extract_chapters, listen_payload, split_continue_rails
 from librarian.lists import (
     chase_missing_items,
@@ -246,6 +249,9 @@ class SettingsPayload(BaseModel):
     hardcover_api_token: Optional[str] = None
     nyt_books_api_key: Optional[str] = None
     comicvine_api_key: Optional[str] = None
+    komga_url: Optional[str] = None
+    komga_api_key: Optional[str] = None
+    komga_library_id: Optional[str] = None
     watch_root: Optional[str] = None
     watch_enabled: Optional[bool] = None
     extra_indexers: Optional[List[ExtraIndexerPayload]] = None
@@ -922,6 +928,21 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         ribbon = []
         series_name = str(work.get("series_name") or "").strip()
         kind = str(work.get("kind") or "")
+        if kind == "audiobook" and str(work.get("abs_item_id") or "").strip():
+            try:
+                from librarian.audiobookshelf import pull_abs_listen_progress
+
+                pulled = pull_abs_listen_progress(
+                    db,
+                    settings(),
+                    user_id=str(request.state.user["id"]),
+                    work=work,
+                    files=files,
+                )
+                if pulled:
+                    progress = pulled
+            except Exception:  # noqa: BLE001 — fail-soft ABS federation
+                pass
         if series_name and kind in ALL_KINDS:
             card = gaps_for_series(db, kind=kind, series_name=series_name)
             owned = card.get("owned_indexes") or [
@@ -948,6 +969,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             "can_download": can_download,
             "can_read": can_read_work(str(work.get("kind") or ""), on_disk),
             "listen": listen_payload(work, can_download=can_download, settings=settings()),
+            "komga": komga_payload(work, settings()),
             "audiobook": audiobook,
             "favorite": db.is_favorite(request.state.user["id"], work_id),
             "related": related,
@@ -1069,6 +1091,21 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             position=str(position),
             fraction=fraction,
         )
+        work = db.get_work(work_id)
+        if work and str(work.get("kind") or "") == "audiobook" and str(work.get("abs_item_id") or "").strip():
+            try:
+                from librarian.audiobookshelf import push_abs_listen_progress
+
+                push_abs_listen_progress(
+                    settings(),
+                    work,
+                    fraction=fraction,
+                    position=str(position),
+                    finished=bool(payload.finished),
+                    force=bool(payload.finished),
+                )
+            except Exception:  # noqa: BLE001 — fail-soft ABS federation
+                pass
         return {"progress": row}
 
     @app.get("/api/works/{work_id}/cover")
@@ -1352,6 +1389,17 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             shelf = shelf_work_for_collision(db, work)
             work["shelf_work"] = shelf
             work["actions"] = review_slip_actions(work, diagnosis, llm_configured=llm_ok)
+            reason = str(work.get("review_reason") or "")
+            if work.get("kind") == "comic" and reason in (
+                "comicvine_ambiguous",
+                "comicvine_unmatched",
+                "low_confidence",
+                "unknown_identity",
+            ):
+                try:
+                    work["match_candidates"] = list_match_candidates(work, settings=cfg, limit=6)
+                except Exception:
+                    work["match_candidates"] = []
         return {"works": works, "llm_configured": llm_ok}
 
     @app.post("/api/review/{work_id}/suggest")
@@ -1738,25 +1786,50 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         work = db.get_work(work_id)
         if work is None:
             raise HTTPException(status_code=404, detail="Work not found")
-        if str(work.get("kind") or "") not in ("book", "audiobook"):
-            raise HTTPException(status_code=400, detail="Only books and audiobooks can be matched")
-        candidates = list_match_candidates(work)
+        if str(work.get("kind") or "") not in ("book", "audiobook", "comic"):
+            raise HTTPException(status_code=400, detail="Only books, audiobooks, and comics can be matched")
+        candidates = list_match_candidates(work, settings=settings())
         return {"candidates": candidates, "title": work.get("title"), "author": work.get("author")}
 
     @app.post("/api/works/{work_id}/apply-match")
     def work_apply_match(work_id: str, payload: ApplyMatchPayload, request: Request):
         require_role(request.state.user, "owner", "op")
+        work = db.get_work(work_id)
+        if work is None:
+            raise HTTPException(status_code=404, detail="Work not found")
         try:
-            result = apply_openlibrary_match(
-                db,
-                settings(),
-                work_id,
-                payload.match_key,
-                data_dir=root,
-            )
+            kind = str(work.get("kind") or "")
+            if kind == "comic":
+                result = apply_comicvine_match(
+                    db,
+                    settings(),
+                    work_id,
+                    payload.match_key,
+                )
+            elif kind == "audiobook":
+                result = apply_audnexus_match(
+                    db,
+                    settings(),
+                    work_id,
+                    payload.match_key,
+                    data_dir=root,
+                )
+            else:
+                result = apply_openlibrary_match(
+                    db,
+                    settings(),
+                    work_id,
+                    payload.match_key,
+                    data_dir=root,
+                )
         except ValueError as error:
             detail = str(error)
-            status = 404 if detail in ("Work not found", "Open Library match not found") else 400
+            status = 404 if detail in (
+                "Work not found",
+                "Open Library match not found",
+                "Comic Vine match not found",
+                "Audnexus match not found",
+            ) else 400
             raise HTTPException(status_code=status, detail=detail) from error
         result["work"] = public_work(result.get("work"))
         return result

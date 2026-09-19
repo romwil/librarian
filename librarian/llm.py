@@ -149,12 +149,13 @@ def merge_llm_identity(identity: Identity, payload: Mapping[str, Any], evidence:
     if author and (not identity.author or dump_title):
         identity.author = author
     series = tidy_title(str(payload.get("series") or payload.get("series_name") or ""))
-    if series and not identity.series_name:
+    # Same gate as title: weak / dump filename series (e.g. Mystery Release) must yield to LLM.
+    if series and (not identity.series_name or dump_title or identity.confidence != "high"):
         identity.series_name = series
     issue = str(
         payload.get("issue") or payload.get("series_index") or payload.get("album") or ""
     ).strip()
-    if issue and not identity.series_index:
+    if issue and (not identity.series_index or dump_title or identity.confidence != "high"):
         identity.series_index = issue
     year = payload.get("year")
     if identity.year is None and str(year or "").isdigit():

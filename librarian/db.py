@@ -227,6 +227,8 @@ WORK_EXTRA_COLUMNS = {
     "part_base": "TEXT",
     "part_origin": "INTEGER",
     "repair_fail_count": "INTEGER",
+    "asin": "TEXT",
+    "narrator": "TEXT",
 }
 
 FILE_EXTRA_COLUMNS = {
@@ -456,6 +458,8 @@ class Database:
             "year": work.get("year"),
             "isbn": work.get("isbn"),
             "mbid": work.get("mbid"),
+            "asin": work.get("asin"),
+            "narrator": work.get("narrator"),
             "description": work.get("description"),
             "publisher": work.get("publisher"),
             "genre": work.get("genre"),
@@ -507,7 +511,7 @@ class Database:
                     """
                     UPDATE works SET
                         kind=?, title=?, author=?, series_name=?, series_index=?, year=?,
-                        isbn=?, mbid=?, description=?, publisher=?, genre=?, cover_path=?,
+                        isbn=?, mbid=?, asin=?, narrator=?, description=?, publisher=?, genre=?, cover_path=?,
                         folder_path=?, abs_item_id=?, synopsis_source=?, llm_blurb=?,
                         atmosphere_path=?, art_attribution=?, review_state=?, review_reason=?,
                         music_state=?, indexer_guid=?, part_total=?, part_style=?, part_base=?,
@@ -523,6 +527,8 @@ class Database:
                         payload["year"],
                         payload["isbn"],
                         payload["mbid"],
+                        payload["asin"],
+                        payload["narrator"],
                         payload["description"],
                         payload["publisher"],
                         payload["genre"],
@@ -552,11 +558,11 @@ class Database:
                     """
                     INSERT INTO works (
                         id, kind, title, author, series_name, series_index, year, isbn, mbid,
-                        description, publisher, genre, cover_path, folder_path, abs_item_id,
+                        asin, narrator, description, publisher, genre, cover_path, folder_path, abs_item_id,
                         synopsis_source, llm_blurb, atmosphere_path, art_attribution,
                         review_state, review_reason, music_state, indexer_guid, part_total,
                         part_style, part_base, part_origin, repair_fail_count, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         payload["id"],
@@ -568,6 +574,8 @@ class Database:
                         payload["year"],
                         payload["isbn"],
                         payload["mbid"],
+                        payload["asin"],
+                        payload["narrator"],
                         payload["description"],
                         payload["publisher"],
                         payload["genre"],
@@ -750,6 +758,7 @@ class Database:
         review_state: Optional[str] = None,
         music_state: Optional[str] = None,
         limit: int = 48,
+        offset: int = 0,
     ) -> List[Dict[str, Any]]:
         clauses = ["1=1"]
         args: List[Any] = []
@@ -763,7 +772,11 @@ class Database:
             clauses.append("music_state = ?")
             args.append(music_state)
         args.append(int(limit))
-        sql = f"SELECT * FROM works WHERE {' AND '.join(clauses)} ORDER BY updated_at DESC LIMIT ?"
+        args.append(max(0, int(offset)))
+        sql = (
+            f"SELECT * FROM works WHERE {' AND '.join(clauses)} "
+            "ORDER BY updated_at DESC LIMIT ? OFFSET ?"
+        )
         with self._connect() as conn:
             rows = conn.execute(sql, args).fetchall()
         return [_row_dict(row) or {} for row in rows]

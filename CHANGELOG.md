@@ -2,6 +2,30 @@
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-09-19
+
+### Highlights
+
+- **Audiobook scene → Audnexus → M4B shelf.** Dump names scrub to author/title/narrator/series/ASIN; Audnexus scores matches into organize or Review; multipart audio remuxes to a single tagged `{Title}.m4b` under the series-aware shelf layout.
+- **Comics scene → ComicVine → clean CBZ.** Scene scrub + volume-year disambiguation; ComicInfo.xml in the archive; publisher/series shelf paths with fail-soft Komga scan + Open in Komga.
+- **Audiobookshelf scan + listen progress.** After shelving, Librarian asks ABS to scan; Listen pulls/pushes progress for matched titles without wiping a better local bookmark.
+
+### Added
+
+- `audiobook_normalize` / `audnexus` / `m4b` (ffmpeg in the image) + golden scene fixtures.
+- `comic_normalize` / deepened ComicVine match + `komga` federation client and Settings fields.
+- ABS library scan notify + bidirectional listen progress sync on work/Listen APIs.
+- Review / peek / Settings polish for Audnexus candidates, Komga links, and ABS progress.
+
+### Changed
+
+- Media contract: audiobooks `{Author}/{Series}/{Index} - {Title} ({Year})/` with `{Title}.m4b`; comics `{Publisher}/{Series} ({VolumeYear})/` (legacy scan still accepted).
+- Organize dest layouts and identify/enrich paths for spoken-word and sequential-art authority.
+
+### Fixed
+
+- Enrich progress reporting stays honest across longer Audnexus/ComicVine match runs.
+
 ## [0.3.1] — 2026-09-19
 
 ### Highlights

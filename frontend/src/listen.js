@@ -2,6 +2,18 @@
 
 import { isAudioFile, playableTracks, workStreamUrl } from "./music.js";
 
+export const LISTEN_RATES = [0.75, 1, 1.25, 1.5, 1.75, 2, 2.5];
+export const SLEEP_TIMER_OPTIONS = [
+  { id: "off", label: "Sleep off", minutes: 0 },
+  { id: "15", label: "Sleep 15m", minutes: 15 },
+  { id: "30", label: "Sleep 30m", minutes: 30 },
+  { id: "45", label: "Sleep 45m", minutes: 45 },
+  { id: "chapter", label: "Sleep end of chapter", minutes: 0, endChapter: true },
+];
+
+/** Persist at most about once every `minIntervalMs` unless forced. */
+export const LISTEN_PERSIST_MIN_MS = 900;
+
 export function canListenInApp(work, files = [], canDownload = false) {
   if (work?.kind !== "audiobook") return false;
   if (!canDownload) return false;
@@ -65,6 +77,44 @@ export function shouldWriteListenProgress({
   // Never replace a real bookmark with a near-zero write before playback has advanced.
   if (resume >= 2 && now < 1) return false;
   return true;
+}
+
+/** Cadence gate for progress POSTs — force always writes. */
+export function shouldPersistListenCadence({
+  force = false,
+  lastPersistMs = 0,
+  nowMs = Date.now(),
+  minIntervalMs = LISTEN_PERSIST_MIN_MS,
+} = {}) {
+  if (force) return true;
+  return nowMs - Number(lastPersistMs || 0) >= Number(minIntervalMs || LISTEN_PERSIST_MIN_MS);
+}
+
+export function nextListenRate(current = 1, rates = LISTEN_RATES) {
+  const list = Array.isArray(rates) && rates.length ? rates : LISTEN_RATES;
+  const idx = list.findIndex((value) => Math.abs(Number(value) - Number(current)) < 0.001);
+  if (idx < 0) return list[0];
+  return list[(idx + 1) % list.length];
+}
+
+export function chapterRemainingSeconds(chapters = [], seconds = 0, duration = 0) {
+  const t = Math.max(0, Number(seconds) || 0);
+  const nxt = nextChapter(chapters, t);
+  if (nxt) return Math.max(0, Number(nxt.start) - t);
+  const dur = Math.max(0, Number(duration) || 0);
+  if (dur > t) return dur - t;
+  return 0;
+}
+
+export function sleepTimerLabel(optionId = "off") {
+  const hit = SLEEP_TIMER_OPTIONS.find((row) => row.id === optionId);
+  return hit?.label || "Sleep off";
+}
+
+export function nextSleepTimerId(current = "off") {
+  const idx = SLEEP_TIMER_OPTIONS.findIndex((row) => row.id === current);
+  const next = SLEEP_TIMER_OPTIONS[(Math.max(0, idx) + 1) % SLEEP_TIMER_OPTIONS.length];
+  return next.id;
 }
 
 export function splitContinueRails(items = []) {

@@ -151,6 +151,24 @@ Full operator steps (rebind Settings, Scan, archive old `books/`): [LIBRARY_MIGR
 
 Plex has no Audiobooks library type. Create a **Music** library named e.g. “Audiobooks” whose folder is `audiobooks_root`, enable track progress / long-form, and keep that folder out of the Plexamp music library (`music_root`).
 
+### Komga (comics federation)
+
+Librarian is the **sole writer** of `comics_root`. Komga (and Panels via Komga OPDS-PSE) are read clients.
+
+Suggested compose mount for Komga on Automat:
+
+```yaml
+# fragment — keep in the media compose alongside Librarian
+services:
+  komga:
+    image: gotson/komga
+    volumes:
+      - /mnt/user/data/media/library/comics:/comics:ro
+    # …ports, appdata, PUID/PGID as usual
+```
+
+In Librarian Settings set `komga_url`, `komga_api_key`, and `komga_library_id` (the library whose root is `/comics`). After a successful comic organize, Librarian POSTs `/api/v1/libraries/{id}/scan` fail-soft. Work Peek offers **Open in Komga**. There is no in-app Guided View reader.
+
 ## See also
 
 - [DOCKER.md](../DOCKER.md) — volumes, PUID/PGID, extra_hosts

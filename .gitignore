@@ -7,6 +7,7 @@ config/
 *.db
 *.db-wal
 *.db-shm
+audnexus_cache.sqlite
 build/
 dist/
 frontend/node_modules/

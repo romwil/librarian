@@ -2,15 +2,21 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
 import { humanError } from "../copy.js";
 import {
+  LISTEN_PERSIST_MIN_MS,
   chapterAt,
+  chapterRemainingSeconds,
   decodeListenPosition,
   encodeListenPosition,
   formatListenClock,
   listenFraction,
   nextChapter,
+  nextListenRate,
+  nextSleepTimerId,
   playableTracks,
   prevChapter,
+  shouldPersistListenCadence,
   shouldWriteListenProgress,
+  sleepTimerLabel,
   workStreamUrl,
 } from "../listen.js";
 
@@ -32,10 +38,12 @@ export default function AudiobookPlayer({
   const tracks = playableTracks(files);
   const tracksRef = useRef(tracks);
   const persistTimer = useRef(0);
-  const lastPersist = useRef({ fileId: "", seconds: 0, fraction: 0 });
+  const lastPersist = useRef({ fileId: "", seconds: 0, fraction: 0, at: 0 });
   const readyRef = useRef(false);
   const resumeSecondsRef = useRef(0);
   const bookmarkRef = useRef(decodeListenPosition(progress?.position || ""));
+  const sleepDeadlineRef = useRef(0);
+  const sleepChapterEndRef = useRef(false);
 
   const bookmark = decodeListenPosition(progress?.position || "");
   bookmarkRef.current = bookmark;
@@ -51,6 +59,7 @@ export default function AudiobookPlayer({
   const [currentTime, setCurrentTime] = useState(bookmark.seconds || 0);
   const [duration, setDuration] = useState(0);
   const [rate, setRate] = useState(bookmark.rate > 0 ? bookmark.rate : 1);
+  const [sleepId, setSleepId] = useState("off");
 
   tracksRef.current = tracks;
   const fileIndex = Math.max(
@@ -59,6 +68,7 @@ export default function AudiobookPlayer({
   );
   const activeTrack = tracks[fileIndex] || tracks[0] || null;
   const chapter = chapterAt(chapters, currentTime);
+  const chapterLeft = chapterRemainingSeconds(chapters, currentTime, duration);
 
   function persist(force = false) {
     if (!work?.id || !activeTrack) return;
@@ -70,6 +80,15 @@ export default function AudiobookPlayer({
         seconds,
         resumeSeconds: resumeSecondsRef.current,
         force,
+      })
+    ) {
+      return;
+    }
+    if (
+      !shouldPersistListenCadence({
+        force,
+        lastPersistMs: lastPersist.current.at,
+        minIntervalMs: LISTEN_PERSIST_MIN_MS,
       })
     ) {
       return;
@@ -94,7 +113,12 @@ export default function AudiobookPlayer({
     ) {
       return;
     }
-    lastPersist.current = { fileId: String(activeTrack.id), seconds, fraction };
+    lastPersist.current = {
+      fileId: String(activeTrack.id),
+      seconds,
+      fraction,
+      at: Date.now(),
+    };
     window.clearTimeout(persistTimer.current);
     const run = () =>
       api
@@ -104,12 +128,11 @@ export default function AudiobookPlayer({
         })
         .catch(() => {});
     if (force) run();
-    else persistTimer.current = window.setTimeout(run, 900);
+    else persistTimer.current = window.setTimeout(run, LISTEN_PERSIST_MIN_MS);
   }
 
   function flushProgress() {
     window.clearTimeout(persistTimer.current);
-    // Skip Strict Mode remount / pre-metadata teardowns so we never write t=0 over a bookmark.
     if (!readyRef.current) return;
     persist(true);
   }
@@ -145,7 +168,6 @@ export default function AudiobookPlayer({
         } catch {
           markReady();
         }
-        // Some engines never fire seeked for a no-op seek; arm after a beat.
         window.setTimeout(() => {
           if (!readyRef.current) markReady();
         }, 400);
@@ -200,11 +222,42 @@ export default function AudiobookPlayer({
   }
 
   function changeRate() {
-    const options = [1, 1.25, 1.5, 1.75, 2, 0.75];
-    const next = options[(options.indexOf(rate) + 1) % options.length];
+    const next = nextListenRate(rate);
     setRate(next);
     if (audioRef.current) audioRef.current.playbackRate = next;
     if (readyRef.current) persist(true);
+  }
+
+  function cycleSleep() {
+    const next = nextSleepTimerId(sleepId);
+    setSleepId(next);
+    sleepChapterEndRef.current = next === "chapter";
+    if (next === "off" || next === "chapter") {
+      sleepDeadlineRef.current = 0;
+      return;
+    }
+    const minutes = Number(next) || 0;
+    sleepDeadlineRef.current = Date.now() + minutes * 60 * 1000;
+  }
+
+  function maybeTripSleep(nowSeconds) {
+    const audio = audioRef.current;
+    if (!audio || audio.paused) return;
+    if (sleepChapterEndRef.current) {
+      const left = chapterRemainingSeconds(chapters, nowSeconds, duration);
+      if (left <= 0.35) {
+        audio.pause();
+        setSleepId("off");
+        sleepChapterEndRef.current = false;
+        sleepDeadlineRef.current = 0;
+      }
+      return;
+    }
+    if (sleepDeadlineRef.current > 0 && Date.now() >= sleepDeadlineRef.current) {
+      audio.pause();
+      setSleepId("off");
+      sleepDeadlineRef.current = 0;
+    }
   }
 
   useEffect(() => {
@@ -277,8 +330,10 @@ export default function AudiobookPlayer({
     if (!audio) return undefined;
 
     function onTime() {
-      setCurrentTime(audio.currentTime || 0);
+      const now = audio.currentTime || 0;
+      setCurrentTime(now);
       if (audio.duration) setDuration(audio.duration);
+      maybeTripSleep(now);
       persist();
     }
     function onPlay() {
@@ -319,7 +374,7 @@ export default function AudiobookPlayer({
       audio.removeEventListener("ended", onEnded);
       audio.removeEventListener("error", onError);
     };
-  }, [fileIndex, work?.id]);
+  }, [fileIndex, work?.id, chapters, duration, sleepId]);
 
   useEffect(() => {
     if (!("mediaSession" in navigator) || !work) return undefined;
@@ -382,6 +437,12 @@ export default function AudiobookPlayer({
             <p className="muted">{work.author || "Unknown author"}</p>
             <p className="listen-chapter" data-testid="listen-chapter">
               {chapter?.title || activeTrack?.filename || "Audiobook"}
+              {chapterLeft > 0 ? (
+                <span className="muted" data-testid="listen-chapter-remaining">
+                  {" "}
+                  · {formatListenClock(chapterLeft)} left in chapter
+                </span>
+              ) : null}
             </p>
             <div className="listen-progress">
               <input
@@ -417,6 +478,9 @@ export default function AudiobookPlayer({
               </button>
               <button type="button" className="cta ghost compact" onClick={changeRate} data-testid="listen-rate">
                 {rate}×
+              </button>
+              <button type="button" className="cta ghost compact" onClick={cycleSleep} data-testid="listen-sleep">
+                {sleepTimerLabel(sleepId)}
               </button>
             </div>
             {tracks.length > 1 ? (

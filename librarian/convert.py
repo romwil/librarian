@@ -13,8 +13,16 @@ from librarian.identify import MEDIA_EXTENSIONS, list_payload_files
 from librarian.kinds import KIND_BOOK, KIND_COMIC
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
+JUNK_PAGE_SUFFIXES = {".nfo", ".url", ".txt", ".sfv", ".par2", ".nzb", ".ds_store"}
+JUNK_PAGE_NAMES = {"thumbs.db", "desktop.ini", ".ds_store"}
 ALLOWED_EBOOK_FORMATS = ("epub", "pdf", "mobi", "azw3", "kepub")
 RunTool = Callable[..., subprocess.CompletedProcess]
+
+_JPEG_MAGIC = b"\xff\xd8\xff"
+_PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+_WEBP_RIFF = b"RIFF"
+_WEBP_WEBP = b"WEBP"
+_NATURAL_KEY = re.compile(r"(\d+)|(\D+)")
 
 
 def which_unar() -> Optional[str]:
@@ -79,14 +87,117 @@ def _unlink_pages(pages: Sequence[Path]) -> None:
         page.unlink(missing_ok=True)
 
 
-def images_to_cbz(images: Sequence[Path], dest: Path) -> Path:
-    """Zip page images into a CBZ. Exact namelist is the sorted basenames."""
+def _natural_key(name: str) -> list:
+    parts: list = []
+    for chunk in _NATURAL_KEY.finditer(Path(name).name):
+        digits, text = chunk.groups()
+        if digits:
+            parts.append(int(digits))
+        else:
+            parts.append(str(text).casefold())
+    return parts
+
+
+def is_raster_image(path: Path) -> bool:
+    """True when the file starts with a known raster header (JPEG/PNG/WebP)."""
+    try:
+        with Path(path).open("rb") as handle:
+            head = handle.read(16)
+    except OSError:
+        return False
+    if head.startswith(_JPEG_MAGIC) or head.startswith(_PNG_MAGIC):
+        return True
+    if len(head) >= 12 and head.startswith(_WEBP_RIFF) and head[8:12] == _WEBP_WEBP:
+        return True
+    return False
+
+
+def sort_comic_pages(paths: Sequence[Path]) -> List[Path]:
+    return sorted(paths, key=lambda path: _natural_key(path.name))
+
+
+def filter_comic_pages(paths: Sequence[Path]) -> List[Path]:
+    """Drop junk sidecars; keep validated raster pages only."""
+    kept: List[Path] = []
+    for path in paths:
+        name = path.name.lower()
+        if name in JUNK_PAGE_NAMES or path.suffix.lower() in JUNK_PAGE_SUFFIXES:
+            continue
+        if path.suffix.lower() not in IMAGE_SUFFIXES:
+            continue
+        if not is_raster_image(path):
+            continue
+        kept.append(path)
+    return sort_comic_pages(kept)
+
+
+def images_to_cbz(
+    images: Sequence[Path],
+    dest: Path,
+    *,
+    identity: Optional[Dict[str, Any]] = None,
+    guid: str = "",
+    compression: int = zipfile.ZIP_DEFLATED,
+) -> Path:
+    """Zip page images into a CBZ (Deflate). Optionally embed ComicInfo.xml at archive root."""
     dest = Path(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(dest, "w", compression=zipfile.ZIP_STORED) as archive:
-        for image in images:
-            archive.write(image, arcname=image.name)
+    pages = filter_comic_pages(images) if images else []
+    if not pages:
+        pages = sort_comic_pages(list(images))
+    staging = dest.with_suffix(dest.suffix + ".partial")
+    staging.unlink(missing_ok=True)
+    with zipfile.ZipFile(staging, "w", compression=compression) as archive:
+        for index, image in enumerate(pages, start=1):
+            suffix = image.suffix.lower() or ".jpg"
+            if suffix == ".jpeg":
+                suffix = ".jpg"
+            arcname = f"{index:03d}{suffix}"
+            archive.write(image, arcname=arcname)
+        if identity is not None:
+            from librarian.metadata import comicinfo_xml
+
+            xml = comicinfo_xml(identity, guid=guid, page_count=len(pages))
+            archive.writestr("ComicInfo.xml", xml)
+    # Integrity check before replacing dest.
+    with zipfile.ZipFile(staging, "r") as archive:
+        bad = archive.testzip()
+        if bad is not None:
+            staging.unlink(missing_ok=True)
+            raise zipfile.BadZipFile(f"corrupt member {bad}")
+    staging.replace(dest)
     return dest
+
+
+def clean_cbz(
+    src: Path,
+    dest: Optional[Path] = None,
+    *,
+    identity: Optional[Dict[str, Any]] = None,
+    guid: str = "",
+) -> Optional[Path]:
+    """Remux an existing CBZ: strip junk, validate pages, embed ComicInfo, Deflate."""
+    src = Path(src)
+    if not src.is_file() or src.suffix.lower() != ".cbz":
+        return None
+    target = Path(dest) if dest is not None else src
+    extract_dir = src.parent / f".librarian-clean-{src.stem}"
+    if extract_dir.exists():
+        shutil.rmtree(extract_dir, ignore_errors=True)
+    extract_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        try:
+            with zipfile.ZipFile(src, "r") as archive:
+                archive.extractall(extract_dir)
+        except zipfile.BadZipFile:
+            return None
+        pages = filter_comic_pages(loose_images(extract_dir))
+        if not pages:
+            return None
+        written = images_to_cbz(pages, target, identity=identity or {}, guid=guid)
+        return written if written.is_file() else None
+    finally:
+        shutil.rmtree(extract_dir, ignore_errors=True)
 
 
 def cbr_to_cbz(

@@ -12,10 +12,10 @@ Sibling copy: Smart Map `docs/automat-media-contract.md` (same standards).
 |------|--------|--------|
 | `/data/media/library/incoming-music` | Librarian | `{Artist}/{Album}/` then **Promote** the whole folder to `music_root` |
 | `/data/media/music` | Shared filesystem: Librarian album Promote + Smart Map YouTube/inbox audio confirm | `{Artist}/{Album}/` — **never audiobooks** |
-| `/data/media/library/audiobooks` | Librarian only | `{Author}/{Title}/` |
+| `/data/media/library/audiobooks` | Librarian only | `{Author}/{Series}/{Index} - {Title} ({Year})/` with `{Title}.m4b` (standalone omits `{Series}/` → `{Author}/{Title} ({Year})/`) |
 | `/data/media/library/books` | Librarian only | `{Author}/{Title}/` |
 | `/data/media/library/magazines` | Librarian only | `{Series\|Title}/{YYYY-MM}/` |
-| `/data/media/library/comics` | Librarian only | `{Series}/{Issue}/` |
+| `/data/media/library/comics` | Librarian only | `{Publisher}/{Series} ({VolumeYear})/` + clean CBZ (legacy `{Series}/{Issue}/` still scanned) |
 | `/data/media/YouTubeLibrary` | Smart Map only | existing channel/title layout |
 | `/data/media/YouTubeDownload` | Smart Map inbox | Librarian `watch_root` must not be this or library roots |
 

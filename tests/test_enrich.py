@@ -289,6 +289,79 @@ def test_openlibrary_fills_when_hardcover_has_no_token(tmp_path):
     assert updated["year"] == 1969
 
 
+def test_isbn_stub_falls_back_to_openlibrary_title_lookup(tmp_path):
+    """OL /isbn often 302s onto an edition with no blurb; title search has the work record."""
+    blurb = "September 1861: All is not as it seems."
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if "/isbn/" in url:
+            return httpx.Response(
+                200,
+                json={
+                    "title": "The Lincoln Myth",
+                    "publish_date": "2014",
+                    "works": [{"key": "/works/OLSTUBW"}],
+                },
+            )
+        if "/works/OLSTUBW" in url:
+            return httpx.Response(200, json={"title": "The Lincoln Myth"})
+        if "search.json" in url:
+            return httpx.Response(
+                200,
+                json={
+                    "docs": [
+                        {
+                            "title": "The Lincoln Myth",
+                            "key": "/works/OLRICHW",
+                            "first_publish_year": 2014,
+                            "author_name": ["Steve Berry"],
+                            "subject": ["Official secrets", "Fiction"],
+                        }
+                    ]
+                },
+            )
+        if "/works/OLRICHW" in url:
+            return httpx.Response(
+                200,
+                json={
+                    "description": blurb,
+                    "title": "The Lincoln Myth",
+                    "subjects": ["Official secrets", "Fiction"],
+                },
+            )
+        if "wikipedia.org" in url or "wikimedia.org" in url:
+            return httpx.Response(200, json={"query": {"pages": {"1": {"missing": True}}}})
+        if request.headers.get("accept", "").startswith("image") or url.endswith(".jpg"):
+            return httpx.Response(200, content=JPEG, headers={"content-type": "image/jpeg"})
+        return httpx.Response(404, json={"error": "missing"})
+
+    cover = tmp_path / "cover.jpg"
+    cover.write_bytes(JPEG)
+    db = Database(tmp_path / "librarian.db")
+    work = db.upsert_work(
+        {
+            "kind": "book",
+            "title": "The Lincoln Myth",
+            "author": "Steve Berry",
+            "isbn": "9780345526595",
+            "year": 2014,
+            "cover_path": str(cover),
+        }
+    )
+    result = enrich_work(
+        db,
+        Settings(hardcover_api_token=""),
+        work["id"],
+        data_dir=tmp_path,
+        transport=httpx.MockTransport(handler),
+    )
+    assert result["updated"] is True
+    assert result["work"]["description"] == blurb
+    assert "Fiction" in (result["work"].get("genre") or "")
+    assert result["work"]["isbn"] == "9780345526595"
+
+
 def test_title_lookup_does_not_write_isbn(tmp_path):
     db = Database(tmp_path / "librarian.db")
     work = db.upsert_work({"kind": "book", "title": "Dune", "author": "Frank Herbert"})
@@ -507,6 +580,18 @@ def test_goodreads_api_import(tmp_path, monkeypatch):
     assert resp.json() == {"rows": 1, "matched": 0, "created": 1, "favorited": 1, "skipped": 0}
     hall = client.get("/api/hall")
     assert [row["title"] for row in hall.json()["favorites"]] == ["Dune"]
+
+
+def test_enrich_library_pages_beyond_first_list_window(tmp_path, monkeypatch):
+    """Manual enrich used to list_works(limit=2000) and skip the rest of the shelves."""
+    import librarian.enrich as enrich_mod
+
+    monkeypatch.setattr(enrich_mod, "ENRICH_LIST_PAGE", 2)
+    db = Database(tmp_path / "librarian.db")
+    for index in range(5):
+        db.upsert_work({"kind": "book", "title": f"Thin {index}", "author": "Nye"})
+    counts = enrich_library(db, Settings(), data_dir=tmp_path, transport=httpx.MockTransport(_handler))
+    assert counts["scanned"] == 5
 
 
 def test_enrich_library_counts_complete_books_as_skipped(tmp_path):

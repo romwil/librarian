@@ -30,7 +30,7 @@ from librarian.identify import (
     resolve_storage_path,
     usable_folder,
 )
-from librarian.kinds import KIND_BOOK, KIND_COMIC, KIND_MAGAZINE, KIND_MUSIC
+from librarian.kinds import KIND_AUDIOBOOK, KIND_BOOK, KIND_COMIC, KIND_MAGAZINE, KIND_MUSIC
 from librarian.llm import (
     LLM_FAIL_COPY,
     LLM_UNSET_COPY,
@@ -57,6 +57,12 @@ def _copy_into(src: Path, dest: Path, *, move: bool = False) -> Path:
 
 def _inject_comicinfo(cbz: Path, identity: Dict[str, Any], guid: str) -> None:
     if cbz.suffix.lower() != ".cbz" or not cbz.is_file():
+        return
+    from librarian.convert import clean_cbz
+
+    # Prefer a full clean remux (junk strip + embedded ComicInfo). Fall back to append.
+    cleaned = clean_cbz(cbz, identity=identity, guid=guid)
+    if cleaned is not None:
         return
     xml = comicinfo_xml(identity, guid=guid)
     try:
@@ -114,7 +120,19 @@ def _file_part_index(
     if indexer_item:
         titles.extend([indexer_item.get("title"), indexer_item.get("name")])
     inferred = infer_part_fields(titles=titles, filenames=filenames)
-    return part_for_filename(filename, inferred.get("file_parts") or {})
+    parts = inferred.get("file_parts") or {}
+    found = part_for_filename(filename, parts)
+    if found is not None:
+        return found
+    # dest_layout renames .m4b → {Title}.m4b, which drops "Part N" from the name.
+    for title in titles:
+        key = str(title or "")
+        if key and key in parts:
+            return parts[key]
+    values = [int(v) for v in parts.values() if v is not None]
+    if len(set(values)) == 1:
+        return values[0]
+    return None
 
 
 def shelf_work_for_collision(db: Database, work: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -372,6 +390,39 @@ def organize_identified(
     )
     identity = _merge_identity(dict(result["identity"]), identity_overrides)
     files = [Path(path) for path in result["files"]]
+    remux_note: Dict[str, Any] = {"remuxed": False}
+    if (
+        identity.get("kind") == KIND_AUDIOBOOK
+        and str(identity.get("asin") or "").strip()
+        and (result.get("auto_organize") or force)
+    ):
+        from librarian.m4b import chapters_from_audnexus, maybe_remux_audiobook_folder
+
+        chapter_rows = None
+        try:
+            from librarian.audnexus import client_from_settings as audnexus_client_from_settings
+
+            client = audnexus_client_from_settings(
+                settings, transport=catalog_transport or cover_transport
+            )
+            try:
+                chapter_rows = chapters_from_audnexus(
+                    client.chapters(str(identity.get("asin") or ""))
+                ) or None
+            finally:
+                client.close()
+        except Exception:
+            chapter_rows = None
+        remux_note = maybe_remux_audiobook_folder(
+            folder,
+            identity,
+            runner=convert_runner,
+            chapters=chapter_rows,
+            force=True,
+        )
+        if remux_note.get("remuxed") and remux_note.get("path"):
+            files = [Path(str(remux_note["path"]))]
+            result["files"] = [str(path) for path in files]
     if force:
         if files:
             identity["confidence"] = "high"
@@ -524,7 +575,32 @@ def organize_identified(
         )
     if move_source:
         _cleanup_moved_source(folder, placed)
-    return {"work": work, "identity": identity, "organized": True, "files": placed, "cover": str(cover) if cover else None}
+    komga_scan = None
+    if identity.get("kind") == KIND_COMIC:
+        try:
+            from librarian.komga import notify_komga_scan
+
+            komga_scan = notify_komga_scan(settings)
+        except Exception:
+            komga_scan = {"ok": False, "skipped": False, "error": "unexpected"}
+    abs_scan = None
+    if identity.get("kind") == KIND_AUDIOBOOK:
+        try:
+            from librarian.audiobookshelf import notify_abs_scan
+
+            abs_scan = notify_abs_scan(settings)
+        except Exception:
+            abs_scan = {"ok": False, "skipped": False, "error": "unexpected"}
+    return {
+        "work": work,
+        "identity": identity,
+        "organized": True,
+        "files": placed,
+        "cover": str(cover) if cover else None,
+        "komga_scan": komga_scan,
+        "abs_scan": abs_scan,
+        "m4b": remux_note,
+    }
 
 
 def _cleanup_moved_source(source: Path, placed: List[str]) -> None:

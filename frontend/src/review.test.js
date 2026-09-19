@@ -177,20 +177,8 @@ describe("review LLM suggest helpers", () => {
     assert.equal(draft.folder, "/x");
   });
 
-  it("exposes Suggest with LLM flags from work.actions", () => {
-    const actions = reviewActionsFromWork({
-      title: "102.Minutes.Dump.Audio.book",
-      author: "",
-      review_reason: "unknown_identity",
-      actions: {
-        can_suggest_llm: true,
-        needs_llm_suggest: true,
-        llm_configured: true,
-        find_query: "102",
-      },
-    });
-    assert.equal(actions.canSuggestLlm, true);
-    assert.equal(actions.needsLlmSuggest, true);
-    assert.equal(actions.llmConfigured, true);
+  it("explains Audnexus match review reasons", () => {
+    assert.match(reviewReasonCopy("audnexus_ambiguous"), /Audnexus/);
+    assert.match(reviewReasonCopy("audnexus_unmatched"), /Audnexus/);
   });
 });

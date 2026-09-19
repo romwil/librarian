@@ -129,7 +129,9 @@ def test_loose_comic_images_convert_and_cover(tmp_path):
     assert result["organized"] is True
     dest = Path(result["files"][0])
     assert dest.suffix == ".cbz"
-    assert dest.name == "Saga #1.cbz"
+    assert dest.name == "Saga v2024 #1 (2024).cbz"
+    assert dest.parent.name == "Saga (2024)"
+    assert dest.parent.parent.name == "Unknown Publisher"
     assert (dest.parent / "ComicInfo.xml").is_file()
     assert (dest.parent / "cover.jpg").read_bytes() == jpeg
     work = db.get_work(result["work"]["id"])
@@ -309,9 +311,9 @@ def test_organize_cbz_comicinfo_layout(tmp_path):
     result = organize_identified(db, _settings(tmp_path), folder=folder)
     assert result["organized"] is True
     dest = Path(result["files"][0])
-    assert dest.parent.parent.name == "Saga"
-    assert dest.parent.name == "54"
-    assert dest.name == "Saga #54.cbz"
+    assert dest.parent.parent.name == "Unknown Publisher"
+    assert dest.parent.name == "Saga"
+    assert dest.name == "Saga #54 (2018).cbz"
     assert (dest.parent / "ComicInfo.xml").is_file()
 
 
@@ -434,7 +436,14 @@ def test_organize_audiobook_tags_never_music_root(tmp_path):
     )
     db = Database(tmp_path / "librarian.db")
     settings = _settings(tmp_path)
-    result = organize_identified(db, settings, folder=folder)
+    # Audnexus is required for auto-organize; force shelves once kind is spoken-word.
+    result = organize_identified(
+        db,
+        settings,
+        folder=folder,
+        force=True,
+        identity_overrides={"kind": "audiobook", "asin": "B000TEST01"},
+    )
     assert result["organized"] is True
     dest = Path(result["files"][0])
     assert dest.is_relative_to(Path(settings.audiobooks_root))
@@ -452,11 +461,18 @@ def test_organize_persists_part_set_from_nzb_title(tmp_path):
         db,
         _settings(tmp_path),
         folder=folder,
+        force=True,
+        identity_overrides={
+            "kind": "audiobook",
+            "title": "Magician",
+            "author": "Raymond E. Feist",
+        },
         indexer_item={
             "title": "Raymond E. Feist - Magician Part 3/5",
             "author": "Feist",
             "guid": "guid-part-3",
             "name": folder.name,
+            "kind": "audiobook",
         },
     )
     assert result["organized"] is True

@@ -30,7 +30,7 @@ Without a Radarr/Sonarr key, a movie/TV Request still queues SAB and shows **Nee
 
 Owners and ops can subscribe to a Newznab RSS (Find or Settings) for one Librarian kind. New items wait as **Asked** slips on Queue — confirm before SABnzbd. Librarian does not silently download a whole feed.
 
-Optional Audiobookshelf URL and token in Settings match catalog audiobooks by ISBN, then author and title. That is a quiet **On the player** link, not a new admin skin, and it does not send audiobooks to the Plexamp music library. Plex remains the default audiobook target until you change it.
+Optional Audiobookshelf URL and token (`AUDIOBOOKSHELF_URL` / `AUDIOBOOKSHELF_API_TOKEN`) in Settings match catalog audiobooks by ISBN, then author and title. Set **Audiobook target** to Audiobookshelf to prefer that handoff. After an audiobook shelves, Librarian asks ABS to scan (fail-soft). Matched titles sync listen progress both ways when you open Listen or pause/persist — without wiping a better local bookmark. That is a quiet **On the player** link, not a new admin skin, and it does not send audiobooks to the Plexamp music library. Plex remains the default audiobook target until you change it.
 
 ## The Hall
 
@@ -95,7 +95,7 @@ Cards on The Hall are the *missing* set — honest holes between what you alread
 
 Music organizes into Incoming (`library/incoming-music`), then **Promote** moves the album into the Plexamp library at `/data/media/music`. Audiobooks never go there.
 
-**Listen** opens the Listening room on an audiobook work (HTML5 audio + Media Session, chapter skip when tags exist, Continue bookmark). Peek and the work page use **Listen** as the primary CTA — never Promote to Plexamp. **Open in player** appears when Audiobookshelf has matched the title, or as a soft Plex handoff when that is the audiobook target. With Audiobookshelf configured but unmatched, the note stays honest.
+**Listen** opens the Listening room on an audiobook work (HTML5 audio + Media Session, chapter skip when tags exist, Continue bookmark). Peek and the work page use **Listen** as the primary CTA — never Promote to Plexamp. **Open in player** appears when Audiobookshelf has matched the title (or when the audiobook target is ABS), or as a soft Plex handoff when that is the audiobook target. With Audiobookshelf configured but unmatched, the note stays honest. Progress pauses push to ABS when linked; opening Listen can pull a farther ABS position.
 
 On a **book** work page (and peek when the detail has loaded), Librarian surfaces a companion audiobook when the same ISBN, title+author, or series index is already on the shelves (**Audiobook on the shelves** → Listen), or offers **Find audiobook** with kind=audiobook and title/author/ISBN prefilled. Books, comics, and magazines use **Read** for the in-browser reader (not Open); audiobooks keep Listen.
 

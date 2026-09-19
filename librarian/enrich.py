@@ -26,6 +26,7 @@ from librarian.wikipedia import fetch_book_page, resolve_wikimedia_art
 logger = logging.getLogger(__name__)
 
 ENRICH_KINDS = (KIND_BOOK, KIND_AUDIOBOOK)
+ENRICH_LIST_PAGE = 2000
 BACKLOG_BATCH_DEFAULT = 5
 BACKLOG_PAUSE_SECONDS = 1.0
 
@@ -174,12 +175,17 @@ def lookup_enrichment(
         if merged.empty() or _still_needs(merged, work):
             openlib = OpenLibraryClient(transport=transport, client=http)
             work_year = work.get("year") if isinstance(work.get("year"), int) else None
-            raw = (
-                openlib.lookup_by_isbn(isbn)
-                if isbn
-                else openlib.lookup_by_title(title, author, year=work_year)
-            )
-            merged = _fill_empty(merged, enrichment_from_mapping(raw))
+            # ISBN editions are often stubs (year/cover URL, no blurb). Title search
+            # hits the work record — fall through when the ISBN payload still has holes.
+            if isbn:
+                merged = _fill_empty(merged, enrichment_from_mapping(openlib.lookup_by_isbn(isbn)))
+            if title and (not isbn or _still_needs(merged, work)):
+                merged = _fill_empty(
+                    merged,
+                    enrichment_from_mapping(
+                        openlib.lookup_by_title(title, author, year=work_year)
+                    ),
+                )
         if not str(work.get("description") or "").strip() and not merged.description:
             wiki = fetch_book_page(
                 title,
@@ -458,11 +464,19 @@ def enrich_library(
     thin: list[Dict[str, Any]] = []
     skipped = 0
     for kind in ENRICH_KINDS:
-        for work in db.list_works(kind=kind, limit=2000):
-            if not is_thin(work):
-                skipped += 1
-                continue
-            thin.append(work)
+        offset = 0
+        while True:
+            batch = db.list_works(kind=kind, limit=ENRICH_LIST_PAGE, offset=offset)
+            if not batch:
+                break
+            for work in batch:
+                if not is_thin(work):
+                    skipped += 1
+                    continue
+                thin.append(work)
+            if len(batch) < ENRICH_LIST_PAGE:
+                break
+            offset += len(batch)
     total = len(thin)
     if progress is not None:
         progress.start(total=total, phase="enriching" if total else "done")
@@ -710,7 +724,17 @@ def list_match_candidates(
     transport: Optional[httpx.BaseTransport] = None,
     client: Optional[httpx.Client] = None,
     limit: int = 8,
+    settings: Optional[Settings] = None,
 ) -> List[Dict[str, Any]]:
+    kind = str(work.get("kind") or "").strip().lower()
+    if kind == "comic":
+        return list_comicvine_match_candidates(
+            work, transport=transport, client=client, limit=limit, settings=settings
+        )
+    if kind == "audiobook":
+        from librarian.audnexus import list_audnexus_candidates
+
+        return list_audnexus_candidates(work, settings=settings, transport=transport, limit=limit)
     title = str(work.get("title") or "").strip()
     author = str(work.get("author") or "").strip()
     year = work.get("year") if isinstance(work.get("year"), int) else None
@@ -722,6 +746,209 @@ def list_match_candidates(
     finally:
         if own:
             http.close()
+
+
+def list_comicvine_match_candidates(
+    work: Mapping[str, Any],
+    *,
+    transport: Optional[httpx.BaseTransport] = None,
+    client: Optional[httpx.Client] = None,
+    limit: int = 8,
+    settings: Optional[Settings] = None,
+) -> List[Dict[str, Any]]:
+    from librarian.comicvine import ComicVineClient
+
+    key = str(getattr(settings, "comicvine_api_key", "") or "").strip() if settings else ""
+    if not key:
+        return list(work.get("match_candidates") or [])[:limit]
+    series = str(work.get("series_name") or work.get("title") or "").strip()
+    issue = str(work.get("series_index") or "").strip()
+    if not series:
+        return []
+    volume_year = work.get("volume_year") if isinstance(work.get("volume_year"), int) else None
+    cover_year = work.get("year") if isinstance(work.get("year"), int) else None
+    own = client is None
+    http = client or _http_client(transport=transport)
+    try:
+        cv = ComicVineClient(key, transport=transport, client=http, rate_limit=False)
+        matched = cv.match_issue(series, issue, volume_year=volume_year, cover_year=cover_year)
+    finally:
+        if own:
+            http.close()
+    out: List[Dict[str, Any]] = []
+    for row in matched.get("candidates") or []:
+        out.append(
+            {
+                "match_key": row.get("match_key") or f"cv:volume:{row.get('volume_id')}",
+                "title": row.get("issue_title")
+                or f"{row.get('series_name')} #{row.get('series_index') or issue}".strip(" #"),
+                "author": row.get("publisher") or "",
+                "year": row.get("start_year"),
+                "publisher": row.get("publisher") or "",
+                "series_name": row.get("series_name"),
+                "series_index": row.get("series_index") or issue,
+                "volume_year": row.get("start_year"),
+                "match_confidence": row.get("match_score"),
+                "source": "comicvine",
+            }
+        )
+        if len(out) >= limit:
+            break
+    return out
+
+
+def apply_comicvine_match(
+    db: Database,
+    settings: Settings,
+    work_id: str,
+    match_key: str,
+    *,
+    transport: Optional[httpx.BaseTransport] = None,
+) -> Dict[str, Any]:
+    """Apply a chosen ComicVine volume/issue to a comic work identity."""
+    from librarian.comicvine import ComicVineClient
+
+    work = db.get_work(work_id)
+    if work is None:
+        raise ValueError("Work not found")
+    if str(work.get("kind") or "") != "comic":
+        raise ValueError("Only comics can be Comic Vine matched")
+    key = str(match_key or "").strip()
+    if not key.startswith("cv:"):
+        raise ValueError("Match key is required")
+    api_key = str(settings.comicvine_api_key or "").strip()
+    if not api_key:
+        raise ValueError("Comic Vine key is not configured")
+
+    volume_id = None
+    issue_id = None
+    parts = key.split(":")
+    # cv:volume:123 or cv:volume:123:issue:456
+    for index, part in enumerate(parts):
+        if part == "volume" and index + 1 < len(parts) and str(parts[index + 1]).isdigit():
+            volume_id = int(parts[index + 1])
+        if part == "issue" and index + 1 < len(parts) and str(parts[index + 1]).isdigit():
+            issue_id = int(parts[index + 1])
+
+    http = _http_client(transport=transport)
+    try:
+        cv = ComicVineClient(api_key, transport=transport, client=http, rate_limit=False)
+        detail: Dict[str, Any] = {}
+        volume: Dict[str, Any] = {}
+        if volume_id is not None:
+            volume = cv.volume_detail(volume_id)
+        if issue_id is not None:
+            detail = cv.issue_detail(issue_id)
+        elif volume and work.get("series_index"):
+            want = str(work.get("series_index") or "")
+            for row in volume.get("issues") or []:
+                if str(row.get("series_index") or "") == want and row.get("issue_id"):
+                    detail = cv.issue_detail(int(row["issue_id"]))
+                    break
+    finally:
+        http.close()
+
+    if not detail and not volume:
+        raise ValueError("Comic Vine match not found")
+
+    series_name = str(detail.get("series_name") or volume.get("name") or work.get("series_name") or "").strip()
+    series_index = str(detail.get("series_index") or work.get("series_index") or "").strip()
+    title = str(detail.get("title") or "").strip() or (
+        f"{series_name} #{series_index}" if series_name and series_index else series_name
+    )
+    patch = {
+        **work,
+        "title": title,
+        "author": detail.get("author") or detail.get("writer") or volume.get("publisher") or work.get("author"),
+        "series_name": series_name,
+        "series_index": series_index,
+        "publisher": detail.get("publisher") or volume.get("publisher") or work.get("publisher"),
+        "year": detail.get("year") or volume.get("start_year") or work.get("year"),
+        "volume_year": volume.get("start_year") or work.get("volume_year"),
+        "description": detail.get("description") or work.get("description"),
+        "web": detail.get("web") or work.get("web"),
+        "penciller": detail.get("penciller") or "",
+        "inker": detail.get("inker") or "",
+        "colorist": detail.get("colorist") or "",
+        "cover_artist": detail.get("cover_artist") or "",
+        "letterer": detail.get("letterer") or "",
+        "comicvine_volume_id": volume.get("volume_id") or volume_id,
+        "comicvine_issue_id": detail.get("issue_id") or issue_id,
+        "match_confidence": 1.0,
+        "review_state": "none",
+        "review_reason": None,
+        "confidence": "high",
+    }
+    updated = db.upsert_work(patch)
+    return {
+        "work": updated,
+        "updated": True,
+        "source": "comicvine",
+        "match_key": key,
+        "match_confidence": 1.0,
+    }
+
+
+def apply_audnexus_match(
+    db: Database,
+    settings: Settings,
+    work_id: str,
+    match_key: str,
+    *,
+    data_dir: Path,
+    transport: Optional[httpx.BaseTransport] = None,
+) -> Dict[str, Any]:
+    """Apply a chosen Audnexus ASIN as catalog identity for an audiobook."""
+    from librarian.audnexus import (
+        AudnexusError,
+        book_to_candidate,
+        client_from_settings,
+        identity_from_candidate,
+        is_valid_asin,
+    )
+
+    work = db.get_work(work_id)
+    if work is None:
+        raise ValueError("Work not found")
+    if str(work.get("kind") or "") != "audiobook":
+        raise ValueError("Only audiobooks can apply an Audnexus match")
+    key = str(match_key or "").strip()
+    asin = key.split(":", 1)[-1].upper() if key.lower().startswith("asin:") else key.upper()
+    if not is_valid_asin(asin):
+        raise ValueError("Match key is required")
+    client = client_from_settings(settings, transport=transport)
+    try:
+        raw = client.book(asin)
+        if not raw:
+            raise ValueError("Audnexus match not found")
+        candidate = identity_from_candidate({**book_to_candidate(raw), "score": 1.0})
+    except AudnexusError as error:
+        raise ValueError(str(error)) from error
+    finally:
+        client.close()
+    updated = {
+        **work,
+        "title": candidate.get("title") or work.get("title"),
+        "author": candidate.get("author") or work.get("author"),
+        "series_name": candidate.get("series_name") or work.get("series_name"),
+        "series_index": candidate.get("series_index") or work.get("series_index"),
+        "year": candidate.get("year") if candidate.get("year") is not None else work.get("year"),
+        "asin": candidate.get("asin") or asin,
+        "isbn": candidate.get("asin") or asin,
+        "narrator": candidate.get("narrator") or work.get("narrator"),
+        "description": candidate.get("description") or work.get("description"),
+        "review_reason": None,
+        "review_state": "none",
+    }
+    saved = db.upsert_work(updated)
+    return {
+        "work": saved,
+        "updated": True,
+        "source": "audnexus",
+        "match_key": f"asin:{asin}",
+        "match_confidence": 1.0,
+        "thin": is_thin(saved),
+    }
 
 
 def apply_openlibrary_match(

@@ -19,7 +19,7 @@ Calibre’s *features* are an advisory roadmap. Visual bar: Projectionist Explor
 - First indexer: **NZBFinder** Newznab **v2 JSON**. Token in env/settings only. User-Agent required.
 - Music: organize into `incoming_music_root`, **Promote** → `music_root` (`/data/media/music`) for **Plexamp only**. Promote is that move, not a job status.
 - Audiobooks: first-class kind. Publish target `audiobook_target` default **`plex`**. Never `music_root`.
-- Comics: Newznab **`7030`**. Canonical file **CBZ**. Layout `{Series}/{Issue-or-Year}/` plus `ComicInfo.xml` + cover.
+- Comics: Newznab **`7030`**. Canonical file **CBZ**. Layout `{Publisher}/{Series} ({VolumeYear})/` plus embedded `ComicInfo.xml` + cover. Legacy `{Series}/{Issue}/` still scanned.
 - Gaps: owned vs expected, honest missing cards. **Confirm lives on Find** so SAB never fires from a shelf browse. Fail closed.
 - Auto-organize only when identify is confident. Unexpected → **Review**.
 - BYO LLM (same settings shape as Smart Map / Projectionist) may assist later. LLM never invents an ISBN.
@@ -32,7 +32,7 @@ Calibre’s *features* are an advisory roadmap. Visual bar: Projectionist Explor
 | --- | --- | --- | --- |
 | book | `books_root` | `/data/media/library/books` | `{Author}/{Title}/{Title}.epub` + opf/cover |
 | magazine | `magazines_root` | `/data/media/library/magazines` | `{Title}/{Year-or-Volume}/` |
-| comic | `comics_root` | `/data/media/library/comics` | `{Series}/{Issue-or-Year}/{Series} #{Issue}.cbz` + ComicInfo + cover |
+| comic | `comics_root` | `/data/media/library/comics` | `{Publisher}/{Series} ({VolumeYear})/{Series} v{VolumeYear} #{Issue} ({Year}).cbz` + embedded ComicInfo |
 | audiobook | `audiobooks_root` | `/data/media/library/audiobooks` | `{Author}/{Title}/` (m4b preferred) |
 | music staging | `incoming_music_root` | `/data/media/library/incoming-music` | `{Artist}/{Album}/` — original filename, or `{NN} - {Title}{ext}` only with a trustworthy track tag |
 | music Plexamp | `music_root` | `/data/media/music` | same after Promote |

@@ -147,6 +147,7 @@ export default function WorkPage() {
   const canInlineOpen = canOpenInlineMedia(work, Boolean(data.can_download), canRead);
   const playerLink = data.listen?.player || null;
   const playerNote = data.listen?.player_note || "";
+  const komgaLink = data.komga?.reader || null;
   const mediaNote = peekMediaNote(work, { canDownload: Boolean(data.can_download), ready: true });
   const descriptionHtml = looksLikeHtml(work.description) ? sanitizeDescriptionHtml(work.description) : "";
   const washUrl = coverWashUrl(work);
@@ -397,6 +398,17 @@ export default function WorkPage() {
                 data-testid="work-open-player"
               >
                 {playerLink.label || "Open in player"}
+              </a>
+            ) : null}
+            {komgaLink?.href ? (
+              <a
+                className="cta outline compact"
+                href={komgaLink.href}
+                target="_blank"
+                rel="noreferrer"
+                data-testid="work-open-komga"
+              >
+                {komgaLink.label || "Open in Komga"}
               </a>
             ) : null}
             {data.can_download ? (

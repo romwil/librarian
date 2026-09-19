@@ -219,7 +219,7 @@ def test_identify_music_request_without_files_stays_music(tmp_path):
 
 
 
-def test_identify_pdf_comic_does_not_require_conversion(tmp_path):
+def test_identify_pdf_comic_requires_cbz_conversion(tmp_path):
     folder = tmp_path / "Vampirella.No.06"
     folder.mkdir()
     (folder / "Vampirella.pdf").write_bytes(b"%PDF")
@@ -229,7 +229,8 @@ def test_identify_pdf_comic_does_not_require_conversion(tmp_path):
         category=7030,
     )
     assert result["identity"]["kind"] == "comic"
-    assert result["identity"]["review_reason"] != "convert_failed"
+    assert result["identity"]["review_reason"] == "convert_failed"
+    assert result["auto_organize"] is False
 
 
 def test_identify_pdf_only_book_goes_to_review(tmp_path):
@@ -363,11 +364,21 @@ def test_dest_layout_book_and_comic():
     )
     assert book == Path("/data/media/library/books/Herbert/Dune/Dune.epub")
     comic = dest_layout(
-        {"kind": "comic", "title": "Saga #1", "series_name": "Saga", "series_index": "1"},
+        {
+            "kind": "comic",
+            "title": "Saga #1",
+            "series_name": "Saga",
+            "series_index": "1",
+            "publisher": "Image",
+            "volume_year": 2012,
+            "year": 2012,
+        },
         settings,
         filename="saga.cbz",
     )
-    assert comic == Path("/data/media/library/comics/Saga/1/Saga #1.cbz")
+    assert comic == Path(
+        "/data/media/library/comics/Image/Saga (2012)/Saga v2012 #1 (2012).cbz"
+    )
 
 
 def test_comic_filename_variants():
@@ -693,7 +704,7 @@ def test_diagnose_review_folder_missing_path(tmp_path):
 def test_parse_usenet_name_keeps_bracket_part_counters_out_of_author():
     """Pathlib would treat [6/8] as a parent path and leave author as '8]'."""
     identity = parse_usenet_name("Raymond E. Feist - Magician [6/8].mp3", kind="audiobook")
-    assert identity.author == "Raymond E Feist"
+    assert identity.author == "Raymond E. Feist"
     assert identity.title == "Magician"
     assert "8]" not in identity.author
     assert "8|" not in identity.author
@@ -702,5 +713,5 @@ def test_parse_usenet_name_keeps_bracket_part_counters_out_of_author():
         "/data/usenet/complete/Raymond E. Feist - Magician [6/8].m4b",
         kind="audiobook",
     )
-    assert nested.author == "Raymond E Feist"
+    assert nested.author == "Raymond E. Feist"
     assert nested.title == "Magician"

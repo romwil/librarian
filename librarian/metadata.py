@@ -67,16 +67,76 @@ def _subjects_from_genre(value: object) -> list[str]:
 
 
 def comicinfo_xml(identity: Mapping[str, Any], *, guid: str = "", page_count: int = 0) -> str:
+    """Full ComicInfo schema. Blank optional nodes are omitted."""
+    series = identity.get("series_name") or identity.get("title") or ""
+    number = identity.get("series_index") or ""
+    title = identity.get("title") or ""
+    volume = identity.get("volume_year") or identity.get("comic_volume_number") or identity.get("Volume") or ""
+    year = identity.get("year") or ""
+    month = identity.get("month") or ""
+    day = identity.get("day") or ""
+    summary = identity.get("description") or identity.get("summary") or ""
+    writer = identity.get("writer") or identity.get("author") or ""
+    penciller = identity.get("penciller") or ""
+    inker = identity.get("inker") or ""
+    colorist = identity.get("colorist") or ""
+    letterer = identity.get("letterer") or ""
+    cover_artist = identity.get("cover_artist") or ""
+    publisher = identity.get("publisher") or ""
+    web = identity.get("web") or ""
+    volume_id = identity.get("comicvine_volume_id") or ""
+    issue_id = identity.get("comicvine_issue_id") or ""
+    notes_parts = []
+    if guid:
+        notes_parts.append(f"indexer guid: {guid}")
+    if volume_id or issue_id:
+        notes_parts.append(f"librarian: cv={volume_id}/{issue_id}")
+    variant = identity.get("comic_variant") or ""
+    if variant:
+        notes_parts.append(f"variant: {variant}")
+    existing_notes = str(identity.get("notes") or "").strip()
+    if existing_notes:
+        notes_parts.append(existing_notes)
+    notes = "; ".join(notes_parts)
+
+    nodes: list[str] = [
+        f"  <Series>{_esc(series)}</Series>",
+        f"  <Number>{_esc(number)}</Number>",
+    ]
+    if volume not in (None, ""):
+        nodes.append(f"  <Volume>{_esc(volume)}</Volume>")
+    nodes.append(f"  <Title>{_esc(title)}</Title>")
+    if summary:
+        nodes.append(f"  <Summary>{_esc(summary)}</Summary>")
+    if year not in (None, ""):
+        nodes.append(f"  <Year>{_esc(year)}</Year>")
+    if month not in (None, ""):
+        nodes.append(f"  <Month>{_esc(month)}</Month>")
+    if day not in (None, ""):
+        nodes.append(f"  <Day>{_esc(day)}</Day>")
+    if writer:
+        nodes.append(f"  <Writer>{_esc(writer)}</Writer>")
+    if penciller:
+        nodes.append(f"  <Penciller>{_esc(penciller)}</Penciller>")
+    if inker:
+        nodes.append(f"  <Inker>{_esc(inker)}</Inker>")
+    if colorist:
+        nodes.append(f"  <Colorist>{_esc(colorist)}</Colorist>")
+    if letterer:
+        nodes.append(f"  <Letterer>{_esc(letterer)}</Letterer>")
+    if cover_artist:
+        nodes.append(f"  <CoverArtist>{_esc(cover_artist)}</CoverArtist>")
+    if publisher:
+        nodes.append(f"  <Publisher>{_esc(publisher)}</Publisher>")
+    nodes.append(f"  <PageCount>{int(page_count or 0)}</PageCount>")
+    if web:
+        nodes.append(f"  <Web>{_esc(web)}</Web>")
+    if notes:
+        nodes.append(f"  <Notes>{_esc(notes)}</Notes>")
+    body = "\n".join(nodes)
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <ComicInfo>
-  <Series>{_esc(identity.get("series_name") or identity.get("title"))}</Series>
-  <Number>{_esc(identity.get("series_index"))}</Number>
-  <Title>{_esc(identity.get("title"))}</Title>
-  <Year>{_esc(identity.get("year") or "")}</Year>
-  <Writer>{_esc(identity.get("author"))}</Writer>
-  <Publisher>{_esc(identity.get("publisher"))}</Publisher>
-  <PageCount>{int(page_count or 0)}</PageCount>
-  <Notes>indexer guid: {_esc(guid)}</Notes>
+{body}
 </ComicInfo>
 """
 
@@ -229,6 +289,31 @@ def parse_comicinfo_bytes(data: bytes) -> Dict[str, Any]:
     publisher = _text(_first_child(root, "Publisher"))
     if publisher:
         out["publisher"] = publisher
+    volume_text = _text(_first_child(root, "Volume"))
+    if volume_text.isdigit():
+        out["volume_year"] = int(volume_text)
+    summary = _text(_first_child(root, "Summary"))
+    if summary:
+        out["description"] = summary
+    web = _text(_first_child(root, "Web"))
+    if web:
+        out["web"] = web
+    for key, tag in (
+        ("penciller", "Penciller"),
+        ("inker", "Inker"),
+        ("colorist", "Colorist"),
+        ("letterer", "Letterer"),
+        ("cover_artist", "CoverArtist"),
+    ):
+        value = _text(_first_child(root, tag))
+        if value:
+            out[key] = value
+    month_text = _text(_first_child(root, "Month"))
+    if month_text.isdigit():
+        out["month"] = int(month_text)
+    day_text = _text(_first_child(root, "Day"))
+    if day_text.isdigit():
+        out["day"] = int(day_text)
     return out
 
 

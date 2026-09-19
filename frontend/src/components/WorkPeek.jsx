@@ -105,6 +105,7 @@ export default function WorkPeek({ work, onClose, onRequest }) {
   const downloadHref = catalog.id ? `/api/works/${catalog.id}/download` : "";
   const playerLink = detailMatches ? detail?.listen?.player : null;
   const playerNote = detailMatches ? detail?.listen?.player_note || "" : "";
+  const komgaLink = detailMatches ? detail?.komga?.reader : null;
   const canPromote = canPromoteIncomingMusic(catalog, role);
   const descriptionHtml = looksLikeHtml(catalog.description)
     ? sanitizeDescriptionHtml(catalog.description)
@@ -329,6 +330,17 @@ export default function WorkPeek({ work, onClose, onRequest }) {
                         data-testid="peek-open-player"
                       >
                         {playerLink.label || "Open in player"}
+                      </a>
+                    ) : null}
+                    {komgaLink?.href ? (
+                      <a
+                        className="cta outline compact"
+                        href={komgaLink.href}
+                        target="_blank"
+                        rel="noreferrer"
+                        data-testid="peek-open-komga"
+                      >
+                        {komgaLink.label || "Open in Komga"}
                       </a>
                     ) : null}
                     {canDownload ? (

@@ -4,6 +4,7 @@ export function fieldsFromWork(work) {
     author: work.author || "",
     kind: work.kind || "book",
     isbn: work.isbn || "",
+    asin: work.asin || "",
     series_name: work.series_name || "",
     series_index: work.series_index || "",
     year: work.year || "",
@@ -96,7 +97,19 @@ export function reviewReasonCopy(reason) {
     return "Extra files in the complete folder. Confirm the identity and Apply to file what is there.";
   }
   if (reason === "convert_failed") {
-    return "This comic is still only CBR (RAR). Apply retries converting it to CBZ for the Reading Room. PDF comics open as PDF — no conversion needed.";
+    return "This comic still needs a clean CBZ. Apply retries CBR/PDF → CBZ remux for the shelf. Komga/Panels read CBZ only.";
+  }
+  if (reason === "comicvine_ambiguous") {
+    return "Comic Vine found more than one plausible volume. Pick the right volume/issue below (or correct series + year), then Apply.";
+  }
+  if (reason === "comicvine_unmatched") {
+    return "Comic Vine could not match this issue confidently. Confirm series, volume year, and issue — or Skip.";
+  }
+  if (reason === "audnexus_ambiguous") {
+    return "Audnexus found more than one plausible audiobook. Pick the right ASIN match, then Apply — remux waits until this is resolved.";
+  }
+  if (reason === "audnexus_unmatched") {
+    return "Audnexus could not match this audiobook confidently. Confirm title, author, or ASIN — pick a candidate, then Apply.";
   }
   if (reason === "collision") {
     return "Collision — a file already exists at the library destination (duplicate path or identity). Librarian will not silent-overwrite.";

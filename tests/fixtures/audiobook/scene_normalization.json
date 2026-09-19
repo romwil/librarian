@@ -1,0 +1,210 @@
+[
+  {
+    "id": "author-title-unabridged",
+    "input": "Andy.Weir.-.Project.Hail.Mary.Unabridged.Audiobook.m4b",
+    "expect": {
+      "author": "Andy Weir",
+      "title": "Project Hail Mary",
+      "narrator": "",
+      "year": null,
+      "asin": "",
+      "series_name": "",
+      "series_index": ""
+    }
+  },
+  {
+    "id": "narrated-by",
+    "input": "Frank Herbert - Dune (Narrated by Scott Brick) Unabridged",
+    "expect": {
+      "author": "Frank Herbert",
+      "title": "Dune",
+      "narrator": "Scott Brick",
+      "year": null,
+      "asin": "",
+      "series_name": "",
+      "series_index": ""
+    }
+  },
+  {
+    "id": "read-by-paren",
+    "input": "Martha Wells - Network Effect (read by Kevin R Free) Audiobook",
+    "expect": {
+      "author": "Martha Wells",
+      "title": "Network Effect",
+      "narrator": "Kevin R Free",
+      "year": null,
+      "asin": "",
+      "series_name": "",
+      "series_index": ""
+    }
+  },
+  {
+    "id": "asin-b0",
+    "input": "Andy Weir - Project Hail Mary ASIN B08G9PRS1K",
+    "expect": {
+      "author": "Andy Weir",
+      "title": "Project Hail Mary",
+      "narrator": "",
+      "year": null,
+      "asin": "B08G9PRS1K",
+      "series_name": "",
+      "series_index": ""
+    }
+  },
+  {
+    "id": "part-counter-bracket",
+    "input": "Raymond E. Feist - Magician [6/8].mp3",
+    "expect": {
+      "author": "Raymond E. Feist",
+      "title": "Magician",
+      "narrator": "",
+      "year": null,
+      "asin": "",
+      "series_name": "",
+      "series_index": ""
+    }
+  },
+  {
+    "id": "disc-part-stripped",
+    "input": "Brandon Sanderson - Mistborn Disc 03 of 12 64kbps",
+    "expect": {
+      "author": "Brandon Sanderson",
+      "title": "Mistborn",
+      "narrator": "",
+      "year": null,
+      "asin": "",
+      "series_name": "",
+      "series_index": ""
+    }
+  },
+  {
+    "id": "series-book-n",
+    "input": "Jim Butcher - Dresden Files Book 01 Storm Front Audiobook",
+    "expect": {
+      "author": "Jim Butcher",
+      "title": "Storm Front",
+      "narrator": "",
+      "year": null,
+      "asin": "",
+      "series_name": "Dresden Files",
+      "series_index": "1"
+    }
+  },
+  {
+    "id": "year-kept",
+    "input": "N.K. Jemisin - The Fifth Season (2015) Unabridged M4B",
+    "expect": {
+      "author": "N.K. Jemisin",
+      "title": "The Fifth Season",
+      "narrator": "",
+      "year": 2015,
+      "asin": "",
+      "series_name": "",
+      "series_index": ""
+    }
+  },
+  {
+    "id": "bitrate-noise",
+    "input": "Octavia Butler - Kindred 128k VBR MP3 Audiobook-GROUP",
+    "expect": {
+      "author": "Octavia Butler",
+      "title": "Kindred",
+      "narrator": "",
+      "year": null,
+      "asin": "",
+      "series_name": "",
+      "series_index": ""
+    }
+  },
+  {
+    "id": "narrator-colon",
+    "input": "Tamsyn Muir - Gideon the Ninth Narrator: Moira Quirk",
+    "expect": {
+      "author": "Tamsyn Muir",
+      "title": "Gideon the Ninth",
+      "narrator": "Moira Quirk",
+      "year": null,
+      "asin": "",
+      "series_name": "",
+      "series_index": ""
+    }
+  },
+  {
+    "id": "series-hash",
+    "input": "Ann Leckie - Imperial Radch #2 Ancillary Sword Unabridged",
+    "expect": {
+      "author": "Ann Leckie",
+      "title": "Ancillary Sword",
+      "narrator": "",
+      "year": null,
+      "asin": "",
+      "series_name": "Imperial Radch",
+      "series_index": "2"
+    }
+  },
+  {
+    "id": "bare-title-hint",
+    "input": "The.Martian.Audiobook.Unabridged.m4b",
+    "expect": {
+      "author": "",
+      "title": "The Martian",
+      "narrator": "",
+      "year": null,
+      "asin": "",
+      "series_name": "",
+      "series_index": ""
+    }
+  },
+  {
+    "id": "cd-multipart",
+    "input": "Neil Gaiman - American Gods CD01 Part 02 of 24",
+    "expect": {
+      "author": "Neil Gaiman",
+      "title": "American Gods",
+      "narrator": "",
+      "year": null,
+      "asin": "",
+      "series_name": "",
+      "series_index": ""
+    }
+  },
+  {
+    "id": "bk-abbrev",
+    "input": "Patrick Rothfuss - Kingkiller Chronicle Bk 1 The Name of the Wind",
+    "expect": {
+      "author": "Patrick Rothfuss",
+      "title": "The Name of the Wind",
+      "narrator": "",
+      "year": null,
+      "asin": "",
+      "series_name": "Kingkiller Chronicle",
+      "series_index": "1"
+    }
+  },
+  {
+    "id": "asin-embedded",
+    "input": "B007EKMJ9K - Ready Player One - Ernest Cline",
+    "expect": {
+      "author": "Ernest Cline",
+      "title": "Ready Player One",
+      "narrator": "",
+      "year": null,
+      "asin": "B007EKMJ9K",
+      "series_name": "",
+      "series_index": ""
+    }
+  },
+  {
+    "id": "abridged-flag",
+    "input": "Stephen King - The Stand Abridged Audiobook 64kbps",
+    "expect": {
+      "author": "Stephen King",
+      "title": "The Stand",
+      "narrator": "",
+      "year": null,
+      "asin": "",
+      "series_name": "",
+      "series_index": ""
+    }
+  }
+]

@@ -33,6 +33,9 @@ ENV_TO_FIELD = {
     "HARDCOVER_API_TOKEN": "hardcover_api_token",
     "NYT_BOOKS_API_KEY": "nyt_books_api_key",
     "COMICVINE_API_KEY": "comicvine_api_key",
+    "KOMGA_URL": "komga_url",
+    "KOMGA_API_KEY": "komga_api_key",
+    "KOMGA_LIBRARY_ID": "komga_library_id",
     "WATCH_ROOT": "watch_root",
     "WATCH_ENABLED": "watch_enabled",
     "AUDIOBOOKSHELF_URL": "audiobookshelf_url",
@@ -62,6 +65,7 @@ SECRET_FIELDS = (
     "hardcover_api_token",
     "nyt_books_api_key",
     "comicvine_api_key",
+    "komga_api_key",
     "audiobookshelf_api_token",
     "radarr_api_key",
     "sonarr_api_key",
@@ -129,6 +133,9 @@ class Settings:
     hardcover_api_token: str = ""
     nyt_books_api_key: str = ""
     comicvine_api_key: str = ""
+    komga_url: str = ""
+    komga_api_key: str = ""
+    komga_library_id: str = ""
     watch_root: str = ""
     watch_enabled: bool = False
     extra_indexers: list = field(default_factory=list)

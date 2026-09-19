@@ -23,7 +23,33 @@ def test_images_to_cbz_namelist_is_exact(tmp_path):
     written = images_to_cbz([page1, page2], dest)
     assert written == dest
     with zipfile.ZipFile(dest) as archive:
-        assert archive.namelist() == ["page-01.jpg", "page-02.jpg"]
+        assert archive.namelist() == ["001.jpg", "002.jpg"]
+
+
+def test_clean_cbz_strips_junk_and_embeds_comicinfo(tmp_path):
+    from librarian.convert import clean_cbz
+
+    src = tmp_path / "raw.cbz"
+    with zipfile.ZipFile(src, "w") as archive:
+        archive.writestr("zzz.txt", "noise")
+        archive.writestr("02.jpg", b"\xff\xd8\xff" + b"\x00" * 20)
+        archive.writestr("01.jpg", b"\xff\xd8\xff" + b"\x00" * 20)
+        archive.writestr("note.nfo", "junk")
+    dest = clean_cbz(
+        src,
+        identity={"series_name": "Saga", "series_index": "1", "publisher": "Image", "year": 2012},
+        guid="guid-1",
+    )
+    assert dest == src
+    with zipfile.ZipFile(dest) as archive:
+        names = archive.namelist()
+        assert names[0:2] == ["001.jpg", "002.jpg"]
+        assert "ComicInfo.xml" in names
+        assert "zzz.txt" not in names
+        assert "note.nfo" not in names
+        xml = archive.read("ComicInfo.xml").decode("utf-8")
+        assert "<Series>Saga</Series>" in xml
+        assert "<Publisher>Image</Publisher>" in xml
 
 
 def test_maybe_convert_loose_comic_images(tmp_path):
@@ -36,7 +62,7 @@ def test_maybe_convert_loose_comic_images(tmp_path):
     dest = Path(result["files"][0])
     assert dest.name == "converted.cbz"
     with zipfile.ZipFile(dest) as archive:
-        assert archive.namelist() == ["01.jpg", "02.jpg"]
+        assert archive.namelist() == ["001.jpg", "002.jpg"]
 
 
 def test_cbr_to_cbz_with_injected_unar(tmp_path):
@@ -55,7 +81,7 @@ def test_cbr_to_cbz_with_injected_unar(tmp_path):
     assert dest == tmp_path / "saga.cbz"
     assert src.is_file()
     with zipfile.ZipFile(dest) as archive:
-        assert archive.namelist() == ["01.jpg"]
+        assert archive.namelist() == ["001.jpg"]
 
 
 def test_cbr_without_unar_stays_unconverted(tmp_path, monkeypatch):
@@ -105,10 +131,7 @@ def test_pdf_to_cbz_bracketed_usenet_name(tmp_path):
     assert dest == tmp_path / "Comic.[2024].[Group].cbz"
     assert src.is_file()
     with zipfile.ZipFile(dest) as archive:
-        assert archive.namelist() == [
-            ".librarian-pdf-Comic.[2024].[Group]-1.jpg",
-            ".librarian-pdf-Comic.[2024].[Group]-2.jpg",
-        ]
+        assert archive.namelist() == ["001.jpg", "002.jpg"]
     assert [path.name for path in tmp_path.iterdir() if path.suffix.lower() == ".jpg"] == []
 
 
