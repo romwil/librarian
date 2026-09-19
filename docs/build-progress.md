@@ -60,3 +60,6 @@ Personalized recs and HTML scrape of indexer Discover stay skipped on purpose.
 - **2026-09-18** — Automat `docker-run.sh` rebuilt `librarian` to **`f343292`** (0.3.0). Health ok on `:8793`. `./config` kept.
 - **2026-09-19** `7d183c2` — Ship **0.3.1**: Edit metadata / Fix match / Undo enrich; Open Library co-author rejection; multi-provider BYO LLM; Find rank memory + disclosures; Bestsellers/chase polish; Enrich/Review busy feedback.
 - **2026-09-19** — Automat `docker-run.sh` rebuilt `librarian` to **`7d183c2`** (0.3.1). Health ok on `:8793`. `./config` kept.
+- **2026-09-19** `b1adcad` — Ship **0.4.0**: audiobook scene→Audnexus→M4B, comics scene→ComicVine→CBZ+Komga, ABS scan + listen progress sync, media-contract shelf layouts.
+- **2026-09-19** `90509f3` — Fix Audnexus author substring false matches and ABS multipart progress without duration.
+- **2026-09-19** — Automat `docker-run.sh` rebuilt `librarian` to **`90509f3`** (0.4.0). Health ok on `:8793`. `./config` kept.
