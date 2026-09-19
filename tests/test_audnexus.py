@@ -103,3 +103,30 @@ def test_ambiguous_band_reason():
     # Ensure reason helpers stay imported / stable for Review.
     assert REVIEW_AUDNEXUS_AMBIGUOUS.startswith("audnexus_")
     assert REVIEW_AUDNEXUS_UNMATCHED.startswith("audnexus_")
+
+
+def test_author_boost_rejects_partial_name_substrings():
+    """Exact-author boost must not fire for Le⊂Le Guin or Smith⊂Smithson."""
+    le_guin = {"asin": "B00AAAAAAA", "title": "Earthsea", "author": "Le Guin"}
+    exact_le = score_candidate(le_guin, title="Earthsea", author="Le Guin")
+    partial_le = score_candidate(le_guin, title="Earthsea", author="Le")
+    # Full match: title + author jaccard 1 + title boost 0.08 + author boost 0.05
+    assert exact_le == 0.45 + 0.35 + 0.08 + 0.05
+    # Partial "Le": author jaccard 0.5, title boost only — no author boost
+    assert partial_le == 0.45 + 0.35 * 0.5 + 0.08
+    assert exact_le - partial_le > 0.05
+
+    smithson = {"asin": "B00BBBBBBB", "title": "Earthsea", "author": "Smithson"}
+    exact_smith = score_candidate(smithson, title="Earthsea", author="Smithson")
+    partial_smith = score_candidate(smithson, title="Earthsea", author="Smith")
+    assert exact_smith == 0.45 + 0.35 + 0.08 + 0.05
+    # Distinct tokens → author jaccard 0; substring must not add the 0.05 boost
+    assert partial_smith == 0.45 + 0.08
+    assert exact_smith - partial_smith >= 0.05
+
+
+def test_author_boost_token_order_insensitive():
+    candidate = {"asin": "B00CCCCCCC", "title": "Hail Mary", "author": "Andy Weir"}
+    assert score_candidate(candidate, title="Hail Mary", author="Weir, Andy") == score_candidate(
+        candidate, title="Hail Mary", author="Andy Weir"
+    )

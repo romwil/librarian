@@ -153,6 +153,21 @@ def test_should_adopt_and_map_progress():
     }
 
 
+def test_map_multipart_progress_without_duration_keeps_mid_file():
+    """Missing ABS duration must not reset multipart position to start of file."""
+    mapped = map_abs_progress_to_local(
+        {"progress": 0.55, "currentTime": 550.0, "duration": 0},
+        file_ids=["f1", "f2", "f3", "f4"],
+    )
+    assert mapped["fraction"] == 0.55
+    decoded = decode_listen_position(mapped["position"])
+    # 0.55 across 4 equal files → file index 2, 0.2 into that span → ~50s
+    assert decoded["file_id"] == "f3"
+    assert decoded["seconds"] == pytest.approx(50.0, abs=0.01)
+    assert mapped["seconds"] == pytest.approx(50.0, abs=0.01)
+    assert mapped["seconds"] > 0.0
+
+
 def test_pull_adopts_abs_ahead_without_wiping_local(tmp_path):
     db = Database(tmp_path / "librarian.db")
     work = db.upsert_work(

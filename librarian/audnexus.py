@@ -52,6 +52,20 @@ def _tokens(value: Any) -> set[str]:
     return {tok for tok in re.findall(r"[a-z0-9]+", str(value or "").lower()) if len(tok) > 1}
 
 
+def _authors_match_exact(query: Any, candidate: Any) -> bool:
+    """True when authors match as a whole — not a substring of another name.
+
+    Rejects false friends like ``Le``⊂``Le Guin`` and ``Smith``⊂``Smithson``
+    that raw ``_norm(a) in _norm(b)`` would accept. Token-set equality also
+    treats ``Andy Weir`` and ``Weir, Andy`` as the same author.
+    """
+    q_tokens, c_tokens = _tokens(query), _tokens(candidate)
+    if q_tokens and c_tokens and q_tokens == c_tokens:
+        return True
+    qn, cn = _norm(query), _norm(candidate)
+    return bool(qn and qn == cn)
+
+
 def jaccard(a: Any, b: Any) -> float:
     left, right = _tokens(a), _tokens(b)
     if not left or not right:
@@ -364,10 +378,10 @@ def score_candidate(
             score += 0.05
         elif delta == 1:
             score += 0.02
-    # Exact normalized title+author boost
+    # Exact normalized title+author boost (full-string / token-set equality — not substring)
     if _norm(title) and _norm(title) == _norm(candidate.get("title")):
         score += 0.08
-    if _norm(author) and _norm(author) and _norm(author) in _norm(candidate.get("author")):
+    if _authors_match_exact(author, candidate.get("author")):
         score += 0.05
     return max(0.0, min(1.0, score))
 

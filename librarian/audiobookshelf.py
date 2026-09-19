@@ -407,13 +407,19 @@ def map_abs_progress_to_local(
         }
 
     count = len(ids)
-    if duration > 0 and current_time > 0:
-        per = duration / count
+    # Equal-length file split. When ABS omits duration, infer it from
+    # currentTime/progress so we keep mid-file seconds instead of zeroing.
+    effective_duration = duration
+    if effective_duration <= 0 and current_time > 0 and fraction > 0:
+        effective_duration = current_time / fraction
+    if effective_duration > 0 and current_time > 0:
+        per = effective_duration / count
         index = min(count - 1, int(current_time / per) if per > 0 else 0)
         local_secs = max(0.0, current_time - (index * per))
     else:
         index = min(count - 1, int(fraction * count))
-        local_secs = 0.0
+        # Still preserve absolute currentTime when we cannot split by duration.
+        local_secs = max(0.0, current_time)
     return {
         "fraction": fraction,
         "position": encode_listen_position(file_id=ids[index], seconds=local_secs),
