@@ -70,7 +70,8 @@ LABEL org.opencontainers.image.title="Librarian" \
       org.opencontainers.image.source="https://github.com/romwil/librarian" \
       org.opencontainers.image.licenses="MIT"
 
-RUN echo "0.2.1 built ${BUILD_DATE} rev ${VCS_REF}" > /app/.build-info
+# Stamp from package version so What’s New / ops never drift from a hardcoded string.
+RUN python -c "from librarian._version import __version__; open('/app/.build-info','w').write(f'{__version__} built ${BUILD_DATE} rev ${VCS_REF}\n')"
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8793/api/health')" || exit 1
