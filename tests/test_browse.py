@@ -96,12 +96,31 @@ def test_browse_favorites_shelf_and_facets(tmp_path, monkeypatch):
     letters = {row["letter"]: row["count"] for row in data["letters"]}
     assert letters.get("S") == 1
     assert letters.get("F") == 1
+    kinds = {row["kind"]: row["count"] for row in data["kinds"]}
+    assert kinds["book"] == 2
+    assert kinds["comic"] == 1
+    assert kinds["audiobook"] == 1
     assert data["genre_ready"] is False
     assert data["genres"] == []
     authors = {row["name"]: row["count"] for row in data["authors"]}
     assert authors["Stephen King"] == 1
     series = {row["name"]: row["count"] for row in data["series"]}
     assert series["Saga"] == 1
+
+
+def test_hall_includes_kind_counts(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    _login(client)
+    db = Database(tmp_path / "librarian.db")
+    _seed(db)
+
+    hall = client.get("/api/hall")
+    assert hall.status_code == 200
+    counts = hall.json()["kind_counts"]
+    assert counts["book"] == 2
+    assert counts["comic"] == 1
+    assert counts["audiobook"] == 1
+    assert "Needs Review" not in counts  # review titles are excluded from totals
 
 
 def test_browse_works_db_excludes_review(tmp_path):

@@ -4,6 +4,7 @@ import { api } from "../api.js";
 import {
   BROWSE_LETTERS,
   applyBrowseFilterPatch,
+  browseCountLine,
   browseFiltersFromSearchParams,
   browseHasActiveFilters,
   browseHeading,
@@ -325,7 +326,7 @@ export default function BrowsePage() {
       {error ? <p className="alert hall-alert">{error}</p> : null}
       <section className="browse-grid-wrap">
         <p className="browse-count muted" data-testid="browse-count">
-          {loading ? "Opening the stacks…" : `${total} on the shelves`}
+          {browseCountLine({ kind: filters.kind, shelf: filters.shelf, total, loading })}
         </p>
         {loading ? null : items.length ? (
           <div className="browse-grid" data-testid="browse-grid">

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useOutletContext, useSearchParams } from "react-router-dom";
 import { api } from "../api.js";
+import { kindCountFromFacets, kindShelfTotalLine } from "../browse.js";
 import QueryForm from "../components/QueryForm.jsx";
 import Rail from "../components/Rail.jsx";
 import { DISCOVER_CTA, FIND_BEYOND_CTA, FIELD_HELP, humanError, searchStatusLine } from "../copy.js";
@@ -34,6 +35,7 @@ export default function SearchPage() {
   const [result, setResult] = useState({ local: [] });
   const [phase, setPhase] = useState("idle");
   const [error, setError] = useState("");
+  const [kindFacets, setKindFacets] = useState(null);
 
   useEffect(() => {
     const next = fieldsFromState(fields.q, fields.kind, fields);
@@ -41,6 +43,21 @@ export default function SearchPage() {
     setKind(next.kind);
     setAdvanced(next);
   }, [fields.q, fields.kind, fields.author, fields.title, fields.isbn, fields.series, fields.year, fields.issue, fields.artist, fields.album]);
+
+  useEffect(() => {
+    let alive = true;
+    api
+      .browseFacets()
+      .then((data) => {
+        if (alive) setKindFacets(data);
+      })
+      .catch(() => {
+        if (alive) setKindFacets(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!composed) {
@@ -91,6 +108,9 @@ export default function SearchPage() {
     localCount: result.local?.length || 0,
     phase,
   });
+  const activeKind = composed ? fields.kind : kind;
+  const kindTotal = kindCountFromFacets(kindFacets, activeKind);
+  const kindTotalLine = activeKind ? kindShelfTotalLine(activeKind, kindTotal) : "";
   const showFindCta = Boolean(composed) && phase !== "idle" && phase !== "local";
   const showDiscoverDoor = !composed;
   const ctaFields = fieldsFromState(draft.trim() || fields.q, kind, advanced);
@@ -110,6 +130,11 @@ export default function SearchPage() {
         ariaLabel="Search the stacks"
         kindHelp={FIELD_HELP.searchKind}
       />
+      {kindTotalLine ? (
+        <p className="kind-shelf-total muted" data-testid="kind-shelf-total">
+          {kindTotalLine}
+        </p>
+      ) : null}
       <p className="search-status" aria-live="polite" data-testid="search-status">
         {status}
       </p>

@@ -2466,6 +2466,12 @@ button.cover {
   color: var(--paper);
   font-size: var(--text-sm);
 }
+.kind-shelf-total {
+  width: min(var(--hero-search-max), calc(100% - 2 * var(--gutter)));
+  margin: calc(-1 * var(--space-2)) auto var(--space-3);
+  text-align: center;
+  font-size: var(--text-sm);
+}
 .search-status::before {
   content: "";
   display: block;

@@ -3,11 +3,15 @@ import { describe, it } from "node:test";
 import {
   BROWSE_LETTERS,
   applyBrowseFilterPatch,
+  browseCountLine,
   browseFiltersFromSearchParams,
   browseHasActiveFilters,
   browseHeading,
   browseHref,
   browseParamsObject,
+  formatShelfCount,
+  kindCountFromFacets,
+  kindShelfTotalLine,
   mergeFacetSelection,
   readBrowseFoldState,
   toggleBrowseFold,
@@ -31,6 +35,34 @@ describe("cover wash helpers", () => {
     assert.equal(coverWashUrl({}), "");
     assert.equal(coverWashStyle({}), undefined);
     assert.equal(coverWashStyle({ has_cover: true, id: "w2" })["--work-wash"], 'url("/api/works/w2/cover")');
+  });
+});
+
+describe("kind shelf totals", () => {
+  it("formats household kind totals", () => {
+    assert.equal(formatShelfCount(1234), "1,234");
+    assert.equal(kindShelfTotalLine("book", 1234), "1,234 books on the shelves");
+    assert.equal(kindShelfTotalLine("book", 1), "1 book on the shelves");
+    assert.equal(kindShelfTotalLine("audiobook", 56), "56 audiobooks");
+    assert.equal(kindShelfTotalLine("comic", 0), "0 comics on the shelves");
+    assert.equal(kindShelfTotalLine("", 10), "");
+    assert.equal(kindShelfTotalLine("book", null), "");
+  });
+
+  it("reads kind counts from facets or hall maps", () => {
+    assert.equal(kindCountFromFacets({ kinds: [{ kind: "book", count: 12 }, { kind: "comic", count: 3 }] }, "book"), 12);
+    assert.equal(kindCountFromFacets({ kinds: [{ kind: "book", count: 12 }] }, "audiobook"), 0);
+    assert.equal(kindCountFromFacets({ book: 99, audiobook: 56 }, "audiobook"), 56);
+    assert.equal(kindCountFromFacets(null, "book"), null);
+  });
+
+  it("builds stacks count lines for kind, favorites, and all", () => {
+    assert.equal(browseCountLine({ loading: true }), "Opening the stacks…");
+    assert.equal(browseCountLine({ kind: "book", total: 1234 }), "1,234 books on the shelves");
+    assert.equal(browseCountLine({ kind: "audiobook", total: 56 }), "56 audiobooks");
+    assert.equal(browseCountLine({ shelf: "favorites", total: 2 }), "2 favorites on the shelves");
+    assert.equal(browseCountLine({ total: 10 }), "10 on the shelves");
+    assert.equal(browseCountLine({ total: 0 }), "Nothing on the shelves yet");
   });
 });
 

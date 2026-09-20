@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Kind shelf totals.** Stacks, Hall kind rails, and Search kind chips show household counts for the active media type (e.g. “1,234 books on the shelves”, “56 audiobooks”) from browse/hall totals — no extra clutter.
+
 ## [0.4.2] — 2026-09-19
 
 ### Added

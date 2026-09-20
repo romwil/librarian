@@ -557,10 +557,11 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             surprise = public_work(recent[0])
         elif favorites:
             surprise = public_work(favorites[0])
+        counts = db.kind_counts()
         celebrations = db.unseen_celebrations(
             user["id"],
             celebration_candidates(
-                kind_counts=db.kind_counts(),
+                kind_counts=counts,
                 author_year_counts=db.author_year_counts(year=datetime.now().year),
             ),
         )
@@ -578,6 +579,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             "continue_listening": continue_split["listening"],
             "tonight": tonight,
             "celebrations": celebrations,
+            "kind_counts": counts,
             "owner_ready": True,
             "empty": not recent and not any(areas.values()),
         }

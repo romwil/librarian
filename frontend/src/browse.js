@@ -5,8 +5,68 @@ const BROWSE_KINDS = ["book", "magazine", "comic", "audiobook", "music"];
 /** Facets that become meaningless when kind changes. */
 const KIND_SCOPED_KEYS = ["author", "letter", "series", "genre"];
 
+/** Singular / plural nouns for household shelf totals. */
+const KIND_NOUNS = {
+  book: ["book", "books"],
+  magazine: ["magazine", "magazines"],
+  comic: ["comic", "comics"],
+  audiobook: ["audiobook", "audiobooks"],
+  music: ["album", "albums"],
+};
+
 export function browseKinds() {
   return [...BROWSE_KINDS];
+}
+
+/** Locale-friendly integer for shelf counts (e.g. 1234 → "1,234"). */
+export function formatShelfCount(count) {
+  const n = Math.max(0, Math.floor(Number(count) || 0));
+  return n.toLocaleString("en-US");
+}
+
+/**
+ * Household line for a kind total — e.g. "1,234 books on the shelves",
+ * "56 audiobooks", "1 comic on the shelves".
+ */
+export function kindShelfTotalLine(kind, count) {
+  const key = String(kind || "").trim().toLowerCase();
+  if (count == null || count === "") return "";
+  const n = Math.max(0, Math.floor(Number(count) || 0));
+  const formatted = formatShelfCount(n);
+  const nouns = KIND_NOUNS[key];
+  if (!nouns) return "";
+  const noun = n === 1 ? nouns[0] : nouns[1];
+  // Audiobooks read cleaner without the trailing "on the shelves".
+  if (key === "audiobook") return `${formatted} ${noun}`;
+  return `${formatted} ${noun} on the shelves`;
+}
+
+/** Lookup a kind's count from `/api/browse/facets` `kinds` rows or a hall map. */
+export function kindCountFromFacets(facetsOrCounts, kind) {
+  const key = String(kind || "").trim().toLowerCase();
+  if (!key) return null;
+  if (facetsOrCounts && typeof facetsOrCounts === "object" && !Array.isArray(facetsOrCounts)) {
+    if (Array.isArray(facetsOrCounts.kinds)) {
+      const row = facetsOrCounts.kinds.find((item) => String(item?.kind || "").toLowerCase() === key);
+      return row ? Math.max(0, Math.floor(Number(row.count) || 0)) : 0;
+    }
+    if (Object.prototype.hasOwnProperty.call(facetsOrCounts, key)) {
+      return Math.max(0, Math.floor(Number(facetsOrCounts[key]) || 0));
+    }
+  }
+  return null;
+}
+
+/** Stacks grid count line — kind-aware when a media type filter is on. */
+export function browseCountLine({ kind = "", shelf = "", total = 0, loading = false } = {}) {
+  if (loading) return "Opening the stacks…";
+  const n = Math.max(0, Math.floor(Number(total) || 0));
+  const kindLine = kindShelfTotalLine(kind, n);
+  if (kindLine) return kindLine;
+  if (String(shelf || "").toLowerCase() === "favorites") {
+    return n === 1 ? "1 favorite on the shelves" : `${formatShelfCount(n)} favorites on the shelves`;
+  }
+  return n === 0 ? "Nothing on the shelves yet" : `${formatShelfCount(n)} on the shelves`;
 }
 
 export function browseHref(filters = {}) {

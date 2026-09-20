@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useOutletContext } from "react-router-dom";
 import { api } from "../api.js";
-import { browseHref } from "../browse.js";
+import { browseHref, kindShelfTotalLine } from "../browse.js";
 import Rail from "../components/Rail.jsx";
 import TonightShelf from "../components/TonightShelf.jsx";
 import CelebrationBanner from "../components/CelebrationBanner.jsx";
@@ -19,6 +19,7 @@ export default function HallPage() {
   const owner = user?.role === "owner";
   const keeper = owner || user?.role === "op";
   const empty = emptyHallCopy({ owner, configured });
+  const counts = hall?.kind_counts || {};
 
   useEffect(() => {
     api
@@ -28,7 +29,7 @@ export default function HallPage() {
         setLoadError("");
       })
       .catch((err) => {
-        setHall({ empty: true, areas: {} });
+        setHall({ empty: true, areas: {}, kind_counts: {} });
         setLoadError(humanError(err));
       });
     if (owner) {
@@ -108,28 +109,33 @@ export default function HallPage() {
       />
       <Rail title="What’s New" kicker="Recently organized" items={hall?.whats_new} />
       <Rail title="Favorites" items={hall?.favorites} seeAllTo={browseHref({ shelf: "favorites" })} />
-      <Rail title="Books" items={hall?.areas?.books} seeAllTo={browseHref({ kind: "book" })} />
+      <Rail
+        title="Books"
+        kicker={kindShelfTotalLine("book", counts.book) || undefined}
+        items={hall?.areas?.books}
+        seeAllTo={browseHref({ kind: "book" })}
+      />
       <Rail
         title="Magazines"
-        kicker="Issue date on the gilt caption"
+        kicker={kindShelfTotalLine("magazine", counts.magazine) || "Issue date on the gilt caption"}
         items={hall?.areas?.magazines}
         seeAllTo={browseHref({ kind: "magazine" })}
       />
       <Rail
         title="Comics"
-        kicker="Series and issue, square-ish"
+        kicker={kindShelfTotalLine("comic", counts.comic) || "Series and issue, square-ish"}
         items={hall?.areas?.comics}
         seeAllTo={browseHref({ kind: "comic" })}
       />
       <Rail
         title="Audiobooks"
-        kicker="Listen — not a book spine"
+        kicker={kindShelfTotalLine("audiobook", counts.audiobook) || "Listen — not a book spine"}
         items={hall?.areas?.audiobooks}
         seeAllTo={browseHref({ kind: "audiobook" })}
       />
       <Rail
         title="Incoming Music"
-        kicker="Promote lives in peek"
+        kicker={kindShelfTotalLine("music", counts.music) || "Promote lives in peek"}
         items={hall?.areas?.incoming_music}
         seeAllTo={browseHref({ kind: "music" })}
       />
