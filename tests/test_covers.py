@@ -109,3 +109,24 @@ def test_ensure_music_cover_from_embedded_flac_picture(tmp_path):
     cover = ensure_music_cover(folder)
     assert cover == folder / "cover.jpg"
     assert cover.read_bytes() == JPEG
+
+
+def test_fetch_cover_permission_error_returns_none(tmp_path, monkeypatch):
+    """Locked shelf folders must not raise — enrich callers need a soft miss."""
+    folder = tmp_path / "locked"
+    folder.mkdir()
+
+    def boom(self, *_args, **_kwargs):
+        raise PermissionError(13, "Permission denied", str(folder / "cover.jpg"))
+
+    monkeypatch.setattr(Path, "write_bytes", boom)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=JPEG, headers={"content-type": "image/jpeg"})
+
+    cover = fetch_cover(
+        folder,
+        {"isbn": "9780441478125"},
+        transport=httpx.MockTransport(handler),
+    )
+    assert cover is None

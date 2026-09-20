@@ -10,9 +10,11 @@ from librarian.db import Database
 from librarian.enrich import (
     Enrichment,
     _still_needs,
+    apply_enrichment,
     enrich_backlog_batch,
     enrich_library,
     enrich_work,
+    friendly_enrich_error,
     is_thin,
 )
 from librarian.goodreads import import_goodreads_csv, parse_csv_isbn, parse_goodreads_rows
@@ -993,3 +995,154 @@ def test_metadata_endpoints_forbid_readers(tmp_path, monkeypatch):
     assert client.post(f"/api/works/{work['id']}/apply-match", json={"match_key": "/works/x"}).status_code == 403
     assert client.post(f"/api/works/{work['id']}/clear-enrich").status_code == 403
     assert client.post(f"/api/works/{work['id']}/enrich").status_code == 403
+
+
+def test_friendly_enrich_error_maps_permission_denied():
+    err = PermissionError(13, "Permission denied", "/data/media/library/books/x/cover.jpg")
+    assert "Errno" not in friendly_enrich_error(err)
+    assert "locked" in friendly_enrich_error(err).lower()
+    titled = friendly_enrich_error(err, title="Dodger's Guide to London")
+    assert "Dodger" in titled
+    assert "Errno" not in titled
+
+
+def test_apply_enrichment_falls_back_to_owned_cover_cache(tmp_path, monkeypatch):
+    """Root-owned shelf folders: write cover under DATA_DIR/covers/{id} instead."""
+    db = Database(tmp_path / "librarian.db")
+    shelf = tmp_path / "shelf" / "Author" / "Locked Title"
+    shelf.mkdir(parents=True)
+    work = db.upsert_work(
+        {
+            "kind": "book",
+            "title": "Locked Title",
+            "author": "Author",
+            "isbn": ISBN13,
+            "folder_path": str(shelf),
+        }
+    )
+
+    real_write = Path.write_bytes
+
+    def guarded_write(self, data):
+        if self.parent == shelf or self == shelf / "cover.jpg":
+            raise PermissionError(13, "Permission denied", str(self))
+        return real_write(self, data)
+
+    monkeypatch.setattr(Path, "write_bytes", guarded_write)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if "hardcover" in url:
+            return httpx.Response(404, json={})
+        if "openlibrary.org" in url and "/isbn/" in url:
+            return httpx.Response(
+                200,
+                json={
+                    "title": "Locked Title",
+                    "description": BLURB,
+                    "covers": [12345],
+                    "subjects": ["Fiction"],
+                    "publish_date": "1969",
+                },
+            )
+        if "covers.openlibrary.org" in url or request.headers.get("accept", "").startswith("image"):
+            return httpx.Response(200, content=JPEG, headers={"content-type": "image/jpeg"})
+        return httpx.Response(404)
+
+    found = Enrichment(
+        description=BLURB,
+        genre="Fiction",
+        year=1969,
+        cover_url="https://covers.openlibrary.org/b/id/12345-L.jpg",
+        source="openlibrary",
+        synopsis_source="openlibrary",
+    )
+    row = apply_enrichment(
+        db,
+        work,
+        found,
+        data_dir=tmp_path,
+        transport=httpx.MockTransport(handler),
+    )
+    cover = Path(row["cover_path"])
+    assert cover.is_file()
+    assert cover.read_bytes() == JPEG
+    assert str(tmp_path / "covers" / work["id"]) in str(cover)
+    assert not (shelf / "cover.jpg").exists()
+
+
+def test_enrich_library_continues_after_cover_permission_error(tmp_path, monkeypatch):
+    """One locked folder must not abort the whole enrich batch."""
+    db = Database(tmp_path / "librarian.db")
+    locked = tmp_path / "locked-shelf"
+    locked.mkdir()
+    first = db.upsert_work(
+        {
+            "kind": "book",
+            "title": "Dodger's Guide to London",
+            "author": "Pratchett, Terry",
+            "isbn": ISBN13,
+            "folder_path": str(locked),
+        }
+    )
+    second = db.upsert_work(
+        {
+            "kind": "book",
+            "title": "Kindred",
+            "author": "Butler",
+            "isbn": "9780807083697",
+        }
+    )
+
+    real_write = Path.write_bytes
+
+    def guarded_write(self, data):
+        # Fail only when writing beside the locked shelf (not the owned cache).
+        if locked in self.parents or self.parent == locked:
+            raise PermissionError(13, "Permission denied", str(self))
+        return real_write(self, data)
+
+    monkeypatch.setattr(Path, "write_bytes", guarded_write)
+
+    class Sink:
+        def __init__(self):
+            self.logs = []
+            self.failed = None
+
+        def start(self, *, total: int, phase: str = "scanning") -> None:
+            self.total = total
+
+        def log(self, line: str) -> None:
+            self.logs.append(line)
+
+        def tick(self, **kwargs) -> None:
+            if kwargs.get("log"):
+                self.logs.append(kwargs["log"])
+
+        def complete(self, result) -> None:
+            self.result = result
+
+        def fail(self, error: str) -> None:
+            self.failed = error
+
+    sink = Sink()
+    counts = enrich_library(
+        db,
+        Settings(hardcover_api_token=""),
+        data_dir=tmp_path,
+        transport=httpx.MockTransport(_handler),
+        progress=sink,
+    )
+    assert sink.failed is None
+    assert counts["scanned"] == 2
+    assert counts["errors"] == 0  # cover write fails soft; catalog fields still apply
+    # First work should still get a cover via owned cache and/or description fill.
+    refreshed = db.get_work(first["id"])
+    assert refreshed is not None
+    cover_path = str(refreshed.get("cover_path") or "")
+    assert cover_path
+    assert str(tmp_path / "covers" / first["id"]) in cover_path or Path(cover_path).is_file()
+    # Second work still enriched — batch did not abort.
+    kindred = db.get_work(second["id"])
+    assert kindred is not None
+    assert counts["updated"] >= 1

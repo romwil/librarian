@@ -147,6 +147,20 @@ python -m librarian.migrate_library --media-root /data/media --migrate-books
 
 Full operator steps (rebind Settings, Scan, archive old `books/`): [LIBRARY_MIGRATE.md](LIBRARY_MIGRATE.md).
 
+On Automat, library folders should be writable by PUID/PGID (often 99:100).
+If titles were migrated as uid 1000 with mode 755, the lamp (99) cannot write
+`cover.jpg` beside the ebook — enrich now falls soft to `/config/covers/{id}/`
+and continues the batch. Optional operator fix (does not rewrite existing modes
+recursively unless you choose to):
+
+```bash
+# Prefer matching PUID to the folder owner, or grant group write:
+# chown -R 99:100 /mnt/user/data/media/library/books   # only if intentional
+# chmod -R g+w /mnt/user/data/media/library/books      # milder alternative
+```
+
+Do **not** blindly `chmod -R 777`. Covers still show via `cover_path` when cached under `/config`.
+
 ### Audiobooks on Plex / Plexamp
 
 Plex has no Audiobooks library type. Create a **Music** library named e.g. “Audiobooks” whose folder is `audiobooks_root`, enable track progress / long-form, and keep that folder out of the Plexamp music library (`music_root`).

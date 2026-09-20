@@ -30,6 +30,105 @@ ENRICH_LIST_PAGE = 2000
 BACKLOG_BATCH_DEFAULT = 5
 BACKLOG_PAUSE_SECONDS = 1.0
 
+COVER_PERMISSION_COPY = (
+    "Couldn't write cover art — a shelf folder is locked for the lamp. "
+    "Enrich kept going where it could; covers may land under the cover cache. "
+    "On Automat, library folders should be writable by PUID/PGID (often 99:100)."
+)
+
+
+def friendly_enrich_error(error: BaseException, *, title: str = "") -> str:
+    """Household copy for enrich failures (never raw Errno 13)."""
+    text = str(error or "").strip()
+    permission = isinstance(error, PermissionError) or "[Errno 13]" in text or "Permission denied" in text
+    if permission:
+        if title:
+            return (
+                f"Couldn't write cover for {title} — shelf folder is locked; "
+                "skipped that art and kept going."
+            )
+        return COVER_PERMISSION_COPY
+    if not text:
+        return "Enrich failed."
+    if len(text) > 180 or "traceback" in text.lower():
+        return "Something went wrong while enriching. Check the lamp logs."
+    return text
+
+
+def owned_cover_folder(data_dir: Path, work_id: str) -> Path:
+    """DATA_DIR cover cache keyed by work id — always writable by the lamp."""
+    return Path(data_dir) / "covers" / str(work_id)
+
+
+def work_cover_folder(work: Mapping[str, Any], data_dir: Path) -> Path:
+    """Prefer the shelf folder when present; else the owned cover cache."""
+    raw_folder = str(work.get("folder_path") or "").strip()
+    folder_path = Path(raw_folder) if raw_folder else None
+    if folder_path is not None and folder_path.is_dir():
+        return folder_path
+    return owned_cover_folder(data_dir, str(work.get("id") or "unknown"))
+
+
+def fetch_cover_with_fallback(
+    work: Mapping[str, Any],
+    data_dir: Path,
+    identity: Mapping[str, Any],
+    *,
+    indexer_cover_url: str = "",
+    transport: Optional[httpx.BaseTransport] = None,
+    client: Optional[httpx.Client] = None,
+) -> Optional[Path]:
+    """Write cover to the shelf folder, or fall back to DATA_DIR/covers/{id}."""
+    preferred = work_cover_folder(work, data_dir)
+    owned = owned_cover_folder(data_dir, str(work.get("id") or "unknown"))
+    written = fetch_cover(
+        preferred,
+        identity,
+        indexer_cover_url=indexer_cover_url,
+        transport=transport,
+        client=client,
+    )
+    if written is not None:
+        return written
+    try:
+        same = preferred.resolve() == owned.resolve()
+    except OSError:
+        same = preferred == owned
+    if same:
+        return None
+    return fetch_cover(
+        owned,
+        identity,
+        indexer_cover_url=indexer_cover_url,
+        transport=transport,
+        client=client,
+    )
+
+
+def write_image_with_fallback(
+    dest_folder: Path,
+    owned_folder: Path,
+    filename: str,
+    data: bytes,
+) -> Optional[Path]:
+    """Write an image bytes to dest_folder, falling back to owned_folder on OSError."""
+    for folder in (dest_folder, owned_folder):
+        path = folder / filename
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
+            return path
+        except OSError:
+            logger.warning("Cannot write %s under %s", filename, folder, exc_info=True)
+            try:
+                if dest_folder.resolve() == owned_folder.resolve():
+                    break
+            except OSError:
+                if dest_folder == owned_folder:
+                    break
+            continue
+    return None
+
 
 class EnrichProgressSink(Protocol):
     def start(self, *, total: int, phase: str = "scanning") -> None: ...
@@ -337,10 +436,11 @@ def apply_enrichment(
 
     raw_folder = str(updated.get("folder_path") or "").strip()
     folder_path = Path(raw_folder) if raw_folder else None
+    owned_folder = owned_cover_folder(data_dir, str(updated["id"]))
     dest_folder = (
         folder_path
         if folder_path is not None and folder_path.is_dir()
-        else Path(data_dir) / "covers" / str(updated["id"])
+        else owned_folder
     )
 
     cover = str(updated.get("cover_path") or "").strip()
@@ -354,8 +454,9 @@ def apply_enrichment(
                 pass
             cover_ok = False
         if not cover_ok:
-            written = fetch_cover(
-                dest_folder,
+            written = fetch_cover_with_fallback(
+                updated,
+                data_dir,
                 {"isbn": updated.get("isbn") or "", "title": updated.get("title") or ""},
                 indexer_cover_url=found.cover_url,
                 transport=transport,
@@ -371,17 +472,22 @@ def apply_enrichment(
         if not atmosphere.is_file():
             data = download_image(found.atmosphere_url, transport=transport, client=client)
             if data and looks_like_image(data):
-                dest_folder.mkdir(parents=True, exist_ok=True)
-                atmosphere.write_bytes(data)
-                updated["atmosphere_path"] = str(atmosphere)
-                updated["art_attribution"] = found.art_attribution
-                changed = True
-                if not cover_ok:
-                    cover_dest = dest_folder / "cover.jpg"
-                    if not cover_dest.is_file():
-                        cover_dest.write_bytes(data)
-                        updated["cover_path"] = str(cover_dest)
-                        changed = True
+                written_atmo = write_image_with_fallback(
+                    dest_folder, owned_folder, "atmosphere.jpg", data
+                )
+                if written_atmo is not None:
+                    updated["atmosphere_path"] = str(written_atmo)
+                    updated["art_attribution"] = found.art_attribution
+                    changed = True
+                    if not cover_ok:
+                        cover_candidate = written_atmo.parent / "cover.jpg"
+                        if not cover_candidate.is_file():
+                            cover_written = write_image_with_fallback(
+                                written_atmo.parent, owned_folder, "cover.jpg", data
+                            )
+                            if cover_written is not None:
+                                updated["cover_path"] = str(cover_written)
+                                changed = True
         elif not str(updated.get("atmosphere_path") or "").strip():
             updated["atmosphere_path"] = str(atmosphere)
             if found.art_attribution and not str(updated.get("art_attribution") or "").strip():
@@ -487,6 +593,7 @@ def enrich_library(
 
     scanned = 0
     updated = 0
+    errors = 0
     sources: Dict[str, int] = {}
     http = _http_client(transport=transport)
     try:
@@ -501,18 +608,31 @@ def enrich_library(
                     total=total,
                     updated=updated,
                     skipped=skipped,
+                    errors=errors,
                     log=f"Looking up {title}…",
                 )
-            found = lookup_enrichment(work, settings, transport=transport, client=http)
-            row = apply_enrichment(
-                db,
-                work,
-                found,
-                data_dir=data_dir,
-                settings=settings,
-                transport=transport,
-                client=http,
-            )
+            try:
+                found = lookup_enrichment(work, settings, transport=transport, client=http)
+                row = apply_enrichment(
+                    db,
+                    work,
+                    found,
+                    data_dir=data_dir,
+                    settings=settings,
+                    transport=transport,
+                    client=http,
+                )
+            except Exception as error:
+                errors += 1
+                logger.exception("Enrich failed for %s", work.get("id"))
+                if progress is not None:
+                    progress.tick(
+                        updated=updated,
+                        skipped=skipped,
+                        errors=errors,
+                        log=friendly_enrich_error(error, title=title),
+                    )
+                continue
             if _catalog_changed(work, row):
                 updated += 1
                 key = found.source or "none"
@@ -521,6 +641,7 @@ def enrich_library(
                     progress.tick(
                         updated=updated,
                         skipped=skipped,
+                        errors=errors,
                         log=f"Filled {title} from {key}.",
                     )
             else:
@@ -529,6 +650,7 @@ def enrich_library(
                     progress.tick(
                         updated=updated,
                         skipped=skipped,
+                        errors=errors,
                         log=f"No new fields for {title}.",
                     )
     finally:
@@ -537,6 +659,7 @@ def enrich_library(
         "scanned": scanned,
         "updated": updated,
         "skipped": skipped,
+        "errors": errors,
         "sources": sources,
     }
     if progress is not None:
@@ -600,11 +723,14 @@ def enrich_backlog_batch(
                             updated=enriched,
                             log=f"Trickle filled {title} from {found.source or 'catalog'}.",
                         )
-            except Exception:
+            except Exception as error:
                 errors += 1
                 logger.exception("Enrich backlog failed for %s", work.get("id"))
                 if progress is not None:
-                    progress.tick(errors=errors, log=f"Trickle error on {title}.")
+                    progress.tick(
+                        errors=errors,
+                        log=friendly_enrich_error(error, title=title),
+                    )
             if idx + 1 < len(backlog) and pause_seconds > 0:
                 time.sleep(pause_seconds)
     finally:
@@ -690,21 +816,15 @@ def update_work_metadata(
 
     cover_url = str(fields.get("cover_url") or "").strip()
     if cover_url:
-        raw_folder = str(updated.get("folder_path") or "").strip()
-        folder_path = Path(raw_folder) if raw_folder else None
-        dest_folder = (
-            folder_path
-            if folder_path is not None and folder_path.is_dir()
-            else Path(data_dir) / "covers" / str(updated["id"])
-        )
         existing = str(updated.get("cover_path") or "").strip()
         if existing:
             try:
                 Path(existing).unlink(missing_ok=True)
             except OSError:
                 pass
-        written = fetch_cover(
-            dest_folder,
+        written = fetch_cover_with_fallback(
+            updated,
+            data_dir,
             {"isbn": updated.get("isbn") or "", "title": updated.get("title") or ""},
             indexer_cover_url=cover_url,
             transport=transport,

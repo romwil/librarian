@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import zipfile
 from pathlib import Path
 from typing import Any, Mapping, Optional
@@ -10,6 +11,8 @@ import httpx
 
 from librarian._version import __version__
 from librarian.identify import extract_isbn
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_USER_AGENT = f"Librarian/{__version__} (+https://github.com/romwil/librarian)"
 OPENLIB_ISBN_COVER = "https://covers.openlibrary.org/b/isbn/{isbn}-L.jpg"
@@ -49,8 +52,12 @@ def cover_from_cbz(cbz: Path, dest: Path) -> Optional[Path]:
         return None
     if not looks_like_image(data):
         return None
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_bytes(data)
+    try:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(data)
+    except OSError:
+        logger.warning("Cannot write CBZ cover to %s", dest, exc_info=True)
+        return None
     return dest
 
 
@@ -88,12 +95,24 @@ def fetch_cover(
     transport: Optional[httpx.BaseTransport] = None,
     client: Optional[httpx.Client] = None,
 ) -> Optional[Path]:
-    """Write cover.jpg from indexer URL, Open Library ISBN, or CBZ page 1."""
+    """Write cover.jpg from indexer URL, Open Library ISBN, or CBZ page 1.
+
+    Fail-soft on filesystem errors (PermissionError / other OSError): log and
+    return None so callers can fall back to an owned cache or skip art.
+    """
     folder = Path(folder)
-    folder.mkdir(parents=True, exist_ok=True)
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        logger.warning("Cannot create cover folder %s", folder, exc_info=True)
+        return None
     dest = folder / "cover.jpg"
-    if dest.is_file() and dest.stat().st_size >= MIN_IMAGE_BYTES:
-        return dest
+    try:
+        if dest.is_file() and dest.stat().st_size >= MIN_IMAGE_BYTES:
+            return dest
+    except OSError:
+        logger.warning("Cannot stat cover %s", dest, exc_info=True)
+        return None
 
     urls: list[str] = []
     cover_url = str(indexer_cover_url or identity.get("cover") or "").strip()
@@ -106,10 +125,18 @@ def fetch_cover(
     for url in urls:
         data = download_image(url, transport=transport, client=client)
         if data:
-            dest.write_bytes(data)
+            try:
+                dest.write_bytes(data)
+            except OSError:
+                logger.warning("Cannot write cover %s", dest, exc_info=True)
+                return None
             return dest
 
-    for cbz in sorted(folder.glob("*.cbz")):
+    try:
+        cbz_paths = sorted(folder.glob("*.cbz"))
+    except OSError:
+        cbz_paths = []
+    for cbz in cbz_paths:
         extracted = cover_from_cbz(cbz, dest)
         if extracted:
             return extracted

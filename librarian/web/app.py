@@ -54,6 +54,7 @@ from librarian.enrich import (
     clear_enrichment,
     enrich_library,
     enrich_work,
+    friendly_enrich_error,
     list_match_candidates,
     update_work_metadata,
 )
@@ -1790,7 +1791,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
                     enrich_library(db, settings(), data_dir=root, progress=reporter)
                 except Exception as error:
                     logger.exception("Enrich shelves failed")
-                    reporter.fail(str(error) or "Enrich failed")
+                    reporter.fail(friendly_enrich_error(error) or "Enrich failed")
 
             thread = threading.Thread(target=run_enrich, name="librarian-enrich", daemon=True)
             enrich_thread["thread"] = thread

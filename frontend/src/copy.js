@@ -258,6 +258,12 @@ export function humanError(error, context = "") {
   if (/not allowed/i.test(raw)) return "That shelf is for the house keepers.";
   if (/owner has not been seeded/i.test(raw)) return "The reading room is not seeded yet.";
   if (/work not found/i.test(raw)) return "That volume is not on these shelves.";
+  if (/\[Errno 13\]|Permission denied/i.test(raw)) {
+    return (
+      "Couldn't write cover art — a shelf folder is locked for the lamp. " +
+      "Enrich can keep going; covers may land under the cover cache."
+    );
+  }
   if (!raw || raw.length > 180 || /traceback|exception/i.test(raw)) {
     return "Something went wrong in the stacks. Try again, or check Settings.";
   }

@@ -122,10 +122,22 @@ describe("reading room copy", () => {
     assert.equal(setupStepComplete({ sabnzbd_url: "http://x", sabnzbd_api_key_set: true }, 0), true);
     assert.equal(setupStepComplete({ complete_root: "/downloads" }, 3), true);
   });
-});
 
   it("turns LLM rate limits into household copy", () => {
     assert.match(humanError("LLM HTTP 429"), /rate-limited|Wait a minute/i);
-    assert.match(humanError("The reading room’s language model is rate-limited right now. Wait a minute, then try again — shelves and Find still work without it."), /rate-limited/i);
+    assert.match(
+      humanError(
+        "The reading room’s language model is rate-limited right now. Wait a minute, then try again — shelves and Find still work without it.",
+      ),
+      /rate-limited/i,
+    );
   });
+
+  it("turns Errno 13 cover writes into household enrich copy", () => {
+    assert.match(
+      humanError(`[Errno 13] Permission denied: "/data/media/library/books/Author/Title/cover.jpg"`),
+      /shelf folder is locked|cover cache/i,
+    );
+  });
+});
 
