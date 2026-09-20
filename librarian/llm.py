@@ -45,6 +45,13 @@ LLM_RATE_LIMIT_COPY = (
     "The reading room’s language model is rate-limited right now. "
     "Wait a minute, then try again — shelves and Find still work without it."
 )
+LLM_BAD_KEY_COPY = (
+    "The LLM API key was rejected. For Gemini, paste a Google AI Studio key in Settings "
+    "(an OpenAI sk-… key will not work)."
+)
+LLM_BAD_MODEL_COPY = (
+    "The LLM model id was rejected by the provider. Pick a recommended model in Settings."
+)
 
 # Serialize all BYO LLM HTTP across the process so list load + chase + enrich
 # cannot fan out and amplify provider 429s.
@@ -68,6 +75,51 @@ class LLMError(RuntimeError):
         return self.status_code == 429 or "rate-limited" in str(self).lower()
 
 
+def _redact_secret_fragments(text: str) -> str:
+    """Strip key-shaped tokens from provider error text before showing in the UI."""
+    scrubbed = str(text or "")
+    scrubbed = re.sub(r"\bAIza[0-9A-Za-z_\-]{10,}\b", "[redacted]", scrubbed)
+    scrubbed = re.sub(r"\bsk-ant-[0-9A-Za-z_\-]{8,}\b", "[redacted]", scrubbed)
+    scrubbed = re.sub(r"\bsk-[0-9A-Za-z_\-]{8,}\b", "[redacted]", scrubbed)
+    scrubbed = re.sub(r"(?i)(key|token|authorization)(=|:\s*)\S+", r"\1\2[redacted]", scrubbed)
+    return scrubbed.strip()
+
+
+def parse_provider_http_error(response: httpx.Response) -> str:
+    """Turn OpenAI / Anthropic / Gemini error JSON into household copy (no secrets)."""
+    status = int(response.status_code)
+    detail = ""
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = None
+    if isinstance(payload, Mapping):
+        err = payload.get("error")
+        if isinstance(err, Mapping):
+            detail = str(err.get("message") or err.get("status") or "").strip()
+        elif isinstance(err, str):
+            detail = err.strip()
+        if not detail:
+            detail = str(payload.get("message") or "").strip()
+    detail = _redact_secret_fragments(detail)
+    lower = detail.lower()
+
+    if status in (401, 403) or re.search(r"api key not valid|invalid.?api.?key|incorrect api key", lower):
+        return LLM_BAD_KEY_COPY
+    if status == 400 and re.search(r"not found|invalid model|unknown model|is not supported", lower):
+        return LLM_BAD_MODEL_COPY if not detail else f"{LLM_BAD_MODEL_COPY} ({detail[:120]})"
+    if status == 400 and re.search(r"api key|permission|consumer|unregistered", lower):
+        return LLM_BAD_KEY_COPY
+    if status == 429 or re.search(r"rate.?limit", lower):
+        return LLM_RATE_LIMIT_COPY
+    if status == 503 or re.search(r"overloaded|temporarily unavailable", lower):
+        return "The language model is busy. Try again in a moment."
+    if detail:
+        clipped = detail if len(detail) <= 180 else detail[:177] + "…"
+        return f"LLM request failed ({status}): {clipped}"
+    return f"LLM HTTP {status}"
+
+
 def friendly_llm_error(error: BaseException) -> str:
     """Household copy for UI empty states — never dump raw 'LLM HTTP 429'."""
     if isinstance(error, LLMError) and error.rate_limited:
@@ -77,6 +129,10 @@ def friendly_llm_error(error: BaseException) -> str:
         return LLM_RATE_LIMIT_COPY
     if re.search(r"\b503\b|overloaded|temporarily unavailable", text, re.I):
         return "The language model is busy. Try again in a moment."
+    if re.search(r"api key not valid|invalid.?api.?key|LLM API key was rejected", text, re.I):
+        return LLM_BAD_KEY_COPY
+    if re.search(r"\bLLM HTTP 400\b", text) and "failed" not in text.lower():
+        return LLM_BAD_KEY_COPY
     return text or "The reading room could not reach the LLM."
 
 
@@ -275,11 +331,7 @@ class LLMClient:
                     continue
                 if response.status_code >= 400:
                     raise LLMError(
-                        friendly_llm_error(
-                            LLMError(f"LLM HTTP {response.status_code}", status_code=response.status_code)
-                        )
-                        if response.status_code == 429
-                        else f"LLM HTTP {response.status_code}",
+                        parse_provider_http_error(response),
                         status_code=response.status_code,
                     )
                 try:
@@ -334,11 +386,15 @@ class LLMClient:
         if model.startswith("models/"):
             model = model[len("models/") :]
         url = f"{base}/models/{model}:generateContent"
-        body = {
-            "system_instruction": {"parts": [{"text": system}]},
-            "contents": [{"role": "user", "parts": [{"text": user}]}],
+        user_text = str(user or "").strip() or " "
+        body: Dict[str, Any] = {
+            "contents": [{"role": "user", "parts": [{"text": user_text}]}],
             "generationConfig": {"temperature": temperature},
         }
+        system_text = str(system or "").strip()
+        # Omit empty system_instruction — Gemini 400s on empty parts.
+        if system_text:
+            body["system_instruction"] = {"parts": [{"text": system_text}]}
         # Never log params — api key lives here.
         return self._client.post(url, params={"key": self.api_key}, json=body)
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import httpx
 
 from librarian.config import Settings, load_merged_settings, mask_settings, save_settings
@@ -164,6 +166,9 @@ def test_native_gemini_generate_content(monkeypatch):
         assert "generateContent" in str(request.url)
         assert "/chat/completions" not in str(request.url)
         assert request.url.params.get("key") == "gem-key"
+        body = json.loads(request.content.decode())
+        assert body["system_instruction"]["parts"][0]["text"] == "s"
+        assert body["contents"][0]["parts"][0]["text"] == "u"
         return httpx.Response(
             200,
             json={"candidates": [{"content": {"parts": [{"text": "hi-gemini"}]}}]},
@@ -191,3 +196,88 @@ def test_client_from_settings_gemini():
     assert client.provider == "gemini"
     assert client.configured()
     client.close()
+
+
+def test_openai_shaped_env_key_not_stamped_onto_gemini(tmp_path, monkeypatch):
+    """LLM_API_KEY=sk-… must not become the Gemini credential (provider 400)."""
+    monkeypatch.setattr("librarian.config.load_dotenv", lambda path=None: None)
+    for name in (
+        "LLM_API_KEY",
+        "LLM_PROVIDER",
+        "LLM_MODEL",
+        "LLM_BASE_URL",
+        "GEMINI_API_KEY",
+        "GOOGLE_API_KEY",
+        "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("LLM_API_KEY", "sk-openaiEnvKeyThatMustNotHitGemini")
+    save_settings(
+        tmp_path,
+        Settings(
+            llm_provider="gemini",
+            llm_api_key="",
+            llm_model="gemini-2.5-flash",
+            llm_base_url="https://generativelanguage.googleapis.com/v1beta",
+            llm_profiles={
+                "gemini": {
+                    "api_key": "",
+                    "model": "gemini-2.5-flash",
+                    "base_url": "https://generativelanguage.googleapis.com/v1beta",
+                },
+                "openai": {
+                    "api_key": "sk-profileOpenAI",
+                    "model": "gpt-4o-mini",
+                    "base_url": "https://api.openai.com/v1",
+                },
+            },
+        ),
+    )
+    cfg = load_merged_settings(tmp_path)
+    assert cfg.llm_provider == "gemini"
+    assert cfg.llm_api_key == ""
+    assert cfg.llm_profiles["gemini"]["api_key"] == ""
+    from librarian.llm_providers import resolve_llm_connection
+
+    assert resolve_llm_connection(cfg)["api_key"] == ""
+    assert client_from_settings(cfg) is None
+
+
+def test_gemini_env_wins_over_mismatched_llm_api_key(tmp_path, monkeypatch):
+    monkeypatch.setattr("librarian.config.load_dotenv", lambda path=None: None)
+    for name in (
+        "LLM_API_KEY",
+        "LLM_PROVIDER",
+        "GEMINI_API_KEY",
+        "GOOGLE_API_KEY",
+        "OPENAI_API_KEY",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("LLM_API_KEY", "sk-openaiEnvKey")
+    monkeypatch.setenv("GEMINI_API_KEY", "AIzaSyFakeGeminiKeyForUnitTestOnly")
+    save_settings(
+        tmp_path,
+        Settings(
+            llm_provider="gemini",
+            llm_api_key="",
+            llm_model="gemini-2.5-flash",
+            llm_profiles={"gemini": {"api_key": "", "model": "gemini-2.5-flash", "base_url": ""}},
+        ),
+    )
+    cfg = load_merged_settings(tmp_path)
+    assert cfg.llm_provider == "gemini"
+    assert cfg.llm_api_key.startswith("AIza")
+    assert cfg.llm_profiles["gemini"]["api_key"].startswith("AIza")
+
+
+def test_api_key_fits_provider_shapes():
+    from librarian.llm_providers import api_key_fits_provider
+
+    assert api_key_fits_provider("sk-abc", "openai")
+    assert not api_key_fits_provider("sk-abc", "gemini")
+    assert api_key_fits_provider("AIzaSySomething", "gemini")
+    assert not api_key_fits_provider("AIzaSySomething", "openai")
+    assert api_key_fits_provider("sk-ant-abc", "anthropic")
+    assert not api_key_fits_provider("sk-ant-abc", "openai")
+    assert api_key_fits_provider("custom-proxy-token", "gemini")  # unknown shape OK

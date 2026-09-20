@@ -206,11 +206,19 @@ def apply_profile_to_active(settings_map: MutableMapping[str, Any]) -> None:
     provider = normalize_provider(settings_map.get("llm_provider"))
     settings_map["llm_provider"] = provider
     profiles = normalize_profiles(settings_map.get("llm_profiles"))
-    # Prefer explicit active key if set; otherwise profile.
+    # Prefer explicit active key if set and shape-compatible; otherwise profile.
     active_key = str(settings_map.get("llm_api_key") or "").strip()
     profile = dict(profiles[provider])
-    if active_key:
+    if active_key and api_key_fits_provider(active_key, provider):
         profile["api_key"] = active_key
+    elif active_key and not api_key_fits_provider(active_key, provider):
+        # Drop mismatched active key; keep a fitting profile key if present.
+        settings_map["llm_api_key"] = str(profile.get("api_key") or "")
+        if settings_map["llm_api_key"] and not api_key_fits_provider(
+            settings_map["llm_api_key"], provider
+        ):
+            settings_map["llm_api_key"] = ""
+            profile["api_key"] = ""
     base = str(settings_map.get("llm_base_url") or "").strip()
     if base:
         profile["base_url"] = base
@@ -224,12 +232,39 @@ def apply_profile_to_active(settings_map: MutableMapping[str, Any]) -> None:
     settings_map["llm_model"] = profiles[provider]["model"]
 
 
+def api_key_fits_provider(api_key: str, provider: str) -> bool:
+    """True when the key's well-known shape matches the selected provider.
+
+    Unknown shapes are allowed (proxies / enterprise keys). Clear mismatches
+    (OpenAI ``sk-`` against Gemini, ``AIza`` against OpenAI, etc.) return False
+    so we never POST a wrong-vendor key and get a cryptic HTTP 400.
+    """
+    key = str(api_key or "").strip()
+    if not key:
+        return True
+    pid = normalize_provider(provider)
+    if key.startswith("sk-ant"):
+        return pid == "anthropic"
+    if key.startswith("AIza"):
+        return pid == "gemini"
+    if key.startswith("sk-"):
+        return pid == "openai"
+    return True
+
+
 def resolve_llm_connection(settings: Any) -> Dict[str, str]:
     """Resolved provider + credentials for LLMClient."""
     provider = normalize_provider(getattr(settings, "llm_provider", None))
     profiles = normalize_profiles(getattr(settings, "llm_profiles", None))
     profile = profiles.get(provider) or empty_profile(provider)
     api_key = str(getattr(settings, "llm_api_key", "") or "").strip() or profile["api_key"]
+    if api_key and not api_key_fits_provider(api_key, provider):
+        # Prefer a same-provider profile key over a mismatched active/env key.
+        profile_key = str(profile.get("api_key") or "").strip()
+        if profile_key and api_key_fits_provider(profile_key, provider):
+            api_key = profile_key
+        else:
+            api_key = ""
     base_url = str(getattr(settings, "llm_base_url", "") or "").strip() or profile["base_url"]
     model = str(getattr(settings, "llm_model", "") or "").strip() or profile["model"]
     if not base_url:
@@ -366,16 +401,29 @@ def seed_llm_profiles_from_env(
 
     # If active key empty but selected provider profile has env key, promote it.
     active_key = str(merged.get("llm_api_key") or "").strip()
+    if active_key and not api_key_fits_provider(active_key, provider):
+        # Generic LLM_API_KEY often holds an OpenAI key while Settings selects Gemini.
+        # Do not stamp that key onto the wrong provider (Gemini returns HTTP 400).
+        merged["llm_api_key"] = ""
+        active_key = ""
+        if profiles[provider].get("api_key") and api_key_fits_provider(
+            profiles[provider]["api_key"], provider
+        ):
+            merged["llm_api_key"] = profiles[provider]["api_key"]
+            active_key = merged["llm_api_key"]
+            sources["active"] = sources.get(provider) or "env"
     if not active_key and profiles[provider].get("api_key"):
-        merged["llm_api_key"] = profiles[provider]["api_key"]
-        sources["active"] = sources.get(provider) or "env"
+        profile_key = profiles[provider]["api_key"]
+        if api_key_fits_provider(profile_key, provider):
+            merged["llm_api_key"] = profile_key
+            sources["active"] = sources.get(provider) or "env"
     elif active_key:
         # Active LLM_API_KEY from ENV_TO_FIELD — mark source if not in settings.json
         stored_key = str(stored.get("llm_api_key") or "").strip()
         sources["active"] = "settings" if stored_key else "env"
         sources[provider] = sources.get(provider) or sources["active"]
-        # Keep active key on the selected provider profile
-        if not profiles[provider].get("api_key"):
+        # Keep active key on the selected provider profile only when shapes match.
+        if not profiles[provider].get("api_key") and api_key_fits_provider(active_key, provider):
             profiles[provider]["api_key"] = active_key
 
     if not str(merged.get("llm_base_url") or "").strip():

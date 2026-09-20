@@ -179,6 +179,99 @@ def test_friendly_llm_error_maps_429():
     assert "busy" in friendly_llm_error(LLMError("LLM HTTP 503", status_code=503)).lower()
 
 
+def test_parse_provider_http_error_gemini_bad_key():
+    from librarian.llm import LLM_BAD_KEY_COPY, LLMError, parse_provider_http_error
+
+    response = httpx.Response(
+        400,
+        json={
+            "error": {
+                "code": 400,
+                "message": "API key not valid. Please pass a valid API key.",
+                "status": "INVALID_ARGUMENT",
+            }
+        },
+    )
+    message = parse_provider_http_error(response)
+    assert message == LLM_BAD_KEY_COPY
+    assert "API key not valid" not in message
+    assert "Please pass a valid API key" not in message
+
+
+def test_chat_raw_surfaces_gemini_400_body(monkeypatch):
+    from librarian.llm import LLM_BAD_KEY_COPY, LLMClient, LLMError, reset_llm_rate_limit_state
+
+    reset_llm_rate_limit_state()
+    monkeypatch.setattr("librarian.llm.time.sleep", lambda _seconds: None)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert "generateContent" in str(request.url)
+        return httpx.Response(
+            400,
+            json={"error": {"code": 400, "message": "API key not valid. Please pass a valid API key."}},
+        )
+
+    client = LLMClient(
+        "https://generativelanguage.googleapis.com/v1beta",
+        "bad-key",
+        "gemini-2.5-flash",
+        provider="gemini",
+        transport=httpx.MockTransport(handler),
+        max_retries=0,
+    )
+    try:
+        client.chat_raw(system="s", user="u")
+        assert False, "expected LLMError"
+    except LLMError as error:
+        assert error.status_code == 400
+        assert str(error) == LLM_BAD_KEY_COPY
+    reset_llm_rate_limit_state()
+
+
+def test_chat_raw_gemini_success_shaped_response(monkeypatch):
+    from librarian.llm import LLMClient, reset_llm_rate_limit_state
+
+    reset_llm_rate_limit_state()
+    monkeypatch.setattr("librarian.llm.time.sleep", lambda _seconds: None)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "candidates": [
+                    {
+                        "content": {
+                            "parts": [
+                                {
+                                    "text": (
+                                        '{"display_name":"Hardcover Fiction","published_date":"2026-09-01",'
+                                        '"books":[{"rank":1,"title":"Piranesi","author":"Susanna Clarke","isbn":""}]}'
+                                    )
+                                }
+                            ]
+                        }
+                    }
+                ]
+            },
+        )
+
+    client = LLMClient(
+        "https://generativelanguage.googleapis.com/v1beta",
+        "AIzaSyFake",
+        "gemini-2.5-flash",
+        provider="gemini",
+        transport=httpx.MockTransport(handler),
+    )
+    text = client.chat_raw(system="lists", user="hardcover fiction")
+    assert "Piranesi" in text
+    reset_llm_rate_limit_state()
+
+
+def test_friendly_llm_error_maps_bare_400():
+    from librarian.llm import LLM_BAD_KEY_COPY, LLMError, friendly_llm_error
+
+    assert friendly_llm_error(LLMError("LLM HTTP 400", status_code=400)) == LLM_BAD_KEY_COPY
+
 def test_chat_raw_retries_429_with_retry_after(monkeypatch):
     from librarian.llm import LLM_RATE_LIMIT_COPY, LLMClient, LLMError, reset_llm_rate_limit_state
 

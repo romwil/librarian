@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-09-19
+
+### Fixed
+
+- **Bestsellers “LLM HTTP 400” on Gemini.** An OpenAI-shaped `LLM_API_KEY` (or leftover active key) is no longer stamped onto the Gemini profile — Google returns HTTP 400 “API key not valid” for `sk-…` keys. Provider error bodies now surface as household copy (bad key / bad model) instead of bare `LLM HTTP 400`.
+- **`docker-run.sh` forwards Gemini/Anthropic/OpenAI env aliases** (`GEMINI_API_KEY`, `GOOGLE_API_KEY`, `LLM_PROVIDER`, etc.) so kit `.env` keys actually reach the container.
+
 ## [0.4.0] — 2026-09-19
 
 ### Highlights
