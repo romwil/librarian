@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [0.4.2] — 2026-09-19
+
+### Added
+
+- **Live progress for Add to the shelves.** Pointing at a dump parent (e.g. `/data/usenet/complete/books`) expands each child, runs in the background, and polls `GET /api/ingest/status` with phase, current path, and shelved / needs you / skipped counts under the Add button.
+
+### Fixed
+
+- **Ingest Internal Server Error on comic convert.** `BadZipFile` during loose-image → CBZ no longer 500s the Add request; convert fails soft and identify continues.
+- **SAB complete organize left dumps behind.** Confident shelve from SAB now moves (same as manual ingest / watch); Review and collisions still keep the staging folder.
+- **Stale “Adding…” after a rebuild.** A `running` progress blob with no live worker clears to a household “lamp was restarted” message.
+
 ## [0.4.1] — 2026-09-19
 
 ### Fixed

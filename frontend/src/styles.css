@@ -2840,6 +2840,21 @@ button.cover {
   margin: 0 auto var(--space-6);
 }
 
+.ingest-progress {
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px dashed var(--border);
+}
+
+.ingest-progress .kicker {
+  margin-bottom: var(--space-2);
+}
+
+.ingest-progress-title {
+  margin: var(--space-2) 0 0;
+  word-break: break-word;
+}
+
 .glass .alert {
   width: 100%;
 }

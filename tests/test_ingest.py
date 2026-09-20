@@ -1,3 +1,4 @@
+import time
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -8,7 +9,9 @@ from librarian.identify import REVIEW_COLLISION
 from librarian.ingest import (
     enqueue_ingest,
     expand_album_context,
+    list_ingest_targets,
     poll_watch_folder,
+    run_ingest_paths,
     watch_root_forbidden,
 )
 from librarian.poller import JobPoller
@@ -44,6 +47,19 @@ def _client(tmp_path, monkeypatch):
 
 def _login(client, username="owner", password="password123"):
     assert client.post("/api/auth/local/login", json={"username": username, "password": password}).status_code == 200
+
+
+def _wait_ingest_status(client, *, timeout=5.0):
+    deadline = time.time() + timeout
+    last = {}
+    while time.time() < deadline:
+        resp = client.get("/api/ingest/status")
+        assert resp.status_code == 200
+        last = resp.json()
+        if last.get("status") in ("completed", "failed", "idle"):
+            return last
+        time.sleep(0.05)
+    return last
 
 
 def test_add_file_confident_identify_moves_into_root(tmp_path, monkeypatch):
@@ -173,6 +189,7 @@ def test_reader_forbidden_on_ingest_and_fs(tmp_path, monkeypatch):
     )
     assert client.get("/api/fs").status_code == 403
     assert client.post("/api/ingest", json={"path": str(tmp_path / "inbox")}).status_code == 403
+    assert client.get("/api/ingest/status").status_code == 403
 
 
 def test_op_can_add_to_library(tmp_path, monkeypatch):
@@ -199,12 +216,130 @@ def test_op_can_add_to_library(tmp_path, monkeypatch):
     assert "Le Guin - The Left Hand of Darkness 9780441478125.epub" in names
     added = client.post("/api/ingest", json={"path": str(source)})
     assert added.status_code == 200
-    assert added.json()["job"]["status"] == "organized"
+    body = added.json()
+    assert body["kicked_off"] is True
+    assert body["status"] in ("running", "completed")
+    status = _wait_ingest_status(client)
+    assert status["status"] == "completed"
+    assert int((status.get("result") or {}).get("shelved") or status.get("shelved") or 0) == 1
+    assert not source.exists()
     queue = client.get("/api/queue")
     assert queue.status_code == 200
     job = queue.json()["jobs"][0]
     assert job["payload"]["source"] == "ingest"
     assert job["status"] == "organized"
+
+
+def test_list_ingest_targets_expands_dump_parent(tmp_path):
+    parent = tmp_path / "complete" / "books"
+    parent.mkdir(parents=True)
+    a = parent / "Christine - Stephen King"
+    b = parent / "David Baldacci"
+    a.mkdir()
+    b.mkdir()
+    (a / "Christine.epub").write_bytes(b"epub")
+    (b / "book.epub").write_bytes(b"epub")
+    targets = list_ingest_targets(parent)
+    assert {t.name for t in targets} == {"Christine - Stephen King", "David Baldacci"}
+
+
+def test_list_ingest_targets_keeps_single_volume_folder(tmp_path):
+    folder = tmp_path / "inbox" / "Left Hand"
+    folder.mkdir(parents=True)
+    (folder / "Left Hand.epub").write_bytes(b"epub")
+    assert list_ingest_targets(folder) == [folder]
+
+
+def test_run_ingest_paths_reports_progress_and_moves(tmp_path, monkeypatch):
+    monkeypatch.setenv("LIBRARIAN_FS_ROOT", str(tmp_path))
+    settings = _settings(tmp_path)
+    parent = tmp_path / "inbox"
+    parent.mkdir()
+    first = parent / "Le Guin - The Left Hand of Darkness 9780441478125.epub"
+    first.write_bytes(b"epub")
+    second = parent / "mystery-dump"
+    second.mkdir()
+    (second / "mystery.epub").write_bytes(b"epub")
+    db = Database(tmp_path / "librarian.db")
+
+    ticks: list[dict] = []
+
+    class FakeProgress:
+        def start(self, *, total, phase="scanning"):
+            ticks.append({"event": "start", "total": total, "phase": phase})
+
+        def tick(self, **fields):
+            ticks.append({"event": "tick", **fields})
+
+        def complete(self, result):
+            ticks.append({"event": "complete", "result": dict(result)})
+
+        def fail(self, error):
+            ticks.append({"event": "fail", "error": error})
+
+    summary = run_ingest_paths(
+        db,
+        settings,
+        paths=list_ingest_targets(parent),
+        requested_by="owner-1",
+        progress=FakeProgress(),
+    )
+    assert summary["total"] == 2
+    assert summary["shelved"] == 1
+    assert summary["review"] == 1
+    assert not first.exists()
+    assert second.is_dir()  # Review keeps staging
+    assert (second / "mystery.epub").is_file()
+    assert ticks[0]["event"] == "start"
+    assert ticks[-1]["event"] == "complete"
+    assert any(t.get("phase") == "organizing" for t in ticks if t["event"] == "tick")
+
+
+def test_ingest_status_idle_then_batch(tmp_path, monkeypatch):
+    settings = _settings(tmp_path)
+    save_settings(tmp_path, settings)
+    parent = tmp_path / "complete" / "books"
+    parent.mkdir(parents=True)
+    a = parent / "Le Guin - The Left Hand of Darkness 9780441478125.epub"
+    a.write_bytes(b"epub")
+    b = parent / "weird-dump"
+    b.mkdir()
+    (b / "mystery.epub").write_bytes(b"epub")
+    client = _client(tmp_path, monkeypatch)
+    _login(client)
+    idle = client.get("/api/ingest/status")
+    assert idle.status_code == 200
+    assert idle.json()["status"] == "idle"
+    assert idle.json()["shelved"] == 0
+    started = client.post("/api/ingest", json={"path": str(parent)})
+    assert started.status_code == 200
+    assert started.json()["kicked_off"] is True
+    assert started.json()["total"] == 2
+    status = _wait_ingest_status(client)
+    assert status["status"] == "completed"
+    result = status.get("result") or {}
+    assert int(result.get("shelved") or 0) == 1
+    assert int(result.get("review") or 0) == 1
+    assert status["phase"] == "done"
+    assert status["source_path"] == str(parent)
+    assert not a.exists()
+    assert b.is_dir()
+
+
+def test_ingest_dump_folder_moves_source_on_success(tmp_path, monkeypatch):
+    monkeypatch.setenv("LIBRARIAN_FS_ROOT", str(tmp_path))
+    settings = _settings(tmp_path)
+    dump = tmp_path / "complete" / "Le Guin - The Left Hand of Darkness 9780441478125"
+    dump.mkdir(parents=True)
+    (dump / "The Left Hand of Darkness.epub").write_bytes(b"epub")
+    (dump / "release.nfo").write_text("nfo", encoding="utf-8")
+    db = Database(tmp_path / "librarian.db")
+    job = enqueue_ingest(db, settings, path=dump, requested_by="owner-1")
+    assert job["status"] == "organized"
+    assert not dump.exists()
+    shelved = list(Path(settings.books_root).rglob("*.epub"))
+    assert len(shelved) == 1
+    assert shelved[0].read_bytes() == b"epub"
 
 
 def test_audio_file_enqueues_sibling_album_folder(tmp_path):

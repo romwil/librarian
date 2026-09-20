@@ -159,6 +159,7 @@ export const api = {
   convert: (id, format) => request(`/works/${id}/convert`, { method: "POST", body: JSON.stringify({ format }) }),
   fs: (path = "") => request(`/fs?path=${encodeURIComponent(path || "")}`),
   ingest: (path) => request("/ingest", { method: "POST", body: JSON.stringify({ path }) }),
+  ingestStatus: () => request("/ingest/status"),
   prefs: () => request("/prefs"),
   savePrefs: (body) => request("/prefs", { method: "PUT", body: JSON.stringify(body) }),
   whispers: (id) => request(`/works/${id}/whispers`),

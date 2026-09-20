@@ -65,6 +65,21 @@ def test_maybe_convert_loose_comic_images(tmp_path):
         assert archive.namelist() == ["001.jpg", "002.jpg"]
 
 
+def test_maybe_convert_bad_zip_stays_unconverted(tmp_path, monkeypatch):
+    folder = tmp_path / "broken-comic"
+    folder.mkdir()
+    (folder / "01.jpg").write_bytes(b"\xff\xd8\xff" + b"\x00" * 20)
+
+    def boom(images, dest, **kwargs):
+        raise zipfile.BadZipFile("File is not a zip file")
+
+    monkeypatch.setattr("librarian.convert.images_to_cbz", boom)
+    result = maybe_convert_payload(folder, "comic")
+    assert result["converted"] is False
+    assert result["files"] == []
+    assert (folder / "01.jpg").is_file()
+
+
 def test_cbr_to_cbz_with_injected_unar(tmp_path):
     from librarian.convert import cbr_to_cbz
 

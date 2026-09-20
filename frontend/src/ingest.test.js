@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { filterBrowseEntries, ingestResultMessage, ingestSourcePath, isSkippedBrowseName } from "./ingest.js";
+import {
+  filterBrowseEntries,
+  ingestIsRunning,
+  ingestPhaseLabel,
+  ingestProgressSummary,
+  ingestResultMessage,
+  ingestSourcePath,
+  isSkippedBrowseName,
+} from "./ingest.js";
 import { ADD_TO_LIBRARY_LEDE, WATCH_FOLDER_LEDE } from "./copy.js";
 
 describe("add to library browse", () => {
@@ -14,7 +22,9 @@ describe("add to library browse", () => {
         { name: ".DS_Store", kind: "file" },
         { name: "inbox", kind: "dir" },
         { name: "Book.epub", kind: "file" },
-      ]).map((entry) => entry.name).join(","),
+      ])
+        .map((entry) => entry.name)
+        .join(","),
       "inbox,Book.epub",
     );
   });
@@ -65,5 +75,39 @@ describe("add to library browse", () => {
       kind: "status",
       text: "Arrived — Dune",
     });
+  });
+
+  it("summarizes live ingest progress with counts and phase", () => {
+    assert.equal(ingestIsRunning({ status: "running" }), true);
+    assert.equal(ingestIsRunning({ status: "completed" }), false);
+    assert.equal(ingestPhaseLabel("organizing"), "organizing");
+    assert.equal(
+      ingestProgressSummary({
+        status: "running",
+        phase: "organizing",
+        done: 2,
+        total: 5,
+        shelved: 1,
+        review: 1,
+        current_title: "Christine",
+      }),
+      "Organizing · 2 of 5 · shelved 1 · needs you 1 · Christine",
+    );
+    assert.equal(
+      ingestProgressSummary({
+        status: "completed",
+        result: { shelved: 3, review: 2, skipped: 1 },
+      }),
+      "Finished — shelved 3, needs you 2, skipped 1",
+    );
+    assert.equal(ingestProgressSummary({ status: "failed", error: "Path gone" }), "Path gone");
+    assert.equal(ingestProgressSummary({ status: "idle" }), "");
+    assert.equal(
+      ingestProgressSummary({
+        status: "failed",
+        error: "Shelving stopped — the lamp was restarted. Try Add again.",
+      }),
+      "Shelving stopped — the lamp was restarted. Try Add again.",
+    );
   });
 });

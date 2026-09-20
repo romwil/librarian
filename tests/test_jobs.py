@@ -110,6 +110,7 @@ def test_owner_queue_and_poll_completed_organizes(tmp_path):
     work = db.get_work(polled["work_id"])
     assert work["title"] == "The Left Hand of Darkness"
     assert work["review_state"] == "none"
+    assert not complete.exists()
 
 
 def test_music_request_keeps_kind_through_complete(tmp_path):

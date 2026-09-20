@@ -264,6 +264,186 @@ def enqueue_ingest(
     return job
 
 
+def list_ingest_targets(path: Path) -> List[Path]:
+    """Expand a dump-parent folder into children; leave single volumes alone.
+
+    A directory whose children are sibling dumps (subfolders and/or release
+    files) becomes one target per child — same idea as the watch folder.
+    A directory that *is* the volume (top-level media only: book, album,
+    loose comic pages) stays a single target.
+    """
+    if not path.is_dir():
+        return [path]
+    try:
+        children = sorted(path.iterdir(), key=lambda child: child.name.lower())
+    except OSError:
+        return [path]
+    dirs: List[Path] = []
+    media_files: List[Path] = []
+    for child in children:
+        if skipped_name(child.name):
+            continue
+        if child.is_dir():
+            dirs.append(child)
+        elif child.is_file() and child.suffix.lower() in MEDIA_EXTENSIONS:
+            media_files.append(child)
+    if dirs and media_files:
+        return dirs + media_files
+    if len(dirs) >= 2:
+        return dirs
+    if len(dirs) == 1 and not media_files:
+        return dirs
+    return [path]
+
+
+def run_ingest_paths(
+    db: Database,
+    settings: Settings,
+    *,
+    paths: List[Path],
+    requested_by: str,
+    source: str = "ingest",
+    progress: Any = None,
+) -> Dict[str, Any]:
+    """Identify/organize each path, ticking ``progress`` when provided."""
+    targets = list(paths)
+    total = len(targets)
+    if progress is not None:
+        progress.start(total=total, phase="scanning")
+        progress.tick(phase="scanning", done=0, total=total, log=f"Looking at {total} path{'s' if total != 1 else ''}.")
+
+    shelved = 0
+    review = 0
+    skipped = 0
+    errors = 0
+    jobs: List[Dict[str, Any]] = []
+
+    for index, target in enumerate(targets):
+        title = _title_for_path(target)
+        current_path = _norm_key(target)
+        if progress is not None:
+            progress.tick(
+                phase="identifying",
+                current_path=current_path,
+                current_title=title,
+                done=index,
+                total=total,
+            )
+        try:
+            if target.is_dir() and watch_entry_skippable(target):
+                skipped += 1
+                if progress is not None:
+                    progress.tick(
+                        phase="identifying",
+                        done=index + 1,
+                        skipped=skipped,
+                        shelved=shelved,
+                        review=review,
+                        errors=errors,
+                        log=f"Skipped — {title}",
+                    )
+                continue
+            stored = _norm_key(expand_album_context(target))
+            existing = db.get_job_by_storage_path(stored)
+            if existing is not None and existing.get("status") not in {"identifying", "queued"}:
+                skipped += 1
+                if progress is not None:
+                    progress.tick(
+                        phase="identifying",
+                        done=index + 1,
+                        skipped=skipped,
+                        shelved=shelved,
+                        review=review,
+                        errors=errors,
+                        log=f"Already handled — {title}",
+                    )
+                continue
+            if progress is not None:
+                progress.tick(
+                    phase="organizing",
+                    current_path=current_path,
+                    current_title=title,
+                    done=index,
+                    total=total,
+                )
+            job = enqueue_ingest(
+                db,
+                settings,
+                path=target,
+                requested_by=requested_by,
+                source=source,
+                process=True,
+            )
+            jobs.append(job)
+            status = str(job.get("status") or "")
+            work = db.get_work(str(job.get("work_id") or "")) if job.get("work_id") else None
+            quiet = bool(work and str(work.get("review_reason") or "") == "quiet_hours")
+            if status == "organized":
+                shelved += 1
+                note = f"Shelved — {job.get('title') or title}"
+            elif status == "review":
+                review += 1
+                note = (
+                    f"Parked for quiet hours — {job.get('title') or title}"
+                    if quiet
+                    else f"Needs you — {job.get('title') or title}"
+                )
+            elif status == "failed":
+                errors += 1
+                note = str(job.get("error") or f"Failed — {title}")
+            else:
+                note = f"On the way — {job.get('title') or title}"
+            if progress is not None:
+                progress.tick(
+                    phase="organizing",
+                    current_path=current_path,
+                    current_title=str(job.get("title") or title),
+                    done=index + 1,
+                    total=total,
+                    shelved=shelved,
+                    review=review,
+                    skipped=skipped,
+                    errors=errors,
+                    log=note,
+                )
+        except PathDenied as error:
+            errors += 1
+            if progress is not None:
+                progress.tick(
+                    done=index + 1,
+                    errors=errors,
+                    shelved=shelved,
+                    review=review,
+                    skipped=skipped,
+                    log=str(error),
+                )
+        except Exception as error:  # noqa: BLE001 — surface per-item and keep going
+            logger.exception("Ingest failed for %s", target)
+            errors += 1
+            if progress is not None:
+                progress.tick(
+                    done=index + 1,
+                    errors=errors,
+                    shelved=shelved,
+                    review=review,
+                    skipped=skipped,
+                    log=f"Failed — {title}: {error}",
+                )
+
+    summary = {
+        "done": total,
+        "total": total,
+        "shelved": shelved,
+        "review": review,
+        "skipped": skipped,
+        "errors": errors,
+        "jobs": len(jobs),
+    }
+    if progress is not None:
+        progress.complete(summary)
+    return summary
+
+
 def _resolve_maybe(path: Path) -> Path:
     try:
         return path.resolve() if path.exists() else path

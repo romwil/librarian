@@ -319,6 +319,7 @@ def poll_job(
             settings,
             folder=storage,
             indexer_item=item,
+            move_source=True,
         )
         final = "organized" if organized["organized"] else "review"
         updated = db.update_job(

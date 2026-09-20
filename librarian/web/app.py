@@ -72,10 +72,19 @@ from librarian.indexers.sync import ping_nzbfinder, sync_nzbfinder
 from librarian.ingest import (
     PathDenied,
     confined_path,
-    enqueue_ingest,
     list_dir,
+    list_ingest_targets,
     poll_watch_folder,
+    protected_path_refusal,
+    run_ingest_paths,
     validate_watch_root,
+)
+from librarian.ingest_progress import (
+    IngestProgressReporter,
+    begin_ingest_run,
+    finish_ingest_run,
+    is_ingest_running,
+    read_ingest_progress,
 )
 from librarian.invites import (
     create_household_invite,
@@ -390,6 +399,8 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
     app.state.db = db
     enrich_lock = threading.Lock()
     enrich_thread: Dict[str, Optional[threading.Thread]] = {"thread": None}
+    ingest_lock = threading.Lock()
+    ingest_thread: Dict[str, Optional[threading.Thread]] = {"thread": None}
 
     def settings():
         return load_merged_settings(root)
@@ -1709,16 +1720,58 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         require_role(request.state.user, "owner", "op")
         try:
             target = confined_path(payload.path, must_exist=True)
-            job = enqueue_ingest(
-                db,
-                settings(),
-                path=target,
-                requested_by=request.state.user["id"],
-                source="ingest",
-            )
         except PathDenied as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
-        return {"job": job}
+        refusal = protected_path_refusal(target, settings())
+        if refusal:
+            raise HTTPException(status_code=400, detail=refusal)
+        targets = list_ingest_targets(target)
+        user_id = request.state.user["id"]
+        source_path = str(target)
+        with ingest_lock:
+            live = ingest_thread.get("thread")
+            alive = live is not None and live.is_alive()
+            if is_ingest_running(root) and alive:
+                progress = read_ingest_progress(root)
+                return {**progress, "kicked_off": False}
+            begin_ingest_run(root, source_path=source_path, total=len(targets), phase="scanning")
+
+            def run_ingest() -> None:
+                reporter = IngestProgressReporter(root, source_path=source_path)
+                try:
+                    run_ingest_paths(
+                        db,
+                        settings(),
+                        paths=targets,
+                        requested_by=user_id,
+                        source="ingest",
+                        progress=reporter,
+                    )
+                except Exception as error:
+                    logger.exception("Add to the shelves failed")
+                    reporter.fail(str(error) or "Ingest failed")
+
+            thread = threading.Thread(target=run_ingest, name="librarian-ingest", daemon=True)
+            ingest_thread["thread"] = thread
+            thread.start()
+        progress = read_ingest_progress(root)
+        return {**progress, "kicked_off": True}
+
+    @app.get("/api/ingest/status")
+    def ingest_status(request: Request):
+        require_role(request.state.user, "owner", "op")
+        progress = read_ingest_progress(root)
+        if str(progress.get("status") or "") != "running":
+            return progress
+        live = ingest_thread.get("thread")
+        alive = live is not None and live.is_alive()
+        if alive:
+            return progress
+        # Rebuild / process restart left a stale "running" blob with no worker.
+        return finish_ingest_run(
+            root,
+            error="Shelving stopped — the lamp was restarted. Try Add again.",
+        )
 
     @app.post("/api/settings/enrich")
     def enrich_settings(request: Request):

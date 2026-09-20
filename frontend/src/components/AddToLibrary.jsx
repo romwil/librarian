@@ -1,8 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
 import { ADD_TO_LIBRARY_LEDE, FIELD_HELP, humanError } from "../copy.js";
+import {
+  filterBrowseEntries,
+  ingestIsRunning,
+  ingestPhaseLabel,
+  ingestProgressSummary,
+  ingestResultMessage,
+} from "../ingest.js";
 import { FieldLabel } from "./FieldHelp.jsx";
-import { filterBrowseEntries, ingestResultMessage } from "../ingest.js";
 
 export default function AddToLibrary({ compact = false } = {}) {
   const [path, setPath] = useState("");
@@ -12,6 +18,12 @@ export default function AddToLibrary({ compact = false } = {}) {
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState(null);
+  const pollRef = useRef(0);
+  const parentRef = useRef(parent);
+  const rootRef = useRef(root);
+  parentRef.current = parent;
+  rootRef.current = root;
 
   function load(next = path) {
     setError("");
@@ -30,24 +42,102 @@ export default function AddToLibrary({ compact = false } = {}) {
     load("");
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .ingestStatus()
+      .then((data) => {
+        if (cancelled) return;
+        setProgress(data);
+        if (ingestIsRunning(data)) {
+          setBusy(true);
+          setStatus(ingestProgressSummary(data) || "Adding…");
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!busy) return undefined;
+    let cancelled = false;
+
+    async function poll() {
+      try {
+        const data = await api.ingestStatus();
+        if (cancelled) return;
+        setProgress(data);
+        const summary = ingestProgressSummary(data);
+        if (summary) setStatus(summary);
+        if (ingestIsRunning(data)) {
+          pollRef.current = window.setTimeout(poll, 700);
+          return;
+        }
+        setBusy(false);
+        await load(parentRef.current || rootRef.current || "");
+        if (data?.status === "failed") {
+          setError(data.error || "Shelving failed.");
+          setStatus("");
+        } else if (data?.status === "completed") {
+          setError("");
+          setStatus(summary || "Finished looking.");
+        }
+      } catch (err) {
+        if (cancelled) return;
+        setBusy(false);
+        setError(humanError(err));
+      }
+    }
+
+    pollRef.current = window.setTimeout(poll, 400);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(pollRef.current);
+    };
+  }, [busy]);
+
   async function onAdd() {
     if (!path) return;
     setBusy(true);
-    setStatus("");
+    setStatus("Adding…");
     setError("");
+    setProgress({
+      status: "running",
+      phase: "scanning",
+      done: 0,
+      total: 0,
+      shelved: 0,
+      review: 0,
+      skipped: 0,
+      current_title: "",
+      current_path: path,
+      logs: ["Starting…"],
+    });
     try {
       const data = await api.ingest(path);
-      const outcome = ingestResultMessage(data.job || {}, path);
-      await load(parent || root || "");
-      if (outcome.kind === "error") {
-        setError(outcome.text);
-      } else {
-        setStatus(outcome.text);
+      setProgress(data);
+      setStatus(ingestProgressSummary(data) || "Adding…");
+      if (!ingestIsRunning(data) && data?.status === "completed") {
+        setBusy(false);
+        await load(parent || root || "");
+        setStatus(ingestProgressSummary(data) || "Finished looking.");
+      } else if (!ingestIsRunning(data) && data?.job) {
+        // Legacy single-job shape (tests / older servers).
+        const outcome = ingestResultMessage(data.job || {}, path);
+        setBusy(false);
+        await load(parent || root || "");
+        if (outcome.kind === "error") {
+          setError(outcome.text);
+        } else {
+          setStatus(outcome.text);
+        }
       }
     } catch (err) {
-      setError(humanError(err));
-    } finally {
       setBusy(false);
+      setError(humanError(err));
+      setStatus("");
     }
   }
 
@@ -60,11 +150,14 @@ export default function AddToLibrary({ compact = false } = {}) {
     </>
   );
 
+  const showProgress =
+    progress && (busy || progress.status === "completed" || progress.status === "failed");
+
   const body = (
     <>
       <p className="lede">{ADD_TO_LIBRARY_LEDE}</p>
       {error ? <p className="alert">{error}</p> : null}
-      {status ? <p className="muted">{status}</p> : null}
+      {status && !showProgress ? <p className="muted">{status}</p> : null}
       <div className="field">
         <FieldLabel htmlFor={compact ? "hall-ingest-path" : "ingest-path"} label="Path" help={FIELD_HELP.ingest_path} />
         <input
@@ -100,6 +193,30 @@ export default function AddToLibrary({ compact = false } = {}) {
           {busy ? "Adding…" : "Add"}
         </button>
       </div>
+      {showProgress ? (
+        <section className="ingest-progress" data-testid="ingest-progress" aria-live="polite">
+          <p className="kicker">Shelving progress</p>
+          <p className="muted">
+            {ingestPhaseLabel(progress.phase)}
+            {progress.total
+              ? ` · ${progress.done || 0} of ${progress.total}`
+              : progress.done
+                ? ` · ${progress.done} done`
+                : ""}
+            {progress.shelved ? ` · shelved ${progress.shelved}` : ""}
+            {progress.review ? ` · needs you ${progress.review}` : ""}
+            {progress.skipped ? ` · skipped ${progress.skipped}` : ""}
+          </p>
+          {progress.current_title || progress.current_path ? (
+            <p className="lede ingest-progress-title">{progress.current_title || progress.current_path}</p>
+          ) : null}
+          {status ? (
+            <p className="muted" role="status">
+              {status}
+            </p>
+          ) : null}
+        </section>
+      ) : null}
     </>
   );
 

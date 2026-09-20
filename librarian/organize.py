@@ -604,7 +604,7 @@ def organize_identified(
 
 
 def _cleanup_moved_source(source: Path, placed: List[str]) -> None:
-    """Remove an ingest/watch source after a confident move. Leave it on collision."""
+    """Remove an ingest/watch/SAB source after a confident move. Leave it on Review/collision."""
     if not source.exists():
         return
     try:
@@ -618,14 +618,19 @@ def _cleanup_moved_source(source: Path, placed: List[str]) -> None:
         except OSError:
             placed_keys.add(str(path))
     prefix = source_key.rstrip("/") + "/"
+    # If the library dest is still under the source tree, leave staging alone.
     if any(key == source_key or key.startswith(prefix) for key in placed_keys):
         return
     if source.is_file():
         if source_key not in placed_keys:
             source.unlink(missing_ok=True)
         return
-    if source.is_dir() and not list_payload_files(source):
-        shutil.rmtree(source, ignore_errors=True)
+    if not source.is_dir():
+        return
+    # Payload still here means identify did not absorb everything — keep the dump.
+    if list_payload_files(source):
+        return
+    shutil.rmtree(source, ignore_errors=True)
 
 
 def apply_review(
@@ -672,6 +677,7 @@ def apply_review(
         apply=True,
         identity_overrides=merged,
         force=True,
+        move_source=True,
     )
     if not result["organized"]:
         reason = result.get("identity", {}).get("review_reason") or result["work"].get("review_reason")

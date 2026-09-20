@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 import shutil
 import subprocess
@@ -11,6 +12,8 @@ from typing import Any, Callable, Dict, List, Optional, Sequence
 
 from librarian.identify import MEDIA_EXTENSIONS, list_payload_files
 from librarian.kinds import KIND_BOOK, KIND_COMIC
+
+logger = logging.getLogger(__name__)
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
 JUNK_PAGE_SUFFIXES = {".nfo", ".url", ".txt", ".sfv", ".par2", ".nzb", ".ds_store"}
@@ -147,25 +150,28 @@ def images_to_cbz(
         pages = sort_comic_pages(list(images))
     staging = dest.with_suffix(dest.suffix + ".partial")
     staging.unlink(missing_ok=True)
-    with zipfile.ZipFile(staging, "w", compression=compression) as archive:
-        for index, image in enumerate(pages, start=1):
-            suffix = image.suffix.lower() or ".jpg"
-            if suffix == ".jpeg":
-                suffix = ".jpg"
-            arcname = f"{index:03d}{suffix}"
-            archive.write(image, arcname=arcname)
-        if identity is not None:
-            from librarian.metadata import comicinfo_xml
+    try:
+        with zipfile.ZipFile(staging, "w", compression=compression) as archive:
+            for index, image in enumerate(pages, start=1):
+                suffix = image.suffix.lower() or ".jpg"
+                if suffix == ".jpeg":
+                    suffix = ".jpg"
+                arcname = f"{index:03d}{suffix}"
+                archive.write(image, arcname=arcname)
+            if identity is not None:
+                from librarian.metadata import comicinfo_xml
 
-            xml = comicinfo_xml(identity, guid=guid, page_count=len(pages))
-            archive.writestr("ComicInfo.xml", xml)
-    # Integrity check before replacing dest.
-    with zipfile.ZipFile(staging, "r") as archive:
-        bad = archive.testzip()
-        if bad is not None:
-            staging.unlink(missing_ok=True)
-            raise zipfile.BadZipFile(f"corrupt member {bad}")
-    staging.replace(dest)
+                xml = comicinfo_xml(identity, guid=guid, page_count=len(pages))
+                archive.writestr("ComicInfo.xml", xml)
+        # Integrity check before replacing dest.
+        with zipfile.ZipFile(staging, "r") as archive:
+            bad = archive.testzip()
+            if bad is not None:
+                raise zipfile.BadZipFile(f"corrupt member {bad}")
+        staging.replace(dest)
+    except (OSError, zipfile.BadZipFile):
+        staging.unlink(missing_ok=True)
+        raise
     return dest
 
 
@@ -473,7 +479,11 @@ def maybe_convert_payload(
         suffixes = {path.suffix.lower() for path in files}
         if ".cbr" in suffixes and ".cbz" not in suffixes:
             for cbr in [path for path in files if path.suffix.lower() == ".cbr"]:
-                written = cbr_to_cbz(cbr, runner=runner)
+                try:
+                    written = cbr_to_cbz(cbr, runner=runner)
+                except (OSError, zipfile.BadZipFile) as error:
+                    logger.warning("CBR convert skipped for %s: %s", cbr, error)
+                    written = None
                 if written:
                     converted.append(str(written))
                     break
@@ -481,7 +491,11 @@ def maybe_convert_payload(
         suffixes = {path.suffix.lower() for path in files}
         if ".pdf" in suffixes and ".cbz" not in suffixes:
             for pdf in [path for path in files if path.suffix.lower() == ".pdf"]:
-                written = pdf_to_cbz(pdf, runner=runner)
+                try:
+                    written = pdf_to_cbz(pdf, runner=runner)
+                except (OSError, zipfile.BadZipFile) as error:
+                    logger.warning("PDF→CBZ convert skipped for %s: %s", pdf, error)
+                    written = None
                 if written:
                     converted.append(str(written))
                     break
@@ -489,13 +503,20 @@ def maybe_convert_payload(
         images = loose_images(folder)
         if images and not any(path.suffix.lower() == ".cbz" for path in files):
             dest = folder / "converted.cbz"
-            written = images_to_cbz(images, dest)
-            converted.append(str(written))
+            try:
+                written = images_to_cbz(images, dest)
+                converted.append(str(written))
+            except (OSError, zipfile.BadZipFile) as error:
+                logger.warning("Loose-image CBZ convert skipped for %s: %s", folder, error)
     elif kind == KIND_BOOK:
         files = [path for path in list_payload_files(folder) if path.suffix.lower() in MEDIA_EXTENSIONS]
         suffixes = {path.suffix.lower() for path in files}
         if suffixes == {".pdf"}:
-            written = pdf_to_epub(files[0], runner=runner)
+            try:
+                written = pdf_to_epub(files[0], runner=runner)
+            except OSError as error:
+                logger.warning("PDF→EPUB convert skipped for %s: %s", files[0], error)
+                written = None
             if written:
                 converted.append(str(written))
     return {
