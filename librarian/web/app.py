@@ -159,6 +159,18 @@ from librarian.suggest import SUGGEST_FIELDS, refresh_suggest_cache, suggest_ite
 logger = logging.getLogger(__name__)
 
 FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _read_build_info() -> str:
+    """Docker image stamp from /app/.build-info, or empty when unset (local venv)."""
+    for candidate in (Path("/app/.build-info"), _REPO_ROOT / ".build-info"):
+        try:
+            if candidate.is_file():
+                return candidate.read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+    return ""
 
 
 def _frontend_public_file(*parts: str) -> Path | None:
@@ -440,7 +452,12 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
 
     @app.get("/api/health")
     def health() -> Dict[str, Any]:
-        return {"status": "ok", "ok": True, "version": __version__}
+        return {
+            "status": "ok",
+            "ok": True,
+            "version": __version__,
+            "build": _read_build_info(),
+        }
 
     @app.get("/api/features")
     def features() -> Dict[str, Any]:

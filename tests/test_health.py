@@ -12,6 +12,17 @@ def test_health_status_ok(tmp_path):
     assert body["status"] == "ok"
     assert body["ok"] is True
     assert body["version"] == __version__
+    assert "build" in body
+    assert body["build"] == "" or isinstance(body["build"], str)
+
+
+def test_health_build_from_file(tmp_path, monkeypatch):
+    stamp = tmp_path / ".build-info"
+    stamp.write_text("0.4.4 built test rev abc\n", encoding="utf-8")
+    monkeypatch.setattr("librarian.web.app._REPO_ROOT", tmp_path)
+    client = TestClient(create_app(tmp_path))
+    body = client.get("/api/health").json()
+    assert body["build"] == "0.4.4 built test rev abc"
 
 
 def test_features_public_and_owner_ready(tmp_path):

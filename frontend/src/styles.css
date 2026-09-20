@@ -2788,6 +2788,20 @@ button.cover {
   padding: 0;
   margin: var(--space-3) 0 0;
 }
+.settings-section-nav {
+  margin: 0 0 var(--space-5);
+}
+.settings-section-nav .wizard-steps {
+  margin-top: 0;
+}
+.settings-ingest .settings-watch-folder {
+  margin-top: var(--space-3);
+}
+.settings-about .settings-release-notes {
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px dashed color-mix(in srgb, var(--border) 80%, transparent);
+}
 .wizard-step {
   appearance: none;
   border: 1px solid var(--border);

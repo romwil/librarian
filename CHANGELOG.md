@@ -6,6 +6,16 @@
 
 - **Kind shelf totals.** Stacks, Hall kind rails, and Search kind chips show household counts for the active media type (e.g. “1,234 books on the shelves”, “56 audiobooks”) from browse/hall totals — no extra clutter.
 
+## [0.4.4] — 2026-09-20
+
+### Added
+
+- **Settings sections: Ingest + About.** Jump nav is Downloader · Indexer · Shelves · Bagging · Ingest · About. Add to the shelves and Watch folder live under Ingest; version, build stamp, and What’s New / release notes live under About. Hall keeps its compact add control. Deep-links: `/settings#ingest`, `/settings#about`, `/settings#release-notes`.
+
+### Changed
+
+- Health payload includes optional `build` from `/app/.build-info` when the image was stamped.
+
 ## [0.4.3] — 2026-09-20
 
 ### Added

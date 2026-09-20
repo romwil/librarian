@@ -1,6 +1,26 @@
 {
-  "generated_at": "2026-09-20T19:03:45Z",
+  "generated_at": "2026-09-20T19:12:18Z",
   "releases": [
+    {
+      "version": "0.4.4",
+      "date": "2026-09-20",
+      "summary": "",
+      "highlights": [],
+      "sections": [
+        {
+          "title": "Added",
+          "bullets": [
+            "**Settings sections: Ingest + About.** Jump nav is Downloader · Indexer · Shelves · Bagging · Ingest · About. Add to the shelves and Watch folder live under Ingest; version, build stamp, and What’s New / release notes live under About. Hall keeps its compact add control. Deep-links: `/settings#ingest`, `/settings#about`, `/settings#release-notes`."
+          ]
+        },
+        {
+          "title": "Changed",
+          "bullets": [
+            "Health payload includes optional `build` from `/app/.build-info` when the image was stamped."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.4.3",
       "date": "2026-09-20",

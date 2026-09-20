@@ -10,7 +10,7 @@ import {
 } from "../ingest.js";
 import { FieldLabel } from "./FieldHelp.jsx";
 
-export default function AddToLibrary({ compact = false } = {}) {
+export default function AddToLibrary({ compact = false, embedded = false } = {}) {
   const [path, setPath] = useState("");
   const [root, setRoot] = useState("");
   const [parent, setParent] = useState(null);
@@ -143,7 +143,7 @@ export default function AddToLibrary({ compact = false } = {}) {
 
   const heading = compact ? (
     <summary className="kicker">Add a volume already on disk</summary>
-  ) : (
+  ) : embedded ? null : (
     <>
       <p className="kicker">Already on disk</p>
       <h2>Add to the shelves</h2>
@@ -155,6 +155,7 @@ export default function AddToLibrary({ compact = false } = {}) {
 
   const body = (
     <>
+      {embedded ? <p className="kicker">Already on disk</p> : null}
       <p className="lede">{ADD_TO_LIBRARY_LEDE}</p>
       {error ? <p className="alert">{error}</p> : null}
       {status && !showProgress ? <p className="muted">{status}</p> : null}
@@ -227,6 +228,10 @@ export default function AddToLibrary({ compact = false } = {}) {
         {body}
       </details>
     );
+  }
+
+  if (embedded) {
+    return <div className="settings-ingest-add">{body}</div>;
   }
 
   return <section className="more-settings">{heading}{body}</section>;

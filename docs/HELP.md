@@ -107,13 +107,15 @@ Organized folders get a real cover when we can fetch one (indexer, Open Library 
 
 ## Add to the shelves / Watch folder
 
-Owners and ops can **Add to the shelves** from Settings (and a quiet Hall control). Browse `/data` or paste a path the container can see — this is not a browser upload of a whole library. Point at a **dump** (or a single file), not a Settings library root. If identify is sure, Librarian **moves and renames** into the proper Settings root. If not, the volume waits in Review (**Needs you**). Empty or unreadable dumps **Failed** with a reason (not just the folder name). A configured library root is refused — use **Scan the shelves** instead.
+Owners and ops can **Add to the shelves** from Settings → **Ingest** (and a quiet Hall control). Browse `/data` or paste a path the container can see — this is not a browser upload of a whole library. Point at a **dump** (or a single file), not a Settings library root. If identify is sure, Librarian **moves and renames** into the proper Settings root. If not, the volume waits in Review (**Needs you**). Empty or unreadable dumps **Failed** with a reason (not just the folder name). A configured library root is refused — use **Scan the shelves** instead.
 
 **Scan the shelves** is different: it walks the library roots, updates the catalog, and never moves files.
 
 Owners can **Refresh suggestions from shelves** on Settings to rebuild the typeahead seed from what’s already owned (optional MusicBrainz expansion from owned artists via `?external=1`). First boot stays light — suggestions work from the live catalog without a multi-GB dump. Full MusicBrainz / Open Library dumps remain later.
 
-A **Watch folder** (Settings) is an optional drop directory. New top-level files and folders are identified the same way, on the same in-process poll as SAB. It cannot be a library root, SAB’s complete folder, or the Smart Map inbox (`YouTubeDownload` / `YouTubeLibrary`). After a confident organize, the source is moved out so Watch does not pick it up again.
+A **Watch folder** (Settings → Ingest) is an optional drop directory. New top-level files and folders are identified the same way, on the same in-process poll as SAB. It cannot be a library root, SAB’s complete folder, or the Smart Map inbox (`YouTubeDownload` / `YouTubeLibrary`). After a confident organize, the source is moved out so Watch does not pick it up again.
+
+**About** (Settings → About) shows the running version, optional Docker build stamp, and the full What’s New / release-notes history. The upgrade modal’s **Read full notes** deep-links here.
 
 ## Enrich and Goodreads
 

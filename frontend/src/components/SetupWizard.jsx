@@ -1,8 +1,9 @@
-import { FIELD_HELP, setupComplete, setupStepComplete } from "../copy.js";
+import { FIELD_HELP, setupComplete } from "../copy.js";
 import { FieldLabel } from "./FieldHelp.jsx";
 
-const STEPS = [
+export const SETUP_STEPS = [
   {
+    id: "downloader",
     kicker: "Downloader",
     title: "SABnzbd",
     lede: "Request queues here. URL and API key only.",
@@ -12,6 +13,7 @@ const STEPS = [
     ],
   },
   {
+    id: "indexer",
     kicker: "Indexer",
     title: "NZBFinder",
     lede: "Beyond the shelves. Token stays on this host.",
@@ -21,6 +23,7 @@ const STEPS = [
     ],
   },
   {
+    id: "shelves",
     kicker: "Shelves",
     title: "Library roots",
     lede: "Where organized volumes land, usually under /data.",
@@ -34,6 +37,7 @@ const STEPS = [
     ],
   },
   {
+    id: "bagging",
     kicker: "Bagging",
     title: "Complete root",
     lede: "If SAB finishes at /downloads, map that path so Review can see files.",
@@ -41,29 +45,18 @@ const STEPS = [
   },
 ];
 
+/** Household setup panel — section jump nav lives on SettingsPage. */
 export default function SetupWizard({ settings, onChange, step, setStep }) {
-  const current = STEPS[step] || STEPS[0];
+  const current = SETUP_STEPS[step] || SETUP_STEPS[0];
   const done = setupComplete(settings);
+  const stepId = current.id || "downloader";
 
   return (
-    <section className="wizard" aria-label="Household setup">
+    <section className="wizard" id="setup" aria-label="Household setup" data-setup-step={stepId}>
       <header className="wizard-head">
         <p className="kicker">{done ? "Setup complete" : "First-run steps"}</p>
-        <ol className="wizard-steps">
-          {STEPS.map((item, index) => (
-            <li key={item.title}>
-              <button
-                type="button"
-                className={`wizard-step${index === step ? " is-on" : ""}${setupStepComplete(settings, index) ? " is-done" : ""}`}
-                onClick={() => setStep(index)}
-              >
-                {index + 1}. {item.kicker}
-              </button>
-            </li>
-          ))}
-        </ol>
       </header>
-      <div className="wizard-panel card">
+      <div className="wizard-panel card" id={stepId}>
         <p className="kicker">{current.kicker}</p>
         <h2>{current.title}</h2>
         <p className="lede">{current.lede}</p>
@@ -85,7 +78,7 @@ export default function SetupWizard({ settings, onChange, step, setStep }) {
               Back
             </button>
           ) : null}
-          {step < STEPS.length - 1 ? (
+          {step < SETUP_STEPS.length - 1 ? (
             <button type="button" className="cta outline" onClick={() => setStep(step + 1)}>
               Next
             </button>

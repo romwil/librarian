@@ -31,7 +31,7 @@ export default function WhatsNewModal({ open, version, release, onDismiss, onRea
             <ReleaseNotesPanel releases={[release]} preferHighlights testId="whats-new-notes" />
           ) : (
             <p className="muted" data-testid="whats-new-fallback">
-              Librarian {version} is ready. Open Settings for the full release history.
+              Librarian {version} is ready. Open Settings → About for the full release history.
             </p>
           )}
         </div>
@@ -41,7 +41,7 @@ export default function WhatsNewModal({ open, version, release, onDismiss, onRea
             Got it
           </button>
           <Link
-            to="/settings#release-notes"
+            to="/settings#about"
             className="cta ghost"
             data-testid="whats-new-read-full"
             onClick={onReadFull}

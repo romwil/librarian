@@ -4,10 +4,10 @@ import { busyLabel, enrichIsRunning, enrichPhaseLabel, enrichProgressSummary, sc
 import { FieldLabel } from "../components/FieldHelp.jsx";
 import SetupWizard from "../components/SetupWizard.jsx";
 import AddToLibrary from "../components/AddToLibrary.jsx";
+import AboutPanel from "../components/AboutPanel.jsx";
 import RssPanel from "../components/RssPanel.jsx";
-import ReleaseNotesPanel from "../components/ReleaseNotesPanel.jsx";
 import { FIELD_HELP, WATCH_FOLDER_LEDE, humanError, setupComplete, setupStepComplete } from "../copy.js";
-import { fetchReleaseNotes, normalizeReleaseNotes } from "../lib/releaseNotes.js";
+import { SETTINGS_NAV, settingsNavFromHash, settingsNavHref } from "../lib/settingsNav.js";
 import LlmSettingsPanel from "../components/LlmSettingsPanel.jsx";
 import AppearancePrefsPanel from "../components/AppearancePrefsPanel.jsx";
 
@@ -46,9 +46,7 @@ export default function SettingsPage() {
   const [absMatch, setAbsMatch] = useState(null);
   const [absNote, setAbsNote] = useState("");
   const [matching, setMatching] = useState(false);
-  const [releases, setReleases] = useState([]);
-  const [notesError, setNotesError] = useState("");
-  const [notesLoading, setNotesLoading] = useState(true);
+  const [activeSection, setActiveSection] = useState("downloader");
 
   useEffect(() => {
     api
@@ -58,37 +56,46 @@ export default function SettingsPage() {
         setAbsMatch(data.abs_match || null);
         const next = [0, 1, 2, 3].find((index) => !setupStepComplete(data.settings, index));
         setStep(next == null ? 0 : next);
+        const fromHash = settingsNavFromHash(window.location.hash);
+        if (fromHash?.kind === "setup" && typeof fromHash.step === "number") {
+          setStep(fromHash.step);
+          setActiveSection(fromHash.id);
+        } else if (fromHash) {
+          setActiveSection(fromHash.id);
+        } else if (next != null) {
+          setActiveSection(SETTINGS_NAV[next]?.id || "downloader");
+        }
       })
       .catch((err) => setError(humanError(err)));
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    setNotesLoading(true);
-    fetchReleaseNotes()
-      .then((payload) => {
-        if (cancelled) return;
-        setReleases(normalizeReleaseNotes(payload));
-        setNotesError("");
-        setNotesLoading(false);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setReleases([]);
-        setNotesError("Could not load release notes.");
-        setNotesLoading(false);
+    if (typeof window === "undefined") return undefined;
+    function onHash() {
+      const item = settingsNavFromHash(window.location.hash);
+      if (!item) return;
+      setActiveSection(item.id);
+      if (item.kind === "setup" && typeof item.step === "number") setStep(item.step);
+      const targetId = item.id === "about" && window.location.hash === "#release-notes" ? "release-notes" : item.id;
+      window.requestAnimationFrame(() => {
+        document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
       });
-    return () => {
-      cancelled = true;
-    };
+    }
+    onHash();
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
   }, []);
 
-  useEffect(() => {
-    if (notesLoading) return;
-    if (typeof window === "undefined") return;
-    if (window.location.hash !== "#release-notes") return;
-    document.getElementById("release-notes")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [notesLoading, releases]);
+  function goToSection(item) {
+    setActiveSection(item.id);
+    if (item.kind === "setup" && typeof item.step === "number") setStep(item.step);
+    if (typeof window !== "undefined") {
+      window.history.replaceState(null, "", settingsNavHref(item));
+    }
+    window.requestAnimationFrame(() => {
+      document.getElementById(item.id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -278,9 +285,30 @@ export default function SettingsPage() {
       <h1>Settings</h1>
       <p className="lede">
         {done
-          ? "The house is already configured. These steps stay here if you need to change a path or token."
-          : "Four short steps. The Hall stays open while you fill them in."}
+          ? "The house is already configured. Jump to a section when you need to change a path or token."
+          : "Four short setup steps, then Ingest and About. The Hall stays open while you fill them in."}
       </p>
+      <nav className="settings-section-nav" aria-label="Settings sections" data-testid="settings-section-nav">
+        <ol className="wizard-steps">
+          {SETTINGS_NAV.map((item) => {
+            const on = activeSection === item.id;
+            const doneStep = item.kind === "setup" && setupStepComplete(settings, item.step);
+            return (
+              <li key={item.id}>
+                <button
+                  type="button"
+                  className={`wizard-step${on ? " is-on" : ""}${doneStep ? " is-done" : ""}`}
+                  data-testid={`settings-nav-${item.id}`}
+                  aria-current={on ? "true" : undefined}
+                  onClick={() => goToSection(item)}
+                >
+                  {item.label}
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      </nav>
       {error ? <p className="alert">{error}</p> : null}
       {saved ? <p className="muted">{saved}</p> : null}
       {ping ? <p className={/ok/i.test(ping) ? "muted" : "callout"}>{ping}</p> : null}
@@ -288,32 +316,51 @@ export default function SettingsPage() {
       {goodreads ? <p className={/^Imported /.test(goodreads) ? "muted" : "alert"}>{goodreads}</p> : null}
       <form className="settings-form" onSubmit={onSubmit}>
         <AppearancePrefsPanel />
-        <SetupWizard settings={settings} onChange={patch} step={step} setStep={setStep} />
-        <details className="more-settings">
-          <summary className="kicker">Watch folder</summary>
-          <p className="lede">{WATCH_FOLDER_LEDE}</p>
-          <div className="field">
-            <FieldLabel htmlFor="setting-watch_root" label="Watch folder" help={FIELD_HELP.watch_root} />
-            <input
-              id="setting-watch_root"
-              type="text"
-              value={settings.watch_root || ""}
-              onChange={(e) => patch("watch_root", e.target.value)}
-              spellCheck={false}
-            />
-          </div>
-          <div className="field field-check">
-            <label htmlFor="setting-watch_enabled">
+        <SetupWizard
+          settings={settings}
+          onChange={patch}
+          step={step}
+          setStep={(index) => {
+            setStep(index);
+            const item = SETTINGS_NAV.find((row) => row.kind === "setup" && row.step === index);
+            if (item) setActiveSection(item.id);
+          }}
+        />
+        <section className="more-settings settings-ingest" id="ingest" data-testid="settings-ingest" aria-labelledby="settings-ingest-heading">
+          <p className="kicker" id="settings-ingest-heading">
+            Ingest
+          </p>
+          <h2>Add to the shelves</h2>
+          <p className="lede">
+            Point at a dump already under <code>/data</code>, or configure a Watch folder. Confident identify moves into the library roots; surprises wait in Review.
+          </p>
+          <AddToLibrary embedded />
+          <details className="more-settings settings-watch-folder">
+            <summary className="kicker">Watch folder</summary>
+            <p className="lede">{WATCH_FOLDER_LEDE}</p>
+            <div className="field">
+              <FieldLabel htmlFor="setting-watch_root" label="Watch folder" help={FIELD_HELP.watch_root} />
               <input
-                id="setting-watch_enabled"
-                type="checkbox"
-                checked={Boolean(settings.watch_enabled)}
-                onChange={(e) => patch("watch_enabled", e.target.checked)}
+                id="setting-watch_root"
+                type="text"
+                value={settings.watch_root || ""}
+                onChange={(e) => patch("watch_root", e.target.value)}
+                spellCheck={false}
               />
-              Watch this folder
-            </label>
-          </div>
-        </details>
+            </div>
+            <div className="field field-check">
+              <label htmlFor="setting-watch_enabled">
+                <input
+                  id="setting-watch_enabled"
+                  type="checkbox"
+                  checked={Boolean(settings.watch_enabled)}
+                  onChange={(e) => patch("watch_enabled", e.target.checked)}
+                />
+                Watch this folder
+              </label>
+            </div>
+          </details>
+        </section>
         <details className="more-settings">
           <summary className="kicker">Quiet hours</summary>
           <p className="lede">
@@ -740,33 +787,7 @@ export default function SettingsPage() {
         <summary className="kicker">RSS subscriptions</summary>
         <RssPanel />
       </details>
-      <AddToLibrary />
-      <section
-        className="more-settings settings-release-notes"
-        id="release-notes"
-        aria-labelledby="settings-release-notes-heading"
-      >
-        <p className="kicker" id="settings-release-notes-heading">
-          Release notes
-        </p>
-        <p className="lede">Full history from CHANGELOG — newest first.</p>
-        {notesError ? (
-          <p className="alert" data-testid="settings-release-notes-error">
-            {notesError}
-          </p>
-        ) : notesLoading ? (
-          <p className="muted" data-testid="settings-release-notes-loading">
-            Loading release notes…
-          </p>
-        ) : (
-          <ReleaseNotesPanel
-            releases={releases}
-            showJumpLinks
-            scrollable
-            testId="settings-release-notes"
-          />
-        )}
-      </section>
+      <AboutPanel />
     </div>
   );
 }
