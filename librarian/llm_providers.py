@@ -52,20 +52,33 @@ PROVIDER_CATALOG: Dict[str, Dict[str, Any]] = {
         "key_help": "Create a Gemini API key in Google AI Studio.",
         "models": [
             {
-                "id": "gemini-2.5-flash",
-                "label": "Gemini 2.5 Flash",
+                "id": "gemini-3.6-flash",
+                "label": "Gemini 3.6 Flash",
                 "recommended": True,
                 "note": "Fast and inexpensive — recommended",
             },
             {
-                "id": "gemini-2.5-pro",
-                "label": "Gemini 2.5 Pro",
+                "id": "gemini-flash-latest",
+                "label": "Gemini Flash (latest)",
                 "recommended": False,
-                "note": "Higher quality when you need it",
+                "note": "Rolling alias — follows Google’s current Flash",
             },
         ],
     },
 }
+
+# Google retires Flash/Pro ids for new keys; remap so saved Settings keep working.
+_RETIRED_GEMINI_MODELS = frozenset(
+    {
+        "gemini-1.5-flash",
+        "gemini-1.5-pro",
+        "gemini-2.0-flash",
+        "gemini-2.0-flash-001",
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-2.5-pro",
+    }
+)
 
 
 def normalize_provider(value: Any) -> str:
@@ -88,6 +101,17 @@ def recommended_model(provider: str) -> str:
             return str(row["id"])
     models = catalog.get("models") or []
     return str(models[0]["id"]) if models else ""
+
+
+def coerce_llm_model(provider: str, model: str) -> str:
+    """Swap known-retired provider model ids for the household recommended default."""
+    pid = normalize_provider(provider)
+    text = str(model or "").strip()
+    if not text:
+        return recommended_model(pid)
+    if pid == "gemini" and text.lower() in _RETIRED_GEMINI_MODELS:
+        return recommended_model(pid)
+    return text
 
 
 def default_base_url(provider: str) -> str:
@@ -271,6 +295,7 @@ def resolve_llm_connection(settings: Any) -> Dict[str, str]:
         base_url = default_base_url(provider)
     if not model:
         model = recommended_model(provider)
+    model = coerce_llm_model(provider, model)
     return {
         "provider": provider,
         "base_url": base_url.rstrip("/"),

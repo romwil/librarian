@@ -272,6 +272,36 @@ def test_friendly_llm_error_maps_bare_400():
 
     assert friendly_llm_error(LLMError("LLM HTTP 400", status_code=400)) == LLM_BAD_KEY_COPY
 
+
+def test_parse_provider_http_error_gemini_retired_model():
+    from librarian.llm import LLM_BAD_MODEL_COPY, parse_provider_http_error
+
+    response = httpx.Response(
+        404,
+        json={
+            "error": {
+                "code": 404,
+                "message": (
+                    "This model models/gemini-2.5-flash is no longer available to new users. "
+                    "Please update your code to use models/gemini-3.6-flash."
+                ),
+                "status": "NOT_FOUND",
+            }
+        },
+    )
+    assert parse_provider_http_error(response) == LLM_BAD_MODEL_COPY
+
+
+def test_friendly_llm_error_maps_retired_model_body():
+    from librarian.llm import LLM_BAD_MODEL_COPY, LLMError, friendly_llm_error
+
+    long = (
+        "LLM request failed (404): This model models/gemini-2.5-flash is no longer available "
+        "to new users. Please update your code to use models/gemini-3.6-flash for the latest…"
+    )
+    assert friendly_llm_error(LLMError(long, status_code=404)) == LLM_BAD_MODEL_COPY
+    assert friendly_llm_error(LLMError("LLM HTTP 404", status_code=404)) == LLM_BAD_MODEL_COPY
+
 def test_chat_raw_retries_429_with_retry_after(monkeypatch):
     from librarian.llm import LLM_RATE_LIMIT_COPY, LLMClient, LLMError, reset_llm_rate_limit_state
 

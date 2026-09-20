@@ -511,6 +511,36 @@ def test_curated_list_429_uses_friendly_copy(tmp_path, monkeypatch):
     assert "429" not in payload["empty_copy"]
 
 
+def test_curated_list_retired_gemini_model_uses_friendly_copy(tmp_path, monkeypatch):
+    from librarian.llm import LLM_BAD_MODEL_COPY, LLMError
+
+    class Boom:
+        def configured(self):
+            return True
+
+        def close(self):
+            return None
+
+    def boom_client(settings, *, transport=None):
+        return Boom()
+
+    def boom_fetch(client, **kwargs):
+        raise LLMError(
+            "LLM request failed (404): This model models/gemini-2.5-flash is no longer available "
+            "to new users. Please update your code to use models/gemini-3.6-flash for the latest…",
+            status_code=404,
+        )
+
+    monkeypatch.setattr("librarian.lists.client_from_settings", boom_client)
+    monkeypatch.setattr("librarian.lists.fetch_llm_list", boom_fetch)
+    db = Database(tmp_path / "t.db")
+    payload = curated_list_payload(Settings(llm_base_url="http://x", llm_api_key="k"), db, data_dir=tmp_path)
+    assert payload["empty_reason"] == "error"
+    assert payload["empty_copy"] == LLM_BAD_MODEL_COPY
+    assert len(payload["empty_copy"]) <= 180
+    assert "traceback" not in payload["empty_copy"].lower()
+
+
 def test_chase_disables_llm_after_rate_limit(monkeypatch):
     from librarian.lists import chase_missing_items
 

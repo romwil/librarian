@@ -30,8 +30,8 @@ export const FALLBACK_PROVIDERS = [
     key_url: "https://aistudio.google.com/apikey",
     key_help: "Create a Gemini API key in Google AI Studio.",
     models: [
-      { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash", recommended: true, note: "Fast and inexpensive — recommended" },
-      { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro", recommended: false, note: "Higher quality when you need it" },
+      { id: "gemini-3.6-flash", label: "Gemini 3.6 Flash", recommended: true, note: "Fast and inexpensive — recommended" },
+      { id: "gemini-flash-latest", label: "Gemini Flash (latest)", recommended: false, note: "Rolling alias — follows Google’s current Flash" },
     ],
   },
 ];

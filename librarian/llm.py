@@ -106,8 +106,11 @@ def parse_provider_http_error(response: httpx.Response) -> str:
 
     if status in (401, 403) or re.search(r"api key not valid|invalid.?api.?key|incorrect api key", lower):
         return LLM_BAD_KEY_COPY
-    if status == 400 and re.search(r"not found|invalid model|unknown model|is not supported", lower):
-        return LLM_BAD_MODEL_COPY if not detail else f"{LLM_BAD_MODEL_COPY} ({detail[:120]})"
+    if status in (400, 404) and re.search(
+        r"not found|invalid model|unknown model|is not supported|no longer available|update your code to use",
+        lower,
+    ):
+        return LLM_BAD_MODEL_COPY
     if status == 400 and re.search(r"api key|permission|consumer|unregistered", lower):
         return LLM_BAD_KEY_COPY
     if status == 429 or re.search(r"rate.?limit", lower):
@@ -131,8 +134,16 @@ def friendly_llm_error(error: BaseException) -> str:
         return "The language model is busy. Try again in a moment."
     if re.search(r"api key not valid|invalid.?api.?key|LLM API key was rejected", text, re.I):
         return LLM_BAD_KEY_COPY
+    if re.search(
+        r"model id was rejected|no longer available|invalid model|unknown model|update your code to use",
+        text,
+        re.I,
+    ):
+        return LLM_BAD_MODEL_COPY
     if re.search(r"\bLLM HTTP 400\b", text) and "failed" not in text.lower():
         return LLM_BAD_KEY_COPY
+    if re.search(r"\bLLM HTTP 404\b", text):
+        return LLM_BAD_MODEL_COPY
     return text or "The reading room could not reach the LLM."
 
 

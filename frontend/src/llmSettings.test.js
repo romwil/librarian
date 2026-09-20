@@ -39,7 +39,7 @@ describe("llmSettings provider memory", () => {
     const withGem = {
       ...toGemini.settings,
       llm_api_key: "gem-key",
-      llm_model: "gemini-2.5-pro",
+      llm_model: "gemini-3.6-flash",
     };
     const back = switchProvider(withGem, toGemini.profiles, "openai");
     assert.equal(back.settings.llm_provider, "openai");
@@ -48,7 +48,7 @@ describe("llmSettings provider memory", () => {
   });
 
   it("applyRecommendedModel fills the recommended id", () => {
-    const next = applyRecommendedModel({ llm_provider: "anthropic", llm_model: "" });
-    assert.match(next.llm_model, /claude/);
+    const next = applyRecommendedModel({ llm_provider: "gemini", llm_model: "gemini-2.5-flash" });
+    assert.equal(next.llm_model, "gemini-3.6-flash");
   });
 });

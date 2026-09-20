@@ -19,6 +19,10 @@ function isUnreachable(error, raw) {
 const LLM_COPY = [
   [/rate-limited|LLM HTTP 429|\b429\b/i, "The language model is rate-limited right now. Wait a minute — shelves and Find still work."],
   [/LLM HTTP 503|overloaded/i, "The language model is busy. Try again in a moment."],
+  [
+    /model id was rejected|no longer available|invalid model|unknown model|LLM HTTP 404|update your code to use/i,
+    "The LLM model id was rejected by the provider. Pick a recommended model in Settings.",
+  ],
 ];
 
 const INDEXER_COPY = [

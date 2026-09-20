@@ -25,7 +25,26 @@ def test_normalize_provider_aliases():
 def test_recommended_models():
     assert recommended_model("openai") == "gpt-4o-mini"
     assert recommended_model("anthropic").startswith("claude")
-    assert "gemini" in recommended_model("gemini")
+    assert recommended_model("gemini") == "gemini-3.6-flash"
+
+
+def test_coerce_retired_gemini_models():
+    from librarian.llm_providers import coerce_llm_model, resolve_llm_connection
+
+    assert coerce_llm_model("gemini", "gemini-2.5-flash") == "gemini-3.6-flash"
+    assert coerce_llm_model("gemini", "gemini-2.0-flash") == "gemini-3.6-flash"
+    assert coerce_llm_model("gemini", "gemini-3.6-flash") == "gemini-3.6-flash"
+    assert coerce_llm_model("openai", "gpt-4o-mini") == "gpt-4o-mini"
+
+    resolved = resolve_llm_connection(
+        Settings(
+            llm_provider="gemini",
+            llm_api_key="AIzaSyFakeKeyForUnitTestOnly",
+            llm_model="gemini-2.5-flash",
+            llm_profiles={"gemini": {"api_key": "AIzaSyFakeKeyForUnitTestOnly", "model": "gemini-2.5-flash"}},
+        )
+    )
+    assert resolved["model"] == "gemini-3.6-flash"
 
 
 def test_seed_gemini_env_aliases(tmp_path, monkeypatch):
@@ -194,6 +213,7 @@ def test_client_from_settings_gemini():
     client = client_from_settings(settings)
     assert client is not None
     assert client.provider == "gemini"
+    assert client.model == "gemini-3.6-flash"
     assert client.configured()
     client.close()
 

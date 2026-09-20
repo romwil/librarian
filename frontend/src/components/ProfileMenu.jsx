@@ -43,10 +43,18 @@ export default function ProfileMenu({
 
   useEffect(() => {
     if (!open) return undefined;
+    function eventInsideMenu(event) {
+      const root = rootRef.current;
+      if (!root) return false;
+      // Range inputs (and some UA widgets) can retarget so event.target is
+      // outside the menu even when the gesture started inside — prefer path.
+      const path = typeof event.composedPath === "function" ? event.composedPath() : [];
+      if (path.length > 0) return path.includes(root);
+      const target = event.target;
+      return target instanceof Node && root.contains(target);
+    }
     function onPointerDown(event) {
-      if (rootRef.current && !rootRef.current.contains(event.target)) {
-        setOpen(false);
-      }
+      if (!eventInsideMenu(event)) setOpen(false);
     }
     function onKey(event) {
       if (event.key === "Escape") setOpen(false);
@@ -115,7 +123,13 @@ export default function ProfileMenu({
         <span className="profile-menu-role">{roleLabel}</span>
       </button>
       {open ? (
-        <div className="profile-menu-panel" role="menu" data-testid="profile-menu-panel">
+        <div
+          className="profile-menu-panel"
+          role="menu"
+          data-testid="profile-menu-panel"
+          onPointerDown={(event) => event.stopPropagation()}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
           <p className="profile-menu-meta">
             {user.display_name}
             <span>{roleLabel}</span>
