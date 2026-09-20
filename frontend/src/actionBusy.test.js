@@ -5,8 +5,12 @@ import {
   busyLabel,
   doneLabel,
   enrichIsRunning,
+  enrichPhaseLabel,
   enrichProgressSummary,
   isBusy,
+  scanIsRunning,
+  scanPhaseLabel,
+  scanProgressSummary,
   ticketStatusNote,
 } from "./actionBusy.js";
 
@@ -29,6 +33,7 @@ describe("actionBusy", () => {
 
   it("summarizes enrich progress for the Settings panel", () => {
     assert.equal(enrichIsRunning({ status: "running" }), true);
+    assert.equal(enrichPhaseLabel("enriching"), "enriching");
     assert.equal(
       enrichProgressSummary({
         status: "running",
@@ -41,10 +46,32 @@ describe("actionBusy", () => {
     assert.equal(
       enrichProgressSummary({
         status: "completed",
-        result: { scanned: 3, updated: 2 },
+        result: { scanned: 3, updated: 2, skipped: 1, errors: 1 },
       }),
-      "Enriched 2 of 3 thin volumes",
+      "Enriched 2 of 3 thin volumes · 1 skipped · 1 failed",
     );
     assert.equal(enrichProgressSummary({ status: "failed", error: "No network" }), "No network");
+  });
+
+  it("summarizes scan progress for the Settings panel", () => {
+    assert.equal(scanIsRunning({ status: "running" }), true);
+    assert.equal(scanPhaseLabel("listing"), "listing");
+    assert.equal(
+      scanProgressSummary({
+        status: "running",
+        done: 1,
+        total: 4,
+        current_title: "Left Hand",
+      }),
+      "1 of 4 · Left Hand",
+    );
+    assert.equal(
+      scanProgressSummary({
+        status: "completed",
+        result: { scanned: 4, created: 2, updated: 2, review: 1, errors: 0 },
+      }),
+      "Scanned 4 · 2 new · 2 updated · 1 need review",
+    );
+    assert.equal(scanProgressSummary({ status: "failed", error: "Disk gone" }), "Disk gone");
   });
 });

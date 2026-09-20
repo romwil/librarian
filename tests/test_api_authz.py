@@ -46,6 +46,7 @@ def test_reader_forbidden_on_settings_and_invite_op(tmp_path, monkeypatch):
     assert client.get("/api/settings").status_code == 403
     assert client.put("/api/settings", json={"household_name": "Nope"}).status_code == 403
     assert client.post("/api/settings/scan").status_code == 403
+    assert client.get("/api/settings/scan/status").status_code == 403
     assert client.post("/api/settings/enrich").status_code == 403
     assert client.get("/api/settings/enrich/status").status_code == 403
     assert client.post("/api/settings/suggest-cache").status_code == 403

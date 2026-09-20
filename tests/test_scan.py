@@ -233,7 +233,28 @@ def test_identity_from_library_folder_uses_layout(tmp_path):
 def test_scan_empty_roots(tmp_path):
     db = Database(tmp_path / "librarian.db")
     counts = scan_library(db, _settings(tmp_path))
-    assert counts == {"scanned": 0, "created": 0, "updated": 0, "review": 0}
+    assert counts == {
+        "scanned": 0,
+        "created": 0,
+        "updated": 0,
+        "review": 0,
+        "skipped": 0,
+        "errors": 0,
+    }
+
+
+def _wait_scan_status(client, *, timeout=5.0):
+    import time
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        resp = client.get("/api/settings/scan/status")
+        assert resp.status_code == 200
+        body = resp.json()
+        if body.get("status") in ("completed", "failed"):
+            return body
+        time.sleep(0.05)
+    raise AssertionError("scan did not finish")
 
 
 def test_scan_api_owner_without_indexer(tmp_path, monkeypatch):
@@ -243,13 +264,21 @@ def test_scan_api_owner_without_indexer(tmp_path, monkeypatch):
     client = _client(tmp_path, monkeypatch)
     login = client.post("/api/auth/local/login", json={"username": "owner", "password": "password123"})
     assert login.status_code == 200
+    idle = client.get("/api/settings/scan/status")
+    assert idle.status_code == 200
+    assert idle.json()["status"] == "idle"
     resp = client.post("/api/settings/scan")
     assert resp.status_code == 200
     body = resp.json()
-    assert body["scanned"] == 1
-    assert body["created"] == 1
-    assert body["updated"] == 0
-    assert body["review"] == 0
+    assert body["kicked_off"] is True
+    assert body["status"] in ("running", "completed")
+    status = _wait_scan_status(client)
+    assert status["status"] == "completed"
+    result = status.get("result") or {}
+    assert int(result.get("scanned") or status.get("done") or 0) == 1
+    assert int(result.get("created") or status.get("created") or 0) == 1
+    assert int(result.get("updated") or status.get("updated") or 0) == 0
+    assert int(result.get("review") or status.get("review") or 0) == 0
     hall = client.get("/api/hall")
     assert hall.status_code == 200
     titles = [row["title"] for row in hall.json()["areas"]["books"]]
@@ -271,6 +300,7 @@ def test_scan_api_op_and_reader_forbidden(tmp_path, monkeypatch):
         == 200
     )
     assert client.post("/api/settings/scan").status_code == 403
+    assert client.get("/api/settings/scan/status").status_code == 403
     client.post("/api/auth/logout")
     client.cookies.clear()
     assert (
@@ -281,4 +311,52 @@ def test_scan_api_op_and_reader_forbidden(tmp_path, monkeypatch):
         == 200
     )
     assert client.post("/api/settings/scan").status_code == 403
+    assert client.get("/api/settings/scan/status").status_code == 403
     assert client.get("/api/settings").status_code == 403
+
+
+def test_scan_reports_progress_and_continues_after_folder_error(tmp_path, monkeypatch):
+    settings = _settings(tmp_path)
+    _book_tree(Path(settings.books_root))
+    bad = Path(settings.comics_root) / "Broken" / "1"
+    bad.mkdir(parents=True)
+    (bad / "Broken #1.cbz").write_bytes(b"cbz")
+
+    ticks: list[dict] = []
+
+    class Recorder:
+        def start(self, *, total: int, phase: str = "scanning") -> None:
+            ticks.append({"event": "start", "total": total, "phase": phase})
+
+        def log(self, line: str) -> None:
+            ticks.append({"event": "log", "line": line})
+
+        def tick(self, **fields) -> None:
+            ticks.append({"event": "tick", **fields})
+
+        def complete(self, result) -> None:
+            ticks.append({"event": "complete", "result": dict(result)})
+
+        def fail(self, error: str) -> None:
+            ticks.append({"event": "fail", "error": error})
+
+    import librarian.scan as scan_mod
+
+    real = scan_mod._ingest_folder
+
+    def sometimes(db, **kwargs):
+        if kwargs.get("kind") == "comic":
+            raise OSError("disk hiccup")
+        return real(db, **kwargs)
+
+    monkeypatch.setattr(scan_mod, "_ingest_folder", sometimes)
+
+    db = Database(tmp_path / "librarian.db")
+    counts = scan_library(db, settings, progress=Recorder())
+    assert counts["scanned"] == 2
+    assert counts["created"] == 1
+    assert counts["errors"] == 1
+    assert any(t.get("event") == "complete" for t in ticks)
+    assert any(t.get("event") == "tick" and t.get("errors") == 1 for t in ticks)
+    works = db.list_works(kind="book", limit=10)
+    assert any(row["title"] == "The Left Hand of Darkness" for row in works)

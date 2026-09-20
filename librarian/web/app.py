@@ -127,6 +127,13 @@ from librarian.rate_limit import enforce_rate_limit
 from librarian.rss import create_rss_feed, poll_rss_feeds, public_rss_feed, update_rss_feed
 from librarian.sabnzbd import SABError
 from librarian.scan import scan_library
+from librarian.scan_progress import (
+    ScanProgressReporter,
+    begin_scan_run,
+    finish_scan_run,
+    is_scan_running,
+    read_scan_progress,
+)
 from librarian.serve import (
     annotate_work_files,
     can_read_work,
@@ -400,6 +407,8 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
     app.state.db = db
     enrich_lock = threading.Lock()
     enrich_thread: Dict[str, Optional[threading.Thread]] = {"thread": None}
+    scan_lock = threading.Lock()
+    scan_thread: Dict[str, Optional[threading.Thread]] = {"thread": None}
     ingest_lock = threading.Lock()
     ingest_thread: Dict[str, Optional[threading.Thread]] = {"thread": None}
 
@@ -1706,7 +1715,42 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
     @app.post("/api/settings/scan")
     def scan_settings(request: Request):
         require_role(request.state.user, "owner")
-        return scan_library(db, settings())
+        with scan_lock:
+            live = scan_thread.get("thread")
+            alive = live is not None and live.is_alive()
+            if is_scan_running(root) and alive:
+                payload = read_scan_progress(root)
+                return {**payload, "kicked_off": False}
+            begin_scan_run(root, source="manual", total=0, phase="starting")
+
+            def run_scan() -> None:
+                reporter = ScanProgressReporter(root, source="manual")
+                try:
+                    scan_library(db, settings(), progress=reporter)
+                except Exception as error:
+                    logger.exception("Scan shelves failed")
+                    reporter.fail(str(error) or "Scan failed")
+
+            thread = threading.Thread(target=run_scan, name="librarian-scan", daemon=True)
+            scan_thread["thread"] = thread
+            thread.start()
+        payload = read_scan_progress(root)
+        return {**payload, "kicked_off": True}
+
+    @app.get("/api/settings/scan/status")
+    def scan_settings_status(request: Request):
+        require_role(request.state.user, "owner")
+        progress = read_scan_progress(root)
+        if str(progress.get("status") or "") != "running":
+            return progress
+        live = scan_thread.get("thread")
+        alive = live is not None and live.is_alive()
+        if alive:
+            return progress
+        return finish_scan_run(
+            root,
+            error="Scan stopped — the lamp was restarted. Try Scan again.",
+        )
 
     @app.get("/api/fs")
     def fs_list(request: Request, path: str = ""):

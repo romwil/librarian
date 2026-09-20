@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
-import { busyLabel, enrichIsRunning, enrichProgressSummary } from "../actionBusy.js";
+import { busyLabel, enrichIsRunning, enrichPhaseLabel, enrichProgressSummary, scanIsRunning, scanPhaseLabel, scanProgressSummary } from "../actionBusy.js";
 import { FieldLabel } from "../components/FieldHelp.jsx";
 import SetupWizard from "../components/SetupWizard.jsx";
 import AddToLibrary from "../components/AddToLibrary.jsx";
@@ -30,6 +30,8 @@ export default function SettingsPage() {
   const [ping, setPing] = useState("");
   const [scan, setScan] = useState("");
   const [scanning, setScanning] = useState(false);
+  const [scanStatus, setScanStatus] = useState(null);
+  const scanPollRef = useRef(0);
   const [enrich, setEnrich] = useState("");
   const [enriching, setEnriching] = useState(false);
   const [enrichStatus, setEnrichStatus] = useState(null);
@@ -100,10 +102,56 @@ export default function SettingsPage() {
         }
       })
       .catch(() => {});
+    api
+      .scanStatus()
+      .then((status) => {
+        if (cancelled) return;
+        setScanStatus(status);
+        if (scanIsRunning(status)) {
+          setScanning(true);
+          setScan(scanProgressSummary(status) || busyLabel("scan"));
+        }
+      })
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!scanning) return undefined;
+    let cancelled = false;
+
+    async function poll() {
+      try {
+        const status = await api.scanStatus();
+        if (cancelled) return;
+        setScanStatus(status);
+        const summary = scanProgressSummary(status);
+        if (summary) setScan(summary);
+        if (scanIsRunning(status)) {
+          scanPollRef.current = window.setTimeout(poll, 700);
+          return;
+        }
+        setScanning(false);
+        if (status?.status === "failed") {
+          setScan(status.error || "Scan failed.");
+        } else if (status?.status === "completed") {
+          setScan(summary || "Scan finished.");
+        }
+      } catch (err) {
+        if (cancelled) return;
+        setScanning(false);
+        setScan(humanError(err));
+      }
+    }
+
+    scanPollRef.current = window.setTimeout(poll, 400);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(scanPollRef.current);
+    };
+  }, [scanning]);
 
   useEffect(() => {
     if (!enriching) return undefined;
@@ -144,10 +192,47 @@ export default function SettingsPage() {
     setSettings((prev) => ({ ...prev, [key]: value }));
   }
 
+  async function startScanShelves() {
+    setScan("");
+    setScanning(true);
+    setScanStatus({
+      status: "running",
+      phase: "starting",
+      logs: ["Starting scan…"],
+      done: 0,
+      total: 0,
+      created: 0,
+      updated: 0,
+      review: 0,
+      errors: 0,
+    });
+    try {
+      const started = await api.scanShelves();
+      setScanStatus(started);
+      setScan(scanProgressSummary(started) || busyLabel("scan"));
+      if (!scanIsRunning(started) && started?.status === "completed") {
+        setScanning(false);
+        setScan(scanProgressSummary(started) || "Scan finished.");
+      }
+    } catch (err) {
+      setScanning(false);
+      setScan(humanError(err));
+    }
+  }
+
   async function startEnrichShelves() {
     setEnrich("");
     setEnriching(true);
-    setEnrichStatus({ status: "running", phase: "starting", logs: ["Starting enrich…"], done: 0, total: 0 });
+    setEnrichStatus({
+      status: "running",
+      phase: "starting",
+      logs: ["Starting enrich…"],
+      done: 0,
+      total: 0,
+      updated: 0,
+      skipped: 0,
+      errors: 0,
+    });
     try {
       const started = await api.enrichShelves();
       setEnrichStatus(started);
@@ -198,36 +283,6 @@ export default function SettingsPage() {
       {error ? <p className="alert">{error}</p> : null}
       {saved ? <p className="muted">{saved}</p> : null}
       {ping ? <p className={/ok/i.test(ping) ? "muted" : "callout"}>{ping}</p> : null}
-      {scan ? <p className={/^Scanned /.test(scan) ? "muted" : "alert"}>{scan}</p> : null}
-      {enrich ? (
-        <p className={/^Enriched |^Enrich finished/.test(enrich) ? "muted" : enriching ? "muted" : "alert"} role="status">
-          {enrich}
-        </p>
-      ) : null}
-      {enrichStatus && (enriching || enrichStatus.status === "completed" || enrichStatus.status === "failed") ? (
-        <section className="enrich-progress" data-testid="enrich-progress" aria-live="polite">
-          <p className="kicker">Enrich progress</p>
-          <p className="muted">
-            {enrichStatus.phase ? `${enrichStatus.phase}` : "enrich"}
-            {enrichStatus.total
-              ? ` · ${enrichStatus.done || 0} of ${enrichStatus.total}`
-              : enrichStatus.done
-                ? ` · ${enrichStatus.done} done`
-                : ""}
-            {enrichStatus.updated ? ` · ${enrichStatus.updated} filled` : ""}
-          </p>
-          {enrichStatus.current_title ? (
-            <p className="lede enrich-progress-title">{enrichStatus.current_title}</p>
-          ) : null}
-          {(enrichStatus.logs || []).length ? (
-            <ol className="enrich-progress-log" data-testid="enrich-progress-log">
-              {[...(enrichStatus.logs || [])].slice(-12).map((line, index) => (
-                <li key={`${index}-${line}`}>{line}</li>
-              ))}
-            </ol>
-          ) : null}
-        </section>
-      ) : null}
       {suggestNote ? <p className={/^Suggestions /.test(suggestNote) ? "muted" : "alert"}>{suggestNote}</p> : null}
       {goodreads ? <p className={/^Imported /.test(goodreads) ? "muted" : "alert"}>{goodreads}</p> : null}
       <form className="settings-form" onSubmit={onSubmit}>
@@ -552,20 +607,8 @@ export default function SettingsPage() {
             className="cta outline"
             disabled={scanning}
             aria-busy={scanning || undefined}
-            onClick={async () => {
-              setScan("");
-              setScanning(true);
-              try {
-                const data = await api.scanShelves();
-                setScan(
-                  `Scanned ${data.scanned} · ${data.created} new · ${data.updated} updated · ${data.review} need review`,
-                );
-              } catch (err) {
-                setScan(humanError(err));
-              } finally {
-                setScanning(false);
-              }
-            }}
+            onClick={startScanShelves}
+            data-testid="settings-scan"
           >
             {scanning ? busyLabel("scan") : "Scan the shelves"}
           </button>
@@ -601,6 +644,55 @@ export default function SettingsPage() {
             {suggesting ? "Refreshing…" : "Refresh suggestions from shelves"}
           </button>
         </div>
+        {scanStatus && (scanning || scanStatus.status === "completed" || scanStatus.status === "failed") ? (
+          <section className="shelf-progress" data-testid="scan-progress" aria-live="polite">
+            <p className="kicker">Scan progress</p>
+            <p className="muted">
+              {scanPhaseLabel(scanStatus.phase)}
+              {scanStatus.total
+                ? ` · ${scanStatus.done || 0} of ${scanStatus.total}`
+                : scanStatus.done
+                  ? ` · ${scanStatus.done} done`
+                  : ""}
+              {scanStatus.created ? ` · ${scanStatus.created} new` : ""}
+              {scanStatus.updated ? ` · ${scanStatus.updated} updated` : ""}
+              {scanStatus.review ? ` · ${scanStatus.review} need review` : ""}
+              {scanStatus.errors ? ` · ${scanStatus.errors} failed` : ""}
+            </p>
+            {scanStatus.current_title || scanStatus.current_path ? (
+              <p className="lede shelf-progress-title">{scanStatus.current_title || scanStatus.current_path}</p>
+            ) : null}
+            {scan ? (
+              <p className="muted" role="status">
+                {scan}
+              </p>
+            ) : null}
+          </section>
+        ) : null}
+        {enrichStatus && (enriching || enrichStatus.status === "completed" || enrichStatus.status === "failed") ? (
+          <section className="shelf-progress" data-testid="enrich-progress" aria-live="polite">
+            <p className="kicker">Enrich progress</p>
+            <p className="muted">
+              {enrichPhaseLabel(enrichStatus.phase)}
+              {enrichStatus.total
+                ? ` · ${enrichStatus.done || 0} of ${enrichStatus.total}`
+                : enrichStatus.done
+                  ? ` · ${enrichStatus.done} done`
+                  : ""}
+              {enrichStatus.updated ? ` · ${enrichStatus.updated} filled` : ""}
+              {enrichStatus.skipped ? ` · ${enrichStatus.skipped} skipped` : ""}
+              {enrichStatus.errors ? ` · ${enrichStatus.errors} failed` : ""}
+            </p>
+            {enrichStatus.current_title ? (
+              <p className="lede shelf-progress-title">{enrichStatus.current_title}</p>
+            ) : null}
+            {enrich ? (
+              <p className="muted" role="status">
+                {enrich}
+              </p>
+            ) : null}
+          </section>
+        ) : null}
         <details className="more-settings">
           <summary className="kicker">Goodreads CSV</summary>
           <p className="lede">

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Protocol, Sequence, Tuple
 
 from librarian.config import Settings
 from librarian.db import Database
@@ -24,6 +25,8 @@ from librarian.metadata import (
     sidecar_named,
 )
 
+logger = logging.getLogger(__name__)
+
 SCAN_ROOTS: Tuple[Tuple[str, str, Optional[str]], ...] = (
     ("books_root", KIND_BOOK, None),
     ("magazines_root", KIND_MAGAZINE, None),
@@ -36,22 +39,101 @@ SCAN_ROOTS: Tuple[Tuple[str, str, Optional[str]], ...] = (
 COVER_NAMES = ("cover.jpg", "cover.jpeg", "cover.png")
 
 
-def scan_library(db: Database, settings: Settings) -> Dict[str, int]:
-    """Walk configured roots and upsert catalog rows. Idempotent; collisions → Review."""
-    counts = {"scanned": 0, "created": 0, "updated": 0, "review": 0}
+class ScanProgressSink(Protocol):
+    def start(self, *, total: int, phase: str = "scanning") -> None: ...
+
+    def log(self, line: str) -> None: ...
+
+    def tick(
+        self,
+        *,
+        phase: str = "",
+        current_title: str = "",
+        current_path: str = "",
+        done: Optional[int] = None,
+        total: Optional[int] = None,
+        created: Optional[int] = None,
+        updated: Optional[int] = None,
+        review: Optional[int] = None,
+        skipped: Optional[int] = None,
+        errors: Optional[int] = None,
+        log: str = "",
+    ) -> None: ...
+
+    def complete(self, result: Mapping[str, Any]) -> None: ...
+
+    def fail(self, error: str) -> None: ...
+
+
+def scan_library(
+    db: Database,
+    settings: Settings,
+    *,
+    progress: Optional[ScanProgressSink] = None,
+) -> Dict[str, int]:
+    """Walk configured roots and upsert catalog rows. Idempotent; collisions → Review.
+
+    Single-folder failures are recorded and skipped so the rest of the run continues.
+    """
+    counts = {"scanned": 0, "created": 0, "updated": 0, "review": 0, "skipped": 0, "errors": 0}
     claimed = _existing_roots(settings)
     seen_files: set[str] = set()
+    jobs: List[Tuple[str, Optional[str], Path, Path, List[Path]]] = []
+
+    if progress is not None:
+        progress.start(total=0, phase="listing")
+        progress.log("Looking through the shelf folders…")
+
     for field, kind, music_state in SCAN_ROOTS:
         root = Path(str(getattr(settings, field) or "").strip())
         if not root.is_dir():
             continue
+        if progress is not None:
+            progress.tick(
+                phase="listing",
+                current_path=str(root),
+                current_title=root.name or str(root),
+                log=f"Listing {root.name or root}…",
+            )
         skip_under = [
             other
             for other in claimed
             if other != root.resolve() and _is_under(other, root.resolve())
         ]
         for folder, files in _group_work_folders(root, skip_under, seen_files):
-            counts["scanned"] += 1
+            jobs.append((kind, music_state, root, folder, list(files)))
+
+    total = len(jobs)
+    if progress is not None:
+        progress.tick(
+            phase="scanning" if total else "done",
+            total=total,
+            done=0,
+            log=(
+                f"Found {total} folder{'s' if total != 1 else ''} to scan."
+                if total
+                else "No folders to scan — shelves look empty."
+            ),
+        )
+
+    for kind, music_state, root, folder, files in jobs:
+        title = tidy_title(folder.name) or folder.name or "Untitled"
+        counts["scanned"] += 1
+        if progress is not None:
+            progress.tick(
+                phase="scanning",
+                current_title=title,
+                current_path=str(folder),
+                done=counts["scanned"],
+                total=total,
+                created=counts["created"],
+                updated=counts["updated"],
+                review=counts["review"],
+                skipped=counts["skipped"],
+                errors=counts["errors"],
+                log=f"Scanning {title}…",
+            )
+        try:
             outcome = _ingest_folder(
                 db,
                 kind=kind,
@@ -60,9 +142,40 @@ def scan_library(db: Database, settings: Settings) -> Dict[str, int]:
                 files=files,
                 root=root,
             )
-            counts[outcome["action"]] += 1
+        except Exception:
+            counts["errors"] += 1
+            logger.exception("Scan failed for %s", folder)
+            if progress is not None:
+                progress.tick(
+                    created=counts["created"],
+                    updated=counts["updated"],
+                    review=counts["review"],
+                    skipped=counts["skipped"],
+                    errors=counts["errors"],
+                    log=f"Skipped {title} — could not read that folder.",
+                )
+            continue
+        counts[outcome["action"]] += 1
+        if outcome["review"]:
+            counts["review"] += 1
+        work = outcome.get("work") or {}
+        shown = str(work.get("title") or title).strip() or title
+        if progress is not None:
+            action = outcome["action"]
+            note = f"New — {shown}." if action == "created" else f"Updated — {shown}."
             if outcome["review"]:
-                counts["review"] += 1
+                note = f"Needs you — {shown}."
+            progress.tick(
+                created=counts["created"],
+                updated=counts["updated"],
+                review=counts["review"],
+                skipped=counts["skipped"],
+                errors=counts["errors"],
+                log=note,
+            )
+
+    if progress is not None:
+        progress.complete(counts)
     return counts
 
 

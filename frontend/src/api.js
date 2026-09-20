@@ -121,6 +121,7 @@ export const api = {
       body: JSON.stringify({ items }),
     }),
   scanShelves: () => request("/settings/scan", { method: "POST" }),
+  scanStatus: () => request("/settings/scan/status"),
   enrichShelves: () => request("/settings/enrich", { method: "POST" }),
   enrichStatus: () => request("/settings/enrich/status"),
   enrichWork: (id) => request(`/works/${id}/enrich`, { method: "POST" }),

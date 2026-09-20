@@ -2244,16 +2244,19 @@ body:has(.listen-room) .work-hero-scrim {
   letter-spacing: 0.06em;
 }
 
-.enrich-progress {
+.enrich-progress,
+.shelf-progress {
   margin: var(--space-3) 0 var(--space-5);
   padding: var(--space-4);
   border: 1px solid color-mix(in srgb, var(--gilt) 35%, var(--border-subtle));
   background: color-mix(in srgb, var(--gilt) 8%, transparent);
 }
-.enrich-progress .kicker {
+.enrich-progress .kicker,
+.shelf-progress .kicker {
   margin-bottom: var(--space-2);
 }
-.enrich-progress-title {
+.enrich-progress-title,
+.shelf-progress-title {
   margin: var(--space-2) 0;
   font-family: var(--font-display);
   color: var(--gilt);
