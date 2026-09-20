@@ -41,6 +41,8 @@ from librarian.delight import (
     finish_set_label,
     in_quiet_hours,
     normalize_ambient,
+    normalize_ui_font_step,
+    normalize_ui_theme,
     plexamp_handoff,
     rank_regrab_candidates,
     sanitize_whisper,
@@ -302,6 +304,8 @@ class ConvertPayload(BaseModel):
 
 class PrefsPayload(BaseModel):
     ambient: Optional[str] = None
+    ui_theme: Optional[str] = None
+    ui_font_step: Optional[int] = None
 
 
 class WhisperPayload(BaseModel):
@@ -1028,16 +1032,35 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         whisper = db.add_whisper(work_id=work_id, user_id=request.state.user["id"], body=body)
         return {"whisper": whisper, "whispers": db.list_whispers(work_id, limit=WHISPER_LIST_LIMIT)}
 
+    def _public_prefs(row: Dict[str, Any]) -> Dict[str, Any]:
+        nested = dict(row.get("prefs") or {})
+        return {
+            **row,
+            "ui_theme": normalize_ui_theme(nested.get("ui_theme")),
+            "ui_font_step": normalize_ui_font_step(nested.get("ui_font_step")),
+        }
+
     @app.get("/api/prefs")
     def get_prefs(request: Request):
         require_role(request.state.user, "owner", "op", "reader")
-        return db.get_user_prefs(request.state.user["id"])
+        return _public_prefs(db.get_user_prefs(request.state.user["id"]))
 
     @app.put("/api/prefs")
     def put_prefs(payload: PrefsPayload, request: Request):
         require_role(request.state.user, "owner", "op", "reader")
         ambient = normalize_ambient(payload.ambient) if payload.ambient is not None else None
-        return db.set_user_prefs(request.state.user["id"], ambient=ambient)
+        nested: Dict[str, Any] = {}
+        if payload.ui_theme is not None:
+            nested["ui_theme"] = normalize_ui_theme(payload.ui_theme)
+        if payload.ui_font_step is not None:
+            nested["ui_font_step"] = normalize_ui_font_step(payload.ui_font_step)
+        return _public_prefs(
+            db.set_user_prefs(
+                request.state.user["id"],
+                ambient=ambient,
+                prefs=nested or None,
+            )
+        )
 
     @app.post("/api/celebrations/seen")
     def celebration_seen(payload: CelebrationSeenPayload, request: Request):

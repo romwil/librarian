@@ -9,6 +9,7 @@ import ReleaseNotesPanel from "../components/ReleaseNotesPanel.jsx";
 import { FIELD_HELP, WATCH_FOLDER_LEDE, humanError, setupComplete, setupStepComplete } from "../copy.js";
 import { fetchReleaseNotes, normalizeReleaseNotes } from "../lib/releaseNotes.js";
 import LlmSettingsPanel from "../components/LlmSettingsPanel.jsx";
+import AppearancePrefsPanel from "../components/AppearancePrefsPanel.jsx";
 
 const MORE_FIELDS = [
   ["audiobook_target", "Audiobook target"],
@@ -286,6 +287,7 @@ export default function SettingsPage() {
       {suggestNote ? <p className={/^Suggestions /.test(suggestNote) ? "muted" : "alert"}>{suggestNote}</p> : null}
       {goodreads ? <p className={/^Imported /.test(goodreads) ? "muted" : "alert"}>{goodreads}</p> : null}
       <form className="settings-form" onSubmit={onSubmit}>
+        <AppearancePrefsPanel />
         <SetupWizard settings={settings} onChange={patch} step={step} setStep={setStep} />
         <details className="more-settings">
           <summary className="kicker">Watch folder</summary>

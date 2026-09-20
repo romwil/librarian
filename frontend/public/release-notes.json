@@ -1,6 +1,58 @@
 {
-  "generated_at": "2026-09-19T05:47:09Z",
+  "generated_at": "2026-09-20T19:03:45Z",
   "releases": [
+    {
+      "version": "0.4.3",
+      "date": "2026-09-20",
+      "summary": "",
+      "highlights": [],
+      "sections": [
+        {
+          "title": "Added",
+          "bullets": [
+            "**Profile menu + personal appearance.** Click the name/role chip for theme (Lights Up / Lights Down / Match system), a six-step text-size slider (default + five larger), room wash (off / paper / lamp), owner links, and Logout at the bottom. Prefs persist via `api.prefs` + localStorage; Settings “Your appearance” shares the same store. Quiet hours stay household-only."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "0.4.2",
+      "date": "2026-09-19",
+      "summary": "",
+      "highlights": [],
+      "sections": [
+        {
+          "title": "Added",
+          "bullets": [
+            "**Live progress for Add to the shelves.** Pointing at a dump parent (e.g. `/data/usenet/complete/books`) expands each child, runs in the background, and polls `GET /api/ingest/status` with phase, current path, and shelved / needs you / skipped counts under the Add button."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "bullets": [
+            "**Enrich abort on locked shelf folders.** Writing `cover.jpg` into a root-owned library folder (`PermissionError` / Errno 13) no longer fails the whole enrich batch. Cover writes fall soft to `/config/covers/{id}/` when the shelf is not writable, progress shows household copy instead of raw Errno 13, and the trickle continues.",
+            "**Ingest Internal Server Error on comic convert.** `BadZipFile` during loose-image → CBZ no longer 500s the Add request; convert fails soft and identify continues.",
+            "**SAB complete organize left dumps behind.** Confident shelve from SAB now moves (same as manual ingest / watch); Review and collisions still keep the staging folder.",
+            "**Stale “Adding…” after a rebuild.** A `running` progress blob with no live worker clears to a household “lamp was restarted” message."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "0.4.1",
+      "date": "2026-09-19",
+      "summary": "",
+      "highlights": [],
+      "sections": [
+        {
+          "title": "Fixed",
+          "bullets": [
+            "**Bestsellers “LLM HTTP 400” on Gemini.** An OpenAI-shaped `LLM_API_KEY` (or leftover active key) is no longer stamped onto the Gemini profile — Google returns HTTP 400 “API key not valid” for `sk-…` keys. Provider error bodies now surface as household copy (bad key / bad model) instead of bare `LLM HTTP 400`.",
+            "**`docker-run.sh` forwards Gemini/Anthropic/OpenAI env aliases** (`GEMINI_API_KEY`, `GOOGLE_API_KEY`, `LLM_PROVIDER`, etc.) so kit `.env` keys actually reach the container."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.4.0",
       "date": "2026-09-19",

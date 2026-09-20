@@ -6,6 +6,12 @@
 
 - **Kind shelf totals.** Stacks, Hall kind rails, and Search kind chips show household counts for the active media type (e.g. “1,234 books on the shelves”, “56 audiobooks”) from browse/hall totals — no extra clutter.
 
+## [0.4.3] — 2026-09-20
+
+### Added
+
+- **Profile menu + personal appearance.** Click the name/role chip for theme (Lights Up / Lights Down / Match system), a six-step text-size slider (default + five larger), room wash (off / paper / lamp), owner links, and Logout at the bottom. Prefs persist via `api.prefs` + localStorage; Settings “Your appearance” shares the same store. Quiet hours stay household-only.
+
 ## [0.4.2] — 2026-09-19
 
 ### Added

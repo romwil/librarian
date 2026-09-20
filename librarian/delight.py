@@ -464,6 +464,27 @@ def normalize_ambient(value: object) -> str:
     return text if text in AMBIENT_CHOICES else "off"
 
 
+UI_THEME_CHOICES = frozenset({"lights_up", "lights_down", "system"})
+UI_FONT_STEP_MAX = 5
+
+
+def normalize_ui_theme(value: object) -> str:
+    text = str(value or "system").strip().lower()
+    return text if text in UI_THEME_CHOICES else "system"
+
+
+def normalize_ui_font_step(value: object) -> int:
+    try:
+        step = int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0
+    if step < 0:
+        return 0
+    if step > UI_FONT_STEP_MAX:
+        return UI_FONT_STEP_MAX
+    return step
+
+
 def sanitize_whisper(body: object) -> str:
     text = re.sub(r"\s+", " ", str(body or "")).strip()
     if len(text) > WHISPER_MAX_LEN:

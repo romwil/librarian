@@ -15,6 +15,8 @@ from librarian.delight import (
     finish_set_label,
     in_quiet_hours,
     normalize_ambient,
+    normalize_ui_font_step,
+    normalize_ui_theme,
     pick_fast_gap,
     plexamp_handoff,
     rank_regrab_candidates,
@@ -177,6 +179,11 @@ def test_plexamp_handoff_never_audiobook():
 def test_ambient_and_whisper_sanitize():
     assert normalize_ambient("LAMP") == "lamp"
     assert normalize_ambient("neon") == "off"
+    assert normalize_ui_theme("lights_up") == "lights_up"
+    assert normalize_ui_theme("DARK") == "system"
+    assert normalize_ui_font_step(3) == 3
+    assert normalize_ui_font_step(99) == 5
+    assert normalize_ui_font_step("nope") == 0
     assert len(sanitize_whisper("  hello   " * 40)) <= 280
 
 
@@ -205,9 +212,19 @@ def test_prefs_whispers_quiet_hours_api(tmp_path, monkeypatch):
     prefs = client.get("/api/prefs")
     assert prefs.status_code == 200
     assert prefs.json()["ambient"] == "off"
-    saved = client.put("/api/prefs", json={"ambient": "paper"})
+    assert prefs.json()["ui_theme"] == "system"
+    assert prefs.json()["ui_font_step"] == 0
+    saved = client.put("/api/prefs", json={"ambient": "paper", "ui_theme": "lights_up", "ui_font_step": 3})
     assert saved.status_code == 200
     assert saved.json()["ambient"] == "paper"
+    assert saved.json()["ui_theme"] == "lights_up"
+    assert saved.json()["ui_font_step"] == 3
+    again = client.get("/api/prefs")
+    assert again.json()["ui_theme"] == "lights_up"
+    assert again.json()["ui_font_step"] == 3
+    clamped = client.put("/api/prefs", json={"ui_font_step": 99, "ui_theme": "neon"})
+    assert clamped.json()["ui_font_step"] == 5
+    assert clamped.json()["ui_theme"] == "system"
 
     quiet = client.put(
         "/api/settings/quiet-hours",

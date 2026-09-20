@@ -2,6 +2,19 @@ import { useEffect, useRef, useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { api } from "../api.js";
 import LampMark from "./LampMark.jsx";
+import ProfileMenu from "./ProfileMenu.jsx";
+import {
+  applyUiFontStep,
+  applyUiTheme,
+  cycleUiTheme,
+  loadStoredUiFontStep,
+  loadStoredUiTheme,
+  normalizeUiFontStep,
+  normalizeUiTheme,
+  persistUiFontStep,
+  themeControlGlyph,
+  themePreferenceLabel,
+} from "../lib/uiPrefs.js";
 
 export default function AppChrome({ user, features, reviewCount = 0, children }) {
   const navigate = useNavigate();
@@ -10,6 +23,8 @@ export default function AppChrome({ user, features, reviewCount = 0, children })
   const prevCount = useRef(reviewCount);
   const [pulse, setPulse] = useState(false);
   const [ambient, setAmbient] = useState("off");
+  const [uiTheme, setUiTheme] = useState(() => loadStoredUiTheme());
+  const [fontStep, setFontStep] = useState(() => loadStoredUiFontStep());
 
   useEffect(() => {
     if (reviewCount > prevCount.current) {
@@ -23,9 +38,30 @@ export default function AppChrome({ user, features, reviewCount = 0, children })
   }, [reviewCount]);
 
   useEffect(() => {
+    applyUiTheme(uiTheme);
+  }, [uiTheme]);
+
+  useEffect(() => {
+    applyUiFontStep(fontStep);
+  }, [fontStep]);
+
+  useEffect(() => {
     api
       .prefs()
-      .then((data) => setAmbient(data.ambient || "off"))
+      .then((data) => {
+        setAmbient(data.ambient || "off");
+        if (data.ui_theme != null) {
+          const next = normalizeUiTheme(data.ui_theme);
+          setUiTheme(next);
+          applyUiTheme(next);
+        }
+        if (data.ui_font_step != null) {
+          const next = normalizeUiFontStep(data.ui_font_step);
+          setFontStep(next);
+          persistUiFontStep(next);
+          applyUiFontStep(next);
+        }
+      })
       .catch(() => setAmbient("off"));
   }, [user?.id]);
 
@@ -46,17 +82,27 @@ export default function AppChrome({ user, features, reviewCount = 0, children })
     return () => window.removeEventListener("keydown", onKey);
   }, [navigate]);
 
-  async function logout() {
-    await api.logout();
-    navigate("/login");
+  async function setAmbientPref(next) {
+    setAmbient(next);
+    try {
+      await api.savePrefs({ ambient: next });
+    } catch {
+      /* keep local */
+    }
   }
 
   async function cycleAmbient() {
     const order = ["off", "paper", "lamp"];
     const next = order[(order.indexOf(ambient) + 1) % order.length];
-    setAmbient(next);
+    await setAmbientPref(next);
+  }
+
+  async function handleThemeClick() {
+    const next = cycleUiTheme(uiTheme);
+    setUiTheme(next);
+    applyUiTheme(next);
     try {
-      await api.savePrefs({ ambient: next });
+      await api.savePrefs({ ui_theme: next });
     } catch {
       /* keep local */
     }
@@ -67,6 +113,7 @@ export default function AppChrome({ user, features, reviewCount = 0, children })
     : "Review bag — empty";
   const ambientLabel =
     ambient === "paper" ? "Paper ambient on" : ambient === "lamp" ? "Lamp wash on" : "Ambient off";
+  const themeLabel = themePreferenceLabel(uiTheme);
 
   return (
     <div className={`room ambient-${ambient}`} data-ambient={ambient}>
@@ -117,6 +164,16 @@ export default function AppChrome({ user, features, reviewCount = 0, children })
           >
             Lamp
           </button>
+          <button
+            type="button"
+            className="cta ghost compact theme-toggle"
+            onClick={handleThemeClick}
+            title={`${themeLabel}. Click to change.`}
+            aria-label={`Theme: ${themeLabel}. Click to change.`}
+            data-testid="theme-toggle"
+          >
+            <span aria-hidden="true">{themeControlGlyph(uiTheme)}</span>
+          </button>
           {op ? (
             <NavLink
               to="/review"
@@ -129,9 +186,17 @@ export default function AppChrome({ user, features, reviewCount = 0, children })
               <span className="bag-glyph" aria-hidden="true" />
             </NavLink>
           ) : null}
-          <button type="button" className="cta ghost" onClick={logout} style={{ padding: "8px 14px" }}>
-            {user.display_name}
-          </button>
+          <ProfileMenu
+            user={user}
+            owner={owner}
+            op={op}
+            fontStep={fontStep}
+            onFontStepChange={setFontStep}
+            uiTheme={uiTheme}
+            onThemeChange={setUiTheme}
+            ambient={ambient}
+            onAmbientChange={setAmbientPref}
+          />
         </div>
       </header>
       <main>{children}</main>
