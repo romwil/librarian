@@ -693,6 +693,39 @@ def test_suggest_payload_folder_one_level_up(tmp_path):
     assert suggest_payload_folder(empty) == album
 
 
+def test_diagnose_review_folder_skips_suggest_when_payload_ok(tmp_path):
+    """extra_files slips under a huge ingest root must not rglob the parent library."""
+    from librarian.identify import diagnose_review_folder
+
+    library = tmp_path / "newlib"
+    library.mkdir()
+    for i in range(40):
+        volume = library / f"Author {i}"
+        volume.mkdir()
+        (volume / "book.epub").write_bytes(b"epub")
+        (volume / "cover.jpg").write_bytes(b"jpg")
+    target = library / "Author 0"
+    diagnosis = diagnose_review_folder(target, str(tmp_path))
+    assert diagnosis["problem"] is None
+    assert diagnosis["payload_count"] >= 1
+    assert diagnosis["suggested_folder"] is None
+
+
+def test_suggest_payload_folder_skips_library_root_parent(tmp_path):
+    """Empty slip next to hundreds of volumes must not suggest the ingest dump root."""
+    from librarian.identify import suggest_payload_folder
+
+    library = tmp_path / "newlib"
+    library.mkdir()
+    for i in range(40):
+        volume = library / f"Vol{i}"
+        volume.mkdir()
+        (volume / "a.epub").write_bytes(b"x")
+    empty = library / "empty_slip"
+    empty.mkdir()
+    assert suggest_payload_folder(empty) is None
+
+
 def test_diagnose_review_folder_missing_path(tmp_path):
     from librarian.identify import diagnose_review_folder
 

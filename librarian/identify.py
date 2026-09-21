@@ -731,6 +731,13 @@ def _is_archive_file(path: Path) -> bool:
     return False
 
 
+# Parent dirs with this many sibling volumes look like library/ingest roots,
+# not a SAB release folder — never rglob them while suggesting a better path.
+_LIBRARY_ROOT_CHILD_DIRS = 32
+# Cap suggestion scans so a mistaken broad candidate cannot hang Review.
+_SUGGEST_PAYLOAD_MAX_FILES = 400
+
+
 def list_payload_files(folder: Path) -> List[Path]:
     if not folder.exists():
         return []
@@ -747,6 +754,48 @@ def list_payload_files(folder: Path) -> List[Path]:
         if path.suffix.lower() in MEDIA_EXTENSIONS:
             found.append(path)
     return found
+
+
+def _looks_like_library_root(folder: Path) -> bool:
+    """True when a folder holds many volume dirs (ingest dump / library root)."""
+    if not folder.is_dir():
+        return False
+    try:
+        child_dirs = 0
+        for child in folder.iterdir():
+            if not child.is_dir():
+                continue
+            child_dirs += 1
+            if child_dirs >= _LIBRARY_ROOT_CHILD_DIRS:
+                return True
+    except OSError:
+        return False
+    return False
+
+
+def _folder_has_payload_quick(folder: Path, *, max_files: int = _SUGGEST_PAYLOAD_MAX_FILES) -> bool:
+    """True if readable media exists; stops early and never sorts the whole tree."""
+    if not folder.exists():
+        return False
+    if folder.is_file():
+        if _is_junk_file(folder) or _is_archive_file(folder):
+            return False
+        return folder.suffix.lower() in MEDIA_EXTENSIONS
+    scanned = 0
+    try:
+        for path in folder.rglob("*"):
+            if not path.is_file():
+                continue
+            scanned += 1
+            if scanned > max_files:
+                return False
+            if _is_junk_file(path) or _is_archive_file(path):
+                continue
+            if path.suffix.lower() in MEDIA_EXTENSIONS:
+                return True
+    except OSError:
+        return False
+    return False
 
 
 def inspect_complete_folder(folder: Path) -> Dict[str, Any]:
@@ -817,9 +866,12 @@ def suggest_payload_folder(folder: Path) -> Optional[Path]:
         except OSError:
             pass
         # Do not suggest a broad complete/downloads root that happens to contain other albums.
-        if candidate.name in {"complete", "downloads", "usenet", "data"}:
+        if candidate.name in {"complete", "downloads", "usenet", "data", "media"}:
             continue
-        if list_payload_files(candidate):
+        # Ingest dumps (e.g. /data/media/newlib with 1000+ volumes) must not be rglob'd.
+        if _looks_like_library_root(candidate):
+            continue
+        if _folder_has_payload_quick(candidate):
             return candidate
     return None
 
@@ -841,9 +893,13 @@ def diagnose_review_folder(folder: Path, complete_root: str = "") -> Dict[str, A
     resolved = resolve_storage_path(raw, complete_root) if usable_folder(raw) else raw
     inspection = inspect_complete_folder(resolved)
     problem = inspection.get("problem")
-    suggested = suggest_payload_folder(resolved)
-    if problem and suggested is None and usable_folder(raw) and resolved != raw:
-        suggested = suggest_payload_folder(raw)
+    # Only hunt for a better path when this folder itself has no usable media.
+    # Always-on suggest used to rglob library parents (e.g. newlib) and hang GET /api/review.
+    suggested: Optional[Path] = None
+    if problem:
+        suggested = suggest_payload_folder(resolved)
+        if suggested is None and usable_folder(raw) and resolved != raw:
+            suggested = suggest_payload_folder(raw)
     payload = inspection.get("payload") or []
     archives = inspection.get("archives") or []
     junk = inspection.get("junk") or []
