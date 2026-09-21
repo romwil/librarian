@@ -2931,9 +2931,10 @@ button.cover {
 }
 
 .ingest-progress {
-  margin-top: var(--space-4);
-  padding-top: var(--space-3);
-  border-top: 1px dashed var(--border);
+  margin: var(--space-3) 0 var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid color-mix(in srgb, var(--gilt) 35%, var(--border-subtle));
+  background: color-mix(in srgb, var(--gilt) 8%, transparent);
 }
 
 .ingest-progress .kicker {
@@ -2943,6 +2944,22 @@ button.cover {
 .ingest-progress-title {
   margin: var(--space-2) 0 0;
   word-break: break-word;
+}
+
+.ingest-progress-meter {
+  margin-top: var(--space-3);
+  height: 0.45rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--border) 70%, transparent);
+  overflow: hidden;
+}
+
+.ingest-progress-meter-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent-2), var(--gilt));
+  transition: width 0.35s ease;
 }
 
 .glass .alert {

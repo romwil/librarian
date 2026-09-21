@@ -81,6 +81,41 @@ def test_collision_goes_to_review(tmp_path):
     assert result["work"]["review_state"] == "needs_review"
 
 
+def test_collision_preflight_leaves_all_sources_when_move(tmp_path):
+    """Multi-file dump must not move track 01 then park Review on track 02 collision."""
+    settings = _settings(tmp_path)
+    dest_dir = Path(settings.incoming_music_root) / "Miles" / "Kind of Blue"
+    dest_dir.mkdir(parents=True)
+    (dest_dir / "02 - Freddie.flac").write_bytes(b"old")
+    folder = tmp_path / "complete" / "Kind of Blue"
+    folder.mkdir(parents=True)
+    track1 = folder / "01 - So What.flac"
+    track2 = folder / "02 - Freddie.flac"
+    track1.write_bytes(b"new1")
+    track2.write_bytes(b"new2")
+    db = Database(tmp_path / "librarian.db")
+    result = organize_identified(
+        db,
+        settings,
+        folder=folder,
+        move_source=True,
+        force=True,
+        identity_overrides={
+            "kind": "music",
+            "title": "Kind of Blue",
+            "author": "Miles",
+            "album": "Kind of Blue",
+            "confidence": "high",
+        },
+    )
+    assert result["organized"] is False
+    assert result["identity"]["review_reason"] == "collision"
+    assert track1.is_file() and track1.read_bytes() == b"new1"
+    assert track2.is_file() and track2.read_bytes() == b"new2"
+    assert not (dest_dir / "01 - So What.flac").exists()
+    assert (dest_dir / "02 - Freddie.flac").read_bytes() == b"old"
+
+
 def test_promote_music_moves_tree(tmp_path):
     settings = _settings(tmp_path)
     incoming = Path(settings.incoming_music_root) / "Miles" / "Kind of Blue"

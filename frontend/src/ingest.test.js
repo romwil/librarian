@@ -3,7 +3,10 @@ import { describe, it } from "node:test";
 import {
   filterBrowseEntries,
   ingestIsRunning,
+  ingestLegacyJob,
+  ingestLooksLikeProgress,
   ingestPhaseLabel,
+  ingestProgressPercent,
   ingestProgressSummary,
   ingestResultMessage,
   ingestSourcePath,
@@ -91,8 +94,10 @@ describe("add to library browse", () => {
         review: 1,
         current_title: "Christine",
       }),
-      "Organizing · 2 of 5 · shelved 1 · needs you 1 · Christine",
+      "Organizing · 2 of 5 · 40% · shelved 1 · needs you 1 · Christine",
     );
+    assert.equal(ingestProgressPercent({ done: 2, total: 5 }), 40);
+    assert.equal(ingestProgressPercent({ done: 0, total: 0 }), null);
     assert.equal(
       ingestProgressSummary({
         status: "completed",
@@ -109,5 +114,29 @@ describe("add to library browse", () => {
       }),
       "Shelving stopped — the lamp was restarted. Try Add again.",
     );
+  });
+
+  it("does not treat progress blobs or empty job objects as legacy jobs", () => {
+    assert.equal(
+      ingestLegacyJob({
+        status: "running",
+        phase: "organizing",
+        done: 1,
+        total: 10,
+        kicked_off: true,
+        job: {},
+      }),
+      null,
+    );
+    assert.equal(ingestLooksLikeProgress({ status: "running", phase: "scanning", done: 0, total: 3 }), true);
+    assert.equal(ingestLegacyJob({ job: {} }), null);
+    assert.deepEqual(ingestLegacyJob({ job: { status: "identifying", title: "Dune" } }), {
+      status: "identifying",
+      title: "Dune",
+    });
+    assert.deepEqual(ingestResultMessage({}, "/data/media/newlib"), {
+      kind: "status",
+      text: "On the way — /data/media/newlib",
+    });
   });
 });

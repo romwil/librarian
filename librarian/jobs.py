@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -15,6 +16,8 @@ from librarian.kinds import EXTRA_KINDS, KIND_MOVIE, KIND_TV, KIND_XXX
 from librarian.nzbfinder import NZBFinderClient, NZBFinderError
 from librarian.organize import organize_identified
 from librarian.sabnzbd import SABClient
+
+logger = logging.getLogger(__name__)
 
 ACTIVE_STATUSES = ("asked", "queued", "downloading", "extracting", "identifying")
 
@@ -341,11 +344,17 @@ def poll_active_jobs(db: Database, settings: Settings, *, sab: Optional[SABClien
         if str(payload.get("source") or "") in {"ingest", "watch"}:
             from librarian.ingest import progress_ingest_job
 
-            progress_ingest_job(db, settings, job["id"])
+            try:
+                progress_ingest_job(db, settings, job["id"])
+            except Exception:
+                logger.exception("Ingest/watch poll failed for job %s", job.get("id"))
             count += 1
             continue
         if not job.get("nzo_id") or not have_sab:
             continue
-        poll_job(db, settings, job["id"], sab=sab)
+        try:
+            poll_job(db, settings, job["id"], sab=sab)
+        except Exception:
+            logger.exception("Job poll failed for %s", job.get("id"))
         count += 1
     return count

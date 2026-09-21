@@ -424,3 +424,34 @@ def test_ingest_refuses_complete_root_itself(tmp_path, monkeypatch):
     refused = client.post("/api/ingest", json={"path": str(complete)})
     assert refused.status_code == 400
     assert "complete folder" in refused.json()["detail"].lower()
+
+
+def test_progress_ingest_job_parks_review_on_permission_error(tmp_path, monkeypatch):
+    """OSError during organize must leave Review — not identifying forever."""
+    from librarian.ingest import progress_ingest_job
+
+    monkeypatch.setenv("LIBRARIAN_FS_ROOT", str(tmp_path))
+    settings = _settings(tmp_path)
+    dump = tmp_path / "inbox" / "Holly.epub"
+    dump.parent.mkdir(parents=True)
+    dump.write_bytes(b"epub")
+    db = Database(tmp_path / "librarian.db")
+    job = db.create_job(
+        {
+            "status": "identifying",
+            "title": "Holly",
+            "requested_by": "owner-1",
+            "storage_path": str(dump),
+            "payload": {"source": "ingest", "path": str(dump)},
+        }
+    )
+
+    def boom(*_args, **_kwargs):
+        raise PermissionError(13, "Permission denied", str(settings.books_root))
+
+    monkeypatch.setattr("librarian.ingest.organize_identified", boom)
+    updated = progress_ingest_job(db, settings, job["id"])
+    assert updated["status"] == "review"
+    assert "Could not shelve" in (updated.get("error") or "")
+    assert "Permission denied" in (updated.get("error") or "")
+    assert db.get_job(job["id"])["status"] == "review"

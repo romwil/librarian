@@ -499,7 +499,20 @@ def progress_ingest_job(db: Database, settings: Settings, job_id: str) -> Dict[s
         return updated or job
     # Archives-only dumps: organize runs par2+unar and parks Review when stuck.
     # Only a truly missing path is a hard fail (handled above when folder.exists is false).
-    organized = organize_identified(db, settings, folder=folder, move_source=True)
+    try:
+        organized = organize_identified(db, settings, folder=folder, move_source=True)
+    except OSError as error:
+        # Permission / IO errors must leave Review — never stay identifying or the
+        # poller retries forever and storms the logs (and locks SQLite).
+        reason = f"Could not shelve — {error}"
+        logger.exception("Ingest organize failed for %s", folder)
+        updated = db.update_job(
+            job_id,
+            status="review",
+            error=reason,
+            title=str(job.get("title") or _title_for_path(folder)),
+        )
+        return updated or job
     identity = organized.get("identity") or {}
     final = "organized" if organized["organized"] else "review"
     work = organized["work"]

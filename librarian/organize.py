@@ -461,25 +461,31 @@ def organize_identified(
         )
         return {"work": work, "identity": identity, "organized": False, "files": [str(p) for p in files]}
 
+    # Preflight every dest before moving any file — a mid-loop collision with
+    # move_source=True would otherwise orphan already-relocated siblings.
+    planned: List[tuple[Path, Path]] = []
+    for src in files:
+        dest = dest_layout(identity, settings, filename=src.name, source=src)
+        if dest.exists() and dest.resolve() != src.resolve():
+            identity["review_reason"] = REVIEW_COLLISION
+            identity["confidence"] = "low"
+            work = db.upsert_work(
+                {
+                    **identity,
+                    **part_fields,
+                    "folder_path": source_folder,
+                    "review_state": "needs_review",
+                    "review_reason": REVIEW_COLLISION,
+                    "indexer_guid": (indexer_item or {}).get("guid"),
+                }
+            )
+            return {"work": work, "identity": identity, "organized": False, "files": [str(p) for p in files]}
+        planned.append((src, dest))
+
     placed: List[str] = []
     folder_path = None
     try:
-        for src in files:
-            dest = dest_layout(identity, settings, filename=src.name, source=src)
-            if dest.exists() and dest.resolve() != src.resolve():
-                identity["review_reason"] = REVIEW_COLLISION
-                identity["confidence"] = "low"
-                work = db.upsert_work(
-                    {
-                        **identity,
-                        **part_fields,
-                        "folder_path": source_folder,
-                        "review_state": "needs_review",
-                        "review_reason": REVIEW_COLLISION,
-                        "indexer_guid": (indexer_item or {}).get("guid"),
-                    }
-                )
-                return {"work": work, "identity": identity, "organized": False, "files": [str(p) for p in files]}
+        for src, dest in planned:
             written = _copy_into(src, dest, move=move_source)
             placed.append(str(written))
             folder_path = written.parent

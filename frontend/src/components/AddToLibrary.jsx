@@ -4,7 +4,9 @@ import { ADD_TO_LIBRARY_LEDE, FIELD_HELP, humanError } from "../copy.js";
 import {
   filterBrowseEntries,
   ingestIsRunning,
+  ingestLegacyJob,
   ingestPhaseLabel,
+  ingestProgressPercent,
   ingestProgressSummary,
   ingestResultMessage,
 } from "../ingest.js";
@@ -123,15 +125,18 @@ export default function AddToLibrary({ compact = false, embedded = false } = {})
         setBusy(false);
         await load(parent || root || "");
         setStatus(ingestProgressSummary(data) || "Finished looking.");
-      } else if (!ingestIsRunning(data) && data?.job) {
-        // Legacy single-job shape (tests / older servers).
-        const outcome = ingestResultMessage(data.job || {}, path);
-        setBusy(false);
-        await load(parent || root || "");
-        if (outcome.kind === "error") {
-          setError(outcome.text);
-        } else {
-          setStatus(outcome.text);
+      } else if (!ingestIsRunning(data)) {
+        const legacy = ingestLegacyJob(data);
+        if (legacy) {
+          // Legacy single-job shape (tests / older servers).
+          const outcome = ingestResultMessage(legacy, path);
+          setBusy(false);
+          await load(parent || root || "");
+          if (outcome.kind === "error") {
+            setError(outcome.text);
+          } else {
+            setStatus(outcome.text);
+          }
         }
       }
     } catch (err) {
@@ -152,6 +157,45 @@ export default function AddToLibrary({ compact = false, embedded = false } = {})
 
   const showProgress =
     progress && (busy || progress.status === "completed" || progress.status === "failed");
+  const percent = showProgress ? ingestProgressPercent(progress) : null;
+
+  const progressPanel = showProgress ? (
+    <section className="ingest-progress" data-testid="ingest-progress" aria-live="polite">
+      <p className="kicker">Shelving progress</p>
+      <p className="muted">
+        {ingestPhaseLabel(progress.phase)}
+        {progress.total
+          ? ` · ${progress.done || 0} of ${progress.total}`
+          : progress.done
+            ? ` · ${progress.done} done`
+            : ""}
+        {percent != null ? ` · ${percent}%` : ""}
+        {progress.shelved ? ` · shelved ${progress.shelved}` : ""}
+        {progress.review ? ` · needs you ${progress.review}` : ""}
+        {progress.skipped ? ` · skipped ${progress.skipped}` : ""}
+      </p>
+      {percent != null ? (
+        <div
+          className="ingest-progress-meter"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={percent}
+          aria-label="Shelving progress"
+        >
+          <span className="ingest-progress-meter-fill" style={{ width: `${percent}%` }} />
+        </div>
+      ) : null}
+      {progress.current_title || progress.current_path ? (
+        <p className="lede ingest-progress-title">{progress.current_title || progress.current_path}</p>
+      ) : null}
+      {status ? (
+        <p className="muted" role="status">
+          {status}
+        </p>
+      ) : null}
+    </section>
+  ) : null;
 
   const body = (
     <>
@@ -159,6 +203,7 @@ export default function AddToLibrary({ compact = false, embedded = false } = {})
       <p className="lede">{ADD_TO_LIBRARY_LEDE}</p>
       {error ? <p className="alert">{error}</p> : null}
       {status && !showProgress ? <p className="muted">{status}</p> : null}
+      {progressPanel}
       <div className="field">
         <FieldLabel htmlFor={compact ? "hall-ingest-path" : "ingest-path"} label="Path" help={FIELD_HELP.ingest_path} />
         <input
@@ -194,30 +239,6 @@ export default function AddToLibrary({ compact = false, embedded = false } = {})
           {busy ? "Adding…" : "Add"}
         </button>
       </div>
-      {showProgress ? (
-        <section className="ingest-progress" data-testid="ingest-progress" aria-live="polite">
-          <p className="kicker">Shelving progress</p>
-          <p className="muted">
-            {ingestPhaseLabel(progress.phase)}
-            {progress.total
-              ? ` · ${progress.done || 0} of ${progress.total}`
-              : progress.done
-                ? ` · ${progress.done} done`
-                : ""}
-            {progress.shelved ? ` · shelved ${progress.shelved}` : ""}
-            {progress.review ? ` · needs you ${progress.review}` : ""}
-            {progress.skipped ? ` · skipped ${progress.skipped}` : ""}
-          </p>
-          {progress.current_title || progress.current_path ? (
-            <p className="lede ingest-progress-title">{progress.current_title || progress.current_path}</p>
-          ) : null}
-          {status ? (
-            <p className="muted" role="status">
-              {status}
-            </p>
-          ) : null}
-        </section>
-      ) : null}
     </>
   );
 

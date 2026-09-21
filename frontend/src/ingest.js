@@ -43,6 +43,36 @@ export function ingestIsRunning(status) {
   return String(status?.status || "") === "running";
 }
 
+/** True when POST /api/ingest returned the live progress blob (not a single job). */
+export function ingestLooksLikeProgress(payload) {
+  if (!payload || typeof payload !== "object") return false;
+  if (Object.prototype.hasOwnProperty.call(payload, "kicked_off")) return true;
+  if (Object.prototype.hasOwnProperty.call(payload, "phase")) return true;
+  if (Object.prototype.hasOwnProperty.call(payload, "done") && Object.prototype.hasOwnProperty.call(payload, "total")) {
+    return true;
+  }
+  return false;
+}
+
+/** Legacy `{ job }` responses only — never treat an empty `{}` as a job. */
+export function ingestLegacyJob(payload) {
+  if (ingestLooksLikeProgress(payload)) return null;
+  const job = payload?.job;
+  if (!job || typeof job !== "object") return null;
+  if (!job.status && !job.id) return null;
+  return job;
+}
+
+/** 0–100 for the shelving meter; null when total is unknown. */
+export function ingestProgressPercent(status) {
+  if (!status || typeof status !== "object") return null;
+  const total = Number(status.total || 0);
+  if (total <= 0) return null;
+  const done = Number(status.done || 0);
+  if (!Number.isFinite(done)) return null;
+  return Math.max(0, Math.min(100, Math.round((done / total) * 100)));
+}
+
 /** Household progress line for Add to the shelves polling. */
 export function ingestProgressSummary(status) {
   if (!status || typeof status !== "object") return "";
@@ -56,6 +86,7 @@ export function ingestProgressSummary(status) {
   const skipped = Number(status.skipped || 0);
   const title = String(status.current_title || "").trim();
   const phase = String(status.phase || "").trim();
+  const pct = ingestProgressPercent(status);
   if (state === "completed") {
     const result = status.result || {};
     const s = Number(result.shelved != null ? result.shelved : shelved);
@@ -77,7 +108,8 @@ export function ingestProgressSummary(status) {
           ? "Organizing"
           : "Shelving";
   const count = total > 0 ? `${done} of ${total}` : done ? `${done} done` : "";
-  const head = [phaseWord, count].filter(Boolean).join(" · ");
+  const pctBit = pct != null ? `${pct}%` : "";
+  const head = [phaseWord, count, pctBit].filter(Boolean).join(" · ");
   const tallies = [];
   if (shelved) tallies.push(`shelved ${shelved}`);
   if (review) tallies.push(`needs you ${review}`);
