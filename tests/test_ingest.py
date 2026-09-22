@@ -250,6 +250,23 @@ def test_list_ingest_targets_keeps_single_volume_folder(tmp_path):
     assert list_ingest_targets(folder) == [folder]
 
 
+def test_list_ingest_targets_expands_calibre_author_tree(tmp_path):
+    library = tmp_path / "newlib"
+    a1 = library / "Abby Jimenez" / "Just for the Summer (10103)"
+    a2 = library / "Abby Jimenez" / "Yours Truly (983)"
+    b1 = library / "A. M. Homes" / "Days of Awe (8390)"
+    for folder in (a1, a2, b1):
+        folder.mkdir(parents=True)
+        (folder / "book.epub").write_bytes(b"epub")
+        (folder / "book.azw3").write_bytes(b"azw3")
+    targets = list_ingest_targets(library)
+    assert {t.name for t in targets} == {
+        "Just for the Summer (10103)",
+        "Yours Truly (983)",
+        "Days of Awe (8390)",
+    }
+
+
 def test_run_ingest_paths_reports_progress_and_moves(tmp_path, monkeypatch):
     monkeypatch.setenv("LIBRARIAN_FS_ROOT", str(tmp_path))
     settings = _settings(tmp_path)

@@ -118,6 +118,8 @@ from librarian.organize import (
     organize_identified,
     promote_music,
     repair_review,
+    reprocess_extra_files_reviews,
+    reprocess_extra_files_work,
     retry_review,
     review_slip_actions,
     shelf_work_for_collision,
@@ -1465,6 +1467,18 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
                     work["match_candidates"] = []
         return {"works": works, "llm_configured": llm_ok}
 
+    @app.post("/api/review/reprocess-extra-files")
+    def review_reprocess_extra_files(request: Request, limit: int = 0):
+        """Owner bulk: split Calibre author slips / Apply safe multi-format extra_files."""
+        require_role(request.state.user, "owner", "op")
+        user = request.state.user
+        return reprocess_extra_files_reviews(
+            db,
+            settings(),
+            requested_by=str(user.get("id") or user.get("display_name") or "owner"),
+            limit=max(0, int(limit or 0)),
+        )
+
     @app.post("/api/review/{work_id}/suggest")
     def review_suggest(work_id: str, request: Request):
         """BYO LLM title/author suggest for a Review slip. Pre-fills only — never Apply."""
@@ -1634,6 +1648,20 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="Work not found")
         updated = db.upsert_work({**work, "review_state": "resolved"})
         return {"work": updated}
+
+    @app.post("/api/review/{work_id}/reprocess-extra-files")
+    def review_reprocess_extra_files_one(work_id: str, request: Request):
+        require_role(request.state.user, "owner", "op")
+        user = request.state.user
+        try:
+            return reprocess_extra_files_work(
+                db,
+                settings(),
+                work_id=work_id,
+                requested_by=str(user.get("id") or user.get("display_name") or "owner"),
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
 
     @app.get("/api/gaps")
     def gaps(request: Request):

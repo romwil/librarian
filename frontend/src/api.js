@@ -79,6 +79,10 @@ export const api = {
   reviewRepair: (id) => request(`/review/${id}/repair`, { method: "POST" }),
   reviewRetry: (id) => request(`/review/${id}/retry`, { method: "POST" }),
   reviewSuggest: (id) => request(`/review/${id}/suggest`, { method: "POST" }),
+  reviewReprocessExtraFiles: (limit = 0) =>
+    request(`/review/reprocess-extra-files${limit ? `?limit=${encodeURIComponent(String(limit))}` : ""}`, {
+      method: "POST",
+    }),
   queue: () => request("/queue"),
   confirmJob: (id) => request(`/queue/${id}/confirm`, { method: "POST" }),
   gaps: () => request("/gaps"),

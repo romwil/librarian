@@ -106,6 +106,8 @@ MEDIA_EXTENSIONS = {
     ".ogg",
     ".opus",
 }
+# Alternate ebook encodings of one title (SAB multi-format / Calibre).
+BOOK_FORMAT_EXTENSIONS = {".epub", ".pdf", ".mobi", ".azw3", ".kepub"}
 SIDECAR_NAMES = {"metadata.opf", "comicinfo.xml", "cover.jpg", "cover.png", "nfo"}
 JUNK_EXTENSIONS = {".par2", ".nzb", ".nfo", ".sfv", ".srr", ".url"}
 JUNK_NAMES = {".ds_store", "thumbs.db", "desktop.ini"}
@@ -1528,14 +1530,44 @@ def _apply_review_gates(identity: Identity, files: Sequence[Path]) -> None:
         identity.isbn = extract_isbn(identity.isbn)
 
 
+def _normalized_payload_stem(path: Path) -> str:
+    """Collapse Calibre/Usenet name noise so epub+mobi of one title match."""
+    stem = path.stem
+    # Calibre: "Title - Author"
+    if " - " in stem:
+        stem = stem.split(" - ", 1)[0]
+    text = stem.lower().replace(".", " ").replace("_", " ")
+    text = re.sub(r"[^a-z0-9\s]+", "", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _compatible_alternate_formats(files: Sequence[Path]) -> bool:
+    """True when every media file is an alternate ebook encoding of one title."""
+    if len(files) <= 1:
+        return True
+    suffixes = {path.suffix.lower() for path in files}
+    if not suffixes or not suffixes <= BOOK_FORMAT_EXTENSIONS:
+        return False
+    stems = {_normalized_payload_stem(path) for path in files}
+    stems.discard("")
+    return len(stems) == 1
+
+
 def _unexpected_extra_files(files: Sequence[Path]) -> bool:
-    return len(files) > 1 and not all(
+    """True when the folder looks like multiple distinct works (not one multi-format book)."""
+    if len(files) <= 1:
+        return False
+    if all(
         _AUDIO_PART.search(path.name) or path.suffix.lower() in {".mp3", ".m4b", ".flac"} for path in files
-    )
+    ):
+        return False
+    if _compatible_alternate_formats(files):
+        return False
+    return True
 
 
 def _apply_post_llm_review(identity: Identity, folder: Path) -> List[Path]:
-    """Folder hygiene after a successful LLM identity. Never auto-organize extra files."""
+    """Folder hygiene after a successful LLM identity. Keep true multi-work extras in Review."""
     files = list_payload_files(folder)
     extra = _unexpected_extra_files(files)
     if extra and identity.kind not in (KIND_MUSIC, KIND_AUDIOBOOK, KIND_MAGAZINE):

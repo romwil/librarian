@@ -177,6 +177,10 @@ export function unpackStuckWorks(works = []) {
   return (works || []).filter((work) => effectiveReviewReason(work) === "unpack_stuck");
 }
 
+export function extraFilesWorks(works = []) {
+  return (works || []).filter((work) => effectiveReviewReason(work) === "extra_files");
+}
+
 /** Structured diagnosis block for a Review slip. */
 export function reviewDiagnosisCopy(work) {
   const reason = effectiveReviewReason(work);

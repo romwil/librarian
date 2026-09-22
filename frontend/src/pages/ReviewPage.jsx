@@ -18,6 +18,7 @@ import {
   reviewDiagnosisCopy,
   reviewFindHref,
   reviewReasonCopy,
+  extraFilesWorks,
   unpackStuckWorks,
 } from "../review.js";
 
@@ -347,7 +348,32 @@ export default function ReviewPage() {
     reload();
   }
 
+  async function bulkReprocessExtraFiles() {
+    const count = extraFilesWorks(works).length;
+    if (!count) {
+      setBulkNote("No extra_files slips on this page.");
+      return;
+    }
+    setBulkNote(`Reprocessing extra_files (visible ${count}; server clears the full backlog)…`);
+    try {
+      const result = await api.reviewReprocessExtraFiles();
+      const shelved = Number(result?.shelved || 0);
+      const split = Number(result?.split || 0);
+      const applied = Number(result?.applied || 0);
+      const failed = Number(result?.failed || 0);
+      setBulkNote(
+        `Extra files: ${shelved} shelved, ${split} split, ${applied} applied` +
+          (failed ? `, ${failed} failed` : "") +
+          ".",
+      );
+      reload();
+    } catch (err) {
+      setBulkNote(humanError(err));
+    }
+  }
+
   const unpackCount = unpackStuckWorks(works).length;
+  const extraFilesCount = extraFilesWorks(works).length;
 
   return (
     <div className="admin-room">
@@ -395,14 +421,28 @@ export default function ReviewPage() {
         </details>
       ) : null}
       {error ? <p className="alert">{error}</p> : null}
-      {unpackCount ? (
+      {unpackCount || extraFilesCount ? (
         <div className="cta-row review-bulk" data-testid="review-bulk">
-          <button type="button" className="cta outline compact" onClick={() => bulkAction("repair")}>
-            Repair unpack slips
-          </button>
-          <button type="button" className="cta outline compact" onClick={() => bulkAction("retry")}>
-            Retry unpack slips
-          </button>
+          {unpackCount ? (
+            <>
+              <button type="button" className="cta outline compact" onClick={() => bulkAction("repair")}>
+                Repair unpack slips
+              </button>
+              <button type="button" className="cta outline compact" onClick={() => bulkAction("retry")}>
+                Retry unpack slips
+              </button>
+            </>
+          ) : null}
+          {extraFilesCount ? (
+            <button
+              type="button"
+              className="cta compact"
+              onClick={() => bulkReprocessExtraFiles()}
+              data-testid="review-bulk-extra-files"
+            >
+              Clear extra-files slips
+            </button>
+          ) : null}
           {bulkNote ? (
             <p className="muted" role="status">
               {bulkNote}

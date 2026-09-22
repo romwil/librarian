@@ -269,6 +269,8 @@ def list_ingest_targets(path: Path) -> List[Path]:
 
     A directory whose children are sibling dumps (subfolders and/or release
     files) becomes one target per child — same idea as the watch folder.
+    Calibre-style trees (Author → Title (id) → epub) expand recursively so
+    an author folder is never ingested as one multi-book work.
     A directory that *is* the volume (top-level media only: book, album,
     loose comic pages) stays a single target.
     """
@@ -288,11 +290,18 @@ def list_ingest_targets(path: Path) -> List[Path]:
         elif child.is_file() and child.suffix.lower() in MEDIA_EXTENSIONS:
             media_files.append(child)
     if dirs and media_files:
-        return dirs + media_files
+        expanded: List[Path] = []
+        for child in dirs:
+            expanded.extend(list_ingest_targets(child))
+        expanded.extend(media_files)
+        return expanded
     if len(dirs) >= 2:
-        return dirs
+        expanded = []
+        for child in dirs:
+            expanded.extend(list_ingest_targets(child))
+        return expanded
     if len(dirs) == 1 and not media_files:
-        return dirs
+        return list_ingest_targets(dirs[0])
     return [path]
 
 

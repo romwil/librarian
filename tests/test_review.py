@@ -473,3 +473,124 @@ def test_review_suggest_prefills_from_mocked_llm(tmp_path, monkeypatch):
     assert row["actions"]["llm_configured"] is True
     assert row["actions"]["needs_llm_suggest"] is True
     assert row["actions"]["can_suggest_llm"] is True
+
+
+def test_review_extra_files_hides_retry_and_repair(tmp_path, monkeypatch):
+    folder = tmp_path / "complete" / "Camino"
+    folder.mkdir(parents=True)
+    (folder / "Camino Ghosts.epub").write_bytes(b"epub")
+    (folder / "Camino Ghosts.mobi").write_bytes(b"mobi")
+    settings = Settings(
+        books_root=str(tmp_path / "books"),
+        complete_root=str(tmp_path / "complete"),
+    )
+    client, app = _client(tmp_path, monkeypatch, settings=settings)
+    db = app.state.db
+    work = db.upsert_work(
+        {
+            "kind": "book",
+            "title": "Camino Ghosts",
+            "author": "John Grisham",
+            "isbn": "9788835735151",
+            "review_state": "needs_review",
+            "review_reason": "extra_files",
+            "folder_path": str(folder),
+        }
+    )
+    listed = client.get("/api/review")
+    assert listed.status_code == 200
+    row = next(w for w in listed.json()["works"] if w["id"] == work["id"])
+    assert row["actions"]["can_repair"] is False
+    assert row["actions"]["can_retry"] is False
+
+
+def test_review_reprocess_extra_files_splits_calibre_author(tmp_path, monkeypatch):
+    monkeypatch.setenv("LIBRARIAN_FS_ROOT", str(tmp_path))
+    settings = Settings(
+        books_root=str(tmp_path / "books"),
+        magazines_root=str(tmp_path / "magazines"),
+        comics_root=str(tmp_path / "comics"),
+        audiobooks_root=str(tmp_path / "audiobooks"),
+        incoming_music_root=str(tmp_path / "incoming"),
+        music_root=str(tmp_path / "music"),
+        complete_root=str(tmp_path / "complete"),
+    )
+    client, app = _client(tmp_path, monkeypatch, settings=settings)
+    db = app.state.db
+    author = tmp_path / "media" / "newlib" / "Abby Jimenez"
+    t1 = author / "Just for the Summer (10103)"
+    t2 = author / "Yours Truly (983)"
+    for folder, title, isbn in (
+        (t1, "Just for the Summer", "9781538704448"),
+        (t2, "Yours Truly", "9781538704431"),
+    ):
+        folder.mkdir(parents=True)
+        (folder / f"{title} - Abby Jimenez.epub").write_bytes(b"epub")
+        (folder / f"{title} - Abby Jimenez.azw3").write_bytes(b"azw3")
+        (folder / "metadata.opf").write_text(
+            f"""<?xml version='1.0'?>
+<package><metadata>
+<dc:title xmlns:dc="http://purl.org/dc/elements/1.1/">{title}</dc:title>
+<dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">Abby Jimenez</dc:creator>
+<dc:identifier xmlns:dc="http://purl.org/dc/elements/1.1/" opf:scheme="ISBN" xmlns:opf="http://www.idpf.org/2007/opf">{isbn}</dc:identifier>
+</metadata></package>""",
+            encoding="utf-8",
+        )
+    work = db.upsert_work(
+        {
+            "kind": "book",
+            "title": "Just for the Summer",
+            "author": "Abby Jimenez",
+            "isbn": "9781538704448",
+            "review_state": "needs_review",
+            "review_reason": "extra_files",
+            "folder_path": str(author),
+        }
+    )
+    resp = client.post("/api/review/reprocess-extra-files")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["split"] == 1
+    assert body["considered"] == 1
+    assert body["shelved"] >= 1
+    refreshed = db.get_work(work["id"])
+    assert refreshed["review_state"] == "resolved"
+    remaining = db.list_works(review_state="needs_review", limit=50)
+    assert all(str(row.get("folder_path") or "").rstrip("/") != str(author) for row in remaining)
+
+
+def test_review_reprocess_extra_files_applies_multiformat_volume(tmp_path, monkeypatch):
+    monkeypatch.setenv("LIBRARIAN_FS_ROOT", str(tmp_path))
+    settings = Settings(
+        books_root=str(tmp_path / "books"),
+        magazines_root=str(tmp_path / "magazines"),
+        comics_root=str(tmp_path / "comics"),
+        audiobooks_root=str(tmp_path / "audiobooks"),
+        incoming_music_root=str(tmp_path / "incoming"),
+        music_root=str(tmp_path / "music"),
+    )
+    client, app = _client(tmp_path, monkeypatch, settings=settings)
+    db = app.state.db
+    folder = tmp_path / "complete" / "You.Like.It.Darker"
+    folder.mkdir(parents=True)
+    for name in ("You Like It Darker.epub", "You Like It Darker.mobi", "You Like It Darker.azw3"):
+        (folder / name).write_bytes(b"book")
+    work = db.upsert_work(
+        {
+            "kind": "book",
+            "title": "You Like It Darker",
+            "author": "Stephen King",
+            "isbn": "9781668037737",
+            "review_state": "needs_review",
+            "review_reason": "extra_files",
+            "folder_path": str(folder),
+        }
+    )
+    resp = client.post(f"/api/review/{work['id']}/reprocess-extra-files")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["action"] == "apply"
+    assert body["organized"] is True
+    refreshed = db.get_work(work["id"])
+    assert refreshed["review_state"] == "none"
+    assert refreshed["review_reason"] is None

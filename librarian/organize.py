@@ -14,6 +14,8 @@ from librarian.db import Database
 from librarian.delight import REVIEW_QUIET_HOURS, in_quiet_hours
 from librarian.identify import (
     REVIEW_COLLISION,
+    REVIEW_CONVERT,
+    REVIEW_EXTRA,
     REVIEW_LOW,
     REVIEW_MISSING_FOLDER,
     REVIEW_NO_PAYLOAD,
@@ -185,6 +187,17 @@ def review_find_query(work: Dict[str, Any]) -> str:
     return " ".join(parts)
 
 
+# Retry / Repair only help when unpack, quiet-hours, or convert can progress.
+_RETRYABLE_REVIEW_REASONS = frozenset(
+    {
+        REVIEW_UNPACK_STUCK,
+        REVIEW_QUIET_HOURS,
+        REVIEW_CONVERT,
+        REVIEW_NO_PAYLOAD,
+    }
+)
+
+
 def review_slip_actions(
     work: Dict[str, Any],
     diagnosis: Dict[str, Any],
@@ -197,11 +210,12 @@ def review_slip_actions(
     folder_hint = str(
         diagnosis.get("resolved_path") or diagnosis.get("path") or work.get("folder_path") or ""
     )
-    can_retry = problem != REVIEW_MISSING_FOLDER and usable_folder(folder_hint)
+    reason = str(work.get("review_reason") or problem or "")
+    retry_reason = problem if problem in _RETRYABLE_REVIEW_REASONS else reason
+    can_retry = retry_reason in _RETRYABLE_REVIEW_REASONS and usable_folder(folder_hint)
     fails = int(work.get("repair_fail_count") or 0)
     title = str(work.get("title") or "")
     author = str(work.get("author") or "").strip()
-    reason = str(work.get("review_reason") or problem or "")
     dumpish = looks_like_dump_title(title) or (not author and reason in {REVIEW_UNKNOWN, REVIEW_LOW, ""})
     identity_weak = reason in {REVIEW_UNKNOWN, REVIEW_LOW, "unexpected_kind"} or dumpish
     return {
@@ -771,6 +785,133 @@ def retry_review(
         folder=folder,
         identity_overrides=dict(identity_overrides or {}),
     )
+
+
+def _same_path(left: Path, right: Path) -> bool:
+    try:
+        return left.resolve() == right.resolve()
+    except OSError:
+        return str(left) == str(right)
+
+
+def reprocess_extra_files_work(
+    db: Database,
+    settings: Settings,
+    *,
+    work_id: str,
+    requested_by: str = "owner",
+) -> Dict[str, Any]:
+    """Clear one ``extra_files`` slip: split Calibre author trees, or Apply multi-format volumes.
+
+    Multi-title author folders must not force-Apply under one identity — expand to title
+    children, resolve the parent slip, and ingest each child. Single-volume multi-format
+    (epub+mobi) uses the same path as Apply.
+    """
+    from librarian.ingest import enqueue_ingest, list_ingest_targets
+
+    work = db.get_work(work_id)
+    if work is None:
+        raise ValueError("Work not found")
+    reason = str(work.get("review_reason") or "")
+    if reason != REVIEW_EXTRA:
+        raise ValueError("Not an extra_files slip")
+    folder = Path(str(work.get("folder_path") or ""))
+    if not usable_folder(folder):
+        raise ValueError(MISSING_FOLDER_APPLY_ERROR)
+
+    targets = list_ingest_targets(folder)
+    split_targets = [path for path in targets if not _same_path(path, folder)]
+    if len(targets) > 1 or split_targets:
+        children = split_targets or targets
+        db.upsert_work({**work, "review_state": "resolved", "review_reason": None})
+        jobs: List[Dict[str, Any]] = []
+        for target in children:
+            jobs.append(
+                enqueue_ingest(
+                    db,
+                    settings,
+                    path=target,
+                    requested_by=requested_by,
+                    source="ingest",
+                    process=True,
+                )
+            )
+        shelved = sum(1 for job in jobs if str(job.get("status") or "") == "organized")
+        review = sum(1 for job in jobs if str(job.get("status") or "") == "review")
+        return {
+            "action": "split",
+            "work_id": work_id,
+            "targets": len(children),
+            "shelved": shelved,
+            "review": review,
+            "jobs": [{"id": job.get("id"), "status": job.get("status"), "title": job.get("title")} for job in jobs],
+        }
+
+    result = apply_review(
+        db,
+        settings,
+        work_id=work_id,
+        folder=folder,
+        identity_overrides={},
+    )
+    return {
+        "action": "apply",
+        "work_id": work_id,
+        "organized": bool(result.get("organized")),
+        "work": result.get("work"),
+    }
+
+
+def reprocess_extra_files_reviews(
+    db: Database,
+    settings: Settings,
+    *,
+    requested_by: str = "owner",
+    limit: int = 0,
+) -> Dict[str, Any]:
+    """Owner bulk clear for ``extra_files`` needs_review slips (newlib / multi-format backlog)."""
+    works = db.list_works(review_state="needs_review", limit=max(int(limit) or 5000, 1))
+    extras = [row for row in works if str(row.get("review_reason") or "") == REVIEW_EXTRA]
+    if limit and limit > 0:
+        extras = extras[: int(limit)]
+    split = 0
+    applied = 0
+    failed = 0
+    shelved = 0
+    still_review = 0
+    errors: List[str] = []
+    for row in extras:
+        try:
+            outcome = reprocess_extra_files_work(
+                db,
+                settings,
+                work_id=str(row["id"]),
+                requested_by=requested_by,
+            )
+        except Exception as error:  # noqa: BLE001 — keep going through the backlog
+            failed += 1
+            if len(errors) < 12:
+                errors.append(f"{row.get('title') or row.get('id')}: {error}")
+            continue
+        if outcome.get("action") == "split":
+            split += 1
+            shelved += int(outcome.get("shelved") or 0)
+            still_review += int(outcome.get("review") or 0)
+        else:
+            applied += 1
+            if outcome.get("organized"):
+                shelved += 1
+            else:
+                still_review += 1
+    return {
+        "considered": len(extras),
+        "split": split,
+        "applied": applied,
+        "failed": failed,
+        "shelved": shelved,
+        "still_review": still_review,
+        "errors": errors,
+    }
 
 
 def promote_music(db: Database, settings: Settings, work_id: str) -> Dict[str, Any]:

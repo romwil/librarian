@@ -1197,6 +1197,25 @@ body:has(.peek) .topbar {
   animation: peek-in var(--motion) forwards;
   isolation: isolate;
   overflow: hidden;
+  /* Always a night-library panel. Rematch cream/gilt type tokens so lights-up
+     ink (--text #1a1208 / --muted #5c4e3a) does not paint dark-on-dark. */
+  color-scheme: dark;
+  --text: #f4ead6;
+  --muted: #b5a48a;
+  --paper: #e8dcc4;
+  --gilt: #e4c078;
+  --accent: #c9954a;
+  --accent-2: #a87838;
+  --accent-soft: rgba(201, 149, 74, 0.16);
+  --accent-text: #1a1208;
+  --border-subtle: #3a2e22;
+  --border: #4a3c2c;
+  --surface: #1a1410;
+  --surface-2: #231b14;
+  --surface-raised: #2a2118;
+  --danger: #c47a6c;
+  --success: #7d9a78;
+  color: var(--text);
 }
 .peek-wash {
   position: absolute;

@@ -15,6 +15,7 @@ import {
   reviewFindHref,
   reviewReasonCopy,
   unpackStuckWorks,
+  extraFilesWorks,
 } from "./review.js";
 
 describe("review identify form", () => {
@@ -148,6 +149,18 @@ describe("review recovery actions", () => {
     ];
     assert.deepEqual(
       unpackStuckWorks(works).map((row) => row.id),
+      ["a", "c"],
+    );
+  });
+
+  it("filters extra_files slips for bulk clear", () => {
+    const works = [
+      { id: "a", review_reason: "extra_files" },
+      { id: "b", review_reason: "unpack_stuck" },
+      { id: "c", review_reason: "extra_files", folder_diagnosis: { problem: null } },
+    ];
+    assert.deepEqual(
+      extraFilesWorks(works).map((row) => row.id),
       ["a", "c"],
     );
   });

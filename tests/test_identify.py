@@ -280,6 +280,44 @@ def test_comic_extra_files_high_llm_still_needs_review(tmp_path):
     assert result["identity"]["series_index"] == "1"
 
 
+def test_book_multiformat_same_title_auto_organizes(tmp_path):
+    """epub+mobi+azw3 of one title are alternate encodings — not Review extras."""
+    folder = tmp_path / "You.Like.It.Darker"
+    folder.mkdir()
+    for name in (
+        "You Like It Darker.epub",
+        "You Like It Darker.mobi",
+        "You Like It Darker.azw3",
+    ):
+        (folder / name).write_bytes(b"book")
+    result = identify_completed(
+        folder,
+        indexer_item={
+            "kind": "book",
+            "title": "You Like It Darker",
+            "author": "Stephen King",
+            "isbn": "9781668037737",
+        },
+    )
+    assert result["auto_organize"] is True
+    assert result["identity"]["review_reason"] is None
+    assert result["identity"]["confidence"] == "high"
+    assert len(result["files"]) == 3
+
+
+def test_book_calibre_author_tree_still_extra_files(tmp_path):
+    """Multiple title folders under one author stay in Review (true multi-work)."""
+    author = tmp_path / "A. M. Homes"
+    for title in ("Days of Awe (1)", "The End of Alice (2)"):
+        folder = author / title
+        folder.mkdir(parents=True)
+        (folder / f"{title.split(' (')[0]} - A. M. Homes.epub").write_bytes(b"epub")
+        (folder / f"{title.split(' (')[0]} - A. M. Homes.azw3").write_bytes(b"azw3")
+    result = identify_completed(author, category=7020)
+    assert result["auto_organize"] is False
+    assert result["identity"]["review_reason"] == "extra_files"
+
+
 def test_comic_low_confidence_llm_keeps_review_reason(tmp_path):
     folder = tmp_path / "Mystery.Release"
     folder.mkdir()
