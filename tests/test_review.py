@@ -586,6 +586,40 @@ def test_review_reprocess_extra_files_status_idle(tmp_path, monkeypatch):
     assert body["status"] == "idle"
     assert body["done"] == 0
     assert body["total"] == 0
+    assert body["extra_files_remaining"] == 0
+
+
+def test_review_list_reports_extra_files_backlog_beyond_page(tmp_path, monkeypatch):
+    client, app = _client(tmp_path, monkeypatch)
+    db = app.state.db
+    for index in range(3):
+        db.upsert_work(
+            {
+                "kind": "book",
+                "title": f"Extra File {index}",
+                "author": "Anon",
+                "review_state": "needs_review",
+                "review_reason": "extra_files",
+                "folder_path": str(tmp_path / f"extra-{index}"),
+            }
+        )
+    db.upsert_work(
+        {
+            "kind": "book",
+            "title": "Steel Me Away",
+            "author": "Vivian Lux",
+            "review_state": "needs_review",
+            "review_reason": "low_confidence",
+            "folder_path": str(tmp_path / "steel"),
+        }
+    )
+    resp = client.get("/api/review")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["extra_files_count"] == 3
+    status = client.get("/api/review/reprocess-extra-files/status")
+    assert status.status_code == 200
+    assert status.json()["extra_files_remaining"] == 3
 
 
 def test_review_reprocess_extra_files_applies_multiformat_volume(tmp_path, monkeypatch):

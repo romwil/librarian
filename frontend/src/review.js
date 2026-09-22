@@ -262,6 +262,40 @@ export function extraFilesReprocessIsRunning(status) {
   return String(status?.status || "") === "running";
 }
 
+/** True while a clear job is running or the last run result is still on screen. */
+export function extraFilesReprocessIsActive(status) {
+  const state = String(status?.status || "");
+  return state === "running" || state === "completed" || state === "failed";
+}
+
+/** Show the Clear extra-files progress meter (including mid-run after refresh). */
+export function reviewExtraFilesProgressVisible(progress, clearing = false) {
+  if (clearing || extraFilesReprocessIsRunning(progress)) return true;
+  return extraFilesReprocessIsActive(progress);
+}
+
+/**
+ * Keep Clear extra-files visible for visible slips, server backlog, or an active/recent job —
+ * not only when the current Review page slice still has extra_files rows.
+ */
+export function reviewBulkClearVisible({
+  visibleCount = 0,
+  backlogCount = 0,
+  clearing = false,
+  progress = null,
+} = {}) {
+  if (Number(visibleCount) > 0) return true;
+  if (Number(backlogCount) > 0) return true;
+  if (clearing || extraFilesReprocessIsRunning(progress)) return true;
+  if (extraFilesReprocessIsActive(progress)) return true;
+  return false;
+}
+
+/** Bulk CTA row: unpack Repair/Retry and/or Clear, or mid-job progress alone. */
+export function reviewBulkRowVisible({ unpackCount = 0, showClear = false, showProgress = false } = {}) {
+  return Boolean(Number(unpackCount) > 0 || showClear || showProgress);
+}
+
 /** 0–100 for the Clear extra-files meter; null when total is unknown. */
 export function extraFilesReprocessProgressPercent(status) {
   if (!status || typeof status !== "object") return null;

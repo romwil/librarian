@@ -19,6 +19,9 @@ import {
   extraFilesReprocessIsRunning,
   extraFilesReprocessProgressPercent,
   extraFilesReprocessProgressSummary,
+  reviewBulkClearVisible,
+  reviewBulkRowVisible,
+  reviewExtraFilesProgressVisible,
 } from "./review.js";
 
 describe("review identify form", () => {
@@ -166,6 +169,47 @@ describe("review recovery actions", () => {
       extraFilesWorks(works).map((row) => row.id),
       ["a", "c"],
     );
+  });
+
+  it("keeps Clear extra-files visible for backlog or mid-run progress", () => {
+    assert.equal(
+      reviewBulkClearVisible({
+        visibleCount: 0,
+        backlogCount: 0,
+        clearing: false,
+        progress: { status: "idle" },
+      }),
+      false,
+    );
+    assert.equal(
+      reviewBulkClearVisible({
+        visibleCount: 0,
+        backlogCount: 12,
+        clearing: false,
+        progress: { status: "idle" },
+      }),
+      true,
+    );
+    assert.equal(
+      reviewBulkClearVisible({
+        visibleCount: 0,
+        backlogCount: 0,
+        clearing: false,
+        progress: { status: "running", done: 3, total: 10 },
+      }),
+      true,
+    );
+    assert.equal(
+      reviewBulkRowVisible({ unpackCount: 0, showClear: false, showProgress: true }),
+      true,
+    );
+    assert.equal(
+      reviewBulkRowVisible({ unpackCount: 0, showClear: false, showProgress: false }),
+      false,
+    );
+    assert.equal(reviewExtraFilesProgressVisible({ status: "running" }, false), true);
+    assert.equal(reviewExtraFilesProgressVisible({ status: "idle" }, false), false);
+    assert.equal(reviewExtraFilesProgressVisible(null, true), true);
   });
 
   it("summarizes Clear extra-files progress for the meter", () => {

@@ -781,6 +781,26 @@ class Database:
             rows = conn.execute(sql, args).fetchall()
         return [_row_dict(row) or {} for row in rows]
 
+    def count_works(
+        self,
+        *,
+        review_state: Optional[str] = None,
+        review_reason: Optional[str] = None,
+    ) -> int:
+        """Count works matching review filters (no page limit)."""
+        clauses = ["1=1"]
+        args: List[Any] = []
+        if review_state:
+            clauses.append("review_state = ?")
+            args.append(review_state)
+        if review_reason:
+            clauses.append("review_reason = ?")
+            args.append(review_reason)
+        sql = f"SELECT COUNT(*) AS cnt FROM works WHERE {' AND '.join(clauses)}"
+        with self._connect() as conn:
+            row = conn.execute(sql, args).fetchone()
+        return int(row["cnt"] if row else 0)
+
     _NEEDS_ENRICHMENT_WHERE = """
         kind IN ('book', 'audiobook')
         AND review_state != 'needs_review'

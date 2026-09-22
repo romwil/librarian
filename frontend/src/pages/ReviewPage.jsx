@@ -18,7 +18,10 @@ import {
   fieldsFromWork,
   looksLikeDumpTitle,
   reviewActionsFromWork,
+  reviewBulkClearVisible,
+  reviewBulkRowVisible,
   reviewDiagnosisCopy,
+  reviewExtraFilesProgressVisible,
   reviewFindHref,
   reviewReasonCopy,
   extraFilesWorks,
@@ -38,6 +41,7 @@ export default function ReviewPage() {
   const [bulkNote, setBulkNote] = useState("");
   const [extraFilesProgress, setExtraFilesProgress] = useState(null);
   const [extraFilesClearing, setExtraFilesClearing] = useState(false);
+  const [extraFilesBacklog, setExtraFilesBacklog] = useState(0);
   const [error, setError] = useState("");
   const [regrabs, setRegrabs] = useState({});
   const [matchBags, setMatchBags] = useState({});
@@ -56,6 +60,9 @@ export default function ReviewPage() {
       .then((data) => {
         const next = data.works || [];
         setWorks(next);
+        if (data.extra_files_count != null) {
+          setExtraFilesBacklog(Number(data.extra_files_count) || 0);
+        }
         setDrafts((prev) => {
           const merged = { ...prev };
           next.forEach((work) => {
@@ -90,6 +97,9 @@ export default function ReviewPage() {
       .then((status) => {
         if (cancelled) return;
         setExtraFilesProgress(status);
+        if (status?.extra_files_remaining != null) {
+          setExtraFilesBacklog(Number(status.extra_files_remaining) || 0);
+        }
         if (extraFilesReprocessIsRunning(status)) {
           setExtraFilesClearing(true);
           setBulkNote(extraFilesReprocessProgressSummary(status) || "Clearing extra-files…");
@@ -113,6 +123,9 @@ export default function ReviewPage() {
         const status = await api.reviewReprocessExtraFilesStatus();
         if (cancelled) return;
         setExtraFilesProgress(status);
+        if (status?.extra_files_remaining != null) {
+          setExtraFilesBacklog(Number(status.extra_files_remaining) || 0);
+        }
         const summary = extraFilesReprocessProgressSummary(status);
         if (summary) setBulkNote(summary);
         if (extraFilesReprocessIsRunning(status)) {
@@ -413,9 +426,10 @@ export default function ReviewPage() {
 
   async function bulkReprocessExtraFiles() {
     if (extraFilesClearing) return;
-    const count = extraFilesWorks(works).length;
-    if (!count) {
-      setBulkNote("No extra_files slips on this page.");
+    const visible = extraFilesWorks(works).length;
+    const backlog = Math.max(visible, Number(extraFilesBacklog) || 0);
+    if (!backlog) {
+      setBulkNote("No extra_files slips to clear.");
       return;
     }
     setExtraFilesClearing(true);
@@ -428,11 +442,19 @@ export default function ReviewPage() {
       split: 0,
       applied: 0,
       failed: 0,
+      extra_files_remaining: backlog,
     });
-    setBulkNote(`Reprocessing extra_files (visible ${count}; server clears the full backlog)…`);
+    setBulkNote(
+      visible
+        ? `Reprocessing extra_files (visible ${visible}; server clears the full backlog)…`
+        : `Reprocessing extra_files backlog (${backlog})…`,
+    );
     try {
       const started = await api.reviewReprocessExtraFiles();
       setExtraFilesProgress(started);
+      if (started?.extra_files_remaining != null) {
+        setExtraFilesBacklog(Number(started.extra_files_remaining) || 0);
+      }
       setBulkNote(extraFilesReprocessProgressSummary(started) || "Clearing extra-files…");
       if (!extraFilesReprocessIsRunning(started) && started?.status === "completed") {
         setExtraFilesClearing(false);
@@ -447,11 +469,18 @@ export default function ReviewPage() {
 
   const unpackCount = unpackStuckWorks(works).length;
   const extraFilesCount = extraFilesWorks(works).length;
-  const showExtraFilesProgress =
-    extraFilesProgress &&
-    (extraFilesClearing ||
-      extraFilesProgress.status === "completed" ||
-      extraFilesProgress.status === "failed");
+  const showExtraFilesProgress = reviewExtraFilesProgressVisible(extraFilesProgress, extraFilesClearing);
+  const showBulkClear = reviewBulkClearVisible({
+    visibleCount: extraFilesCount,
+    backlogCount: extraFilesBacklog,
+    clearing: extraFilesClearing,
+    progress: extraFilesProgress,
+  });
+  const showBulkRow = reviewBulkRowVisible({
+    unpackCount,
+    showClear: showBulkClear,
+    showProgress: showExtraFilesProgress,
+  });
   const extraFilesPercent = showExtraFilesProgress
     ? extraFilesReprocessProgressPercent(extraFilesProgress)
     : null;
@@ -502,7 +531,7 @@ export default function ReviewPage() {
         </details>
       ) : null}
       {error ? <p className="alert">{error}</p> : null}
-      {unpackCount || extraFilesCount || showExtraFilesProgress ? (
+      {showBulkRow ? (
         <div className="cta-row review-bulk" data-testid="review-bulk">
           {unpackCount ? (
             <>
@@ -514,7 +543,7 @@ export default function ReviewPage() {
               </button>
             </>
           ) : null}
-          {extraFilesCount || extraFilesClearing ? (
+          {showBulkClear ? (
             <button
               type="button"
               className="cta compact"
@@ -522,7 +551,11 @@ export default function ReviewPage() {
               disabled={extraFilesClearing}
               data-testid="review-bulk-extra-files"
             >
-              {extraFilesClearing ? "Clearing…" : "Clear extra-files slips"}
+              {extraFilesClearing
+                ? "Clearing…"
+                : extraFilesBacklog > 0 && extraFilesCount === 0
+                  ? `Clear extra-files slips (${extraFilesBacklog})`
+                  : "Clear extra-files slips"}
             </button>
           ) : null}
           {bulkNote && !showExtraFilesProgress ? (

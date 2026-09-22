@@ -1474,7 +1474,12 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
                     work["match_candidates"] = list_match_candidates(work, settings=cfg, limit=6)
                 except Exception:
                     work["match_candidates"] = []
-        return {"works": works, "llm_configured": llm_ok}
+        extra_files_count = db.count_works(review_state="needs_review", review_reason="extra_files")
+        return {
+            "works": works,
+            "llm_configured": llm_ok,
+            "extra_files_count": extra_files_count,
+        }
 
     @app.post("/api/review/reprocess-extra-files")
     def review_reprocess_extra_files(request: Request, limit: int = 0):
@@ -1488,6 +1493,9 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             alive = live is not None and live.is_alive()
             if is_extra_files_reprocess_running(root) and alive:
                 payload = read_extra_files_reprocess_progress(root)
+                payload["extra_files_remaining"] = db.count_works(
+                    review_state="needs_review", review_reason="extra_files"
+                )
                 return {**payload, "kicked_off": False}
             begin_extra_files_reprocess_run(root, total=0, phase="starting")
 
@@ -1513,6 +1521,9 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             extra_files_reprocess_thread["thread"] = thread
             thread.start()
         payload = read_extra_files_reprocess_progress(root)
+        payload["extra_files_remaining"] = db.count_works(
+            review_state="needs_review", review_reason="extra_files"
+        )
         return {**payload, "kicked_off": True}
 
     @app.get("/api/review/reprocess-extra-files/status")
@@ -1521,15 +1532,25 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         require_role(request.state.user, "owner", "op")
         progress = read_extra_files_reprocess_progress(root)
         if str(progress.get("status") or "") != "running":
+            progress["extra_files_remaining"] = db.count_works(
+                review_state="needs_review", review_reason="extra_files"
+            )
             return progress
         live = extra_files_reprocess_thread.get("thread")
         alive = live is not None and live.is_alive()
         if alive:
+            progress["extra_files_remaining"] = db.count_works(
+                review_state="needs_review", review_reason="extra_files"
+            )
             return progress
-        return finish_extra_files_reprocess_run(
+        finished = finish_extra_files_reprocess_run(
             root,
             error="Clear extra-files stopped — the lamp was restarted. Try again.",
         )
+        finished["extra_files_remaining"] = db.count_works(
+            review_state="needs_review", review_reason="extra_files"
+        )
+        return finished
 
     @app.post("/api/review/{work_id}/suggest")
     def review_suggest(work_id: str, request: Request):
