@@ -83,6 +83,7 @@ export const api = {
     request(`/review/reprocess-extra-files${limit ? `?limit=${encodeURIComponent(String(limit))}` : ""}`, {
       method: "POST",
     }),
+  reviewReprocessExtraFilesStatus: () => request("/review/reprocess-extra-files/status"),
   queue: () => request("/queue"),
   confirmJob: (id) => request(`/queue/${id}/confirm`, { method: "POST" }),
   gaps: () => request("/gaps"),

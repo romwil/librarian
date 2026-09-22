@@ -868,19 +868,36 @@ def reprocess_extra_files_reviews(
     *,
     requested_by: str = "owner",
     limit: int = 0,
+    progress: Any = None,
 ) -> Dict[str, Any]:
     """Owner bulk clear for ``extra_files`` needs_review slips (newlib / multi-format backlog)."""
     works = db.list_works(review_state="needs_review", limit=max(int(limit) or 5000, 1))
     extras = [row for row in works if str(row.get("review_reason") or "") == REVIEW_EXTRA]
     if limit and limit > 0:
         extras = extras[: int(limit)]
+    total = len(extras)
+    if progress is not None:
+        progress.start(total=total, phase="reprocessing")
     split = 0
     applied = 0
     failed = 0
     shelved = 0
     still_review = 0
     errors: List[str] = []
-    for row in extras:
+    for index, row in enumerate(extras, start=1):
+        title = str(row.get("title") or row.get("id") or "").strip()
+        if progress is not None:
+            progress.tick(
+                phase="reprocessing",
+                current_title=title,
+                done=index - 1,
+                total=total,
+                shelved=shelved,
+                split=split,
+                applied=applied,
+                failed=failed,
+                still_review=still_review,
+            )
         try:
             outcome = reprocess_extra_files_work(
                 db,
@@ -891,7 +908,20 @@ def reprocess_extra_files_reviews(
         except Exception as error:  # noqa: BLE001 — keep going through the backlog
             failed += 1
             if len(errors) < 12:
-                errors.append(f"{row.get('title') or row.get('id')}: {error}")
+                errors.append(f"{title or row.get('id')}: {error}")
+            if progress is not None:
+                progress.tick(
+                    phase="reprocessing",
+                    current_title=title,
+                    done=index,
+                    total=total,
+                    shelved=shelved,
+                    split=split,
+                    applied=applied,
+                    failed=failed,
+                    still_review=still_review,
+                    log=f"Failed — {title or row.get('id')}: {error}",
+                )
             continue
         if outcome.get("action") == "split":
             split += 1
@@ -903,8 +933,22 @@ def reprocess_extra_files_reviews(
                 shelved += 1
             else:
                 still_review += 1
-    return {
-        "considered": len(extras),
+        if progress is not None:
+            progress.tick(
+                phase="reprocessing",
+                current_title=title,
+                done=index,
+                total=total,
+                shelved=shelved,
+                split=split,
+                applied=applied,
+                failed=failed,
+                still_review=still_review,
+            )
+    result = {
+        "considered": total,
+        "done": total,
+        "total": total,
         "split": split,
         "applied": applied,
         "failed": failed,
@@ -912,6 +956,9 @@ def reprocess_extra_files_reviews(
         "still_review": still_review,
         "errors": errors,
     }
+    if progress is not None:
+        progress.complete(result)
+    return result
 
 
 def promote_music(db: Database, settings: Settings, work_id: str) -> Dict[str, Any]:

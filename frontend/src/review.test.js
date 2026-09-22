@@ -16,6 +16,9 @@ import {
   reviewReasonCopy,
   unpackStuckWorks,
   extraFilesWorks,
+  extraFilesReprocessIsRunning,
+  extraFilesReprocessProgressPercent,
+  extraFilesReprocessProgressSummary,
 } from "./review.js";
 
 describe("review identify form", () => {
@@ -162,6 +165,34 @@ describe("review recovery actions", () => {
     assert.deepEqual(
       extraFilesWorks(works).map((row) => row.id),
       ["a", "c"],
+    );
+  });
+
+  it("summarizes Clear extra-files progress for the meter", () => {
+    assert.equal(extraFilesReprocessIsRunning({ status: "running" }), true);
+    assert.equal(extraFilesReprocessProgressPercent({ done: 2, total: 5 }), 40);
+    assert.equal(extraFilesReprocessProgressPercent({ done: 0, total: 0 }), null);
+    assert.match(
+      extraFilesReprocessProgressSummary({
+        status: "running",
+        done: 2,
+        total: 5,
+        shelved: 1,
+        applied: 1,
+        current_title: "The Ministry of Time",
+      }),
+      /Clearing extra-files · 2 of 5 · 40% · shelved 1 · applied 1 · The Ministry of Time/,
+    );
+    assert.equal(
+      extraFilesReprocessProgressSummary({
+        status: "completed",
+        result: { shelved: 3, split: 1, applied: 2, failed: 0 },
+      }),
+      "Extra files: shelved 3, split 1, applied 2.",
+    );
+    assert.equal(
+      extraFilesReprocessProgressSummary({ status: "failed", error: "Disk gone" }),
+      "Disk gone",
     );
   });
 });

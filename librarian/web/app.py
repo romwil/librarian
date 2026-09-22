@@ -66,6 +66,13 @@ from librarian.enrich_progress import (
     is_enrich_running,
     read_enrich_progress,
 )
+from librarian.extra_files_reprocess_progress import (
+    ExtraFilesReprocessProgressReporter,
+    begin_extra_files_reprocess_run,
+    finish_extra_files_reprocess_run,
+    is_extra_files_reprocess_running,
+    read_extra_files_reprocess_progress,
+)
 from librarian.gaps import catalog_gaps, gap_cards, gaps_for_series
 from librarian.goodreads import MAX_GOODREADS_BYTES, import_goodreads_csv
 from librarian.identify import diagnose_review_folder
@@ -429,6 +436,8 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
     scan_thread: Dict[str, Optional[threading.Thread]] = {"thread": None}
     ingest_lock = threading.Lock()
     ingest_thread: Dict[str, Optional[threading.Thread]] = {"thread": None}
+    extra_files_reprocess_lock = threading.Lock()
+    extra_files_reprocess_thread: Dict[str, Optional[threading.Thread]] = {"thread": None}
 
     def settings():
         return load_merged_settings(root)
@@ -1469,14 +1478,57 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
 
     @app.post("/api/review/reprocess-extra-files")
     def review_reprocess_extra_files(request: Request, limit: int = 0):
-        """Owner bulk: split Calibre author slips / Apply safe multi-format extra_files."""
+        """Owner bulk: kick off background clear for extra_files slips (poll status)."""
         require_role(request.state.user, "owner", "op")
         user = request.state.user
-        return reprocess_extra_files_reviews(
-            db,
-            settings(),
-            requested_by=str(user.get("id") or user.get("display_name") or "owner"),
-            limit=max(0, int(limit or 0)),
+        requested_by = str(user.get("id") or user.get("display_name") or "owner")
+        run_limit = max(0, int(limit or 0))
+        with extra_files_reprocess_lock:
+            live = extra_files_reprocess_thread.get("thread")
+            alive = live is not None and live.is_alive()
+            if is_extra_files_reprocess_running(root) and alive:
+                payload = read_extra_files_reprocess_progress(root)
+                return {**payload, "kicked_off": False}
+            begin_extra_files_reprocess_run(root, total=0, phase="starting")
+
+            def run_reprocess() -> None:
+                reporter = ExtraFilesReprocessProgressReporter(root)
+                try:
+                    reprocess_extra_files_reviews(
+                        db,
+                        settings(),
+                        requested_by=requested_by,
+                        limit=run_limit,
+                        progress=reporter,
+                    )
+                except Exception as error:
+                    logger.exception("Clear extra-files slips failed")
+                    reporter.fail(str(error) or "Clear extra-files failed")
+
+            thread = threading.Thread(
+                target=run_reprocess,
+                name="librarian-extra-files-reprocess",
+                daemon=True,
+            )
+            extra_files_reprocess_thread["thread"] = thread
+            thread.start()
+        payload = read_extra_files_reprocess_progress(root)
+        return {**payload, "kicked_off": True}
+
+    @app.get("/api/review/reprocess-extra-files/status")
+    def review_reprocess_extra_files_status(request: Request):
+        """Poll Clear extra-files slips progress (survives refresh via DATA_DIR JSON)."""
+        require_role(request.state.user, "owner", "op")
+        progress = read_extra_files_reprocess_progress(root)
+        if str(progress.get("status") or "") != "running":
+            return progress
+        live = extra_files_reprocess_thread.get("thread")
+        alive = live is not None and live.is_alive()
+        if alive:
+            return progress
+        return finish_extra_files_reprocess_run(
+            root,
+            error="Clear extra-files stopped — the lamp was restarted. Try again.",
         )
 
     @app.post("/api/review/{work_id}/suggest")

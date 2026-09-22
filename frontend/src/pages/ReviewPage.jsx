@@ -12,6 +12,9 @@ import {
   collisionActionCopy,
   collisionApplyAllowed,
   effectiveReviewReason,
+  extraFilesReprocessIsRunning,
+  extraFilesReprocessProgressPercent,
+  extraFilesReprocessProgressSummary,
   fieldsFromWork,
   looksLikeDumpTitle,
   reviewActionsFromWork,
@@ -33,6 +36,8 @@ export default function ReviewPage() {
   const [busy, setBusy] = useState({});
   const [actionNotes, setActionNotes] = useState({});
   const [bulkNote, setBulkNote] = useState("");
+  const [extraFilesProgress, setExtraFilesProgress] = useState(null);
+  const [extraFilesClearing, setExtraFilesClearing] = useState(false);
   const [error, setError] = useState("");
   const [regrabs, setRegrabs] = useState({});
   const [matchBags, setMatchBags] = useState({});
@@ -40,6 +45,7 @@ export default function ReviewPage() {
   const [quietNote, setQuietNote] = useState("");
   const [suggestNotes, setSuggestNotes] = useState({});
   const focusRef = useRef(null);
+  const extraFilesPollRef = useRef(0);
   const autoRegrabTried = useRef(new Set());
   const autoMatchTried = useRef(new Set());
   const autoSuggestTried = useRef(new Set());
@@ -76,6 +82,63 @@ export default function ReviewPage() {
       .then(setQuiet)
       .catch(() => setQuiet(null));
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .reviewReprocessExtraFilesStatus()
+      .then((status) => {
+        if (cancelled) return;
+        setExtraFilesProgress(status);
+        if (extraFilesReprocessIsRunning(status)) {
+          setExtraFilesClearing(true);
+          setBulkNote(extraFilesReprocessProgressSummary(status) || "Clearing extra-files…");
+        } else if (status?.status === "completed" || status?.status === "failed") {
+          const summary = extraFilesReprocessProgressSummary(status);
+          if (summary) setBulkNote(summary);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!extraFilesClearing) return undefined;
+    let cancelled = false;
+
+    async function poll() {
+      try {
+        const status = await api.reviewReprocessExtraFilesStatus();
+        if (cancelled) return;
+        setExtraFilesProgress(status);
+        const summary = extraFilesReprocessProgressSummary(status);
+        if (summary) setBulkNote(summary);
+        if (extraFilesReprocessIsRunning(status)) {
+          extraFilesPollRef.current = window.setTimeout(poll, 700);
+          return;
+        }
+        setExtraFilesClearing(false);
+        if (status?.status === "failed") {
+          setBulkNote(status.error || "Clear extra-files failed.");
+        } else if (status?.status === "completed") {
+          setBulkNote(summary || "Finished clearing extra-files slips.");
+          reload();
+        }
+      } catch (err) {
+        if (cancelled) return;
+        setExtraFilesClearing(false);
+        setBulkNote(humanError(err));
+      }
+    }
+
+    extraFilesPollRef.current = window.setTimeout(poll, 400);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(extraFilesPollRef.current);
+    };
+  }, [extraFilesClearing]);
 
   useEffect(() => {
     if (!focusId || !works.length) return;
@@ -349,31 +412,49 @@ export default function ReviewPage() {
   }
 
   async function bulkReprocessExtraFiles() {
+    if (extraFilesClearing) return;
     const count = extraFilesWorks(works).length;
     if (!count) {
       setBulkNote("No extra_files slips on this page.");
       return;
     }
+    setExtraFilesClearing(true);
+    setExtraFilesProgress({
+      status: "running",
+      phase: "starting",
+      done: 0,
+      total: 0,
+      shelved: 0,
+      split: 0,
+      applied: 0,
+      failed: 0,
+    });
     setBulkNote(`Reprocessing extra_files (visible ${count}; server clears the full backlog)…`);
     try {
-      const result = await api.reviewReprocessExtraFiles();
-      const shelved = Number(result?.shelved || 0);
-      const split = Number(result?.split || 0);
-      const applied = Number(result?.applied || 0);
-      const failed = Number(result?.failed || 0);
-      setBulkNote(
-        `Extra files: ${shelved} shelved, ${split} split, ${applied} applied` +
-          (failed ? `, ${failed} failed` : "") +
-          ".",
-      );
-      reload();
+      const started = await api.reviewReprocessExtraFiles();
+      setExtraFilesProgress(started);
+      setBulkNote(extraFilesReprocessProgressSummary(started) || "Clearing extra-files…");
+      if (!extraFilesReprocessIsRunning(started) && started?.status === "completed") {
+        setExtraFilesClearing(false);
+        setBulkNote(extraFilesReprocessProgressSummary(started) || "Finished clearing extra-files slips.");
+        reload();
+      }
     } catch (err) {
+      setExtraFilesClearing(false);
       setBulkNote(humanError(err));
     }
   }
 
   const unpackCount = unpackStuckWorks(works).length;
   const extraFilesCount = extraFilesWorks(works).length;
+  const showExtraFilesProgress =
+    extraFilesProgress &&
+    (extraFilesClearing ||
+      extraFilesProgress.status === "completed" ||
+      extraFilesProgress.status === "failed");
+  const extraFilesPercent = showExtraFilesProgress
+    ? extraFilesReprocessProgressPercent(extraFilesProgress)
+    : null;
 
   return (
     <div className="admin-room">
@@ -421,7 +502,7 @@ export default function ReviewPage() {
         </details>
       ) : null}
       {error ? <p className="alert">{error}</p> : null}
-      {unpackCount || extraFilesCount ? (
+      {unpackCount || extraFilesCount || showExtraFilesProgress ? (
         <div className="cta-row review-bulk" data-testid="review-bulk">
           {unpackCount ? (
             <>
@@ -433,22 +514,65 @@ export default function ReviewPage() {
               </button>
             </>
           ) : null}
-          {extraFilesCount ? (
+          {extraFilesCount || extraFilesClearing ? (
             <button
               type="button"
               className="cta compact"
               onClick={() => bulkReprocessExtraFiles()}
+              disabled={extraFilesClearing}
               data-testid="review-bulk-extra-files"
             >
-              Clear extra-files slips
+              {extraFilesClearing ? "Clearing…" : "Clear extra-files slips"}
             </button>
+          ) : null}
+          {bulkNote && !showExtraFilesProgress ? (
+            <p className="muted" role="status">
+              {bulkNote}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+      {showExtraFilesProgress ? (
+        <section
+          className="ingest-progress review-extra-files-progress"
+          data-testid="review-extra-files-progress"
+          aria-live="polite"
+        >
+          <p className="kicker">Clear extra-files progress</p>
+          <p className="muted">
+            {extraFilesProgress.phase || "clearing"}
+            {extraFilesProgress.total
+              ? ` · ${extraFilesProgress.done || 0} of ${extraFilesProgress.total}`
+              : extraFilesProgress.done
+                ? ` · ${extraFilesProgress.done} done`
+                : ""}
+            {extraFilesPercent != null ? ` · ${extraFilesPercent}%` : ""}
+            {extraFilesProgress.shelved ? ` · shelved ${extraFilesProgress.shelved}` : ""}
+            {extraFilesProgress.split ? ` · split ${extraFilesProgress.split}` : ""}
+            {extraFilesProgress.applied ? ` · applied ${extraFilesProgress.applied}` : ""}
+            {extraFilesProgress.failed ? ` · failed ${extraFilesProgress.failed}` : ""}
+          </p>
+          {extraFilesPercent != null ? (
+            <div
+              className="ingest-progress-meter"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={extraFilesPercent}
+              aria-label="Clear extra-files progress"
+            >
+              <span className="ingest-progress-meter-fill" style={{ width: `${extraFilesPercent}%` }} />
+            </div>
+          ) : null}
+          {extraFilesProgress.current_title ? (
+            <p className="lede ingest-progress-title">{extraFilesProgress.current_title}</p>
           ) : null}
           {bulkNote ? (
             <p className="muted" role="status">
               {bulkNote}
             </p>
           ) : null}
-        </div>
+        </section>
       ) : null}
       {!works.length ? (
         <section className="empty-cta review-empty" data-testid="review-empty">

@@ -257,3 +257,58 @@ export function queueReviewReasonCopy(reason) {
   }
   return "Waiting in Review — the house isn’t sure how to shelve this.";
 }
+
+export function extraFilesReprocessIsRunning(status) {
+  return String(status?.status || "") === "running";
+}
+
+/** 0–100 for the Clear extra-files meter; null when total is unknown. */
+export function extraFilesReprocessProgressPercent(status) {
+  if (!status || typeof status !== "object") return null;
+  const total = Number(status.total || 0);
+  if (total <= 0) return null;
+  const done = Number(status.done || 0);
+  if (!Number.isFinite(done)) return null;
+  return Math.max(0, Math.min(100, Math.round((done / total) * 100)));
+}
+
+/** Household progress line for Clear extra-files polling. */
+export function extraFilesReprocessProgressSummary(status) {
+  if (!status || typeof status !== "object") return "";
+  const state = String(status.status || "");
+  if (state === "idle") return "";
+  if (state === "failed") return status.error || "Clear extra-files failed.";
+  const done = Number(status.done || 0);
+  const total = Number(status.total || 0);
+  const shelved = Number(status.shelved || 0);
+  const split = Number(status.split || 0);
+  const applied = Number(status.applied || 0);
+  const failed = Number(status.failed || 0);
+  const title = String(status.current_title || "").trim();
+  const pct = extraFilesReprocessProgressPercent(status);
+  if (state === "completed") {
+    const result = status.result || {};
+    const s = Number(result.shelved != null ? result.shelved : shelved);
+    const sp = Number(result.split != null ? result.split : split);
+    const a = Number(result.applied != null ? result.applied : applied);
+    const f = Number(result.failed != null ? result.failed : failed);
+    const parts = [];
+    if (s) parts.push(`shelved ${s}`);
+    if (sp) parts.push(`split ${sp}`);
+    if (a) parts.push(`applied ${a}`);
+    if (f) parts.push(`failed ${f}`);
+    if (!parts.length) return "Finished clearing extra-files slips.";
+    return `Extra files: ${parts.join(", ")}.`;
+  }
+  const count = total > 0 ? `${done} of ${total}` : done ? `${done} done` : "";
+  const pctBit = pct != null ? `${pct}%` : "";
+  const head = ["Clearing extra-files", count, pctBit].filter(Boolean).join(" · ");
+  const tallies = [];
+  if (shelved) tallies.push(`shelved ${shelved}`);
+  if (split) tallies.push(`split ${split}`);
+  if (applied) tallies.push(`applied ${applied}`);
+  if (failed) tallies.push(`failed ${failed}`);
+  const mid = tallies.length ? ` · ${tallies.join(" · ")}` : "";
+  const tail = title ? ` · ${title}` : "";
+  return `${head}${mid}${tail}` || "Clearing extra-files…";
+}

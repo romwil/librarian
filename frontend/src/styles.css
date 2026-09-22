@@ -3237,6 +3237,9 @@ button.cover {
   margin: 0 0 var(--space-4);
   align-items: center;
 }
+.review-extra-files-progress {
+  margin: 0 0 var(--space-5);
+}
 @keyframes ticket-enter {
   from {
     opacity: 0;

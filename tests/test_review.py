@@ -1,3 +1,4 @@
+import time
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -18,6 +19,19 @@ def _client(tmp_path, monkeypatch, settings=None):
     client = TestClient(app)
     assert client.post("/api/auth/local/login", json={"username": "owner", "password": "password123"}).status_code == 200
     return client, app
+
+
+def _wait_extra_files_reprocess_status(client, *, timeout=8.0):
+    deadline = time.time() + timeout
+    last = {}
+    while time.time() < deadline:
+        resp = client.get("/api/review/reprocess-extra-files/status")
+        assert resp.status_code == 200
+        last = resp.json()
+        if last.get("status") in ("completed", "failed", "idle"):
+            return last
+        time.sleep(0.05)
+    return last
 
 
 def test_review_list_diagnoses_unpack_stuck_and_soft_repairs(tmp_path, monkeypatch):
@@ -550,13 +564,28 @@ def test_review_reprocess_extra_files_splits_calibre_author(tmp_path, monkeypatc
     resp = client.post("/api/review/reprocess-extra-files")
     assert resp.status_code == 200
     body = resp.json()
-    assert body["split"] == 1
-    assert body["considered"] == 1
-    assert body["shelved"] >= 1
+    assert body["kicked_off"] is True
+    assert body["status"] in ("running", "completed")
+    status = _wait_extra_files_reprocess_status(client)
+    assert status["status"] == "completed"
+    result = status.get("result") or {}
+    assert int(result.get("split") or status.get("split") or 0) == 1
+    assert int(result.get("considered") or status.get("total") or 0) == 1
+    assert int(result.get("shelved") or status.get("shelved") or 0) >= 1
     refreshed = db.get_work(work["id"])
     assert refreshed["review_state"] == "resolved"
     remaining = db.list_works(review_state="needs_review", limit=50)
     assert all(str(row.get("folder_path") or "").rstrip("/") != str(author) for row in remaining)
+
+
+def test_review_reprocess_extra_files_status_idle(tmp_path, monkeypatch):
+    client, _app = _client(tmp_path, monkeypatch)
+    idle = client.get("/api/review/reprocess-extra-files/status")
+    assert idle.status_code == 200
+    body = idle.json()
+    assert body["status"] == "idle"
+    assert body["done"] == 0
+    assert body["total"] == 0
 
 
 def test_review_reprocess_extra_files_applies_multiformat_volume(tmp_path, monkeypatch):
