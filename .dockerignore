@@ -24,6 +24,7 @@ config/
 !.env.example
 *.md
 !README.md
+!CHANGELOG.md
 docs/**
 !docs/HELP.md
 tests/
