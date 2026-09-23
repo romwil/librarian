@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+## [0.4.7] — 2026-09-22
+
+### Highlights
+
+- **Add-to-shelves knows the tree before it starts.** Deep folders get a recursive pre-scan so the progress meter denominator matches real volume count, with live “found N volumes / M files” while scanning.
+- **Seen / added / ignored duplicates.** Completion (and the Maintain dock) report household tallies — including binary-identical copies skipped early or when the shelf already holds the same bytes.
+
+### Added
+
+- **Ingest pre-scan inventory.** Background worker expands Calibre-style trees with progress ticks (`volumes_found`, `files_found`) before organizing.
+- **Content fingerprint duplicates.** Batch copies sharing the same media payload are ignored up front; shelf collisions that are byte-identical (size+inode or SHA-256) skip Review instead of parking a collision slip.
+- **Richer shelving UI.** Phase, depth-friendly path, running tallies, recent activity log, and indeterminate scan meter on Maintain Add-to-shelves / status dock.
+
+### Changed
+
+- **Ingest progress summary.** Finished line is `seen / added / ignored duplicates` (plus needs you / skipped / failed when present). Job status `skipped` covers ignored duplicates.
+
 ## [0.4.6] — 2026-09-22
 
 ### Highlights

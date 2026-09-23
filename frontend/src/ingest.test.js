@@ -2,14 +2,17 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   filterBrowseEntries,
+  ingestDisplayPath,
   ingestIsRunning,
   ingestLegacyJob,
   ingestLooksLikeProgress,
   ingestPhaseLabel,
   ingestProgressPercent,
   ingestProgressSummary,
+  ingestProgressTallies,
   ingestResultMessage,
   ingestSourcePath,
+  ingestTallyLines,
   isSkippedBrowseName,
 } from "./ingest.js";
 import { ADD_TO_LIBRARY_LEDE, WATCH_FOLDER_LEDE } from "./copy.js";
@@ -94,16 +97,16 @@ describe("add to library browse", () => {
         review: 1,
         current_title: "Christine",
       }),
-      "Organizing · 2 of 5 · 40% · shelved 1 · needs you 1 · Christine",
+      "Organizing · 2 of 5 · 40% · added 1 · needs you 1 · Christine",
     );
     assert.equal(ingestProgressPercent({ done: 2, total: 5 }), 40);
     assert.equal(ingestProgressPercent({ done: 0, total: 0 }), null);
     assert.equal(
       ingestProgressSummary({
         status: "completed",
-        result: { shelved: 3, review: 2, skipped: 1 },
+        result: { seen: 6, shelved: 3, review: 2, skipped: 0, duplicates: 1 },
       }),
-      "Finished — shelved 3, needs you 2, skipped 1",
+      "Finished — seen 6, added 3, ignored duplicates 1, needs you 2",
     );
     assert.equal(ingestProgressSummary({ status: "failed", error: "Path gone" }), "Path gone");
     assert.equal(ingestProgressSummary({ status: "idle" }), "");
@@ -114,6 +117,49 @@ describe("add to library browse", () => {
       }),
       "Shelving stopped — the lamp was restarted. Try Add again.",
     );
+    assert.match(
+      ingestProgressSummary({
+        status: "running",
+        phase: "scanning",
+        total: 0,
+        volumes_found: 12,
+        files_found: 24,
+        duplicates: 2,
+        current_title: "Days of Awe (8390)",
+      }),
+      /Scanning · found 12 volumes · 24 files · 2 duplicates · Days of Awe/,
+    );
+  });
+
+  it("shortens deep paths and builds tally lines", () => {
+    assert.equal(
+      ingestDisplayPath("/data/media/newlib/Abby Jimenez/Just for the Summer (10103)"),
+      "…/media/newlib/Abby Jimenez/Just for the Summer (10103)",
+    );
+    assert.deepEqual(
+      ingestProgressTallies({
+        status: "completed",
+        result: { seen: 10, shelved: 7, duplicates: 2, review: 1 },
+      }),
+      {
+        seen: 10,
+        shelved: 7,
+        review: 1,
+        skipped: 0,
+        duplicates: 2,
+        errors: 0,
+        volumes: 0,
+        files: 0,
+      },
+    );
+    const lines = ingestTallyLines({
+      status: "completed",
+      result: { seen: 10, shelved: 7, duplicates: 2, review: 1 },
+    });
+    assert.ok(lines.includes("Seen 10"));
+    assert.ok(lines.includes("Added 7"));
+    assert.ok(lines.includes("Ignored duplicates 2"));
+    assert.ok(lines.includes("Needs you 1"));
   });
 
   it("does not treat progress blobs or empty job objects as legacy jobs", () => {

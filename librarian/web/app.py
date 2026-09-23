@@ -84,7 +84,6 @@ from librarian.ingest import (
     PathDenied,
     confined_path,
     list_dir,
-    list_ingest_targets,
     poll_watch_folder,
     protected_path_refusal,
     run_ingest_paths,
@@ -1919,7 +1918,6 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         refusal = protected_path_refusal(target, settings())
         if refusal:
             raise HTTPException(status_code=400, detail=refusal)
-        targets = list_ingest_targets(target)
         user_id = request.state.user["id"]
         source_path = str(target)
         with ingest_lock:
@@ -1928,7 +1926,8 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             if is_ingest_running(root) and alive:
                 progress = read_ingest_progress(root)
                 return {**progress, "kicked_off": False}
-            begin_ingest_run(root, source_path=source_path, total=len(targets), phase="scanning")
+            # Expand recursively in the worker so the meter denominator is real.
+            begin_ingest_run(root, source_path=source_path, total=0, phase="scanning")
 
             def run_ingest() -> None:
                 reporter = IngestProgressReporter(root, source_path=source_path)
@@ -1936,7 +1935,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
                     run_ingest_paths(
                         db,
                         settings(),
-                        paths=targets,
+                        paths=[target],
                         requested_by=user_id,
                         source="ingest",
                         progress=reporter,

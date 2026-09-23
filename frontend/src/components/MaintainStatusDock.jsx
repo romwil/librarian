@@ -9,7 +9,7 @@ import {
   scanPhaseLabel,
   scanProgressSummary,
 } from "../actionBusy.js";
-import { ingestIsRunning, ingestPhaseLabel, ingestProgressPercent, ingestProgressSummary } from "../ingest.js";
+import { ingestDisplayPath, ingestIsRunning, ingestPhaseLabel, ingestProgressPercent, ingestProgressSummary, ingestTallyLines } from "../ingest.js";
 import {
   extraFilesReprocessIsRunning,
   extraFilesReprocessProgressPercent,
@@ -101,12 +101,21 @@ export default function MaintainStatusDock() {
     (ingestIsRunning(ingestStatus) || ingestStatus.status === "completed" || ingestStatus.status === "failed")
   ) {
     const percent = ingestProgressPercent(ingestStatus);
+    const tallyLines = ingestTallyLines(ingestStatus);
+    const displayPath = ingestDisplayPath(ingestStatus.current_path || ingestStatus.source_path || "");
     cards.push(
       <section key="ingest" className="ingest-progress" data-testid="maintain-ingest-status" aria-live="polite">
         <p className="kicker">Shelving</p>
         <p className="muted">
           {ingestPhaseLabel(ingestStatus.phase)}
-          {ingestStatus.total ? ` · ${ingestStatus.done || 0} of ${ingestStatus.total}` : ""}
+          {ingestStatus.total
+            ? ` · ${ingestStatus.done || 0} of ${ingestStatus.total}`
+            : ingestStatus.volumes_found
+              ? ` · found ${ingestStatus.volumes_found} volumes`
+              : ""}
+          {ingestStatus.files_found && ingestStatus.phase === "scanning"
+            ? ` · ${ingestStatus.files_found} files`
+            : ""}
           {percent != null ? ` · ${percent}%` : ""}
         </p>
         {percent != null ? (
@@ -120,6 +129,25 @@ export default function MaintainStatusDock() {
           >
             <span className="ingest-progress-meter-fill" style={{ width: `${percent}%` }} />
           </div>
+        ) : ingestStatus.phase === "scanning" ? (
+          <div className="ingest-progress-meter ingest-progress-meter--indeterminate" aria-hidden="true">
+            <span className="ingest-progress-meter-fill" />
+          </div>
+        ) : null}
+        {ingestStatus.current_title ? (
+          <p className="lede ingest-progress-title">{ingestStatus.current_title}</p>
+        ) : null}
+        {displayPath ? (
+          <p className="muted ingest-progress-path" title={ingestStatus.current_path || ""}>
+            {displayPath}
+          </p>
+        ) : null}
+        {tallyLines.length ? (
+          <ul className="ingest-progress-tallies">
+            {tallyLines.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
         ) : null}
         <p className="muted" role="status">
           {ingestProgressSummary(ingestStatus) || "Adding…"}

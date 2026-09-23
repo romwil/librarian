@@ -22,9 +22,13 @@ def test_default_progress_shape():
     assert payload["current_title"] == ""
     assert payload["done"] == 0
     assert payload["total"] == 0
+    assert payload["seen"] == 0
     assert payload["shelved"] == 0
     assert payload["review"] == 0
     assert payload["skipped"] == 0
+    assert payload["duplicates"] == 0
+    assert payload["volumes_found"] == 0
+    assert payload["files_found"] == 0
     assert payload["errors"] == 0
     assert payload["logs"] == []
     assert payload["error"] == ""
@@ -37,15 +41,28 @@ def test_finish_ingest_run_keeps_counts(tmp_path):
     patch_ingest_progress(tmp_path, status="running", done=2, total=3, shelved=1, review=1)
     finished = finish_ingest_run(
         tmp_path,
-        result={"done": 3, "total": 3, "shelved": 2, "review": 1, "skipped": 0, "errors": 0},
+        result={
+            "done": 3,
+            "seen": 3,
+            "total": 3,
+            "shelved": 2,
+            "review": 1,
+            "skipped": 0,
+            "duplicates": 1,
+            "errors": 0,
+        },
     )
     assert finished["status"] == "completed"
     assert finished["phase"] == "done"
     assert finished["shelved"] == 2
     assert finished["review"] == 1
+    assert finished["duplicates"] == 1
+    assert finished["seen"] == 3
     assert finished["done"] == 3
     assert finished["result"]["shelved"] == 2
-    assert any("shelved 2" in line for line in finished["logs"])
+    assert any("added 2" in line for line in finished["logs"])
+    assert any("ignored duplicates 1" in line for line in finished["logs"])
+    assert any("seen 3" in line for line in finished["logs"])
 
 
 def test_concurrent_patch_and_append_keep_both_updates(tmp_path, monkeypatch):

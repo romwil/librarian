@@ -273,10 +273,10 @@ def test_run_ingest_paths_reports_progress_and_moves(tmp_path, monkeypatch):
     parent = tmp_path / "inbox"
     parent.mkdir()
     first = parent / "Le Guin - The Left Hand of Darkness 9780441478125.epub"
-    first.write_bytes(b"epub")
+    first.write_bytes(b"confident-epub-bytes")
     second = parent / "mystery-dump"
     second.mkdir()
-    (second / "mystery.epub").write_bytes(b"epub")
+    (second / "mystery.epub").write_bytes(b"unknown-mystery-bytes")
     db = Database(tmp_path / "librarian.db")
 
     ticks: list[dict] = []
@@ -297,19 +297,103 @@ def test_run_ingest_paths_reports_progress_and_moves(tmp_path, monkeypatch):
     summary = run_ingest_paths(
         db,
         settings,
-        paths=list_ingest_targets(parent),
+        paths=[parent],
         requested_by="owner-1",
         progress=FakeProgress(),
     )
     assert summary["total"] == 2
+    assert summary["seen"] == 2
     assert summary["shelved"] == 1
     assert summary["review"] == 1
+    assert summary["files_found"] >= 2
     assert not first.exists()
     assert second.is_dir()  # Review keeps staging
     assert (second / "mystery.epub").is_file()
     assert ticks[0]["event"] == "start"
+    assert ticks[0]["total"] == 0
     assert ticks[-1]["event"] == "complete"
+    assert any(t.get("phase") == "scanning" for t in ticks if t["event"] == "tick")
     assert any(t.get("phase") == "organizing" for t in ticks if t["event"] == "tick")
+
+
+def test_inventory_prescan_marks_batch_duplicates(tmp_path):
+    from librarian.ingest import inventory_ingest_paths
+
+    parent = tmp_path / "dump"
+    a = parent / "copy-a"
+    b = parent / "copy-b"
+    a.mkdir(parents=True)
+    b.mkdir()
+    payload = b"identical-epub-bytes"
+    (a / "Book.epub").write_bytes(payload)
+    (b / "Book.epub").write_bytes(payload)
+    inventory = inventory_ingest_paths([parent])
+    assert inventory["volumes_found"] == 2
+    assert inventory["files_found"] == 2
+    assert len(inventory["duplicate_indexes"]) == 1
+
+
+def test_run_ingest_paths_skips_batch_and_shelf_duplicates(tmp_path, monkeypatch):
+    monkeypatch.setenv("LIBRARIAN_FS_ROOT", str(tmp_path))
+    settings = _settings(tmp_path)
+    parent = tmp_path / "inbox"
+    # Sibling dump folders so list_ingest_targets expands to two volumes.
+    first_dir = parent / "Le Guin - The Left Hand of Darkness 9780441478125"
+    twin_dir = parent / "zzz-duplicate-Left-Hand"
+    first_dir.mkdir(parents=True)
+    twin_dir.mkdir(parents=True)
+    payload = b"same-bytes-for-fingerprint"
+    (first_dir / "The Left Hand of Darkness.epub").write_bytes(payload)
+    (twin_dir / "The Left Hand of Darkness.epub").write_bytes(payload)
+    db = Database(tmp_path / "librarian.db")
+
+    summary = run_ingest_paths(
+        db,
+        settings,
+        paths=[parent],
+        requested_by="owner-1",
+    )
+    assert summary["total"] == 2
+    assert summary["seen"] == 2
+    assert summary["shelved"] == 1
+    assert summary["duplicates"] == 1
+    assert summary["review"] == 0
+    assert not first_dir.exists()
+    assert twin_dir.is_dir()
+    assert (twin_dir / "The Left Hand of Darkness.epub").is_file()
+
+    # Nest under a distinct path so the first job storage key does not match,
+    # while keeping the same ISBN/title naming for dest_layout collision.
+    relabeled = parent / "extra" / "Le Guin - The Left Hand of Darkness 9780441478125"
+    relabeled.parent.mkdir(parents=True)
+    twin_dir.rename(relabeled)
+    second = run_ingest_paths(
+        db,
+        settings,
+        paths=[relabeled],
+        requested_by="owner-1",
+    )
+    assert second["duplicates"] == 1
+    assert second["shelved"] == 0
+    assert second["review"] == 0
+    assert relabeled.is_dir()
+    assert (relabeled / "The Left Hand of Darkness.epub").is_file()
+def test_byte_identical_collision_is_not_review(tmp_path, monkeypatch):
+    monkeypatch.setenv("LIBRARIAN_FS_ROOT", str(tmp_path))
+    settings = _settings(tmp_path)
+    dest_dir = Path(settings.books_root) / "Le Guin" / "The Left Hand of Darkness"
+    dest_dir.mkdir(parents=True)
+    (dest_dir / "The Left Hand of Darkness.epub").write_bytes(b"same")
+    source = tmp_path / "inbox" / "Le Guin - The Left Hand of Darkness 9780441478125.epub"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"same")
+    db = Database(tmp_path / "librarian.db")
+    job = enqueue_ingest(db, settings, path=source, requested_by="owner-1")
+    assert job["status"] == "skipped"
+    work = db.get_work(job["work_id"])
+    assert work["review_state"] == "none"
+    assert work.get("review_reason") in (None, "")
+    assert source.is_file()
 
 
 def test_ingest_status_idle_then_batch(tmp_path, monkeypatch):
@@ -318,10 +402,10 @@ def test_ingest_status_idle_then_batch(tmp_path, monkeypatch):
     parent = tmp_path / "complete" / "books"
     parent.mkdir(parents=True)
     a = parent / "Le Guin - The Left Hand of Darkness 9780441478125.epub"
-    a.write_bytes(b"epub")
+    a.write_bytes(b"confident-epub-bytes")
     b = parent / "weird-dump"
     b.mkdir()
-    (b / "mystery.epub").write_bytes(b"epub")
+    (b / "mystery.epub").write_bytes(b"unknown-mystery-bytes")
     client = _client(tmp_path, monkeypatch)
     _login(client)
     idle = client.get("/api/ingest/status")
@@ -331,18 +415,18 @@ def test_ingest_status_idle_then_batch(tmp_path, monkeypatch):
     started = client.post("/api/ingest", json={"path": str(parent)})
     assert started.status_code == 200
     assert started.json()["kicked_off"] is True
-    assert started.json()["total"] == 2
+    assert started.json()["phase"] == "scanning"
     status = _wait_ingest_status(client)
     assert status["status"] == "completed"
     result = status.get("result") or {}
+    assert int(result.get("total") or status.get("total") or 0) == 2
+    assert int(result.get("seen") or 0) == 2
     assert int(result.get("shelved") or 0) == 1
     assert int(result.get("review") or 0) == 1
     assert status["phase"] == "done"
     assert status["source_path"] == str(parent)
     assert not a.exists()
     assert b.is_dir()
-
-
 def test_ingest_dump_folder_moves_source_on_success(tmp_path, monkeypatch):
     monkeypatch.setenv("LIBRARIAN_FS_ROOT", str(tmp_path))
     settings = _settings(tmp_path)

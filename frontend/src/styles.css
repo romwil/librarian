@@ -3119,6 +3119,56 @@ button.cover {
   transition: width 0.35s ease;
 }
 
+.ingest-progress-meter--indeterminate .ingest-progress-meter-fill {
+  width: 35%;
+  animation: ingest-scan-slide 1.2s ease-in-out infinite;
+}
+
+@keyframes ingest-scan-slide {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+
+.ingest-progress-path {
+  margin: var(--space-1) 0 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.85em;
+  word-break: break-all;
+}
+
+.ingest-progress-tallies {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  font-size: 0.95em;
+}
+
+.ingest-progress-tallies li {
+  margin: 0;
+}
+
+.ingest-progress-log {
+  margin-top: var(--space-3);
+}
+
+.ingest-progress-log ul {
+  margin: var(--space-2) 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.9em;
+  color: var(--muted);
+}
+
+.ingest-progress-log li {
+  margin: 0.15rem 0;
+}
+
 .glass .alert {
   width: 100%;
 }

@@ -3,12 +3,15 @@ import { api } from "../api.js";
 import { ADD_TO_LIBRARY_LEDE, FIELD_HELP, humanError } from "../copy.js";
 import {
   filterBrowseEntries,
+  ingestDisplayPath,
   ingestIsRunning,
   ingestLegacyJob,
   ingestPhaseLabel,
   ingestProgressPercent,
   ingestProgressSummary,
+  ingestProgressTallies,
   ingestResultMessage,
+  ingestTallyLines,
 } from "../ingest.js";
 import { FieldLabel } from "./FieldHelp.jsx";
 
@@ -103,7 +106,7 @@ export default function AddToLibrary({ compact = false, embedded = false } = {})
   async function onAdd() {
     if (!path) return;
     setBusy(true);
-    setStatus("Adding…");
+    setStatus("Scanning…");
     setError("");
     setProgress({
       status: "running",
@@ -113,6 +116,9 @@ export default function AddToLibrary({ compact = false, embedded = false } = {})
       shelved: 0,
       review: 0,
       skipped: 0,
+      duplicates: 0,
+      volumes_found: 0,
+      files_found: 0,
       current_title: "",
       current_path: path,
       logs: ["Starting…"],
@@ -158,6 +164,12 @@ export default function AddToLibrary({ compact = false, embedded = false } = {})
   const showProgress =
     progress && (busy || progress.status === "completed" || progress.status === "failed");
   const percent = showProgress ? ingestProgressPercent(progress) : null;
+  const tallies = showProgress ? ingestProgressTallies(progress) : null;
+  const tallyLines = showProgress ? ingestTallyLines(progress) : [];
+  const displayPath = showProgress
+    ? ingestDisplayPath(progress.current_path || progress.source_path || "")
+    : "";
+  const recentLogs = showProgress && Array.isArray(progress.logs) ? progress.logs.slice(-6) : [];
 
   const progressPanel = showProgress ? (
     <section className="ingest-progress" data-testid="ingest-progress" aria-live="polite">
@@ -166,13 +178,13 @@ export default function AddToLibrary({ compact = false, embedded = false } = {})
         {ingestPhaseLabel(progress.phase)}
         {progress.total
           ? ` · ${progress.done || 0} of ${progress.total}`
-          : progress.done
-            ? ` · ${progress.done} done`
-            : ""}
+          : tallies?.volumes
+            ? ` · found ${tallies.volumes} volumes`
+            : progress.done
+              ? ` · ${progress.done} done`
+              : ""}
+        {tallies?.files && progress.phase === "scanning" ? ` · ${tallies.files} files` : ""}
         {percent != null ? ` · ${percent}%` : ""}
-        {progress.shelved ? ` · shelved ${progress.shelved}` : ""}
-        {progress.review ? ` · needs you ${progress.review}` : ""}
-        {progress.skipped ? ` · skipped ${progress.skipped}` : ""}
       </p>
       {percent != null ? (
         <div
@@ -185,14 +197,38 @@ export default function AddToLibrary({ compact = false, embedded = false } = {})
         >
           <span className="ingest-progress-meter-fill" style={{ width: `${percent}%` }} />
         </div>
+      ) : progress.phase === "scanning" ? (
+        <div className="ingest-progress-meter ingest-progress-meter--indeterminate" aria-hidden="true">
+          <span className="ingest-progress-meter-fill" />
+        </div>
       ) : null}
-      {progress.current_title || progress.current_path ? (
-        <p className="lede ingest-progress-title">{progress.current_title || progress.current_path}</p>
+      {progress.current_title ? <p className="lede ingest-progress-title">{progress.current_title}</p> : null}
+      {displayPath ? (
+        <p className="muted ingest-progress-path" title={progress.current_path || progress.source_path || ""}>
+          {displayPath}
+        </p>
+      ) : null}
+      {tallyLines.length ? (
+        <ul className="ingest-progress-tallies" data-testid="ingest-tallies">
+          {tallyLines.map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ul>
       ) : null}
       {status ? (
         <p className="muted" role="status">
           {status}
         </p>
+      ) : null}
+      {recentLogs.length ? (
+        <details className="ingest-progress-log">
+          <summary className="muted">Recent activity</summary>
+          <ul>
+            {recentLogs.map((line, index) => (
+              <li key={`${index}-${line}`}>{line}</li>
+            ))}
+          </ul>
+        </details>
       ) : null}
     </section>
   ) : null;

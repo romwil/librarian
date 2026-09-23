@@ -12,6 +12,7 @@ from librarian.convert import maybe_convert_payload, maybe_par2_repair, maybe_un
 from librarian.covers import ensure_music_cover, fetch_cover
 from librarian.db import Database
 from librarian.delight import REVIEW_QUIET_HOURS, in_quiet_hours
+from librarian.file_identity import files_byte_identical
 from librarian.identify import (
     REVIEW_COLLISION,
     REVIEW_CONVERT,
@@ -477,24 +478,49 @@ def organize_identified(
 
     # Preflight every dest before moving any file — a mid-loop collision with
     # move_source=True would otherwise orphan already-relocated siblings.
+    # Byte-identical payloads already on the shelf are ignored duplicates, not Review.
     planned: List[tuple[Path, Path]] = []
+    collisions: List[tuple[Path, Path]] = []
     for src in files:
         dest = dest_layout(identity, settings, filename=src.name, source=src)
         if dest.exists() and dest.resolve() != src.resolve():
-            identity["review_reason"] = REVIEW_COLLISION
-            identity["confidence"] = "low"
-            work = db.upsert_work(
+            collisions.append((src, dest))
+        planned.append((src, dest))
+    if collisions:
+        identical = all(files_byte_identical(src, dest) for src, dest in collisions)
+        all_present = len(collisions) == len(planned)
+        if identical and all_present:
+            shelf = db.get_work_by_folder_path(str(collisions[0][1].parent))
+            work = shelf or db.upsert_work(
                 {
                     **identity,
                     **part_fields,
-                    "folder_path": source_folder,
-                    "review_state": "needs_review",
-                    "review_reason": REVIEW_COLLISION,
+                    "folder_path": str(collisions[0][1].parent),
+                    "review_state": "none",
+                    "review_reason": None,
                     "indexer_guid": (indexer_item or {}).get("guid"),
                 }
             )
-            return {"work": work, "identity": identity, "organized": False, "files": [str(p) for p in files]}
-        planned.append((src, dest))
+            return {
+                "work": work,
+                "identity": identity,
+                "organized": False,
+                "skipped_duplicate": True,
+                "files": [str(p) for p in files],
+            }
+        identity["review_reason"] = REVIEW_COLLISION
+        identity["confidence"] = "low"
+        work = db.upsert_work(
+            {
+                **identity,
+                **part_fields,
+                "folder_path": source_folder,
+                "review_state": "needs_review",
+                "review_reason": REVIEW_COLLISION,
+                "indexer_guid": (indexer_item or {}).get("guid"),
+            }
+        )
+        return {"work": work, "identity": identity, "organized": False, "files": [str(p) for p in files]}
 
     placed: List[str] = []
     folder_path = None

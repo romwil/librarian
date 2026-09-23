@@ -25,10 +25,14 @@ def default_progress() -> Dict[str, Any]:
         "current_title": "",
         "done": 0,
         "total": 0,
+        "seen": 0,
         "shelved": 0,
         "review": 0,
         "skipped": 0,
+        "duplicates": 0,
         "errors": 0,
+        "volumes_found": 0,
+        "files_found": 0,
         "logs": [],
         "error": "",
         "source_path": "",
@@ -150,17 +154,37 @@ def finish_ingest_run(
             current["current_title"] = ""
             summary = dict(result or {})
             current["result"] = summary
-            for key in ("shelved", "review", "skipped", "errors", "done", "total"):
+            for key in (
+                "shelved",
+                "review",
+                "skipped",
+                "duplicates",
+                "errors",
+                "done",
+                "total",
+                "seen",
+                "volumes_found",
+                "files_found",
+            ):
                 if key in summary:
                     current[key] = int(summary.get(key) or 0)
             logs = list(current.get("logs") or [])
             shelved = int(summary.get("shelved") or current.get("shelved") or 0)
             review = int(summary.get("review") or current.get("review") or 0)
             skipped = int(summary.get("skipped") or current.get("skipped") or 0)
-            done = int(summary.get("done") or current.get("done") or 0)
-            logs.append(
-                f"Finished — shelved {shelved}, needs you {review}, skipped {skipped} ({done} looked at)."
-            )
+            duplicates = int(summary.get("duplicates") or current.get("duplicates") or 0)
+            seen = int(summary.get("seen") or summary.get("done") or current.get("seen") or 0)
+            parts = [f"seen {seen}", f"added {shelved}"]
+            if duplicates:
+                parts.append(f"ignored duplicates {duplicates}")
+            if review:
+                parts.append(f"needs you {review}")
+            if skipped:
+                parts.append(f"skipped {skipped}")
+            errors = int(summary.get("errors") or current.get("errors") or 0)
+            if errors:
+                parts.append(f"failed {errors}")
+            logs.append(f"Finished — {', '.join(parts)}.")
             current["logs"] = logs[-MAX_LOG_LINES:]
         current["finished_at"] = _utc_now()
         return _write_unlocked(data_dir, current)
@@ -199,7 +223,11 @@ class IngestProgressReporter:
         shelved: Optional[int] = None,
         review: Optional[int] = None,
         skipped: Optional[int] = None,
+        duplicates: Optional[int] = None,
         errors: Optional[int] = None,
+        seen: Optional[int] = None,
+        volumes_found: Optional[int] = None,
+        files_found: Optional[int] = None,
         log: str = "",
     ) -> None:
         fields: Dict[str, Any] = {}
@@ -219,8 +247,16 @@ class IngestProgressReporter:
             fields["review"] = int(review)
         if skipped is not None:
             fields["skipped"] = int(skipped)
+        if duplicates is not None:
+            fields["duplicates"] = int(duplicates)
         if errors is not None:
             fields["errors"] = int(errors)
+        if seen is not None:
+            fields["seen"] = int(seen)
+        if volumes_found is not None:
+            fields["volumes_found"] = int(volumes_found)
+        if files_found is not None:
+            fields["files_found"] = int(files_found)
         if fields:
             patch_ingest_progress(self.data_dir, **fields)
         if log:

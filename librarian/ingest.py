@@ -13,6 +13,11 @@ from typing import Any, Dict, List, Optional
 
 from librarian.config import MEDIA_ROOT_FIELDS, Settings
 from librarian.db import Database
+from librarian.file_identity import (
+    count_media_files,
+    payload_media_files,
+    volume_content_fingerprint,
+)
 from librarian.identify import (
     CONTAINER_DATA_PREFIX,
     HOST_DATA_PREFIX,
@@ -274,12 +279,19 @@ def list_ingest_targets(path: Path) -> List[Path]:
     A directory that *is* the volume (top-level media only: book, album,
     loose comic pages) stays a single target.
     """
+    return list(iter_ingest_targets(path))
+
+
+def iter_ingest_targets(path: Path):
+    """Yield ingest targets depth-first (same rules as ``list_ingest_targets``)."""
     if not path.is_dir():
-        return [path]
+        yield path
+        return
     try:
         children = sorted(path.iterdir(), key=lambda child: child.name.lower())
     except OSError:
-        return [path]
+        yield path
+        return
     dirs: List[Path] = []
     media_files: List[Path] = []
     for child in children:
@@ -290,19 +302,107 @@ def list_ingest_targets(path: Path) -> List[Path]:
         elif child.is_file() and child.suffix.lower() in MEDIA_EXTENSIONS:
             media_files.append(child)
     if dirs and media_files:
-        expanded: List[Path] = []
         for child in dirs:
-            expanded.extend(list_ingest_targets(child))
-        expanded.extend(media_files)
-        return expanded
+            yield from iter_ingest_targets(child)
+        yield from media_files
+        return
     if len(dirs) >= 2:
-        expanded = []
         for child in dirs:
-            expanded.extend(list_ingest_targets(child))
-        return expanded
+            yield from iter_ingest_targets(child)
+        return
     if len(dirs) == 1 and not media_files:
-        return list_ingest_targets(dirs[0])
-    return [path]
+        yield from iter_ingest_targets(dirs[0])
+        return
+    yield path
+
+
+def inventory_ingest_paths(
+    roots: List[Path],
+    *,
+    progress: Any = None,
+) -> Dict[str, Any]:
+    """Recursive pre-scan: expand targets, count media, mark batch duplicates.
+
+    Returns ``targets``, ``files_found``, ``volumes_found``, and
+    ``duplicate_indexes`` (set of target indexes that are byte-identical to an
+    earlier volume in this batch).
+    """
+    targets: List[Path] = []
+    files_found = 0
+    fingerprint_first: Dict[str, int] = {}
+    duplicate_indexes: set[int] = set()
+
+    if progress is not None:
+        progress.tick(
+            phase="scanning",
+            done=0,
+            total=0,
+            volumes_found=0,
+            files_found=0,
+            current_path=_norm_key(roots[0]) if roots else "",
+            current_title="Scanning folders…",
+            log="Scanning folders for volumes…",
+        )
+
+    for root in roots:
+        for target in iter_ingest_targets(root):
+            targets.append(target)
+            media = payload_media_files(target)
+            files_found += len(media)
+            index = len(targets) - 1
+            title = _title_for_path(target)
+            current_path = _norm_key(target)
+            fp = volume_content_fingerprint(target)
+            if fp:
+                prior = fingerprint_first.get(fp)
+                if prior is None:
+                    fingerprint_first[fp] = index
+                else:
+                    duplicate_indexes.add(index)
+            if progress is not None and (index == 0 or (index + 1) % 5 == 0 or fp and index in duplicate_indexes):
+                progress.tick(
+                    phase="scanning",
+                    done=0,
+                    total=0,
+                    volumes_found=len(targets),
+                    files_found=files_found,
+                    duplicates=len(duplicate_indexes),
+                    current_path=current_path,
+                    current_title=title,
+                    log=(
+                        f"Found {len(targets)} volume{'s' if len(targets) != 1 else ''}"
+                        f" · {files_found} media file{'s' if files_found != 1 else ''}"
+                        + (f" · {len(duplicate_indexes)} duplicate" if duplicate_indexes else "")
+                    ),
+                )
+
+    volumes_found = len(targets)
+    if progress is not None:
+        dup_note = (
+            f" · {len(duplicate_indexes)} anticipated duplicate{'s' if len(duplicate_indexes) != 1 else ''}"
+            if duplicate_indexes
+            else ""
+        )
+        progress.tick(
+            phase="scanning",
+            done=0,
+            total=volumes_found,
+            volumes_found=volumes_found,
+            files_found=files_found,
+            duplicates=len(duplicate_indexes),
+            current_path="",
+            current_title="",
+            log=(
+                f"Found {volumes_found} volume{'s' if volumes_found != 1 else ''}"
+                f" · {files_found} media file{'s' if files_found != 1 else ''}{dup_note}."
+            ),
+        )
+    return {
+        "targets": targets,
+        "volumes_found": volumes_found,
+        "files_found": files_found,
+        "duplicate_indexes": duplicate_indexes,
+    }
 
 
 def run_ingest_paths(
@@ -313,19 +413,53 @@ def run_ingest_paths(
     requested_by: str,
     source: str = "ingest",
     progress: Any = None,
+    expand: bool = True,
 ) -> Dict[str, Any]:
-    """Identify/organize each path, ticking ``progress`` when provided."""
-    targets = list(paths)
+    """Identify/organize each path, ticking ``progress`` when provided.
+
+    When ``expand`` is true (default), recursively inventories targets first so
+    ``total`` matches the real volume count before organizing begins.
+    """
+    if progress is not None:
+        progress.start(total=0, phase="scanning")
+
+    duplicate_indexes: set[int] = set()
+    files_found = 0
+    volumes_found = 0
+    if expand:
+        inventory = inventory_ingest_paths(list(paths), progress=progress)
+        targets = list(inventory["targets"])
+        duplicate_indexes = set(inventory["duplicate_indexes"])
+        files_found = int(inventory["files_found"])
+        volumes_found = int(inventory["volumes_found"])
+    else:
+        targets = list(paths)
+        files_found = count_media_files(targets)
+        volumes_found = len(targets)
+
     total = len(targets)
     if progress is not None:
-        progress.start(total=total, phase="scanning")
-        progress.tick(phase="scanning", done=0, total=total, log=f"Looking at {total} path{'s' if total != 1 else ''}.")
+        progress.tick(
+            phase="organizing" if total else "scanning",
+            done=0,
+            total=total,
+            volumes_found=volumes_found or total,
+            files_found=files_found,
+            duplicates=len(duplicate_indexes),
+            log=(
+                f"Shelving {total} volume{'s' if total != 1 else ''}…"
+                if total
+                else "Nothing to shelve."
+            ),
+        )
 
     shelved = 0
     review = 0
     skipped = 0
+    duplicates = 0
     errors = 0
     jobs: List[Dict[str, Any]] = []
+    seen = 0
 
     for index, target in enumerate(targets):
         title = _title_for_path(target)
@@ -337,34 +471,68 @@ def run_ingest_paths(
                 current_title=title,
                 done=index,
                 total=total,
+                volumes_found=volumes_found or total,
+                files_found=files_found,
+                shelved=shelved,
+                review=review,
+                skipped=skipped,
+                duplicates=duplicates,
+                errors=errors,
             )
         try:
+            if index in duplicate_indexes:
+                duplicates += 1
+                seen += 1
+                if progress is not None:
+                    progress.tick(
+                        phase="organizing",
+                        done=index + 1,
+                        skipped=skipped,
+                        duplicates=duplicates,
+                        shelved=shelved,
+                        review=review,
+                        errors=errors,
+                        seen=seen,
+                        log=f"Ignored duplicate — {title}",
+                    )
+                continue
             if target.is_dir() and watch_entry_skippable(target):
                 skipped += 1
+                seen += 1
                 if progress is not None:
                     progress.tick(
                         phase="identifying",
                         done=index + 1,
                         skipped=skipped,
+                        duplicates=duplicates,
                         shelved=shelved,
                         review=review,
                         errors=errors,
+                        seen=seen,
                         log=f"Skipped — {title}",
                     )
                 continue
             stored = _norm_key(expand_album_context(target))
             existing = db.get_job_by_storage_path(stored)
             if existing is not None and existing.get("status") not in {"identifying", "queued"}:
-                skipped += 1
+                if str(existing.get("status") or "") == "skipped":
+                    duplicates += 1
+                    note = f"Ignored duplicate — {title}"
+                else:
+                    skipped += 1
+                    note = f"Already handled — {title}"
+                seen += 1
                 if progress is not None:
                     progress.tick(
                         phase="identifying",
                         done=index + 1,
                         skipped=skipped,
+                        duplicates=duplicates,
                         shelved=shelved,
                         review=review,
                         errors=errors,
-                        log=f"Already handled — {title}",
+                        seen=seen,
+                        log=note,
                     )
                 continue
             if progress is not None:
@@ -387,9 +555,13 @@ def run_ingest_paths(
             status = str(job.get("status") or "")
             work = db.get_work(str(job.get("work_id") or "")) if job.get("work_id") else None
             quiet = bool(work and str(work.get("review_reason") or "") == "quiet_hours")
+            seen += 1
             if status == "organized":
                 shelved += 1
                 note = f"Shelved — {job.get('title') or title}"
+            elif status == "skipped":
+                duplicates += 1
+                note = f"Ignored duplicate — {job.get('title') or title}"
             elif status == "review":
                 review += 1
                 note = (
@@ -412,11 +584,14 @@ def run_ingest_paths(
                     shelved=shelved,
                     review=review,
                     skipped=skipped,
+                    duplicates=duplicates,
                     errors=errors,
+                    seen=seen,
                     log=note,
                 )
         except PathDenied as error:
             errors += 1
+            seen += 1
             if progress is not None:
                 progress.tick(
                     done=index + 1,
@@ -424,11 +599,14 @@ def run_ingest_paths(
                     shelved=shelved,
                     review=review,
                     skipped=skipped,
+                    duplicates=duplicates,
+                    seen=seen,
                     log=str(error),
                 )
         except Exception as error:  # noqa: BLE001 — surface per-item and keep going
             logger.exception("Ingest failed for %s", target)
             errors += 1
+            seen += 1
             if progress is not None:
                 progress.tick(
                     done=index + 1,
@@ -436,17 +614,23 @@ def run_ingest_paths(
                     shelved=shelved,
                     review=review,
                     skipped=skipped,
+                    duplicates=duplicates,
+                    seen=seen,
                     log=f"Failed — {title}: {error}",
                 )
 
     summary = {
         "done": total,
+        "seen": seen if seen else total,
         "total": total,
         "shelved": shelved,
         "review": review,
         "skipped": skipped,
+        "duplicates": duplicates,
         "errors": errors,
         "jobs": len(jobs),
+        "volumes_found": volumes_found or total,
+        "files_found": files_found,
     }
     if progress is not None:
         progress.complete(summary)
@@ -523,12 +707,17 @@ def progress_ingest_job(db: Database, settings: Settings, job_id: str) -> Dict[s
         )
         return updated or job
     identity = organized.get("identity") or {}
-    final = "organized" if organized["organized"] else "review"
     work = organized["work"]
+    if organized.get("skipped_duplicate"):
+        final = "skipped"
+    elif organized["organized"]:
+        final = "organized"
+    else:
+        final = "review"
     updated = db.update_job(
         job_id,
         status=final,
-        work_id=work["id"],
+        work_id=work["id"] if work else None,
         title=str(identity.get("title") or job.get("title") or _title_for_path(folder)),
         kind=str(identity.get("kind") or job.get("kind") or "") or None,
         error=None,

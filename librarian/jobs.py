@@ -324,7 +324,12 @@ def poll_job(
             indexer_item=item,
             move_source=True,
         )
-        final = "organized" if organized["organized"] else "review"
+        if organized.get("skipped_duplicate"):
+            final = "skipped"
+        elif organized["organized"]:
+            final = "organized"
+        else:
+            final = "review"
         updated = db.update_job(
             job_id,
             status=final,

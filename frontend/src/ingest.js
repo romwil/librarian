@@ -35,7 +35,9 @@ export function ingestResultMessage(job = {}, path = "") {
       ? "Arrived"
       : status === "review"
         ? "Needs you"
-        : "On the way";
+        : status === "skipped"
+          ? "Ignored duplicate"
+          : "On the way";
   return { kind: "status", text: `${word} — ${title}` };
 }
 
@@ -73,32 +75,68 @@ export function ingestProgressPercent(status) {
   return Math.max(0, Math.min(100, Math.round((done / total) * 100)));
 }
 
+function _num(value, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+/** Pull tallies from live progress or completed result. */
+export function ingestProgressTallies(status) {
+  if (!status || typeof status !== "object") {
+    return { seen: 0, shelved: 0, review: 0, skipped: 0, duplicates: 0, errors: 0, volumes: 0, files: 0 };
+  }
+  const result = status.result && typeof status.result === "object" ? status.result : {};
+  const pick = (key) => {
+    if (result[key] != null) return _num(result[key]);
+    return _num(status[key]);
+  };
+  const seen = pick("seen") || pick("done");
+  return {
+    seen,
+    shelved: pick("shelved"),
+    review: pick("review"),
+    skipped: pick("skipped"),
+    duplicates: pick("duplicates"),
+    errors: pick("errors"),
+    volumes: pick("volumes_found") || pick("total"),
+    files: pick("files_found"),
+  };
+}
+
+/** Depth-friendly path for deep Calibre trees — keep leaf + a parent or two. */
+export function ingestDisplayPath(path, { maxSegments = 4 } = {}) {
+  const text = String(path || "").trim();
+  if (!text) return "";
+  const parts = text.split(/[/\\]+/).filter(Boolean);
+  if (parts.length <= maxSegments) return text.startsWith("/") ? `/${parts.join("/")}` : parts.join("/");
+  const keep = parts.slice(-maxSegments);
+  return `…/${keep.join("/")}`;
+}
+
 /** Household progress line for Add to the shelves polling. */
 export function ingestProgressSummary(status) {
   if (!status || typeof status !== "object") return "";
   const state = String(status.status || "");
   if (state === "idle") return "";
   if (state === "failed") return status.error || "Shelving failed.";
-  const done = Number(status.done || 0);
-  const total = Number(status.total || 0);
-  const shelved = Number(status.shelved || 0);
-  const review = Number(status.review || 0);
-  const skipped = Number(status.skipped || 0);
+  const tallies = ingestProgressTallies(status);
   const title = String(status.current_title || "").trim();
   const phase = String(status.phase || "").trim();
   const pct = ingestProgressPercent(status);
+  const done = _num(status.done);
+  const total = _num(status.total);
+
   if (state === "completed") {
-    const result = status.result || {};
-    const s = Number(result.shelved != null ? result.shelved : shelved);
-    const r = Number(result.review != null ? result.review : review);
-    const k = Number(result.skipped != null ? result.skipped : skipped);
     const parts = [];
-    if (s) parts.push(`shelved ${s}`);
-    if (r) parts.push(`needs you ${r}`);
-    if (k) parts.push(`skipped ${k}`);
-    if (!parts.length) return "Finished looking.";
+    parts.push(`seen ${tallies.seen || total || done}`);
+    parts.push(`added ${tallies.shelved}`);
+    if (tallies.duplicates) parts.push(`ignored duplicates ${tallies.duplicates}`);
+    if (tallies.review) parts.push(`needs you ${tallies.review}`);
+    if (tallies.skipped) parts.push(`skipped ${tallies.skipped}`);
+    if (tallies.errors) parts.push(`failed ${tallies.errors}`);
     return `Finished — ${parts.join(", ")}`;
   }
+
   const phaseWord =
     phase === "scanning"
       ? "Scanning"
@@ -107,14 +145,26 @@ export function ingestProgressSummary(status) {
         : phase === "organizing"
           ? "Organizing"
           : "Shelving";
+
+  if (phase === "scanning" && total <= 0) {
+    const found = [];
+    if (tallies.volumes) found.push(`${tallies.volumes} volume${tallies.volumes === 1 ? "" : "s"}`);
+    if (tallies.files) found.push(`${tallies.files} file${tallies.files === 1 ? "" : "s"}`);
+    if (tallies.duplicates) found.push(`${tallies.duplicates} duplicate${tallies.duplicates === 1 ? "" : "s"}`);
+    const foundBit = found.length ? ` · found ${found.join(" · ")}` : "";
+    const tail = title ? ` · ${title}` : "";
+    return `${phaseWord}${foundBit}${tail}` || "Scanning…";
+  }
+
   const count = total > 0 ? `${done} of ${total}` : done ? `${done} done` : "";
   const pctBit = pct != null ? `${pct}%` : "";
   const head = [phaseWord, count, pctBit].filter(Boolean).join(" · ");
-  const tallies = [];
-  if (shelved) tallies.push(`shelved ${shelved}`);
-  if (review) tallies.push(`needs you ${review}`);
-  if (skipped) tallies.push(`skipped ${skipped}`);
-  const mid = tallies.length ? ` · ${tallies.join(" · ")}` : "";
+  const midParts = [];
+  if (tallies.shelved) midParts.push(`added ${tallies.shelved}`);
+  if (tallies.duplicates) midParts.push(`duplicates ${tallies.duplicates}`);
+  if (tallies.review) midParts.push(`needs you ${tallies.review}`);
+  if (tallies.skipped) midParts.push(`skipped ${tallies.skipped}`);
+  const mid = midParts.length ? ` · ${midParts.join(" · ")}` : "";
   const tail = title ? ` · ${title}` : "";
   return `${head}${mid}${tail}` || "Adding…";
 }
@@ -127,4 +177,24 @@ export function ingestPhaseLabel(phase) {
   if (key === "done") return "done";
   if (key === "failed") return "failed";
   return key || "shelving";
+}
+
+/** Multi-line completion / live tallies for the progress panel. */
+export function ingestTallyLines(status) {
+  const tallies = ingestProgressTallies(status);
+  const state = String(status?.status || "");
+  const lines = [];
+  if (state === "completed" || tallies.seen || tallies.shelved || tallies.duplicates) {
+    if (tallies.seen || state === "completed") lines.push(`Seen ${tallies.seen}`);
+    lines.push(`Added ${tallies.shelved}`);
+    if (tallies.duplicates || state === "completed") lines.push(`Ignored duplicates ${tallies.duplicates}`);
+    if (tallies.review) lines.push(`Needs you ${tallies.review}`);
+    if (tallies.skipped) lines.push(`Skipped ${tallies.skipped}`);
+    if (tallies.errors) lines.push(`Failed ${tallies.errors}`);
+  }
+  if (state === "running" && String(status?.phase || "") === "scanning") {
+    if (tallies.volumes) lines.unshift(`Found ${tallies.volumes} volumes`);
+    if (tallies.files) lines.splice(1, 0, `${tallies.files} media files`);
+  }
+  return lines;
 }
