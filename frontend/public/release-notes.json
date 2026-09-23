@@ -1,6 +1,35 @@
 {
-  "generated_at": "2026-09-20T19:12:18Z",
+  "generated_at": "2026-09-22T22:12:39Z",
   "releases": [
+    {
+      "version": "0.4.5",
+      "date": "2026-09-22",
+      "summary": "",
+      "highlights": [
+        "**Review Clear and ingest progress you can see.** Extra-files Clear runs in the background with a live meter; Add-to-shelves progress sits above the path list with a percent meter.",
+        "**Kind shelf totals.** Hall, Stacks, and Search show how many titles are on each media shelf."
+      ],
+      "sections": [
+        {
+          "title": "Added",
+          "bullets": [
+            "**Kind shelf totals.** Stacks, Hall kind rails, and Search kind chips show household counts for the active media type (e.g. “1,234 books on the shelves”, “56 audiobooks”) from browse/hall totals — no extra clutter.",
+            "**Review Clear extra-files progress.** Bulk clear runs in the background with a live meter (shelved / split / applied / failed); the Clear CTA stays visible for backlog past the page window and mid-run jobs.",
+            "**Ingest progress meter.** Shelving progress sits above the path list with a percent meter and safer legacy-job detection."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "bullets": [
+            "**Clear extra-files no longer hangs on author dumps.** Large Calibre author folders enqueue title children for the ingest poller (with progress heartbeats) instead of sync-organizing hundreds of books on the Clear thread; per-item timeouts skip stuck slips. SQLite mutations use a Projectionist-style write serializer so Review Apply/Suggest stay responsive while Clear runs.",
+            "**Review API hang from library-root parent rglob.** Suggest skips `rglob` of library-root parents and only runs when diagnosis has a problem, so `GET /api/review` finishes in seconds.",
+            "**Peek contrast + multi-format extra files.** Rematch Peek tokens for lights-up readability; expand Calibre ingest trees; owners can clear `extra_files` slips without dead Retry/Repair actions.",
+            "**Ingest PermissionError / collisions.** Park PermissionError organizes in Review, isolate poller failures, and preflight multi-file dest collisions before any relocate.",
+            "**Retired Gemini models.** Coerce known-retired Gemini ids to the recommended Flash model with friendlier errors; ProfileMenu stays open while using the text-size slider."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.4.4",
       "date": "2026-09-20",

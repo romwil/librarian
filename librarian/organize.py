@@ -794,18 +794,29 @@ def _same_path(left: Path, right: Path) -> bool:
         return str(left) == str(right)
 
 
+# Small Calibre splits can sync-organize immediately. Author dumps (dozens/hundreds
+# of title folders) must enqueue only — sync process=True hung Clear on Jenika Snow
+# (~168 titles) and starved Review Apply of the SQLite writer.
+EXTRA_FILES_SYNC_CHILD_LIMIT = 4
+EXTRA_FILES_ITEM_TIMEOUT_S = 120.0
+
+
 def reprocess_extra_files_work(
     db: Database,
     settings: Settings,
     *,
     work_id: str,
     requested_by: str = "owner",
+    on_progress: Any = None,
 ) -> Dict[str, Any]:
     """Clear one ``extra_files`` slip: split Calibre author trees, or Apply multi-format volumes.
 
     Multi-title author folders must not force-Apply under one identity — expand to title
     children, resolve the parent slip, and ingest each child. Single-volume multi-format
     (epub+mobi) uses the same path as Apply.
+
+    Large splits enqueue without ``process=True`` so the job poller shelves them and the
+    Clear thread keeps heartbeating / releasing the write queue for interactive Review.
     """
     from librarian.ingest import enqueue_ingest, list_ingest_targets
 
@@ -824,8 +835,16 @@ def reprocess_extra_files_work(
     if len(targets) > 1 or split_targets:
         children = split_targets or targets
         db.upsert_work({**work, "review_state": "resolved", "review_reason": None})
+        process_sync = len(children) <= EXTRA_FILES_SYNC_CHILD_LIMIT
         jobs: List[Dict[str, Any]] = []
-        for target in children:
+        for index, target in enumerate(children, start=1):
+            if on_progress is not None:
+                on_progress(
+                    child_index=index,
+                    child_total=len(children),
+                    child_title=target.name,
+                    process_sync=process_sync,
+                )
             jobs.append(
                 enqueue_ingest(
                     db,
@@ -833,7 +852,7 @@ def reprocess_extra_files_work(
                     path=target,
                     requested_by=requested_by,
                     source="ingest",
-                    process=True,
+                    process=process_sync,
                 )
             )
         shelved = sum(1 for job in jobs if str(job.get("status") or "") == "organized")
@@ -844,9 +863,13 @@ def reprocess_extra_files_work(
             "targets": len(children),
             "shelved": shelved,
             "review": review,
+            "queued": 0 if process_sync else len(children),
+            "process_sync": process_sync,
             "jobs": [{"id": job.get("id"), "status": job.get("status"), "title": job.get("title")} for job in jobs],
         }
 
+    if on_progress is not None:
+        on_progress(child_index=1, child_total=1, child_title=folder.name, process_sync=True)
     result = apply_review(
         db,
         settings,
@@ -869,8 +892,11 @@ def reprocess_extra_files_reviews(
     requested_by: str = "owner",
     limit: int = 0,
     progress: Any = None,
+    item_timeout_s: float = EXTRA_FILES_ITEM_TIMEOUT_S,
 ) -> Dict[str, Any]:
     """Owner bulk clear for ``extra_files`` needs_review slips (newlib / multi-format backlog)."""
+    import threading
+
     works = db.list_works(review_state="needs_review", limit=max(int(limit) or 5000, 1))
     extras = [row for row in works if str(row.get("review_reason") or "") == REVIEW_EXTRA]
     if limit and limit > 0:
@@ -884,6 +910,62 @@ def reprocess_extra_files_reviews(
     shelved = 0
     still_review = 0
     errors: List[str] = []
+    timeout_s = float(item_timeout_s) if item_timeout_s and item_timeout_s > 0 else EXTRA_FILES_ITEM_TIMEOUT_S
+    timeout_s = max(0.05, timeout_s)
+
+    def _child_progress(title: str, **fields: Any) -> None:
+        if progress is None:
+            return
+        child_index = int(fields.get("child_index") or 0)
+        child_total = int(fields.get("child_total") or 0)
+        child_title = str(fields.get("child_title") or "").strip()
+        note = title
+        if child_total > 1 and child_title:
+            note = f"{title} · {child_index}/{child_total} · {child_title}"
+        elif child_title:
+            note = child_title
+        progress.tick(
+            phase="reprocessing",
+            current_title=note,
+            shelved=shelved,
+            split=split,
+            applied=applied,
+            failed=failed,
+            still_review=still_review,
+        )
+
+    def _run_one(work_id: str, title: str) -> Dict[str, Any]:
+        box: Dict[str, Any] = {}
+        done = threading.Event()
+
+        def _target() -> None:
+            try:
+                box["value"] = reprocess_extra_files_work(
+                    db,
+                    settings,
+                    work_id=work_id,
+                    requested_by=requested_by,
+                    on_progress=lambda **kw: _child_progress(title, **kw),
+                )
+            except BaseException as exc:  # noqa: BLE001 — surface to waiter
+                box["error"] = exc
+            finally:
+                done.set()
+
+        worker = threading.Thread(
+            target=_target,
+            name="librarian-extra-files-item",
+            daemon=True,
+        )
+        worker.start()
+        if not done.wait(timeout=timeout_s):
+            raise TimeoutError(
+                f"Timed out after {int(timeout_s)}s — skipped so Clear can continue"
+            )
+        if "error" in box:
+            raise box["error"]
+        return box["value"]
+
     for index, row in enumerate(extras, start=1):
         title = str(row.get("title") or row.get("id") or "").strip()
         if progress is not None:
@@ -899,12 +981,7 @@ def reprocess_extra_files_reviews(
                 still_review=still_review,
             )
         try:
-            outcome = reprocess_extra_files_work(
-                db,
-                settings,
-                work_id=str(row["id"]),
-                requested_by=requested_by,
-            )
+            outcome = _run_one(str(row["id"]), title)
         except Exception as error:  # noqa: BLE001 — keep going through the backlog
             failed += 1
             if len(errors) < 12:
@@ -927,6 +1004,10 @@ def reprocess_extra_files_reviews(
             split += 1
             shelved += int(outcome.get("shelved") or 0)
             still_review += int(outcome.get("review") or 0)
+            if int(outcome.get("queued") or 0) and progress is not None:
+                progress.log(
+                    f"Queued {outcome.get('queued')} titles from {title or row.get('id')} for the ingest poller."
+                )
         else:
             applied += 1
             if outcome.get("organized"):

@@ -9,12 +9,53 @@ from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional
 
 MAX_LOG_LINES = 40
+# Clear must heartbeat while expanding large author trees; older than this with a
+# dead/missing worker thread means status=running was left stale on disk.
+HEARTBEAT_STALE_S = 180.0
 
 _lock = threading.Lock()
 
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def parse_utc_timestamp(value: Any) -> Optional[datetime]:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def heartbeat_age_seconds(payload: Mapping[str, Any], *, now: Optional[datetime] = None) -> Optional[float]:
+    """Seconds since last heartbeat (or started_at). None when timestamps missing."""
+    stamp = parse_utc_timestamp(payload.get("heartbeat_at")) or parse_utc_timestamp(payload.get("started_at"))
+    if stamp is None:
+        return None
+    current = now or datetime.now(timezone.utc)
+    return max(0.0, (current - stamp).total_seconds())
+
+
+def is_extra_files_reprocess_stale(
+    payload: Mapping[str, Any],
+    *,
+    stale_after_s: float = HEARTBEAT_STALE_S,
+    now: Optional[datetime] = None,
+) -> bool:
+    if str(payload.get("status") or "") != "running":
+        return False
+    age = heartbeat_age_seconds(payload, now=now)
+    if age is None:
+        return False
+    return age >= max(1.0, float(stale_after_s))
 
 
 def default_progress() -> Dict[str, Any]:
@@ -32,6 +73,7 @@ def default_progress() -> Dict[str, Any]:
         "logs": [],
         "error": "",
         "started_at": "",
+        "heartbeat_at": "",
         "finished_at": "",
         "result": None,
     }
@@ -70,6 +112,8 @@ def _write_unlocked(data_dir: Path, payload: Mapping[str, Any]) -> Dict[str, Any
     if not isinstance(logs, list):
         logs = []
     merged["logs"] = [str(line) for line in logs][-MAX_LOG_LINES:]
+    if str(merged.get("status") or "") == "running" and not str(merged.get("heartbeat_at") or "").strip():
+        merged["heartbeat_at"] = _utc_now()
     path.parent.mkdir(parents=True, exist_ok=True)
     text = json.dumps(merged, indent=2, sort_keys=True)
     path.write_text(text + "\n", encoding="utf-8")
@@ -90,6 +134,8 @@ def patch_extra_files_reprocess_progress(data_dir: Path, **fields: Any) -> Dict[
     with _lock:
         current = _read_unlocked(data_dir)
         current.update(fields)
+        if str(current.get("status") or "") == "running" and "heartbeat_at" not in fields:
+            current["heartbeat_at"] = _utc_now()
         return _write_unlocked(data_dir, current)
 
 
@@ -111,13 +157,15 @@ def begin_extra_files_reprocess_run(
     total: int = 0,
     phase: str = "starting",
 ) -> Dict[str, Any]:
+    started = _utc_now()
     payload = default_progress()
     payload.update(
         {
             "status": "running",
             "phase": phase,
             "total": max(0, int(total)),
-            "started_at": _utc_now(),
+            "started_at": started,
+            "heartbeat_at": started,
             "logs": ["Started clearing extra_files slips."],
         }
     )
@@ -196,7 +244,7 @@ class ExtraFilesReprocessProgressReporter:
         still_review: Optional[int] = None,
         log: str = "",
     ) -> None:
-        fields: Dict[str, Any] = {}
+        fields: Dict[str, Any] = {"heartbeat_at": _utc_now()}
         if phase:
             fields["phase"] = phase
         if current_title is not None:
@@ -215,8 +263,7 @@ class ExtraFilesReprocessProgressReporter:
             fields["failed"] = int(failed)
         if still_review is not None:
             fields["still_review"] = int(still_review)
-        if fields:
-            patch_extra_files_reprocess_progress(self.data_dir, **fields)
+        patch_extra_files_reprocess_progress(self.data_dir, **fields)
         if log:
             append_extra_files_reprocess_log(self.data_dir, log)
 

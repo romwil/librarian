@@ -3,16 +3,55 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import sqlite3
-import threading
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple, TypeVar
+
+from librarian.db_write_serializer import WriteSerializer
 
 SQLITE_BUSY_TIMEOUT_MS = 30000
+SQLITE_LOCK_RETRIES = 6
+SQLITE_LOCK_RETRY_BASE_DELAY_S = 0.05
 FAVORITES_SHELF = "Favorites"
+
+logger = logging.getLogger("librarian.db")
+T = TypeVar("T")
+
+
+def _is_db_locked(exc: BaseException) -> bool:
+    if not isinstance(exc, sqlite3.OperationalError):
+        return False
+    message = str(exc).lower()
+    return "locked" in message or "busy" in message
+
+
+def run_with_db_lock_retry(operation: Callable[[], T], *, label: str = "db") -> T:
+    """Retry transient SQLite lock/busy errors with exponential backoff."""
+    delay = SQLITE_LOCK_RETRY_BASE_DELAY_S
+    last_exc: Optional[BaseException] = None
+    for attempt in range(SQLITE_LOCK_RETRIES):
+        try:
+            return operation()
+        except sqlite3.OperationalError as exc:
+            last_exc = exc
+            if not _is_db_locked(exc) or attempt >= SQLITE_LOCK_RETRIES - 1:
+                raise
+            logger.warning(
+                "SQLite %s locked (attempt %s/%s); retrying in %.2fs: %s",
+                label,
+                attempt + 1,
+                SQLITE_LOCK_RETRIES,
+                delay,
+                exc,
+            )
+            time.sleep(delay)
+            delay = min(delay * 2, 1.5)
+    assert last_exc is not None
+    raise last_exc
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
@@ -261,12 +300,38 @@ class Database:
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._lock = threading.Lock()
-        with self._connect() as conn:
-            conn.executescript(SCHEMA)
-            _ensure_job_columns(conn)
-            _ensure_work_columns(conn)
-            _ensure_file_columns(conn)
+        self._write_serializer = WriteSerializer()
+        try:
+            with self._connect() as conn:
+                conn.executescript(SCHEMA)
+                _ensure_job_columns(conn)
+                _ensure_work_columns(conn)
+                _ensure_file_columns(conn)
+        except Exception:
+            self._write_serializer.shutdown(timeout=5.0)
+            raise
+
+    def run_write(self, operation: Callable[[], T], *, label: str = "write") -> T:
+        """Run a mutating callable on the dedicated writer thread."""
+        return self._write_serializer.run(
+            lambda: run_with_db_lock_retry(operation, label=label),
+            label=label,
+        )
+
+    def try_run_write(self, operation: Callable[[], T], *, label: str = "write") -> bool:
+        """Like ``run_write`` but drop the job when the serializer queue is full."""
+        return self._write_serializer.try_run(
+            lambda: run_with_db_lock_retry(operation, label=label),
+            label=label,
+        )
+
+    def write_queue_stats(self) -> dict:
+        return self._write_serializer.stats()
+
+    def close(self) -> None:
+        serializer = getattr(self, "_write_serializer", None)
+        if serializer is not None:
+            serializer.shutdown()
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path, timeout=SQLITE_BUSY_TIMEOUT_MS / 1000)
@@ -295,18 +360,20 @@ class Database:
         role: str,
     ) -> Dict[str, Any]:
         now = time.time()
-        with self._lock, self._connect() as conn:
-            conn.execute(
-                """
-                INSERT INTO users (id, display_name, role, password_hash, created_at, last_login_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (user_id, display_name, role, password_hash, now, now),
-            )
-            conn.execute(
-                "INSERT INTO shelves (id, name, owner_user_id, created_at) VALUES (?, ?, ?, ?)",
-                (uuid.uuid4().hex, FAVORITES_SHELF, user_id, now),
-            )
+        def _write() -> Any:
+            with self._connect() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO users (id, display_name, role, password_hash, created_at, last_login_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (user_id, display_name, role, password_hash, now, now),
+                )
+                conn.execute(
+                    "INSERT INTO shelves (id, name, owner_user_id, created_at) VALUES (?, ?, ?, ?)",
+                    (uuid.uuid4().hex, FAVORITES_SHELF, user_id, now),
+                )
+        self.run_write(_write, label='create_local_user')
         row = self.get_user(user_id)
         assert row is not None
         return row
@@ -335,19 +402,25 @@ class Database:
         return int(row["n"] if row else 0)
 
     def update_user_role(self, user_id: str, role: str) -> None:
-        with self._lock, self._connect() as conn:
-            conn.execute("UPDATE users SET role = ? WHERE id = ?", (role, user_id))
+        def _write() -> Any:
+            with self._connect() as conn:
+                conn.execute("UPDATE users SET role = ? WHERE id = ?", (role, user_id))
+        self.run_write(_write, label='update_user_role')
 
     def update_user_password(self, user_id: str, password_hash: str) -> None:
-        with self._lock, self._connect() as conn:
-            conn.execute(
-                "UPDATE users SET password_hash = ?, session_epoch = session_epoch + 1 WHERE id = ?",
-                (password_hash, user_id),
-            )
+        def _write() -> Any:
+            with self._connect() as conn:
+                conn.execute(
+                    "UPDATE users SET password_hash = ?, session_epoch = session_epoch + 1 WHERE id = ?",
+                    (password_hash, user_id),
+                )
+        self.run_write(_write, label='update_user_password')
 
     def touch_login(self, user_id: str) -> None:
-        with self._lock, self._connect() as conn:
-            conn.execute("UPDATE users SET last_login_at = ? WHERE id = ?", (time.time(), user_id))
+        def _write() -> Any:
+            with self._connect() as conn:
+                conn.execute("UPDATE users SET last_login_at = ? WHERE id = ?", (time.time(), user_id))
+        self.run_write(_write, label='touch_login')
 
     # --- invites --------------------------------------------------------------
 
@@ -361,15 +434,17 @@ class Database:
         expires_at: float,
     ) -> Dict[str, Any]:
         now = time.time()
-        with self._lock, self._connect() as conn:
-            conn.execute(
-                """
-                INSERT INTO invites (
-                    id, token_hash, created_by, role, status, expires_at, created_at
-                ) VALUES (?, ?, ?, ?, 'pending', ?, ?)
-                """,
-                (invite_id, token_hash, created_by, role, expires_at, now),
-            )
+        def _write() -> Any:
+            with self._connect() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO invites (
+                        id, token_hash, created_by, role, status, expires_at, created_at
+                    ) VALUES (?, ?, ?, ?, 'pending', ?, ?)
+                    """,
+                    (invite_id, token_hash, created_by, role, expires_at, now),
+                )
+        self.run_write(_write, label='create_invite')
         row = self.get_invite(invite_id)
         assert row is not None
         return row
@@ -385,11 +460,13 @@ class Database:
         return _row_dict(row)
 
     def revoke_invite(self, invite_id: str) -> None:
-        with self._lock, self._connect() as conn:
-            conn.execute(
-                "UPDATE invites SET status = 'revoked' WHERE id = ? AND status = 'pending'",
-                (invite_id,),
-            )
+        def _write() -> Any:
+            with self._connect() as conn:
+                conn.execute(
+                    "UPDATE invites SET status = 'revoked' WHERE id = ? AND status = 'pending'",
+                    (invite_id,),
+                )
+        self.run_write(_write, label='revoke_invite')
 
     def create_local_user_and_redeem_invite(
         self,
@@ -402,9 +479,10 @@ class Database:
     ) -> Dict[str, Any]:
         """Insert a local user and burn the invite in one SQLite transaction."""
         now = time.time()
-        conn = self._connect()
-        try:
-            with self._lock:
+
+        def _write() -> None:
+            conn = self._connect()
+            try:
                 conn.execute("BEGIN IMMEDIATE")
                 conn.execute(
                     """
@@ -428,16 +506,18 @@ class Database:
                 if int(cursor.rowcount or 0) != 1:
                     raise InviteConflict("Invite has already been used")
                 conn.commit()
-        except sqlite3.OperationalError as error:
-            conn.rollback()
-            if "locked" in str(error).lower() or "busy" in str(error).lower():
-                raise InviteConflict("Invite has already been used") from error
-            raise
-        except Exception:
-            conn.rollback()
-            raise
-        finally:
-            conn.close()
+            except sqlite3.OperationalError as error:
+                conn.rollback()
+                if "locked" in str(error).lower() or "busy" in str(error).lower():
+                    raise InviteConflict("Invite has already been used") from error
+                raise
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                conn.close()
+
+        self.run_write(_write, label="create_local_user_and_redeem_invite")
         user = self.get_user(user_id)
         invite = self.get_invite(invite_id)
         assert user is not None and invite is not None
@@ -494,124 +574,126 @@ class Database:
             "part_origin",
             "repair_fail_count",
         )
-        with self._lock, self._connect() as conn:
-            existing = conn.execute("SELECT * FROM works WHERE id = ?", (work_id,)).fetchone()
-            if existing:
-                for key in preserve:
-                    if key not in work:
-                        payload[key] = existing[key]
-                # Keep the larger known multipart total when re-organizing another part.
-                if (
-                    "part_total" in work
-                    and existing["part_total"] is not None
-                    and payload["part_total"] is not None
-                ):
-                    payload["part_total"] = max(int(existing["part_total"]), int(payload["part_total"]))
+        def _write() -> Any:
+            with self._connect() as conn:
+                existing = conn.execute("SELECT * FROM works WHERE id = ?", (work_id,)).fetchone()
+                if existing:
+                    for key in preserve:
+                        if key not in work:
+                            payload[key] = existing[key]
+                    # Keep the larger known multipart total when re-organizing another part.
+                    if (
+                        "part_total" in work
+                        and existing["part_total"] is not None
+                        and payload["part_total"] is not None
+                    ):
+                        payload["part_total"] = max(int(existing["part_total"]), int(payload["part_total"]))
+                    conn.execute(
+                        """
+                        UPDATE works SET
+                            kind=?, title=?, author=?, series_name=?, series_index=?, year=?,
+                            isbn=?, mbid=?, asin=?, narrator=?, description=?, publisher=?, genre=?, cover_path=?,
+                            folder_path=?, abs_item_id=?, synopsis_source=?, llm_blurb=?,
+                            atmosphere_path=?, art_attribution=?, review_state=?, review_reason=?,
+                            music_state=?, indexer_guid=?, part_total=?, part_style=?, part_base=?,
+                            part_origin=?, repair_fail_count=?, updated_at=?
+                        WHERE id=?
+                        """,
+                        (
+                            payload["kind"],
+                            payload["title"],
+                            payload["author"],
+                            payload["series_name"],
+                            payload["series_index"],
+                            payload["year"],
+                            payload["isbn"],
+                            payload["mbid"],
+                            payload["asin"],
+                            payload["narrator"],
+                            payload["description"],
+                            payload["publisher"],
+                            payload["genre"],
+                            payload["cover_path"],
+                            payload["folder_path"],
+                            payload["abs_item_id"],
+                            payload["synopsis_source"],
+                            payload["llm_blurb"],
+                            payload["atmosphere_path"],
+                            payload["art_attribution"],
+                            payload["review_state"],
+                            payload["review_reason"],
+                            payload["music_state"],
+                            payload["indexer_guid"],
+                            payload["part_total"],
+                            payload["part_style"],
+                            payload["part_base"],
+                            payload["part_origin"],
+                            payload["repair_fail_count"],
+                            payload["updated_at"],
+                            work_id,
+                        ),
+                    )
+                    conn.execute("DELETE FROM works_fts WHERE work_id = ?", (work_id,))
+                else:
+                    conn.execute(
+                        """
+                        INSERT INTO works (
+                            id, kind, title, author, series_name, series_index, year, isbn, mbid,
+                            asin, narrator, description, publisher, genre, cover_path, folder_path, abs_item_id,
+                            synopsis_source, llm_blurb, atmosphere_path, art_attribution,
+                            review_state, review_reason, music_state, indexer_guid, part_total,
+                            part_style, part_base, part_origin, repair_fail_count, created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            payload["id"],
+                            payload["kind"],
+                            payload["title"],
+                            payload["author"],
+                            payload["series_name"],
+                            payload["series_index"],
+                            payload["year"],
+                            payload["isbn"],
+                            payload["mbid"],
+                            payload["asin"],
+                            payload["narrator"],
+                            payload["description"],
+                            payload["publisher"],
+                            payload["genre"],
+                            payload["cover_path"],
+                            payload["folder_path"],
+                            payload["abs_item_id"],
+                            payload["synopsis_source"],
+                            payload["llm_blurb"],
+                            payload["atmosphere_path"],
+                            payload["art_attribution"],
+                            payload["review_state"],
+                            payload["review_reason"],
+                            payload["music_state"],
+                            payload["indexer_guid"],
+                            payload["part_total"],
+                            payload["part_style"],
+                            payload["part_base"],
+                            payload["part_origin"],
+                            payload["repair_fail_count"],
+                            payload["created_at"],
+                            payload["updated_at"],
+                        ),
+                    )
                 conn.execute(
                     """
-                    UPDATE works SET
-                        kind=?, title=?, author=?, series_name=?, series_index=?, year=?,
-                        isbn=?, mbid=?, asin=?, narrator=?, description=?, publisher=?, genre=?, cover_path=?,
-                        folder_path=?, abs_item_id=?, synopsis_source=?, llm_blurb=?,
-                        atmosphere_path=?, art_attribution=?, review_state=?, review_reason=?,
-                        music_state=?, indexer_guid=?, part_total=?, part_style=?, part_base=?,
-                        part_origin=?, repair_fail_count=?, updated_at=?
-                    WHERE id=?
+                    INSERT INTO works_fts (work_id, title, author, genre, description)
+                    VALUES (?, ?, ?, ?, ?)
                     """,
                     (
-                        payload["kind"],
-                        payload["title"],
-                        payload["author"],
-                        payload["series_name"],
-                        payload["series_index"],
-                        payload["year"],
-                        payload["isbn"],
-                        payload["mbid"],
-                        payload["asin"],
-                        payload["narrator"],
-                        payload["description"],
-                        payload["publisher"],
-                        payload["genre"],
-                        payload["cover_path"],
-                        payload["folder_path"],
-                        payload["abs_item_id"],
-                        payload["synopsis_source"],
-                        payload["llm_blurb"],
-                        payload["atmosphere_path"],
-                        payload["art_attribution"],
-                        payload["review_state"],
-                        payload["review_reason"],
-                        payload["music_state"],
-                        payload["indexer_guid"],
-                        payload["part_total"],
-                        payload["part_style"],
-                        payload["part_base"],
-                        payload["part_origin"],
-                        payload["repair_fail_count"],
-                        payload["updated_at"],
                         work_id,
+                        payload["title"] or "",
+                        payload["author"] or "",
+                        payload["genre"] or "",
+                        payload["description"] or "",
                     ),
                 )
-                conn.execute("DELETE FROM works_fts WHERE work_id = ?", (work_id,))
-            else:
-                conn.execute(
-                    """
-                    INSERT INTO works (
-                        id, kind, title, author, series_name, series_index, year, isbn, mbid,
-                        asin, narrator, description, publisher, genre, cover_path, folder_path, abs_item_id,
-                        synopsis_source, llm_blurb, atmosphere_path, art_attribution,
-                        review_state, review_reason, music_state, indexer_guid, part_total,
-                        part_style, part_base, part_origin, repair_fail_count, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        payload["id"],
-                        payload["kind"],
-                        payload["title"],
-                        payload["author"],
-                        payload["series_name"],
-                        payload["series_index"],
-                        payload["year"],
-                        payload["isbn"],
-                        payload["mbid"],
-                        payload["asin"],
-                        payload["narrator"],
-                        payload["description"],
-                        payload["publisher"],
-                        payload["genre"],
-                        payload["cover_path"],
-                        payload["folder_path"],
-                        payload["abs_item_id"],
-                        payload["synopsis_source"],
-                        payload["llm_blurb"],
-                        payload["atmosphere_path"],
-                        payload["art_attribution"],
-                        payload["review_state"],
-                        payload["review_reason"],
-                        payload["music_state"],
-                        payload["indexer_guid"],
-                        payload["part_total"],
-                        payload["part_style"],
-                        payload["part_base"],
-                        payload["part_origin"],
-                        payload["repair_fail_count"],
-                        payload["created_at"],
-                        payload["updated_at"],
-                    ),
-                )
-            conn.execute(
-                """
-                INSERT INTO works_fts (work_id, title, author, genre, description)
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (
-                    work_id,
-                    payload["title"] or "",
-                    payload["author"] or "",
-                    payload["genre"] or "",
-                    payload["description"] or "",
-                ),
-            )
+        self.run_write(_write, label='upsert_work')
         row = self.get_work(work_id)
         assert row is not None
         return row
@@ -1230,23 +1312,25 @@ class Database:
     def add_file(self, record: Dict[str, Any]) -> Dict[str, Any]:
         file_id = str(record.get("id") or uuid.uuid4().hex)
         now = time.time()
-        with self._lock, self._connect() as conn:
-            conn.execute(
-                """
-                INSERT INTO files (id, work_id, path, filename, kind, size, part, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    file_id,
-                    record.get("work_id"),
-                    record["path"],
-                    record["filename"],
-                    record.get("kind"),
-                    record.get("size"),
-                    record.get("part"),
-                    now,
-                ),
-            )
+        def _write() -> Any:
+            with self._connect() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO files (id, work_id, path, filename, kind, size, part, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        file_id,
+                        record.get("work_id"),
+                        record["path"],
+                        record["filename"],
+                        record.get("kind"),
+                        record.get("size"),
+                        record.get("part"),
+                        now,
+                    ),
+                )
+        self.run_write(_write, label='add_file')
         return self.get_file(file_id) or {}
 
     def get_file(self, file_id: str) -> Optional[Dict[str, Any]]:
@@ -1266,22 +1350,24 @@ class Database:
         existing = self.get_file_by_path(record["path"])
         if existing is None:
             return self.add_file(record)
-        with self._lock, self._connect() as conn:
-            part = record["part"] if "part" in record else existing.get("part")
-            conn.execute(
-                """
-                UPDATE files SET work_id = ?, filename = ?, kind = ?, size = ?, part = ?
-                WHERE id = ?
-                """,
-                (
-                    record.get("work_id") or existing.get("work_id"),
-                    record.get("filename") or existing.get("filename"),
-                    record.get("kind") or existing.get("kind"),
-                    record["size"] if record.get("size") is not None else existing.get("size"),
-                    part,
-                    existing["id"],
-                ),
-            )
+        def _write() -> Any:
+            with self._connect() as conn:
+                part = record["part"] if "part" in record else existing.get("part")
+                conn.execute(
+                    """
+                    UPDATE files SET work_id = ?, filename = ?, kind = ?, size = ?, part = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        record.get("work_id") or existing.get("work_id"),
+                        record.get("filename") or existing.get("filename"),
+                        record.get("kind") or existing.get("kind"),
+                        record["size"] if record.get("size") is not None else existing.get("size"),
+                        part,
+                        existing["id"],
+                    ),
+                )
+        self.run_write(_write, label='upsert_file')
         return self.get_file(str(existing["id"])) or {}
 
     def files_for_work(self, work_id: str) -> List[Dict[str, Any]]:
@@ -1299,48 +1385,57 @@ class Database:
         if not src or src == dest:
             return 0
         prefix = src + "/"
-        updated = 0
-        with self._lock, self._connect() as conn:
-            rows = conn.execute("SELECT id, path FROM files WHERE work_id = ?", (work_id,)).fetchall()
-            for row in rows:
-                old = str(row["path"] or "")
-                if old == src or old.startswith(prefix):
-                    conn.execute("UPDATE files SET path = ? WHERE id = ?", (dest + old[len(src) :], row["id"]))
-                    updated += 1
-        return updated
+
+        def _write() -> int:
+            updated = 0
+            with self._connect() as conn:
+                rows = conn.execute("SELECT id, path FROM files WHERE work_id = ?", (work_id,)).fetchall()
+                for row in rows:
+                    old = str(row["path"] or "")
+                    if old == src or old.startswith(prefix):
+                        conn.execute(
+                            "UPDATE files SET path = ? WHERE id = ?",
+                            (dest + old[len(src) :], row["id"]),
+                        )
+                        updated += 1
+            return updated
+
+        return int(self.run_write(_write, label="relocate_work_files") or 0)
 
     def create_job(self, job: Dict[str, Any]) -> Dict[str, Any]:
         now = time.time()
         job_id = str(job.get("id") or uuid.uuid4().hex)
-        with self._lock, self._connect() as conn:
-            conn.execute(
-                """
-                INSERT INTO jobs (
-                    id, work_id, nzo_id, status, indexer_guid, title, kind,
-                    requested_by, storage_path, error, sab_status, nzo_name,
-                    percent, bytes, payload_json, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    job_id,
-                    job.get("work_id"),
-                    job.get("nzo_id"),
-                    job["status"],
-                    job.get("indexer_guid"),
-                    job.get("title"),
-                    job.get("kind"),
-                    job.get("requested_by"),
-                    job.get("storage_path"),
-                    job.get("error"),
-                    job.get("sab_status"),
-                    job.get("nzo_name"),
-                    job.get("percent"),
-                    job.get("bytes"),
-                    _dumps(job.get("payload") or {}),
-                    now,
-                    now,
-                ),
-            )
+        def _write() -> Any:
+            with self._connect() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO jobs (
+                        id, work_id, nzo_id, status, indexer_guid, title, kind,
+                        requested_by, storage_path, error, sab_status, nzo_name,
+                        percent, bytes, payload_json, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        job_id,
+                        job.get("work_id"),
+                        job.get("nzo_id"),
+                        job["status"],
+                        job.get("indexer_guid"),
+                        job.get("title"),
+                        job.get("kind"),
+                        job.get("requested_by"),
+                        job.get("storage_path"),
+                        job.get("error"),
+                        job.get("sab_status"),
+                        job.get("nzo_name"),
+                        job.get("percent"),
+                        job.get("bytes"),
+                        _dumps(job.get("payload") or {}),
+                        now,
+                        now,
+                    ),
+                )
+        self.run_write(_write, label='create_job')
         row = self.get_job(job_id)
         assert row is not None
         return row
@@ -1401,11 +1496,13 @@ class Database:
             return self.get_job(job_id)
         updates["updated_at"] = time.time()
         assignments = ", ".join(f"{key} = ?" for key in updates)
-        with self._lock, self._connect() as conn:
-            conn.execute(
-                f"UPDATE jobs SET {assignments} WHERE id = ?",
-                (*updates.values(), job_id),
-            )
+        def _write() -> Any:
+            with self._connect() as conn:
+                conn.execute(
+                    f"UPDATE jobs SET {assignments} WHERE id = ?",
+                    (*updates.values(), job_id),
+                )
+        self.run_write(_write, label='update_job')
         return self.get_job(job_id)
 
     def get_job_by_storage_path(self, path: str) -> Optional[Dict[str, Any]]:
@@ -1455,11 +1552,13 @@ class Database:
             return data
         now = time.time()
         shelf_id = uuid.uuid4().hex
-        with self._lock, self._connect() as conn:
-            conn.execute(
-                "INSERT INTO shelves (id, name, owner_user_id, created_at) VALUES (?, ?, ?, ?)",
-                (shelf_id, FAVORITES_SHELF, user_id, now),
-            )
+        def _write() -> Any:
+            with self._connect() as conn:
+                conn.execute(
+                    "INSERT INTO shelves (id, name, owner_user_id, created_at) VALUES (?, ?, ?, ?)",
+                    (shelf_id, FAVORITES_SHELF, user_id, now),
+                )
+        self.run_write(_write, label='favorites_shelf')
         return {"id": shelf_id, "name": FAVORITES_SHELF, "owner_user_id": user_id, "created_at": now}
 
     def add_favorite(self, user_id: str, work_id: str) -> bool:
@@ -1467,11 +1566,13 @@ class Database:
         if self.is_favorite(user_id, work_id):
             return False
         shelf = self.favorites_shelf(user_id)
-        with self._lock, self._connect() as conn:
-            conn.execute(
-                "INSERT OR IGNORE INTO shelf_items (shelf_id, work_id, added_at) VALUES (?, ?, ?)",
-                (shelf["id"], work_id, time.time()),
-            )
+        def _write() -> Any:
+            with self._connect() as conn:
+                conn.execute(
+                    "INSERT OR IGNORE INTO shelf_items (shelf_id, work_id, added_at) VALUES (?, ?, ?)",
+                    (shelf["id"], work_id, time.time()),
+                )
+        self.run_write(_write, label='add_favorite')
         return True
 
     def toggle_favorite(self, user_id: str, work_id: str) -> bool:
@@ -1481,18 +1582,20 @@ class Database:
                 "SELECT 1 FROM shelf_items WHERE shelf_id = ? AND work_id = ?",
                 (shelf["id"], work_id),
             ).fetchone()
-        with self._lock, self._connect() as conn:
-            if existing:
+        def _write() -> Any:
+            with self._connect() as conn:
+                if existing:
+                    conn.execute(
+                        "DELETE FROM shelf_items WHERE shelf_id = ? AND work_id = ?",
+                        (shelf["id"], work_id),
+                    )
+                    return False
                 conn.execute(
-                    "DELETE FROM shelf_items WHERE shelf_id = ? AND work_id = ?",
-                    (shelf["id"], work_id),
+                    "INSERT INTO shelf_items (shelf_id, work_id, added_at) VALUES (?, ?, ?)",
+                    (shelf["id"], work_id, time.time()),
                 )
-                return False
-            conn.execute(
-                "INSERT INTO shelf_items (shelf_id, work_id, added_at) VALUES (?, ?, ?)",
-                (shelf["id"], work_id, time.time()),
-            )
-            return True
+                return True
+        return self.run_write(_write, label='toggle_favorite')
 
     def is_favorite(self, user_id: str, work_id: str) -> bool:
         shelf = self.favorites_shelf(user_id)
@@ -1528,18 +1631,20 @@ class Database:
     ) -> Dict[str, Any]:
         now = time.time()
         frac = max(0.0, min(1.0, float(fraction)))
-        with self._lock, self._connect() as conn:
-            conn.execute(
-                """
-                INSERT INTO progress (user_id, work_id, position, fraction, updated_at)
-                VALUES (?, ?, ?, ?, ?)
-                ON CONFLICT(user_id, work_id) DO UPDATE SET
-                    position = excluded.position,
-                    fraction = excluded.fraction,
-                    updated_at = excluded.updated_at
-                """,
-                (user_id, work_id, position, frac, now),
-            )
+        def _write() -> Any:
+            with self._connect() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO progress (user_id, work_id, position, fraction, updated_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(user_id, work_id) DO UPDATE SET
+                        position = excluded.position,
+                        fraction = excluded.fraction,
+                        updated_at = excluded.updated_at
+                    """,
+                    (user_id, work_id, position, frac, now),
+                )
+        self.run_write(_write, label='upsert_progress')
         row = self.get_progress(user_id, work_id)
         assert row is not None
         return row
@@ -1587,37 +1692,39 @@ class Database:
             "created_at": indexer.get("created_at") or now,
             "updated_at": now,
         }
-        with self._lock, self._connect() as conn:
-            existing = conn.execute("SELECT id FROM indexers WHERE id = ?", (indexer_id,)).fetchone()
-            if existing:
-                conn.execute(
-                    """
-                    UPDATE indexers SET
-                        name=?, kind=?, base_url=?, token_set=?, last_caps_at=?,
-                        last_caps_ok=?, updated_at=?
-                    WHERE id=?
-                    """,
-                    (
-                        payload["name"],
-                        payload["kind"],
-                        payload["base_url"],
-                        payload["token_set"],
-                        payload["last_caps_at"],
-                        payload["last_caps_ok"],
-                        payload["updated_at"],
-                        indexer_id,
-                    ),
-                )
-            else:
-                conn.execute(
-                    """
-                    INSERT INTO indexers (
-                        id, name, kind, base_url, token_set, last_caps_at,
-                        last_caps_ok, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    tuple(payload.values()),
-                )
+        def _write() -> Any:
+            with self._connect() as conn:
+                existing = conn.execute("SELECT id FROM indexers WHERE id = ?", (indexer_id,)).fetchone()
+                if existing:
+                    conn.execute(
+                        """
+                        UPDATE indexers SET
+                            name=?, kind=?, base_url=?, token_set=?, last_caps_at=?,
+                            last_caps_ok=?, updated_at=?
+                        WHERE id=?
+                        """,
+                        (
+                            payload["name"],
+                            payload["kind"],
+                            payload["base_url"],
+                            payload["token_set"],
+                            payload["last_caps_at"],
+                            payload["last_caps_ok"],
+                            payload["updated_at"],
+                            indexer_id,
+                        ),
+                    )
+                else:
+                    conn.execute(
+                        """
+                        INSERT INTO indexers (
+                            id, name, kind, base_url, token_set, last_caps_at,
+                            last_caps_ok, created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        tuple(payload.values()),
+                    )
+        self.run_write(_write, label='upsert_indexer')
         row = self.get_indexer(indexer_id)
         assert row is not None
         return row
@@ -1657,54 +1764,58 @@ class Database:
             "created_at": feed.get("created_at") or now,
             "updated_at": now,
         }
-        with self._lock, self._connect() as conn:
-            existing = conn.execute(
-                "SELECT last_guid, last_error, last_poll_at FROM rss_feeds WHERE id = ?",
-                (feed_id,),
-            ).fetchone()
-            if existing:
-                if "last_guid" not in feed:
-                    payload["last_guid"] = existing["last_guid"]
-                if "last_error" not in feed:
-                    payload["last_error"] = existing["last_error"]
-                if "last_poll_at" not in feed:
-                    payload["last_poll_at"] = existing["last_poll_at"]
-                conn.execute(
-                    """
-                    UPDATE rss_feeds SET
-                        name=?, url=?, kind=?, enabled=?, last_guid=?, last_error=?,
-                        last_poll_at=?, updated_at=?
-                    WHERE id=?
-                    """,
-                    (
-                        payload["name"],
-                        payload["url"],
-                        payload["kind"],
-                        payload["enabled"],
-                        payload["last_guid"],
-                        payload["last_error"],
-                        payload["last_poll_at"],
-                        payload["updated_at"],
-                        feed_id,
-                    ),
-                )
-            else:
-                conn.execute(
-                    """
-                    INSERT INTO rss_feeds (
-                        id, name, url, kind, enabled, last_guid, last_error,
-                        last_poll_at, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    tuple(payload.values()),
-                )
+        def _write() -> Any:
+            with self._connect() as conn:
+                existing = conn.execute(
+                    "SELECT last_guid, last_error, last_poll_at FROM rss_feeds WHERE id = ?",
+                    (feed_id,),
+                ).fetchone()
+                if existing:
+                    if "last_guid" not in feed:
+                        payload["last_guid"] = existing["last_guid"]
+                    if "last_error" not in feed:
+                        payload["last_error"] = existing["last_error"]
+                    if "last_poll_at" not in feed:
+                        payload["last_poll_at"] = existing["last_poll_at"]
+                    conn.execute(
+                        """
+                        UPDATE rss_feeds SET
+                            name=?, url=?, kind=?, enabled=?, last_guid=?, last_error=?,
+                            last_poll_at=?, updated_at=?
+                        WHERE id=?
+                        """,
+                        (
+                            payload["name"],
+                            payload["url"],
+                            payload["kind"],
+                            payload["enabled"],
+                            payload["last_guid"],
+                            payload["last_error"],
+                            payload["last_poll_at"],
+                            payload["updated_at"],
+                            feed_id,
+                        ),
+                    )
+                else:
+                    conn.execute(
+                        """
+                        INSERT INTO rss_feeds (
+                            id, name, url, kind, enabled, last_guid, last_error,
+                            last_poll_at, created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        tuple(payload.values()),
+                    )
+        self.run_write(_write, label='upsert_rss_feed')
         row = self.get_rss_feed(feed_id)
         assert row is not None
         return row
 
     def delete_rss_feed(self, feed_id: str) -> None:
-        with self._lock, self._connect() as conn:
-            conn.execute("DELETE FROM rss_feeds WHERE id = ?", (feed_id,))
+        def _write() -> Any:
+            with self._connect() as conn:
+                conn.execute("DELETE FROM rss_feeds WHERE id = ?", (feed_id,))
+        self.run_write(_write, label='delete_rss_feed')
 
     # --- delight prefs / whispers / celebrations ------------------------------
 
@@ -1734,18 +1845,20 @@ class Database:
         if prefs is not None:
             next_prefs.update(prefs)
         now = time.time()
-        with self._lock, self._connect() as conn:
-            conn.execute(
-                """
-                INSERT INTO user_prefs (user_id, ambient, prefs_json, updated_at)
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT(user_id) DO UPDATE SET
-                    ambient=excluded.ambient,
-                    prefs_json=excluded.prefs_json,
-                    updated_at=excluded.updated_at
-                """,
-                (user_id, next_ambient, _dumps(next_prefs), now),
-            )
+        def _write() -> Any:
+            with self._connect() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO user_prefs (user_id, ambient, prefs_json, updated_at)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(user_id) DO UPDATE SET
+                        ambient=excluded.ambient,
+                        prefs_json=excluded.prefs_json,
+                        updated_at=excluded.updated_at
+                    """,
+                    (user_id, next_ambient, _dumps(next_prefs), now),
+                )
+        self.run_write(_write, label='set_user_prefs')
         return self.get_user_prefs(user_id)
 
     def list_whispers(self, work_id: str, *, limit: int = 40) -> List[Dict[str, Any]]:
@@ -1766,14 +1879,16 @@ class Database:
     def add_whisper(self, *, work_id: str, user_id: str, body: str) -> Dict[str, Any]:
         whisper_id = uuid.uuid4().hex
         now = time.time()
-        with self._lock, self._connect() as conn:
-            conn.execute(
-                """
-                INSERT INTO whispers (id, work_id, user_id, body, created_at)
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (whisper_id, work_id, user_id, body, now),
-            )
+        def _write() -> Any:
+            with self._connect() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO whispers (id, work_id, user_id, body, created_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (whisper_id, work_id, user_id, body, now),
+                )
+        self.run_write(_write, label='add_whisper')
         rows = self.list_whispers(work_id, limit=1)
         return rows[0] if rows else {"id": whisper_id, "work_id": work_id, "user_id": user_id, "body": body, "created_at": now}
 
@@ -1822,14 +1937,16 @@ class Database:
         return [row for row in candidates if str(row.get("key") or "") not in seen]
 
     def mark_celebration_seen(self, user_id: str, celebration_key: str) -> None:
-        with self._lock, self._connect() as conn:
-            conn.execute(
-                """
-                INSERT OR IGNORE INTO celebrations_seen (user_id, celebration_key, seen_at)
-                VALUES (?, ?, ?)
-                """,
-                (user_id, celebration_key, time.time()),
-            )
+        def _write() -> Any:
+            with self._connect() as conn:
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO celebrations_seen (user_id, celebration_key, seen_at)
+                    VALUES (?, ?, ?)
+                    """,
+                    (user_id, celebration_key, time.time()),
+                )
+        self.run_write(_write, label='mark_celebration_seen')
 
     def recent_job_durations(
         self,

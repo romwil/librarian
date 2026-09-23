@@ -71,6 +71,7 @@ from librarian.extra_files_reprocess_progress import (
     begin_extra_files_reprocess_run,
     finish_extra_files_reprocess_run,
     is_extra_files_reprocess_running,
+    is_extra_files_reprocess_stale,
     read_extra_files_reprocess_progress,
 )
 from librarian.gaps import catalog_gaps, gap_cards, gaps_for_series
@@ -419,6 +420,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             yield
         finally:
             poller.stop()
+            db.close()
 
     app = FastAPI(
         title="Librarian",
@@ -1538,15 +1540,19 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             return progress
         live = extra_files_reprocess_thread.get("thread")
         alive = live is not None and live.is_alive()
-        if alive:
+        if alive and not is_extra_files_reprocess_stale(progress):
             progress["extra_files_remaining"] = db.count_works(
                 review_state="needs_review", review_reason="extra_files"
             )
             return progress
-        finished = finish_extra_files_reprocess_run(
-            root,
-            error="Clear extra-files stopped — the lamp was restarted. Try again.",
-        )
+        if alive:
+            error = (
+                "Clear extra-files stalled (no progress heartbeat). "
+                "Try Clear again — large author folders now queue instead of blocking."
+            )
+        else:
+            error = "Clear extra-files stopped — the lamp was restarted. Try again."
+        finished = finish_extra_files_reprocess_run(root, error=error)
         finished["extra_files_remaining"] = db.count_works(
             review_state="needs_review", review_reason="extra_files"
         )

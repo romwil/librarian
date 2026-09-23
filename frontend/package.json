@@ -1,10 +1,12 @@
 {
   "name": "librarian-frontend",
   "private": true,
-  "version": "0.4.4",
+  "version": "0.4.5",
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "prebuild": "npm run release-notes",
+    "release-notes": "bash ../scripts/generate-release-notes.sh --require-version $(node -p \"require('./package.json').version\")",
     "build": "vite build",
     "preview": "vite preview",
     "test": "node --test src/*.test.js src/lib/*.test.js"

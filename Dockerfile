@@ -19,7 +19,12 @@ RUN --mount=type=cache,target=/root/.npm \
     npm ci
 
 COPY frontend/ ./
-RUN npm run build
+# CHANGELOG + generator live outside frontend/; prebuild writes public/release-notes.json
+# so What’s New / About cannot ship stale notes after a version bump.
+COPY CHANGELOG.md /CHANGELOG.md
+COPY scripts/generate-release-notes.sh /scripts/generate-release-notes.sh
+RUN apk add --no-cache bash python3 \
+    && npm run build
 
 FROM python:3.12-slim
 

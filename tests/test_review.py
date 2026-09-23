@@ -566,7 +566,7 @@ def test_review_reprocess_extra_files_splits_calibre_author(tmp_path, monkeypatc
     body = resp.json()
     assert body["kicked_off"] is True
     assert body["status"] in ("running", "completed")
-    status = _wait_extra_files_reprocess_status(client)
+    status = _wait_extra_files_reprocess_status(client, timeout=30.0)
     assert status["status"] == "completed"
     result = status.get("result") or {}
     assert int(result.get("split") or status.get("split") or 0) == 1

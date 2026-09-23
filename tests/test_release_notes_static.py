@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from unittest import mock
 
 from fastapi.testclient import TestClient
 
+from librarian._version import __version__
 from librarian.web.app import FRONTEND_DIST, create_app
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_PUBLIC_NOTES = _REPO_ROOT / "frontend" / "public" / "release-notes.json"
 
 
 def test_release_notes_json_served(tmp_path):
@@ -26,6 +32,21 @@ def test_release_notes_json_served(tmp_path):
     assert isinstance(body["releases"], list)
     assert len(body["releases"]) >= 1
     assert body["releases"][0].get("version")
+
+
+def test_release_notes_top_version_matches_package():
+    """What’s New keys off __version__; shipped notes must lead with that release."""
+    assert _PUBLIC_NOTES.is_file(), (
+        "frontend/public/release-notes.json missing — run scripts/generate-release-notes.sh"
+    )
+    payload = json.loads(_PUBLIC_NOTES.read_text(encoding="utf-8"))
+    releases = payload.get("releases") or []
+    assert releases, "release-notes.json has no releases"
+    assert releases[0].get("version") == __version__, (
+        f"Top release-notes version {releases[0].get('version')!r} != package {__version__!r}. "
+        "Bump CHANGELOG, then ./scripts/generate-release-notes.sh --require-version "
+        f"{__version__} (npm run build also regenerates via prebuild)."
+    )
 
 
 def test_release_notes_json_404_when_missing(tmp_path):
