@@ -268,6 +268,10 @@ export function humanError(error, context = "") {
       "Enrich can keep going; covers may land under the cover cache."
     );
   }
+  // Known Apply / Review guidance — keep verbatim even when slightly long.
+  if (/already exists at the library destination|will not overwrite|Archives are still here|No book, comic, or audio file|No complete folder/i.test(raw)) {
+    return raw;
+  }
   if (!raw || raw.length > 180 || /traceback|exception/i.test(raw)) {
     return "Something went wrong in the stacks. Try again, or check Settings.";
   }

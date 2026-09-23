@@ -3536,6 +3536,12 @@ button.cover {
   max-width: 28rem;
   margin-inline: auto;
 }
+.review-loading {
+  margin-top: var(--space-4);
+}
+.review-loading .hall-shelves-skeleton {
+  max-width: 28rem;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .part-chase.is-shimmer,

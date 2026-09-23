@@ -242,6 +242,74 @@ def test_review_apply_collision_is_400_without_overwrite(tmp_path, monkeypatch):
     assert stored["review_reason"] == "collision"
 
 
+def test_review_apply_skips_calibre_named_shelf_duplicate(tmp_path, monkeypatch):
+    """Apply succeeds when the shelf already holds the same bytes under Calibre names.
+
+    dest_layout renames books to Title.epub; scanned Calibre shelves keep
+    "Title - Author.epub". Path-aligned collision checks miss that twin — payload
+    fingerprint must still treat it as an ignored duplicate and dismiss the slip.
+    """
+    settings = Settings(
+        books_root=str(tmp_path / "books"),
+        magazines_root=str(tmp_path / "magazines"),
+        comics_root=str(tmp_path / "comics"),
+        audiobooks_root=str(tmp_path / "audiobooks"),
+        incoming_music_root=str(tmp_path / "incoming"),
+        music_root=str(tmp_path / "music"),
+    )
+    client, app = _client(tmp_path, monkeypatch, settings=settings)
+    db = app.state.db
+    payload_epub = b"notorious-epub-bytes-identical"
+    payload_azw3 = b"notorious-azw3-bytes-identical"
+    dest_dir = Path(settings.books_root) / "Allison Brennan" / "Notorious"
+    dest_dir.mkdir(parents=True)
+    (dest_dir / "Notorious - Allison Brennan.epub").write_bytes(payload_epub)
+    (dest_dir / "Notorious - Allison Brennan.azw3").write_bytes(payload_azw3)
+    shelf = db.upsert_work(
+        {
+            "kind": "book",
+            "title": "Notorious",
+            "author": "Allison Brennan",
+            "folder_path": str(dest_dir),
+            "review_state": "none",
+        }
+    )
+    folder = tmp_path / "newlib" / "Allison Brennan" / "Notorious (8350)"
+    folder.mkdir(parents=True)
+    (folder / "Notorious - Allison Brennan.epub").write_bytes(payload_epub)
+    (folder / "Notorious - Allison Brennan.azw3").write_bytes(payload_azw3)
+    work = db.upsert_work(
+        {
+            "kind": "book",
+            "title": "Notorious",
+            "author": "Allison Brennan",
+            "review_state": "needs_review",
+            "review_reason": "low_confidence",
+            "folder_path": str(folder),
+        }
+    )
+    resp = client.post(
+        f"/api/review/{work['id']}/apply",
+        json={
+            "title": "Notorious",
+            "author": "Allison Brennan",
+            "kind": "book",
+            "folder": str(folder),
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body.get("skipped_duplicate") is True
+    assert body["work"]["id"] == work["id"]
+    assert body["work"]["review_state"] == "resolved"
+    assert body.get("shelf_work", {}).get("id") == shelf["id"]
+    # Dest untouched; source still present (duplicate ignore does not delete).
+    assert (dest_dir / "Notorious - Allison Brennan.epub").read_bytes() == payload_epub
+    assert not (dest_dir / "Notorious.epub").exists()
+    assert (folder / "Notorious - Allison Brennan.epub").is_file()
+    assert work["id"] not in {row["id"] for row in client.get("/api/review").json()["works"]}
+
+
 def test_review_list_links_shelf_work_on_collision(tmp_path, monkeypatch):
     settings = Settings(
         books_root=str(tmp_path / "books"),

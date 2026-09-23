@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 import {
   applyBodyFromDraft,
@@ -23,6 +26,9 @@ import {
   reviewBulkRowVisible,
   reviewExtraFilesProgressVisible,
 } from "./review.js";
+
+const root = dirname(fileURLToPath(import.meta.url));
+const reviewPageSrc = readFileSync(join(root, "pages/ReviewPage.jsx"), "utf8");
 
 describe("review identify form", () => {
   it("explains no_payload without blaming SAB path mapping first", () => {
@@ -268,5 +274,16 @@ describe("review LLM suggest helpers", () => {
   it("explains Audnexus match review reasons", () => {
     assert.match(reviewReasonCopy("audnexus_ambiguous"), /Audnexus/);
     assert.match(reviewReasonCopy("audnexus_unmatched"), /Audnexus/);
+  });
+});
+
+describe("ReviewPage loading", () => {
+  it("shows a warming state while review loads, not empty bag", () => {
+    assert.match(reviewPageSrc, /\[loading, setLoading\] = useState\(true\)/);
+    assert.match(reviewPageSrc, /data-testid="review-loading"/);
+    assert.match(reviewPageSrc, /Warming the lamp on the bagging area/);
+    assert.match(reviewPageSrc, /loading \? \(/);
+    assert.match(reviewPageSrc, /!works\.length/);
+    assert.match(reviewPageSrc, /\.finally\(\(\) => setLoading\(false\)\)/);
   });
 });

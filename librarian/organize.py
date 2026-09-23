@@ -12,7 +12,7 @@ from librarian.convert import maybe_convert_payload, maybe_par2_repair, maybe_un
 from librarian.covers import ensure_music_cover, fetch_cover
 from librarian.db import Database
 from librarian.delight import REVIEW_QUIET_HOURS, in_quiet_hours
-from librarian.file_identity import files_byte_identical
+from librarian.file_identity import files_byte_identical, volume_content_fingerprint
 from librarian.identify import (
     REVIEW_COLLISION,
     REVIEW_CONVERT,
@@ -92,8 +92,7 @@ MISSING_FOLDER_APPLY_ERROR = (
 )
 COLLISION_APPLY_ERROR = (
     "A file already exists at the library destination. "
-    "Apply will not overwrite. Change title, author, series, or folder so the "
-    "destination path is free, or Skip to keep what is on the shelf."
+    "Apply will not overwrite — change the title/folder, or Skip to keep the shelf copy."
 )
 
 
@@ -487,15 +486,22 @@ def organize_identified(
             collisions.append((src, dest))
         planned.append((src, dest))
     if collisions:
+        dest_folder = collisions[0][1].parent
         identical = all(files_byte_identical(src, dest) for src, dest in collisions)
         all_present = len(collisions) == len(planned)
-        if identical and all_present:
-            shelf = db.get_work_by_folder_path(str(collisions[0][1].parent))
+        # Path-aligned identical copies, OR the dest folder already holds the same
+        # media payload under different names (Calibre "Title - Author.epub" vs
+        # dest_layout's "Title.epub").
+        source_fp = volume_content_fingerprint(folder)
+        dest_fp = volume_content_fingerprint(dest_folder)
+        payload_duplicate = bool(source_fp and dest_fp and source_fp == dest_fp)
+        if (identical and all_present) or payload_duplicate:
+            shelf = db.get_work_by_folder_path(str(dest_folder))
             work = shelf or db.upsert_work(
                 {
                     **identity,
                     **part_fields,
-                    "folder_path": str(collisions[0][1].parent),
+                    "folder_path": str(dest_folder),
                     "review_state": "none",
                     "review_reason": None,
                     "indexer_guid": (indexer_item or {}).get("guid"),
@@ -725,6 +731,23 @@ def apply_review(
         force=True,
         move_source=True,
     )
+    if result.get("skipped_duplicate"):
+        # Shelf already holds the same bytes (possibly under Calibre filenames).
+        # Dismiss this Review slip; keep the shelved catalog row.
+        resolved_slip = db.upsert_work(
+            {
+                **work,
+                "review_state": "resolved",
+                "review_reason": None,
+            }
+        )
+        return {
+            **result,
+            "work": resolved_slip,
+            "shelf_work": result.get("work"),
+            "organized": False,
+            "skipped_duplicate": True,
+        }
     if not result["organized"]:
         reason = result.get("identity", {}).get("review_reason") or result["work"].get("review_reason")
         if reason == REVIEW_UNPACK_STUCK:

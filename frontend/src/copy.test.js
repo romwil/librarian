@@ -139,5 +139,22 @@ describe("reading room copy", () => {
       /shelf folder is locked|cover cache/i,
     );
   });
+
+  it("keeps Review Apply collision guidance instead of masking it", () => {
+    const collision =
+      "A file already exists at the library destination. " +
+      "Apply will not overwrite — change the title/folder, or Skip to keep the shelf copy.";
+    assert.equal(humanError(collision), collision);
+    assert.equal(
+      humanError({
+        status: 400,
+        message:
+          "A file already exists at the library destination. Apply will not overwrite. " +
+          "Change title, author, series, or folder so the destination path is free, or Skip to keep what is on the shelf.",
+      }),
+      "A file already exists at the library destination. Apply will not overwrite. " +
+        "Change title, author, series, or folder so the destination path is free, or Skip to keep what is on the shelf.",
+    );
+  });
 });
 

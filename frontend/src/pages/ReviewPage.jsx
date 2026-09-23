@@ -34,6 +34,7 @@ export default function ReviewPage() {
   const [params] = useSearchParams();
   const focusId = String(params.get("work") || "").trim();
   const [works, setWorks] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [drafts, setDrafts] = useState({});
   const [errors, setErrors] = useState({});
   const [busy, setBusy] = useState({});
@@ -78,7 +79,8 @@ export default function ReviewPage() {
           return merged;
         });
       })
-      .catch((err) => setError(humanError(err)));
+      .catch((err) => setError(humanError(err)))
+      .finally(() => setLoading(false));
   }
 
   useEffect(reload, []);
@@ -607,7 +609,12 @@ export default function ReviewPage() {
           ) : null}
         </section>
       ) : null}
-      {!works.length ? (
+      {loading ? (
+        <section className="review-loading" data-testid="review-loading" aria-busy="true">
+          <p className="muted">Warming the lamp on the bagging area…</p>
+          <div className="hall-shelves-skeleton" aria-hidden="true" />
+        </section>
+      ) : !works.length ? (
         <section className="empty-cta review-empty" data-testid="review-empty">
           <p className="empty-illustration" aria-hidden="true">
             <span className="empty-lamp" />

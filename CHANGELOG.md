@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.4.8] — 2026-09-23
+
+### Fixed
+
+- **Review Apply on Calibre duplicates.** When the shelf already holds the same media bytes under Calibre filenames (`Title - Author.epub`) but `dest_layout` would write `Title.epub`, Apply no longer 400s as a hard collision — it treats the slip as an ignored duplicate and dismisses it.
+- **Review error copy.** Collision / Apply guidance is no longer masked as “Something went wrong in the stacks” when the API message is slightly over the generic length cap.
+- **Review loading state.** Bagging-area skeleton while `/api/review` loads so empty copy does not flash first.
+
 ## [0.4.7] — 2026-09-22
 
 ### Highlights
