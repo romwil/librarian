@@ -84,6 +84,11 @@ export const api = {
       method: "POST",
     }),
   reviewReprocessExtraFilesStatus: () => request("/review/reprocess-extra-files/status"),
+  reviewPurgeDuplicates: (limit = 0) =>
+    request(`/review/purge-duplicates${limit ? `?limit=${encodeURIComponent(String(limit))}` : ""}`, {
+      method: "POST",
+    }),
+  reviewPurgeDuplicatesStatus: () => request("/review/purge-duplicates/status"),
   queue: () => request("/queue"),
   confirmJob: (id) => request(`/queue/${id}/confirm`, { method: "POST" }),
   gaps: () => request("/gaps"),

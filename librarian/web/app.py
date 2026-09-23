@@ -134,6 +134,15 @@ from librarian.organize import (
 )
 from librarian.parts import build_part_set
 from librarian.poller import JobPoller
+from librarian.purge_duplicates import purge_duplicate_reviews
+from librarian.purge_duplicates_progress import (
+    PurgeDuplicatesProgressReporter,
+    begin_purge_duplicates_run,
+    finish_purge_duplicates_run,
+    is_purge_duplicates_running,
+    is_purge_duplicates_stale,
+    read_purge_duplicates_progress,
+)
 from librarian.rate_limit import enforce_rate_limit
 from librarian.rss import create_rss_feed, poll_rss_feeds, public_rss_feed, update_rss_feed
 from librarian.sabnzbd import SABError
@@ -439,6 +448,8 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
     ingest_thread: Dict[str, Optional[threading.Thread]] = {"thread": None}
     extra_files_reprocess_lock = threading.Lock()
     extra_files_reprocess_thread: Dict[str, Optional[threading.Thread]] = {"thread": None}
+    purge_duplicates_lock = threading.Lock()
+    purge_duplicates_thread: Dict[str, Optional[threading.Thread]] = {"thread": None}
 
     def settings():
         return load_merged_settings(root)
@@ -1476,10 +1487,12 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
                 except Exception:
                     work["match_candidates"] = []
         extra_files_count = db.count_works(review_state="needs_review", review_reason="extra_files")
+        needs_review_count = db.count_works(review_state="needs_review")
         return {
             "works": works,
             "llm_configured": llm_ok,
             "extra_files_count": extra_files_count,
+            "needs_review_count": needs_review_count,
         }
 
     @app.post("/api/review/reprocess-extra-files")
@@ -1555,6 +1568,68 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         finished["extra_files_remaining"] = db.count_works(
             review_state="needs_review", review_reason="extra_files"
         )
+        return finished
+
+    @app.post("/api/review/purge-duplicates")
+    def review_purge_duplicates(request: Request, limit: int = 0):
+        """Owner bulk: dismiss safely redundant Review slips (poll status)."""
+        require_role(request.state.user, "owner", "op")
+        run_limit = max(0, int(limit or 0))
+        with purge_duplicates_lock:
+            live = purge_duplicates_thread.get("thread")
+            alive = live is not None and live.is_alive()
+            if is_purge_duplicates_running(root) and alive:
+                payload = read_purge_duplicates_progress(root)
+                payload["needs_review_remaining"] = db.count_works(review_state="needs_review")
+                return {**payload, "kicked_off": False}
+            begin_purge_duplicates_run(root, total=0, phase="starting")
+
+            def run_purge() -> None:
+                reporter = PurgeDuplicatesProgressReporter(root)
+                try:
+                    purge_duplicate_reviews(
+                        db,
+                        settings(),
+                        limit=run_limit,
+                        progress=reporter,
+                    )
+                except Exception as error:
+                    logger.exception("Purge duplicates failed")
+                    reporter.fail(str(error) or "Purge duplicates failed")
+
+            thread = threading.Thread(
+                target=run_purge,
+                name="librarian-purge-duplicates",
+                daemon=True,
+            )
+            purge_duplicates_thread["thread"] = thread
+            thread.start()
+        payload = read_purge_duplicates_progress(root)
+        payload["needs_review_remaining"] = db.count_works(review_state="needs_review")
+        return {**payload, "kicked_off": True}
+
+    @app.get("/api/review/purge-duplicates/status")
+    def review_purge_duplicates_status(request: Request):
+        """Poll Purge duplicates progress (survives refresh via DATA_DIR JSON)."""
+        require_role(request.state.user, "owner", "op")
+        progress = read_purge_duplicates_progress(root)
+        if str(progress.get("status") or "") != "running":
+            progress["needs_review_remaining"] = db.count_works(review_state="needs_review")
+            return progress
+        live = purge_duplicates_thread.get("thread")
+        alive = live is not None and live.is_alive()
+        if alive and not is_purge_duplicates_stale(progress):
+            progress["needs_review_remaining"] = db.count_works(review_state="needs_review")
+            return progress
+        if alive:
+            error = (
+                "Purge duplicates stalled (no progress heartbeat). "
+                "Try Purge again."
+            )
+        else:
+            error = "Purge duplicates stopped — the lamp was restarted. Try again."
+        finished = finish_purge_duplicates_run(root, error=error)
+        finished["needs_review_remaining"] = db.count_works(review_state="needs_review")
         return finished
 
     @app.post("/api/review/{work_id}/suggest")

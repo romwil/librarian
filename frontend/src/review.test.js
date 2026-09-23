@@ -13,18 +13,23 @@ import {
   fieldsFromWork,
   looksLikeDumpTitle,
   queueReviewReasonCopy,
+  purgeDuplicatesIsRunning,
+  purgeDuplicatesProgressPercent,
+  purgeDuplicatesProgressSummary,
   reviewActionsFromWork,
+  reviewBulkClearVisible,
+  reviewBulkPurgeVisible,
+  reviewBulkRowVisible,
   reviewDiagnosisCopy,
+  reviewExtraFilesProgressVisible,
   reviewFindHref,
+  reviewPurgeProgressVisible,
   reviewReasonCopy,
   unpackStuckWorks,
   extraFilesWorks,
   extraFilesReprocessIsRunning,
   extraFilesReprocessProgressPercent,
   extraFilesReprocessProgressSummary,
-  reviewBulkClearVisible,
-  reviewBulkRowVisible,
-  reviewExtraFilesProgressVisible,
 } from "./review.js";
 
 const root = dirname(fileURLToPath(import.meta.url));
@@ -213,9 +218,48 @@ describe("review recovery actions", () => {
       reviewBulkRowVisible({ unpackCount: 0, showClear: false, showProgress: false }),
       false,
     );
+    assert.equal(
+      reviewBulkRowVisible({ unpackCount: 0, showClear: false, showPurge: true, showProgress: false }),
+      true,
+    );
     assert.equal(reviewExtraFilesProgressVisible({ status: "running" }, false), true);
     assert.equal(reviewExtraFilesProgressVisible({ status: "idle" }, false), false);
     assert.equal(reviewExtraFilesProgressVisible(null, true), true);
+  });
+
+  it("keeps Purge duplicates visible for backlog or mid-run progress", () => {
+    assert.equal(
+      reviewBulkPurgeVisible({
+        visibleCount: 0,
+        backlogCount: 0,
+        purging: false,
+        progress: { status: "idle" },
+      }),
+      false,
+    );
+    assert.equal(
+      reviewBulkPurgeVisible({
+        visibleCount: 3,
+        backlogCount: 0,
+        purging: false,
+        progress: { status: "idle" },
+      }),
+      true,
+    );
+    assert.equal(reviewPurgeProgressVisible({ status: "running" }, false), true);
+    assert.equal(purgeDuplicatesIsRunning({ status: "running" }), true);
+    assert.equal(purgeDuplicatesProgressPercent({ done: 2, total: 5 }), 40);
+    assert.match(
+      purgeDuplicatesProgressSummary({
+        status: "completed",
+        result: { purged: 10, shelf_twins: 8, slip_twins: 2, kept: 5 },
+      }),
+      /purged 10/,
+    );
+    assert.match(
+      purgeDuplicatesProgressSummary({ status: "failed", error: "Disk gone" }),
+      /Disk gone/,
+    );
   });
 
   it("summarizes Clear extra-files progress for the meter", () => {
@@ -285,5 +329,11 @@ describe("ReviewPage loading", () => {
     assert.match(reviewPageSrc, /loading \? \(/);
     assert.match(reviewPageSrc, /!works\.length/);
     assert.match(reviewPageSrc, /\.finally\(\(\) => setLoading\(false\)\)/);
+  });
+
+  it("exposes Purge duplicates bulk control", () => {
+    assert.match(reviewPageSrc, /data-testid="review-bulk-purge-duplicates"/);
+    assert.match(reviewPageSrc, /Purge duplicates/);
+    assert.match(reviewPageSrc, /bulkPurgeDuplicates/);
   });
 });

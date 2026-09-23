@@ -17,12 +17,17 @@ import {
   extraFilesReprocessProgressSummary,
   fieldsFromWork,
   looksLikeDumpTitle,
+  purgeDuplicatesIsRunning,
+  purgeDuplicatesProgressPercent,
+  purgeDuplicatesProgressSummary,
   reviewActionsFromWork,
   reviewBulkClearVisible,
+  reviewBulkPurgeVisible,
   reviewBulkRowVisible,
   reviewDiagnosisCopy,
   reviewExtraFilesProgressVisible,
   reviewFindHref,
+  reviewPurgeProgressVisible,
   reviewReasonCopy,
   extraFilesWorks,
   unpackStuckWorks,
@@ -43,6 +48,9 @@ export default function ReviewPage() {
   const [extraFilesProgress, setExtraFilesProgress] = useState(null);
   const [extraFilesClearing, setExtraFilesClearing] = useState(false);
   const [extraFilesBacklog, setExtraFilesBacklog] = useState(0);
+  const [purgeProgress, setPurgeProgress] = useState(null);
+  const [purgeRunning, setPurgeRunning] = useState(false);
+  const [reviewBacklog, setReviewBacklog] = useState(0);
   const [error, setError] = useState("");
   const [regrabs, setRegrabs] = useState({});
   const [matchBags, setMatchBags] = useState({});
@@ -51,6 +59,7 @@ export default function ReviewPage() {
   const [suggestNotes, setSuggestNotes] = useState({});
   const focusRef = useRef(null);
   const extraFilesPollRef = useRef(0);
+  const purgePollRef = useRef(0);
   const autoRegrabTried = useRef(new Set());
   const autoMatchTried = useRef(new Set());
   const autoSuggestTried = useRef(new Set());
@@ -63,6 +72,11 @@ export default function ReviewPage() {
         setWorks(next);
         if (data.extra_files_count != null) {
           setExtraFilesBacklog(Number(data.extra_files_count) || 0);
+        }
+        if (data.needs_review_count != null) {
+          setReviewBacklog(Number(data.needs_review_count) || 0);
+        } else {
+          setReviewBacklog(next.length);
         }
         setDrafts((prev) => {
           const merged = { ...prev };
@@ -111,6 +125,23 @@ export default function ReviewPage() {
         }
       })
       .catch(() => {});
+    api
+      .reviewPurgeDuplicatesStatus()
+      .then((status) => {
+        if (cancelled) return;
+        setPurgeProgress(status);
+        if (status?.needs_review_remaining != null) {
+          setReviewBacklog(Number(status.needs_review_remaining) || 0);
+        }
+        if (purgeDuplicatesIsRunning(status)) {
+          setPurgeRunning(true);
+          setBulkNote(purgeDuplicatesProgressSummary(status) || "Purging duplicates…");
+        } else if (status?.status === "completed" || status?.status === "failed") {
+          const summary = purgeDuplicatesProgressSummary(status);
+          if (summary) setBulkNote(summary);
+        }
+      })
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
@@ -154,6 +185,45 @@ export default function ReviewPage() {
       window.clearTimeout(extraFilesPollRef.current);
     };
   }, [extraFilesClearing]);
+
+  useEffect(() => {
+    if (!purgeRunning) return undefined;
+    let cancelled = false;
+
+    async function poll() {
+      try {
+        const status = await api.reviewPurgeDuplicatesStatus();
+        if (cancelled) return;
+        setPurgeProgress(status);
+        if (status?.needs_review_remaining != null) {
+          setReviewBacklog(Number(status.needs_review_remaining) || 0);
+        }
+        const summary = purgeDuplicatesProgressSummary(status);
+        if (summary) setBulkNote(summary);
+        if (purgeDuplicatesIsRunning(status)) {
+          purgePollRef.current = window.setTimeout(poll, 700);
+          return;
+        }
+        setPurgeRunning(false);
+        if (status?.status === "failed") {
+          setBulkNote(status.error || "Purge duplicates failed.");
+        } else if (status?.status === "completed") {
+          setBulkNote(summary || "Finished purging duplicates.");
+          reload();
+        }
+      } catch (err) {
+        if (cancelled) return;
+        setPurgeRunning(false);
+        setBulkNote(humanError(err));
+      }
+    }
+
+    purgePollRef.current = window.setTimeout(poll, 400);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(purgePollRef.current);
+    };
+  }, [purgeRunning]);
 
   useEffect(() => {
     if (!focusId || !works.length) return;
@@ -469,23 +539,76 @@ export default function ReviewPage() {
     }
   }
 
+  async function bulkPurgeDuplicates() {
+    if (purgeRunning) return;
+    const visible = works.length;
+    const backlog = Math.max(visible, Number(reviewBacklog) || 0);
+    if (!backlog) {
+      setBulkNote("No Review slips to check for duplicates.");
+      return;
+    }
+    setPurgeRunning(true);
+    setPurgeProgress({
+      status: "running",
+      phase: "starting",
+      done: 0,
+      total: 0,
+      purged: 0,
+      shelf_twins: 0,
+      slip_twins: 0,
+      kept: 0,
+      failed: 0,
+      needs_review_remaining: backlog,
+    });
+    setBulkNote(
+      visible
+        ? `Purging duplicates (visible ${visible}; server checks the full Review backlog)…`
+        : `Purging duplicates across Review backlog (${backlog})…`,
+    );
+    try {
+      const started = await api.reviewPurgeDuplicates();
+      setPurgeProgress(started);
+      if (started?.needs_review_remaining != null) {
+        setReviewBacklog(Number(started.needs_review_remaining) || 0);
+      }
+      setBulkNote(purgeDuplicatesProgressSummary(started) || "Purging duplicates…");
+      if (!purgeDuplicatesIsRunning(started) && started?.status === "completed") {
+        setPurgeRunning(false);
+        setBulkNote(purgeDuplicatesProgressSummary(started) || "Finished purging duplicates.");
+        reload();
+      }
+    } catch (err) {
+      setPurgeRunning(false);
+      setBulkNote(humanError(err));
+    }
+  }
+
   const unpackCount = unpackStuckWorks(works).length;
   const extraFilesCount = extraFilesWorks(works).length;
   const showExtraFilesProgress = reviewExtraFilesProgressVisible(extraFilesProgress, extraFilesClearing);
+  const showPurgeProgress = reviewPurgeProgressVisible(purgeProgress, purgeRunning);
   const showBulkClear = reviewBulkClearVisible({
     visibleCount: extraFilesCount,
     backlogCount: extraFilesBacklog,
     clearing: extraFilesClearing,
     progress: extraFilesProgress,
   });
+  const showBulkPurge = reviewBulkPurgeVisible({
+    visibleCount: works.length,
+    backlogCount: reviewBacklog,
+    purging: purgeRunning,
+    progress: purgeProgress,
+  });
   const showBulkRow = reviewBulkRowVisible({
     unpackCount,
     showClear: showBulkClear,
-    showProgress: showExtraFilesProgress,
+    showPurge: showBulkPurge,
+    showProgress: showExtraFilesProgress || showPurgeProgress,
   });
   const extraFilesPercent = showExtraFilesProgress
     ? extraFilesReprocessProgressPercent(extraFilesProgress)
     : null;
+  const purgePercent = showPurgeProgress ? purgeDuplicatesProgressPercent(purgeProgress) : null;
 
   return (
     <div className="admin-room">
@@ -560,7 +683,23 @@ export default function ReviewPage() {
                   : "Clear extra-files slips"}
             </button>
           ) : null}
-          {bulkNote && !showExtraFilesProgress ? (
+          {showBulkPurge ? (
+            <button
+              type="button"
+              className="cta outline compact"
+              onClick={() => bulkPurgeDuplicates()}
+              disabled={purgeRunning}
+              data-testid="review-bulk-purge-duplicates"
+              title="Dismiss slips whose content is already on the shelf, or exact duplicate slips of each other (keeps one)."
+            >
+              {purgeRunning
+                ? "Purging…"
+                : reviewBacklog > works.length
+                  ? `Purge duplicates (${reviewBacklog})`
+                  : "Purge duplicates"}
+            </button>
+          ) : null}
+          {bulkNote && !showExtraFilesProgress && !showPurgeProgress ? (
             <p className="muted" role="status">
               {bulkNote}
             </p>
@@ -601,6 +740,49 @@ export default function ReviewPage() {
           ) : null}
           {extraFilesProgress.current_title ? (
             <p className="lede ingest-progress-title">{extraFilesProgress.current_title}</p>
+          ) : null}
+          {bulkNote ? (
+            <p className="muted" role="status">
+              {bulkNote}
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+      {showPurgeProgress ? (
+        <section
+          className="ingest-progress review-extra-files-progress"
+          data-testid="review-purge-duplicates-progress"
+          aria-live="polite"
+        >
+          <p className="kicker">Purge duplicates progress</p>
+          <p className="muted">
+            {purgeProgress.phase || "purging"}
+            {purgeProgress.total
+              ? ` · ${purgeProgress.done || 0} of ${purgeProgress.total}`
+              : purgeProgress.done
+                ? ` · ${purgeProgress.done} done`
+                : ""}
+            {purgePercent != null ? ` · ${purgePercent}%` : ""}
+            {purgeProgress.purged ? ` · purged ${purgeProgress.purged}` : ""}
+            {purgeProgress.shelf_twins ? ` · shelf ${purgeProgress.shelf_twins}` : ""}
+            {purgeProgress.slip_twins ? ` · slip ${purgeProgress.slip_twins}` : ""}
+            {purgeProgress.kept ? ` · kept ${purgeProgress.kept}` : ""}
+            {purgeProgress.failed ? ` · failed ${purgeProgress.failed}` : ""}
+          </p>
+          {purgePercent != null ? (
+            <div
+              className="ingest-progress-meter"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={purgePercent}
+              aria-label="Purge duplicates progress"
+            >
+              <span className="ingest-progress-meter-fill" style={{ width: `${purgePercent}%` }} />
+            </div>
+          ) : null}
+          {purgeProgress.current_title ? (
+            <p className="lede ingest-progress-title">{purgeProgress.current_title}</p>
           ) : null}
           {bulkNote ? (
             <p className="muted" role="status">

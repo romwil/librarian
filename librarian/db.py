@@ -828,7 +828,12 @@ class Database:
         if exclude_id:
             clauses.append("id != ?")
             args.append(exclude_id)
-        sql = f"SELECT * FROM works WHERE {' AND '.join(clauses)} ORDER BY updated_at DESC LIMIT 1"
+        # Prefer a shelved catalog row over another Review slip when both match.
+        sql = (
+            f"SELECT * FROM works WHERE {' AND '.join(clauses)} "
+            "ORDER BY CASE WHEN review_state = 'needs_review' THEN 1 ELSE 0 END, "
+            "updated_at DESC LIMIT 1"
+        )
         with self._connect() as conn:
             row = conn.execute(sql, args).fetchone()
         return _row_dict(row)

@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.4.9] — 2026-09-23
+
+### Added
+
+- **Review Purge duplicates.** Owner/op bulk button dismisses safely redundant slips: same media fingerprint already on the shelf (Calibre rename twins included), or exact duplicate slips of each other (keeps the oldest). Ambiguous Identify singles without a twin stay put. Background job with a live progress meter, same pattern as Clear extra-files.
+
 ## [0.4.8] — 2026-09-23
 
 ### Fixed

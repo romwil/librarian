@@ -291,9 +291,14 @@ export function reviewBulkClearVisible({
   return false;
 }
 
-/** Bulk CTA row: unpack Repair/Retry and/or Clear, or mid-job progress alone. */
-export function reviewBulkRowVisible({ unpackCount = 0, showClear = false, showProgress = false } = {}) {
-  return Boolean(Number(unpackCount) > 0 || showClear || showProgress);
+/** Bulk CTA row: unpack Repair/Retry and/or Clear/Purge, or mid-job progress alone. */
+export function reviewBulkRowVisible({
+  unpackCount = 0,
+  showClear = false,
+  showPurge = false,
+  showProgress = false,
+} = {}) {
+  return Boolean(Number(unpackCount) > 0 || showClear || showPurge || showProgress);
 }
 
 /** 0–100 for the Clear extra-files meter; null when total is unknown. */
@@ -345,4 +350,86 @@ export function extraFilesReprocessProgressSummary(status) {
   const mid = tallies.length ? ` · ${tallies.join(" · ")}` : "";
   const tail = title ? ` · ${title}` : "";
   return `${head}${mid}${tail}` || "Clearing extra-files…";
+}
+
+export function purgeDuplicatesIsRunning(status) {
+  return String(status?.status || "") === "running";
+}
+
+export function purgeDuplicatesIsActive(status) {
+  const state = String(status?.status || "");
+  return state === "running" || state === "completed" || state === "failed";
+}
+
+export function reviewPurgeProgressVisible(progress, purging = false) {
+  if (purging || purgeDuplicatesIsRunning(progress)) return true;
+  return purgeDuplicatesIsActive(progress);
+}
+
+/** Keep Purge duplicates visible for any Review backlog or an active/recent job. */
+export function reviewBulkPurgeVisible({
+  visibleCount = 0,
+  backlogCount = 0,
+  purging = false,
+  progress = null,
+} = {}) {
+  if (Number(visibleCount) > 0) return true;
+  if (Number(backlogCount) > 0) return true;
+  if (purging || purgeDuplicatesIsRunning(progress)) return true;
+  if (purgeDuplicatesIsActive(progress)) return true;
+  return false;
+}
+
+export function purgeDuplicatesProgressPercent(status) {
+  if (!status || typeof status !== "object") return null;
+  const total = Number(status.total || 0);
+  if (total <= 0) return null;
+  const done = Number(status.done || 0);
+  if (!Number.isFinite(done)) return null;
+  return Math.max(0, Math.min(100, Math.round((done / total) * 100)));
+}
+
+export function purgeDuplicatesProgressSummary(status) {
+  if (!status || typeof status !== "object") return "";
+  const state = String(status.status || "");
+  if (state === "idle") return "";
+  if (state === "failed") return status.error || "Purge duplicates failed.";
+  const done = Number(status.done || 0);
+  const total = Number(status.total || 0);
+  const purged = Number(status.purged || 0);
+  const shelf = Number(status.shelf_twins || 0);
+  const slip = Number(status.slip_twins || 0);
+  const kept = Number(status.kept || 0);
+  const failed = Number(status.failed || 0);
+  const title = String(status.current_title || "").trim();
+  const pct = purgeDuplicatesProgressPercent(status);
+  if (state === "completed") {
+    const result = status.result || {};
+    const p = Number(result.purged != null ? result.purged : purged);
+    const sh = Number(result.shelf_twins != null ? result.shelf_twins : shelf);
+    const sl = Number(result.slip_twins != null ? result.slip_twins : slip);
+    const k = Number(result.kept != null ? result.kept : kept);
+    const f = Number(result.failed != null ? result.failed : failed);
+    const parts = [];
+    if (p) parts.push(`purged ${p}`);
+    if (sh) parts.push(`shelf twins ${sh}`);
+    if (sl) parts.push(`slip twins ${sl}`);
+    if (k) parts.push(`kept ${k}`);
+    if (f) parts.push(`failed ${f}`);
+    if (!parts.length) return "Finished purging duplicates — nothing safely redundant.";
+    return `Duplicates: ${parts.join(", ")}.`;
+  }
+  const count = total > 0 ? `${done} of ${total}` : done ? `${done} done` : "";
+  const pctBit = pct != null ? `${pct}%` : "";
+  const phase = String(status.phase || "purging").trim() || "purging";
+  const head = [`Purging duplicates (${phase})`, count, pctBit].filter(Boolean).join(" · ");
+  const tallies = [];
+  if (purged) tallies.push(`purged ${purged}`);
+  if (shelf) tallies.push(`shelf ${shelf}`);
+  if (slip) tallies.push(`slip ${slip}`);
+  if (kept) tallies.push(`kept ${kept}`);
+  if (failed) tallies.push(`failed ${failed}`);
+  const mid = tallies.length ? ` · ${tallies.join(" · ")}` : "";
+  const tail = title ? ` · ${title}` : "";
+  return `${head}${mid}${tail}` || "Purging duplicates…";
 }
