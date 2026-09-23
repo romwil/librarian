@@ -12,6 +12,7 @@ import QueuePage from "./pages/QueuePage.jsx";
 import ReviewPage from "./pages/ReviewPage.jsx";
 import FindPage from "./pages/FindPage.jsx";
 import SearchPage from "./pages/SearchPage.jsx";
+import MaintainPage from "./pages/MaintainPage.jsx";
 import SettingsPage from "./pages/SettingsPage.jsx";
 import WorkPage from "./pages/WorkPage.jsx";
 import "./styles.css";
@@ -32,6 +33,7 @@ createRoot(document.getElementById("root")).render(
             <Route path="review" element={<ReviewPage />} />
             <Route path="queue" element={<QueuePage />} />
             <Route path="people" element={<PeoplePage />} />
+            <Route path="maintain" element={<MaintainPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

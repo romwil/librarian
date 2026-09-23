@@ -1,6 +1,7 @@
-import { FIELD_HELP, setupComplete } from "../copy.js";
+import { FIELD_HELP } from "../copy.js";
 import { FieldLabel } from "./FieldHelp.jsx";
 
+/** Field groups formerly stepped by the first-run wizard — now flat Settings panels. */
 export const SETUP_STEPS = [
   {
     id: "downloader",
@@ -13,10 +14,10 @@ export const SETUP_STEPS = [
     ],
   },
   {
-    id: "indexer",
-    kicker: "Indexer",
+    id: "indexers",
+    kicker: "Indexers",
     title: "NZBFinder",
-    lede: "Beyond the shelves. Token stays on this host.",
+    lede: "Primary Newznab host for Find beyond the shelves. Token stays on this host.",
     fields: [
       ["nzbfinder_url", "NZBFinder URL"],
       ["nzbfinder_api_token", "NZBFinder token", true],
@@ -45,48 +46,36 @@ export const SETUP_STEPS = [
   },
 ];
 
-/** Household setup panel — section jump nav lives on SettingsPage. */
-export default function SetupWizard({ settings, onChange, step, setStep }) {
-  const current = SETUP_STEPS[step] || SETUP_STEPS[0];
-  const done = setupComplete(settings);
+/** Render one setup field group (no Prev/Next chrome). */
+export function SetupFields({ step, settings, onChange }) {
+  const current = typeof step === "number" ? SETUP_STEPS[step] : SETUP_STEPS.find((row) => row.id === step);
+  if (!current || !settings) return null;
   const stepId = current.id || "downloader";
 
   return (
-    <section className="wizard" id="setup" aria-label="Household setup" data-setup-step={stepId}>
-      <header className="wizard-head">
-        <p className="kicker">{done ? "Setup complete" : "First-run steps"}</p>
-      </header>
-      <div className="wizard-panel card" id={stepId}>
-        <p className="kicker">{current.kicker}</p>
-        <h2>{current.title}</h2>
-        <p className="lede">{current.lede}</p>
-        {current.fields.map(([key, label, secret]) => (
-          <div key={key} className="field">
-            <FieldLabel htmlFor={`setting-${key}`} label={label} help={FIELD_HELP[key]} />
-            <input
-              id={`setting-${key}`}
-              type={secret ? "password" : "text"}
-              value={settings[key] || ""}
-              placeholder={secret && settings[`${key}_set`] ? "saved" : ""}
-              onChange={(e) => onChange(key, e.target.value)}
-            />
-          </div>
-        ))}
-        <div className="cta-row">
-          {step > 0 ? (
-            <button type="button" className="cta ghost" onClick={() => setStep(step - 1)}>
-              Back
-            </button>
-          ) : null}
-          {step < SETUP_STEPS.length - 1 ? (
-            <button type="button" className="cta outline" onClick={() => setStep(step + 1)}>
-              Next
-            </button>
-          ) : (
-            <p className="muted">Save below when the path is right.</p>
-          )}
+    <section className="settings-panel" id={stepId} data-testid={`settings-panel-${stepId}`} aria-labelledby={`settings-${stepId}-heading`}>
+      <p className="kicker" id={`settings-${stepId}-heading`}>
+        {current.kicker}
+      </p>
+      <h2>{current.title}</h2>
+      <p className="lede">{current.lede}</p>
+      {current.fields.map(([key, label, secret]) => (
+        <div key={key} className="field">
+          <FieldLabel htmlFor={`setting-${key}`} label={label} help={FIELD_HELP[key]} />
+          <input
+            id={`setting-${key}`}
+            type={secret ? "password" : "text"}
+            value={settings[key] || ""}
+            placeholder={secret && settings[`${key}_set`] ? "saved" : ""}
+            onChange={(e) => onChange(key, e.target.value)}
+          />
         </div>
-      </div>
+      ))}
     </section>
   );
+}
+
+/** @deprecated Use SetupFields — kept for any residual imports. */
+export default function SetupWizard({ settings, onChange, step }) {
+  return <SetupFields step={step} settings={settings} onChange={onChange} />;
 }

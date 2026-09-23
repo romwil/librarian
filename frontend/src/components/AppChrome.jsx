@@ -148,6 +148,11 @@ export default function AppChrome({ user, features, reviewCount = 0, children })
             </NavLink>
           ) : null}
           {owner ? (
+            <NavLink to="/maintain" className={({ isActive }) => (isActive ? "is-current" : undefined)}>
+              Maintain
+            </NavLink>
+          ) : null}
+          {owner ? (
             <NavLink to="/settings" className={({ isActive }) => (isActive ? "is-current" : undefined)}>
               Settings
             </NavLink>

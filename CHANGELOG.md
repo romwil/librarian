@@ -2,6 +2,30 @@
 
 ## [Unreleased]
 
+## [0.4.6] — 2026-09-22
+
+### Highlights
+
+- **Hall is search again.** Hero and search paint first; Tonight’s Shelf and rails lazy-load with a clear warming state. Bestsellers, add-on-disk, and celebration notes left the Hall.
+- **Owner Maintain.** Curated lists, ingest, Review/Clear extra-files, scan/enrich, and Goodreads live on `/maintain` with a telemetry status dock. Credentials stay in Settings.
+- **Settings you can find.** Sticky section list replaces Next/Previous wizard chrome. Indexers (NZBFinder + additional Newznab hosts + RSS) are a first-class section.
+
+### Added
+
+- **Maintain page (owner).** `/maintain` — bestsellers entry, Add to the shelves, Review link, Clear extra-files, scan/enrich/suggestions, Goodreads CSV, and a status dock for scan/enrich/ingest/clear jobs (same progress pattern as Review/Settings).
+- **Hall deferred shelves.** Search hero renders immediately; bottom rails fetch after paint with `hall-shelves-loading` warming copy.
+- **Settings Indexers section.** NZBFinder, Add indexer / edit / remove for `extra_indexers`, RSS subscribe panel, and category extras — no longer buried under collapsed “Extra Newznab hosts”.
+
+### Changed
+
+- **Settings IA.** Persistent section nav (Appearance · Downloader · Indexers · Shelves · Bagging · Language model · Integrations · Household · Watch folder · About). Setup Prev/Next removed; deep-links keep working (`#indexer` → Indexers, `#release-notes` → About).
+- **Hall / Search chrome.** Hall keeps Discover as a muted link only; grooming and curated-list CTAs moved to Maintain.
+- **Settings Ingest.** Watch folder credentials remain; add-on-disk points to Maintain.
+
+### Removed
+
+- **Hall celebration banner** (e.g. “Nth Author this year” + Quiet) — no longer shown on the public Hall surface.
+
 ## [0.4.5] — 2026-09-22
 
 ### Highlights

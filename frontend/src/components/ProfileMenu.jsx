@@ -199,6 +199,16 @@ export default function ProfileMenu({
             <div className="profile-menu-section profile-menu-links">
               {owner ? (
                 <Link
+                  to="/maintain"
+                  className="profile-menu-link"
+                  role="menuitem"
+                  onClick={() => setOpen(false)}
+                >
+                  Maintain
+                </Link>
+              ) : null}
+              {owner ? (
+                <Link
                   to="/settings"
                   className="profile-menu-link"
                   role="menuitem"
