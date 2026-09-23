@@ -101,7 +101,7 @@ def test_purge_dismisses_shelf_fingerprint_twin(tmp_path, monkeypatch):
     assert result["purged"] == 1
     assert result["shelf_twins"] == 1
     assert result["kept"] >= 1
-    assert db.get_work(slip["id"])["review_state"] == "resolved"
+    assert db.get_work(slip["id"]) is None
     assert db.get_work(unsure_slip["id"])["review_state"] == "needs_review"
     assert db.get_work(shelf["id"])["review_state"] == "none"
     assert (folder / "Notorious - Allison Brennan.epub").is_file()
@@ -149,7 +149,7 @@ def test_purge_keeps_one_of_identical_slips(tmp_path, monkeypatch):
     assert result["slip_twins"] == 1
     assert result["purged"] == 1
     assert db.get_work(first["id"])["review_state"] == "needs_review"
-    assert db.get_work(second["id"])["review_state"] == "resolved"
+    assert db.get_work(second["id"]) is None
 
 
 def test_purge_does_not_touch_unsure_without_twin(tmp_path, monkeypatch):
@@ -216,7 +216,7 @@ def test_review_purge_duplicates_api_background(tmp_path, monkeypatch):
     status = _wait_purge_status(client, timeout=15.0)
     assert status["status"] == "completed", status
     assert int(status.get("purged") or (status.get("result") or {}).get("purged") or 0) >= 1
-    assert db.get_work(slip["id"])["review_state"] == "resolved"
+    assert db.get_work(slip["id"]) is None
 
 
 def test_purge_duplicates_status_idle(tmp_path, monkeypatch):

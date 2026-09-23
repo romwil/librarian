@@ -72,7 +72,25 @@ def test_parse_json_list_payload_object_and_array():
 
 def test_match_books_to_catalog_book_and_audiobook(tmp_path):
     db = Database(tmp_path / "t.db")
-    db.upsert_work(
+
+    def shelve(payload: dict, *, filename: str = "book.epub") -> None:
+        work = db.upsert_work(payload)
+        folder = tmp_path / "shelf" / str(work["id"])
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / filename
+        path.write_bytes(b"payload")
+        db.upsert_work({**work, "folder_path": str(folder)})
+        db.upsert_file(
+            {
+                "work_id": work["id"],
+                "path": str(path),
+                "filename": path.name,
+                "kind": work.get("kind") or "book",
+                "size": path.stat().st_size,
+            }
+        )
+
+    shelve(
         {
             "id": "w-book",
             "kind": "book",
@@ -81,23 +99,25 @@ def test_match_books_to_catalog_book_and_audiobook(tmp_path):
             "isbn": "9780441172719",
         }
     )
-    db.upsert_work(
+    shelve(
         {
             "id": "w-audio",
             "kind": "audiobook",
             "title": "Leftover",
             "author": "Someone",
             "isbn": "",
-        }
+        },
+        filename="leftover.m4b",
     )
-    db.upsert_work(
+    shelve(
         {
             "id": "w-audio-dune",
             "kind": "audiobook",
             "title": "Dune",
             "author": "Frank Herbert",
             "isbn": "9780441172719",
-        }
+        },
+        filename="dune.m4b",
     )
     books = normalize_list_books(
         [

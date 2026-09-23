@@ -45,6 +45,26 @@ def _login(client):
     assert resp.status_code == 200
 
 
+def _shelve(db: Database, work: dict, tmp_path, *, filename: str = "book.epub") -> dict:
+    from pathlib import Path
+
+    folder = Path(tmp_path) / "shelf" / str(work["id"])
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / filename
+    path.write_bytes(b"payload")
+    work = db.upsert_work({**work, "folder_path": str(folder)})
+    db.upsert_file(
+        {
+            "work_id": work["id"],
+            "path": str(path),
+            "filename": path.name,
+            "kind": work.get("kind") or "book",
+            "size": path.stat().st_size,
+        }
+    )
+    return work
+
+
 def test_search_beyond_without_token_surfaces_error(tmp_path, monkeypatch):
     monkeypatch.setenv("NZBFINDER_API_TOKEN", "")
     client = _client(tmp_path, monkeypatch)
@@ -89,7 +109,8 @@ def test_search_beyond_indexer_error_keeps_local_and_surfaces_reason(tmp_path, m
     client = _client(tmp_path, monkeypatch)
     _login(client)
     db = Database(tmp_path / "librarian.db")
-    db.upsert_work({"kind": "book", "title": "The Shining", "author": "Stephen King"})
+    shining = db.upsert_work({"kind": "book", "title": "The Shining", "author": "Stephen King"})
+    _shelve(db, shining, tmp_path)
 
     def fail_get(self, path, extra=None):
         raise NZBFinderError("NZBFinder returned non-JSON")
@@ -107,8 +128,12 @@ def test_search_local_kind_chip_filters_stacks(tmp_path, monkeypatch):
     client = _client(tmp_path, monkeypatch)
     _login(client)
     db = Database(tmp_path / "librarian.db")
-    db.upsert_work({"kind": "book", "title": "Guardians Novel", "author": "Abnett"})
-    db.upsert_work({"kind": "music", "title": "Guardians Mix", "author": "Various Artists", "music_state": "incoming"})
+    novel = db.upsert_work({"kind": "book", "title": "Guardians Novel", "author": "Abnett"})
+    mix = db.upsert_work(
+        {"kind": "music", "title": "Guardians Mix", "author": "Various Artists", "music_state": "incoming"}
+    )
+    _shelve(db, novel, tmp_path)
+    _shelve(db, mix, tmp_path, filename="mix.mp3")
     music = client.get("/api/search", params={"q": "Guardians", "kind": "music"})
     assert music.status_code == 200
     assert [row["title"] for row in music.json()["local"]] == ["Guardians Mix"]

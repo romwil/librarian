@@ -143,6 +143,15 @@ from librarian.purge_duplicates_progress import (
     is_purge_duplicates_stale,
     read_purge_duplicates_progress,
 )
+from librarian.purge_shells import purge_shell_works
+from librarian.purge_shells_progress import (
+    PurgeShellsProgressReporter,
+    begin_purge_shells_run,
+    finish_purge_shells_run,
+    is_purge_shells_running,
+    is_purge_shells_stale,
+    read_purge_shells_progress,
+)
 from librarian.rate_limit import enforce_rate_limit
 from librarian.rss import create_rss_feed, poll_rss_feeds, public_rss_feed, update_rss_feed
 from librarian.sabnzbd import SABError
@@ -450,6 +459,8 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
     extra_files_reprocess_thread: Dict[str, Optional[threading.Thread]] = {"thread": None}
     purge_duplicates_lock = threading.Lock()
     purge_duplicates_thread: Dict[str, Optional[threading.Thread]] = {"thread": None}
+    purge_shells_lock = threading.Lock()
+    purge_shells_thread: Dict[str, Optional[threading.Thread]] = {"thread": None}
 
     def settings():
         return load_merged_settings(root)
@@ -582,14 +593,14 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
     @app.get("/api/hall")
     def hall(request: Request):
         user = request.state.user
-        recent = db.list_works(limit=18)
+        recent = db.list_works(limit=18, require_files=True)
         favorites = db.favorite_works(user["id"], limit=18)
         areas = {
-            "books": db.list_works(kind="book", limit=12),
-            "magazines": db.list_works(kind="magazine", limit=12),
-            "comics": db.list_works(kind="comic", limit=12),
-            "audiobooks": db.list_works(kind="audiobook", limit=12),
-            "incoming_music": db.list_works(kind="music", music_state="incoming", limit=12),
+            "books": db.list_works(kind="book", limit=12, require_files=True),
+            "magazines": db.list_works(kind="magazine", limit=12, require_files=True),
+            "comics": db.list_works(kind="comic", limit=12, require_files=True),
+            "audiobooks": db.list_works(kind="audiobook", limit=12, require_files=True),
+            "incoming_music": db.list_works(kind="music", music_state="incoming", limit=12, require_files=True),
         }
         gaps = []
         if user["role"] in ("owner", "op"):
@@ -1632,6 +1643,65 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         finished["needs_review_remaining"] = db.count_works(review_state="needs_review")
         return finished
 
+    @app.post("/api/maintain/purge-shells")
+    def maintain_purge_shells(request: Request, limit: int = 0):
+        """Owner bulk: delete catalog shells with no media on disk (poll status)."""
+        require_role(request.state.user, "owner", "op")
+        run_limit = max(0, int(limit or 0))
+        with purge_shells_lock:
+            live = purge_shells_thread.get("thread")
+            alive = live is not None and live.is_alive()
+            if is_purge_shells_running(root) and alive:
+                payload = read_purge_shells_progress(root)
+                payload["shells_remaining"] = db.count_shell_works()
+                return {**payload, "kicked_off": False}
+            begin_purge_shells_run(root, total=0, phase="starting")
+
+            def run_purge() -> None:
+                reporter = PurgeShellsProgressReporter(root)
+                try:
+                    purge_shell_works(
+                        db,
+                        settings(),
+                        limit=run_limit,
+                        progress=reporter,
+                    )
+                except Exception as error:
+                    logger.exception("Purge shells failed")
+                    reporter.fail(str(error) or "Purge shells failed")
+
+            thread = threading.Thread(
+                target=run_purge,
+                name="librarian-purge-shells",
+                daemon=True,
+            )
+            purge_shells_thread["thread"] = thread
+            thread.start()
+        payload = read_purge_shells_progress(root)
+        payload["shells_remaining"] = db.count_shell_works()
+        return {**payload, "kicked_off": True}
+
+    @app.get("/api/maintain/purge-shells/status")
+    def maintain_purge_shells_status(request: Request):
+        """Poll Purge shells progress (survives refresh via DATA_DIR JSON)."""
+        require_role(request.state.user, "owner", "op")
+        progress = read_purge_shells_progress(root)
+        if str(progress.get("status") or "") != "running":
+            progress["shells_remaining"] = db.count_shell_works()
+            return progress
+        live = purge_shells_thread.get("thread")
+        alive = live is not None and live.is_alive()
+        if alive and not is_purge_shells_stale(progress):
+            progress["shells_remaining"] = db.count_shell_works()
+            return progress
+        if alive:
+            error = "Purge shells stalled (no progress heartbeat). Try Purge again."
+        else:
+            error = "Purge shells stopped — the lamp was restarted. Try again."
+        finished = finish_purge_shells_run(root, error=error)
+        finished["shells_remaining"] = db.count_shell_works()
+        return finished
+
     @app.post("/api/review/{work_id}/suggest")
     def review_suggest(work_id: str, request: Request):
         """BYO LLM title/author suggest for a Review slip. Pre-fills only — never Apply."""
@@ -1799,8 +1869,10 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         work = db.get_work(work_id)
         if work is None:
             raise HTTPException(status_code=404, detail="Work not found")
-        updated = db.upsert_work({**work, "review_state": "resolved"})
-        return {"work": updated}
+        updated = db.delete_work(work_id)
+        if not updated:
+            raise HTTPException(status_code=404, detail="Work not found")
+        return {"deleted": True, "work_id": work_id}
 
     @app.post("/api/review/{work_id}/reprocess-extra-files")
     def review_reprocess_extra_files_one(work_id: str, request: Request):

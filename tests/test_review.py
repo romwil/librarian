@@ -300,9 +300,10 @@ def test_review_apply_skips_calibre_named_shelf_duplicate(tmp_path, monkeypatch)
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body.get("skipped_duplicate") is True
-    assert body["work"]["id"] == work["id"]
-    assert body["work"]["review_state"] == "resolved"
+    assert body.get("slip_deleted") is True
+    assert body["work"]["id"] == shelf["id"]
     assert body.get("shelf_work", {}).get("id") == shelf["id"]
+    assert db.get_work(work["id"]) is None
     # Dest untouched; source still present (duplicate ignore does not delete).
     assert (dest_dir / "Notorious - Allison Brennan.epub").read_bytes() == payload_epub
     assert not (dest_dir / "Notorious.epub").exists()
@@ -366,7 +367,8 @@ def test_review_skip_keeps_shelf_and_dismisses(tmp_path, monkeypatch):
     )
     resp = client.post(f"/api/review/{work['id']}/skip")
     assert resp.status_code == 200
-    assert resp.json()["work"]["review_state"] == "resolved"
+    assert resp.json()["deleted"] is True
+    assert db.get_work(work["id"]) is None
     assert client.get("/api/review").json()["works"] == []
 
 

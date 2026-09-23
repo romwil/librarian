@@ -33,13 +33,10 @@ def _created_sort_key(value: Any) -> float:
 
 
 def _dismiss_slip(db: Database, work: Mapping[str, Any]) -> Dict[str, Any]:
-    return db.upsert_work(
-        {
-            **dict(work),
-            "review_state": "resolved",
-            "review_reason": None,
-        }
-    )
+    """Remove a redundant Review slip from the catalog (no disk deletes)."""
+    work_id = str(work.get("id") or "")
+    db.delete_work(work_id)
+    return {"id": work_id, "deleted": True}
 
 
 def _slip_folder(work: Mapping[str, Any], settings: Settings) -> Optional[Path]:

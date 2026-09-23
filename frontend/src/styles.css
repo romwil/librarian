@@ -2904,16 +2904,22 @@ button.cover {
 .maintain-section {
   display: grid;
   gap: var(--space-2);
-  max-width: 42rem;
+  width: 100%;
+  max-width: none;
 }
 .maintain-section h2 {
   margin: 0;
   font-family: var(--font-display);
   font-size: var(--text-xl);
 }
+.maintain-page > .lede,
+.maintain-section > .lede {
+  max-width: 62ch;
+}
 .maintain-status-dock,
 .maintain-status-idle {
-  max-width: 42rem;
+  width: 100%;
+  max-width: none;
 }
 .maintain-status-grid {
   display: grid;

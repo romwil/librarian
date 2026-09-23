@@ -18,6 +18,27 @@ import {
   extraFilesReprocessProgressSummary,
 } from "../review.js";
 
+function purgeShellsIsRunning(status) {
+  return String(status?.status || "") === "running";
+}
+
+function purgeShellsProgressSummary(status) {
+  if (!status) return "";
+  const state = String(status.status || "");
+  if (state === "failed") return status.error || "Purge shells failed.";
+  if (state === "completed") {
+    const purged = Number(status.purged ?? status.result?.purged) || 0;
+    const kept = Number(status.kept ?? status.result?.kept) || 0;
+    return `Purged ${purged} shell${purged === 1 ? "" : "s"} · kept ${kept}`;
+  }
+  if (state !== "running") return "";
+  const done = Number(status.done) || 0;
+  const total = Number(status.total) || 0;
+  const purged = Number(status.purged) || 0;
+  if (total > 0) return `Purging shells… ${done} of ${total} · removed ${purged}`;
+  return status.phase ? `Purging shells… ${status.phase}` : "Purging shells…";
+}
+
 export default function MaintainPage() {
   const { user } = useOutletContext() || {};
   const [scan, setScan] = useState("");
@@ -37,6 +58,11 @@ export default function MaintainPage() {
   const [extraClearing, setExtraClearing] = useState(false);
   const [extraBacklog, setExtraBacklog] = useState(0);
   const extraPollRef = useRef(0);
+  const [shellNote, setShellNote] = useState("");
+  const [shellPurging, setShellPurging] = useState(false);
+  const [shellBacklog, setShellBacklog] = useState(0);
+  const [shellStatus, setShellStatus] = useState(null);
+  const shellPollRef = useRef(0);
 
   useEffect(() => {
     if (user?.role !== "owner") return undefined;
@@ -82,6 +108,20 @@ export default function MaintainPage() {
         if (cancelled) return;
         if (data.extra_files_count != null) {
           setExtraBacklog(Number(data.extra_files_count) || 0);
+        }
+      })
+      .catch(() => {});
+    api
+      .maintainPurgeShellsStatus()
+      .then((status) => {
+        if (cancelled) return;
+        setShellStatus(status);
+        if (status?.shells_remaining != null) {
+          setShellBacklog(Number(status.shells_remaining) || 0);
+        }
+        if (purgeShellsIsRunning(status)) {
+          setShellPurging(true);
+          setShellNote(purgeShellsProgressSummary(status) || "Purging shells…");
         }
       })
       .catch(() => {});
@@ -182,6 +222,39 @@ export default function MaintainPage() {
     };
   }, [extraClearing]);
 
+  useEffect(() => {
+    if (!shellPurging) return undefined;
+    let cancelled = false;
+    async function poll() {
+      try {
+        const status = await api.maintainPurgeShellsStatus();
+        if (cancelled) return;
+        setShellStatus(status);
+        if (status?.shells_remaining != null) {
+          setShellBacklog(Number(status.shells_remaining) || 0);
+        }
+        const summary = purgeShellsProgressSummary(status);
+        if (summary) setShellNote(summary);
+        if (purgeShellsIsRunning(status)) {
+          shellPollRef.current = window.setTimeout(poll, 700);
+          return;
+        }
+        setShellPurging(false);
+        if (status?.status === "failed") setShellNote(status.error || "Purge shells failed.");
+        else if (status?.status === "completed") setShellNote(summary || "Finished purging shells.");
+      } catch (err) {
+        if (cancelled) return;
+        setShellPurging(false);
+        setShellNote(humanError(err));
+      }
+    }
+    shellPollRef.current = window.setTimeout(poll, 400);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(shellPollRef.current);
+    };
+  }, [shellPurging]);
+
   if (!user) return null;
   if (user.role !== "owner") {
     return <Navigate to="/" replace />;
@@ -261,6 +334,26 @@ export default function MaintainPage() {
     }
   }
 
+  async function purgeShells() {
+    setShellPurging(true);
+    setShellNote("Purging shells…");
+    try {
+      const started = await api.maintainPurgeShells();
+      setShellStatus(started);
+      if (started?.shells_remaining != null) {
+        setShellBacklog(Number(started.shells_remaining) || 0);
+      }
+      setShellNote(purgeShellsProgressSummary(started) || "Purging shells…");
+      if (!purgeShellsIsRunning(started) && started?.status === "completed") {
+        setShellPurging(false);
+        setShellNote(purgeShellsProgressSummary(started) || "Finished purging shells.");
+      }
+    } catch (err) {
+      setShellPurging(false);
+      setShellNote(humanError(err));
+    }
+  }
+
   return (
     <div className="admin-room maintain-page" data-testid="maintain-page">
       <p className="kicker">Owner</p>
@@ -315,6 +408,37 @@ export default function MaintainPage() {
           </button>
         </div>
         {extraNote ? <p className="muted">{extraNote}</p> : null}
+      </section>
+
+      <section className="maintain-section" data-testid="maintain-shells">
+        <p className="kicker">Catalog</p>
+        <h2>Purge unshelved shells</h2>
+        <p className="lede">
+          Remove catalog rows that never got a file on the shelf — dismissed Review slips and dump-title ghosts.
+          Volumes that still have media on disk are kept.
+        </p>
+        <div className="cta-row">
+          <button
+            type="button"
+            className="cta outline"
+            disabled={shellPurging}
+            aria-busy={shellPurging || undefined}
+            onClick={purgeShells}
+            data-testid="maintain-purge-shells"
+          >
+            {shellPurging
+              ? "Purging…"
+              : shellBacklog > 0
+                ? `Purge shells (${shellBacklog})`
+                : "Purge shells"}
+          </button>
+        </div>
+        {shellNote ? <p className="muted">{shellNote}</p> : null}
+        {shellStatus && shellPurging ? (
+          <p className="sr-only" data-testid="maintain-purge-shells-running">
+            Purge shells running
+          </p>
+        ) : null}
       </section>
 
       <section className="maintain-section" data-testid="maintain-grooming">

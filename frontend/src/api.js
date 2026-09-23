@@ -89,6 +89,11 @@ export const api = {
       method: "POST",
     }),
   reviewPurgeDuplicatesStatus: () => request("/review/purge-duplicates/status"),
+  maintainPurgeShells: (limit = 0) =>
+    request(`/maintain/purge-shells${limit ? `?limit=${encodeURIComponent(String(limit))}` : ""}`, {
+      method: "POST",
+    }),
+  maintainPurgeShellsStatus: () => request("/maintain/purge-shells/status"),
   queue: () => request("/queue"),
   confirmJob: (id) => request(`/queue/${id}/confirm`, { method: "POST" }),
   gaps: () => request("/gaps"),

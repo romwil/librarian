@@ -717,6 +717,61 @@ class Database:
             row = conn.execute("SELECT * FROM works WHERE id = ?", (work_id,)).fetchone()
         return _row_dict(row)
 
+    # Catalog rows with at least one registered media file — true "on the shelf".
+    # Review slips / Skip ghosts / Goodreads stubs lack file rows and must not
+    # appear in Hall, Stacks, kind counts, or local search.
+    _HAS_FILES_SQL = "EXISTS (SELECT 1 FROM files f WHERE f.work_id = {alias}.id)"
+
+    def delete_work(self, work_id: str) -> bool:
+        """Remove a work and related catalog rows. Does not touch media on disk."""
+        wid = str(work_id or "").strip()
+        if not wid:
+            return False
+        if self.get_work(wid) is None:
+            return False
+
+        def _write() -> Any:
+            with self._connect() as conn:
+                conn.execute("DELETE FROM files WHERE work_id = ?", (wid,))
+                conn.execute("DELETE FROM shelf_items WHERE work_id = ?", (wid,))
+                conn.execute("DELETE FROM progress WHERE work_id = ?", (wid,))
+                conn.execute("DELETE FROM whispers WHERE work_id = ?", (wid,))
+                conn.execute("DELETE FROM works_fts WHERE work_id = ?", (wid,))
+                conn.execute("DELETE FROM jobs WHERE work_id = ?", (wid,))
+                conn.execute("DELETE FROM works WHERE id = ?", (wid,))
+
+        self.run_write(_write, label="delete_work")
+        return self.get_work(wid) is None
+
+    def count_shell_works(self) -> int:
+        """Works that are not Review slips and have no registered media files."""
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT COUNT(*) AS n FROM works w
+                WHERE w.review_state != 'needs_review'
+                  AND NOT EXISTS (SELECT 1 FROM files f WHERE f.work_id = w.id)
+                """
+            ).fetchone()
+        return int(row["n"] if row else 0)
+
+    def list_shell_works(self, *, limit: int = 5000, offset: int = 0) -> List[Dict[str, Any]]:
+        """Non-Review works with zero file rows (candidates for shell purge)."""
+        capped = max(1, min(int(limit or 5000), 20000))
+        skip = max(0, int(offset or 0))
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT w.* FROM works w
+                WHERE w.review_state != 'needs_review'
+                  AND NOT EXISTS (SELECT 1 FROM files f WHERE f.work_id = w.id)
+                ORDER BY w.updated_at DESC
+                LIMIT ? OFFSET ?
+                """,
+                (capped, skip),
+            ).fetchall()
+        return [_row_dict(row) or {} for row in rows]
+
     def get_work_by_folder_path(self, folder_path: str) -> Optional[Dict[str, Any]]:
         text = str(folder_path or "").rstrip("/")
         if not text:
@@ -844,6 +899,7 @@ class Database:
         kind: Optional[str] = None,
         review_state: Optional[str] = None,
         music_state: Optional[str] = None,
+        require_files: bool = False,
         limit: int = 48,
         offset: int = 0,
     ) -> List[Dict[str, Any]]:
@@ -858,6 +914,8 @@ class Database:
         if music_state:
             clauses.append("music_state = ?")
             args.append(music_state)
+        if require_files:
+            clauses.append(self._HAS_FILES_SQL.format(alias="works"))
         args.append(int(limit))
         args.append(max(0, int(offset)))
         sql = (
@@ -955,6 +1013,8 @@ class Database:
             args.append(shelf_row["id"])
         if not include_review:
             clauses.append("w.review_state != 'needs_review'")
+        # Shelf surfaces only show volumes with registered media files.
+        clauses.append(self._HAS_FILES_SQL.format(alias="w"))
         if kind:
             clauses.append("w.kind = ?")
             args.append(kind)
@@ -1158,6 +1218,8 @@ class Database:
                 SELECT w.* FROM works_fts f
                 JOIN works w ON w.id = f.work_id
                 WHERE works_fts MATCH ?{kind_sql}
+                  AND {self._HAS_FILES_SQL.format(alias="w")}
+                  AND w.review_state != 'needs_review'
                 ORDER BY rank
                 LIMIT ?
                 """,
@@ -1168,9 +1230,10 @@ class Database:
     def works_for_series(self, *, kind: str, series_name: str) -> List[Dict[str, Any]]:
         with self._connect() as conn:
             rows = conn.execute(
-                """
+                f"""
                 SELECT * FROM works
                 WHERE kind = ? AND lower(series_name) = lower(?) AND review_state != 'needs_review'
+                  AND {self._HAS_FILES_SQL.format(alias="works")}
                 ORDER BY series_index
                 """,
                 (kind, series_name),
@@ -1180,9 +1243,10 @@ class Database:
     def series_names(self, kind: str) -> List[str]:
         with self._connect() as conn:
             rows = conn.execute(
-                """
+                f"""
                 SELECT DISTINCT series_name FROM works
                 WHERE kind = ? AND series_name IS NOT NULL AND series_name != ''
+                  AND {self._HAS_FILES_SQL.format(alias="works")}
                 ORDER BY series_name
                 """,
                 (kind,),
@@ -1230,6 +1294,7 @@ class Database:
             f"{column} IS NOT NULL",
             f"trim({column}) != ''",
             "review_state != 'needs_review'",
+            self._HAS_FILES_SQL.format(alias="works"),
         ]
         args: List[Any] = []
         if kinds is not None:
@@ -1250,7 +1315,11 @@ class Database:
         return [str(row["value"]).strip() for row in rows if row["value"] and str(row["value"]).strip()]
 
     def _suggest_albums(self, *, like: Optional[str], limit: int) -> List[str]:
-        clauses = ["kind = 'music'", "review_state != 'needs_review'"]
+        clauses = [
+            "kind = 'music'",
+            "review_state != 'needs_review'",
+            self._HAS_FILES_SQL.format(alias="works"),
+        ]
         args: List[Any] = []
         title_clause = "title IS NOT NULL AND trim(title) != ''"
         series_clause = "series_name IS NOT NULL AND trim(series_name) != ''"
@@ -1275,7 +1344,11 @@ class Database:
         return [str(row["value"]).strip() for row in rows if row["value"] and str(row["value"]).strip()]
 
     def _suggest_years(self, *, kind: str, needle: str, limit: int) -> List[str]:
-        clauses = ["year IS NOT NULL", "review_state != 'needs_review'"]
+        clauses = [
+            "year IS NOT NULL",
+            "review_state != 'needs_review'",
+            self._HAS_FILES_SQL.format(alias="works"),
+        ]
         args: List[Any] = []
         if kind:
             clauses.append("kind = ?")
@@ -1615,10 +1688,11 @@ class Database:
         shelf = self.favorites_shelf(user_id)
         with self._connect() as conn:
             rows = conn.execute(
-                """
+                f"""
                 SELECT w.* FROM shelf_items s
                 JOIN works w ON w.id = s.work_id
                 WHERE s.shelf_id = ?
+                  AND {self._HAS_FILES_SQL.format(alias="w")}
                 ORDER BY s.added_at DESC
                 LIMIT ?
                 """,
@@ -1665,11 +1739,12 @@ class Database:
     def continue_works(self, user_id: str, *, limit: int = 18) -> List[Dict[str, Any]]:
         with self._connect() as conn:
             rows = conn.execute(
-                """
+                f"""
                 SELECT w.*, p.fraction, p.position, p.updated_at AS progress_at
                 FROM progress p
                 JOIN works w ON w.id = p.work_id
                 WHERE p.user_id = ? AND p.fraction < 1
+                  AND {self._HAS_FILES_SQL.format(alias="w")}
                 ORDER BY p.updated_at DESC
                 LIMIT ?
                 """,
@@ -1900,9 +1975,10 @@ class Database:
     def kind_counts(self) -> Dict[str, int]:
         with self._connect() as conn:
             rows = conn.execute(
-                """
+                f"""
                 SELECT kind, COUNT(*) AS n FROM works
-                WHERE review_state IS NULL OR review_state IN ('none', 'resolved', '')
+                WHERE (review_state IS NULL OR review_state IN ('none', 'resolved', ''))
+                  AND {self._HAS_FILES_SQL.format(alias="works")}
                 GROUP BY kind
                 """
             ).fetchall()

@@ -733,20 +733,17 @@ def apply_review(
     )
     if result.get("skipped_duplicate"):
         # Shelf already holds the same bytes (possibly under Calibre filenames).
-        # Dismiss this Review slip; keep the shelved catalog row.
-        resolved_slip = db.upsert_work(
-            {
-                **work,
-                "review_state": "resolved",
-                "review_reason": None,
-            }
-        )
+        # Remove this Review slip; keep the shelved catalog row.
+        slip_id = str(work.get("id") or "")
+        if slip_id and slip_id != str((result.get("work") or {}).get("id") or ""):
+            db.delete_work(slip_id)
         return {
             **result,
-            "work": resolved_slip,
+            "work": result.get("work"),
             "shelf_work": result.get("work"),
             "organized": False,
             "skipped_duplicate": True,
+            "slip_deleted": True,
         }
     if not result["organized"]:
         reason = result.get("identity", {}).get("review_reason") or result["work"].get("review_reason")

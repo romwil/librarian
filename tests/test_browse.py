@@ -1,4 +1,8 @@
-"""Stacks browse: letter / kind / series / favorites + facets."""
+"""Browse/Hall exclude catalog shells without registered media files."""
+
+from __future__ import annotations
+
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
@@ -25,19 +29,58 @@ def _login(client):
     assert resp.status_code == 200
 
 
+def _shelve(db: Database, work: dict, *, filename: str = "book.epub") -> dict:
+    """Register a fake media file so the work counts as on the shelf."""
+    folder = Path(str(work.get("folder_path") or ""))
+    if not folder.parts:
+        folder = Path("/tmp") / str(work["id"])
+        work = db.upsert_work({**work, "folder_path": str(folder)})
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / filename
+    if not path.exists():
+        path.write_bytes(b"payload")
+    db.upsert_file(
+        {
+            "work_id": work["id"],
+            "path": str(path),
+            "filename": path.name,
+            "kind": work.get("kind") or "book",
+            "size": path.stat().st_size,
+        }
+    )
+    return work
+
+
 def _seed(db: Database):
-    db.upsert_work(
+    shining = db.upsert_work(
         {
             "kind": "book",
             "title": "The Shining",
             "author": "Stephen King",
             "series_name": "Overlook",
             "cover_path": "/tmp/shining.jpg",
+            "folder_path": "/tmp/shining",
         }
     )
-    db.upsert_work({"kind": "book", "title": "Dune", "author": "Frank Herbert", "series_name": "Dune"})
-    db.upsert_work({"kind": "comic", "title": "Saga #1", "author": "Brian K. Vaughan", "series_name": "Saga"})
-    db.upsert_work({"kind": "audiobook", "title": "Circe", "author": "Madeline Miller"})
+    _shelve(db, shining, filename="The Shining.epub")
+    dune = db.upsert_work(
+        {"kind": "book", "title": "Dune", "author": "Frank Herbert", "series_name": "Dune", "folder_path": "/tmp/dune"}
+    )
+    _shelve(db, dune)
+    saga = db.upsert_work(
+        {
+            "kind": "comic",
+            "title": "Saga #1",
+            "author": "Brian K. Vaughan",
+            "series_name": "Saga",
+            "folder_path": "/tmp/saga",
+        }
+    )
+    _shelve(db, saga, filename="Saga #1.cbz")
+    circe = db.upsert_work(
+        {"kind": "audiobook", "title": "Circe", "author": "Madeline Miller", "folder_path": "/tmp/circe"}
+    )
+    _shelve(db, circe, filename="Circe.m4b")
     db.upsert_work(
         {
             "kind": "book",
@@ -129,3 +172,40 @@ def test_browse_works_db_excludes_review(tmp_path):
     page = db.browse_works(author="Stephen King")
     assert [row["title"] for row in page["items"]] == ["The Shining"]
     assert page["total"] == 1
+
+
+def test_browse_excludes_resolved_shells_without_files(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    _login(client)
+    db = Database(tmp_path / "librarian.db")
+    real = db.upsert_work(
+        {
+            "kind": "audiobook",
+            "title": "Backstage at the Lincoln Assassination",
+            "author": "Thomas R. Bogar",
+            "folder_path": str(tmp_path / "library" / "lincoln"),
+            "review_state": "none",
+        }
+    )
+    _shelve(db, real, filename="lincoln.m4b")
+    db.upsert_work(
+        {
+            "kind": "audiobook",
+            "title": "Backstage.at.the.Lincoln.Assassination.Audio.book",
+            "author": "",
+            "folder_path": str(tmp_path / "complete" / "Backstage.at.the.Lincoln.Assassination.Audio.book"),
+            "review_state": "resolved",
+        }
+    )
+
+    browse = client.get("/api/browse", params={"kind": "audiobook"})
+    assert browse.status_code == 200
+    titles = [row["title"] for row in browse.json()["items"]]
+    assert titles == ["Backstage at the Lincoln Assassination"]
+    assert browse.json()["total"] == 1
+
+    hall = client.get("/api/hall")
+    assert hall.status_code == 200
+    assert hall.json()["kind_counts"]["audiobook"] == 1
+    audio_titles = [row["title"] for row in hall.json()["areas"]["audiobooks"]]
+    assert audio_titles == ["Backstage at the Lincoln Assassination"]

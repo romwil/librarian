@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [0.4.10] — 2026-09-23
+
+### Fixed
+
+- **Shelf shells off browse.** Hall, Stacks, kind counts, and local search only show volumes with registered media files — dismissed Review slips and dump-title ghosts no longer appear “on the shelves.”
+- **Maintain page width.** Maintain sections use the full admin-room width (same as Settings/Review) instead of a 42rem phone column that wrapped path fields and ledes oddly.
+
+### Added
+
+- **Maintain Purge shells.** Owner bulk cleanup deletes catalog rows with no file rows and no payload on disk (wishlist ISBN stubs and folders that still hold media are kept). Background job with a live progress meter.
+- **Skip / Purge duplicates delete slips.** Dismissing a Review slip removes the catalog row instead of leaving a `resolved` ghost that could reappear on browse.
+
 ## [0.4.9] — 2026-09-23
 
 ### Added

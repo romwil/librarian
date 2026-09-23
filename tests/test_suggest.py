@@ -24,11 +24,31 @@ def _login(client):
 
 
 def _seed(tmp_path):
+    from pathlib import Path
+
     db = Database(tmp_path / "librarian.db")
-    db.upsert_work({"kind": "book", "title": "Dune", "author": "Frank Herbert", "year": 1965})
-    db.upsert_work({"kind": "book", "title": "Dune Messiah", "author": "Frank Herbert", "year": 1969})
-    db.upsert_work({"kind": "book", "title": "Neuromancer", "author": "William Gibson", "year": 1984})
-    db.upsert_work(
+
+    def shelve(payload: dict, *, filename: str = "item.epub") -> None:
+        work = db.upsert_work(payload)
+        folder = Path(tmp_path) / "shelf" / str(work["id"])
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / filename
+        path.write_bytes(b"payload")
+        db.upsert_work({**work, "folder_path": str(folder)})
+        db.upsert_file(
+            {
+                "work_id": work["id"],
+                "path": str(path),
+                "filename": path.name,
+                "kind": work.get("kind") or "book",
+                "size": path.stat().st_size,
+            }
+        )
+
+    shelve({"kind": "book", "title": "Dune", "author": "Frank Herbert", "year": 1965})
+    shelve({"kind": "book", "title": "Dune Messiah", "author": "Frank Herbert", "year": 1969})
+    shelve({"kind": "book", "title": "Neuromancer", "author": "William Gibson", "year": 1984})
+    shelve(
         {
             "kind": "comic",
             "title": "Saga #1",
@@ -36,9 +56,10 @@ def _seed(tmp_path):
             "series_name": "Saga",
             "series_index": "1",
             "year": 2012,
-        }
+        },
+        filename="saga.cbz",
     )
-    db.upsert_work(
+    shelve(
         {
             "kind": "music",
             "title": "Random Access Memories",
@@ -46,9 +67,10 @@ def _seed(tmp_path):
             "series_name": "Random Access Memories",
             "year": 2013,
             "music_state": "incoming",
-        }
+        },
+        filename="ram.mp3",
     )
-    db.upsert_work(
+    shelve(
         {
             "kind": "music",
             "title": "Discovery",
@@ -56,7 +78,8 @@ def _seed(tmp_path):
             "series_name": "Discovery",
             "year": 2001,
             "music_state": "incoming",
-        }
+        },
+        filename="discovery.mp3",
     )
     return db
 
