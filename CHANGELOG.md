@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.4.12] — 2026-09-24
+
+### Fixed
+
+- **Review Apply on multi-title dumps.** Flat NYT / Usenet Fiction folders (many `Title - Author.epub` siblings) no longer 500 on Apply. Apply peels the confirmed title onto the shelf and leaves a leftover `extra_files` slip for the rest; Clear-extra / ingest expand one target per stem. Shelf `PermissionError` (PUID-locked author folders) returns readable 400 guidance instead of a bare Internal Server Error.
+- **Alert contrast.** `.alert` uses theme text on a soft danger wash (readable in lights-up and lights-down) — never pale-on-pink.
+- **Empty-body 500 copy.** `humanError` no longer masks a bare “Internal Server Error” behind the generic stacks line; filing slips get explicit log guidance, and Apply permission detail stays visible.
+
 ## [0.4.11] — 2026-09-24
 
 ### Fixed

@@ -323,6 +323,16 @@ def iter_ingest_targets(path: Path):
     if media_files and is_mixed_comic_ebook_payload(media_files):
         yield from ingest_targets_for_mixed_payload(media_files)
         return
+    # Flat multi-title dumps (NYT bestsellers Fiction, etc.): one target per stem.
+    if len(media_files) > 1:
+        from librarian.identify import (
+            ingest_targets_for_multi_title_payload,
+            unexpected_extra_files,
+        )
+
+        if unexpected_extra_files(media_files):
+            yield from ingest_targets_for_multi_title_payload(media_files)
+            return
     yield path
 
 

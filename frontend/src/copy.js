@@ -237,7 +237,14 @@ function matchCopy(raw, table) {
 
 export function humanError(error, context = "") {
   const status = error?.status;
-  const raw = String(error?.message || error || "").trim();
+  let raw = "";
+  if (typeof error === "string") {
+    raw = error.trim();
+  } else if (error && typeof error.message === "string") {
+    raw = error.message.trim();
+  } else if (error != null && typeof error !== "object") {
+    raw = String(error).trim();
+  }
   if (isUnreachable(error, raw)) return UNREACHABLE_COPY;
   if (context === "login") {
     if (LOGIN_COPY[status]) return LOGIN_COPY[status];
@@ -262,15 +269,36 @@ export function humanError(error, context = "") {
   if (/not allowed/i.test(raw)) return "That shelf is for the house keepers.";
   if (/owner has not been seeded/i.test(raw)) return "The reading room is not seeded yet.";
   if (/work not found/i.test(raw)) return "That volume is not on these shelves.";
+  // Apply / shelf write failures — keep guidance; don't reuse cover-only copy.
+  if (/couldn't write into the library shelf|PUID ownership/i.test(raw)) {
+    return raw;
+  }
   if (/\[Errno 13\]|Permission denied/i.test(raw)) {
+    if (/cover\.jpg|cover art/i.test(raw)) {
+      return (
+        "Couldn't write cover art — a shelf folder is locked for the lamp. " +
+        "Enrich can keep going; covers may land under the cover cache."
+      );
+    }
     return (
-      "Couldn't write cover art — a shelf folder is locked for the lamp. " +
-      "Enrich can keep going; covers may land under the cover cache."
+      "Couldn't write into the library shelf — a folder is locked for the lamp " +
+      "(PUID ownership under the books root). Fix permissions, then try again."
     );
   }
   // Known Apply / Review guidance — keep verbatim even when slightly long.
-  if (/already exists at the library destination|will not overwrite|Archives are still here|No book, comic, or audio file|No complete folder/i.test(raw)) {
+  if (
+    /already exists at the library destination|will not overwrite|Archives are still here|No book, comic, or audio file|No complete folder|Could not match a file in this dump/i.test(
+      raw,
+    )
+  ) {
     return raw;
+  }
+  // Bare 500 / empty body — don't pretend we have detail.
+  if (status === 500 || /^internal server error$/i.test(raw)) {
+    if (raw && !/^internal server error$/i.test(raw) && raw.length <= 180 && !/traceback|exception/i.test(raw)) {
+      return raw;
+    }
+    return "Something went wrong filing this slip. Try again, or check the Librarian logs.";
   }
   if (!raw || raw.length > 180 || /traceback|exception/i.test(raw)) {
     return "Something went wrong in the stacks. Try again, or check Settings.";

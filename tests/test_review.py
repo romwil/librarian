@@ -727,3 +727,98 @@ def test_review_reprocess_extra_files_applies_multiformat_volume(tmp_path, monke
     refreshed = db.get_work(work["id"])
     assert refreshed["review_state"] == "none"
     assert refreshed["review_reason"] is None
+
+
+def test_review_apply_peels_matched_file_from_multi_title_dump(tmp_path, monkeypatch):
+    """NYT-style Fiction dump: Apply shelves only the confirmed title, leaves the rest."""
+    monkeypatch.setenv("LIBRARIAN_FS_ROOT", str(tmp_path))
+    settings = Settings(
+        books_root=str(tmp_path / "books"),
+        magazines_root=str(tmp_path / "magazines"),
+        comics_root=str(tmp_path / "comics"),
+        audiobooks_root=str(tmp_path / "audiobooks"),
+        incoming_music_root=str(tmp_path / "incoming"),
+        music_root=str(tmp_path / "music"),
+    )
+    client, app = _client(tmp_path, monkeypatch, settings=settings)
+    db = app.state.db
+    folder = tmp_path / "complete" / "NYT Fiction"
+    folder.mkdir(parents=True)
+    (folder / "A Calamity of Souls - David Baldacci.epub").write_bytes(b"calamity")
+    (folder / "Fourth Wing - Rebecca Yarros.epub").write_bytes(b"fourth")
+    (folder / "The Women - Kristin Hannah.epub").write_bytes(b"women")
+    work = db.upsert_work(
+        {
+            "kind": "book",
+            "title": "A Calamity of Souls",
+            "author": "David Baldacci",
+            "isbn": "9781035035618",
+            "series_name": "A Court of Thorns and Roses",
+            "series_index": "2",
+            "review_state": "needs_review",
+            "review_reason": "extra_files",
+            "folder_path": str(folder),
+        }
+    )
+    resp = client.post(
+        f"/api/review/{work['id']}/apply",
+        json={
+            "kind": "book",
+            "title": "A Calamity of Souls",
+            "author": "David Baldacci",
+            "isbn": "9781035035618",
+            "folder": str(folder),
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["organized"] is True
+    assert body.get("peeled") is True
+    assert body.get("remaining") == 2
+    shelved = Path(settings.books_root) / "David Baldacci" / "A Calamity of Souls"
+    assert (shelved / "A Calamity of Souls.epub").read_bytes() == b"calamity"
+    assert (folder / "Fourth Wing - Rebecca Yarros.epub").exists()
+    assert (folder / "The Women - Kristin Hannah.epub").exists()
+    assert not (folder / "A Calamity of Souls - David Baldacci.epub").exists()
+    leftover = body.get("leftover_work")
+    assert leftover is not None
+    assert leftover["review_reason"] == "extra_files"
+    assert leftover["folder_path"] == str(folder)
+
+
+def test_review_apply_permission_error_is_400(tmp_path, monkeypatch):
+    settings = Settings(
+        books_root=str(tmp_path / "books"),
+        magazines_root=str(tmp_path / "magazines"),
+        comics_root=str(tmp_path / "comics"),
+        audiobooks_root=str(tmp_path / "audiobooks"),
+        incoming_music_root=str(tmp_path / "incoming"),
+        music_root=str(tmp_path / "music"),
+    )
+    client, app = _client(tmp_path, monkeypatch, settings=settings)
+    db = app.state.db
+    folder = tmp_path / "complete" / "one"
+    folder.mkdir(parents=True)
+    (folder / "book.epub").write_bytes(b"epub")
+    work = db.upsert_work(
+        {
+            "kind": "book",
+            "title": "Locked",
+            "author": "Author",
+            "review_state": "needs_review",
+            "review_reason": "unknown_identity",
+            "folder_path": str(folder),
+        }
+    )
+
+    def _boom(*_args, **_kwargs):
+        raise PermissionError(13, "Permission denied", str(tmp_path / "books" / "Author" / "Locked"))
+
+    monkeypatch.setattr("librarian.organize.organize_identified", _boom)
+    resp = client.post(
+        f"/api/review/{work['id']}/apply",
+        json={"title": "Locked", "author": "Author", "kind": "book", "folder": str(folder)},
+    )
+    assert resp.status_code == 400
+    assert "library shelf" in resp.json()["detail"]
+    assert "PUID" in resp.json()["detail"]

@@ -140,6 +140,22 @@ describe("reading room copy", () => {
     );
   });
 
+  it("turns bare Internal Server Error / empty 500 into filing copy", () => {
+    assert.match(humanError({ status: 500, message: "Internal Server Error" }), /filing this slip|Librarian logs/i);
+    assert.match(humanError({ status: 500, message: "" }), /filing this slip|Librarian logs/i);
+  });
+
+  it("keeps Apply shelf PermissionError guidance", () => {
+    const locked =
+      "Couldn't write into the library shelf — a folder is locked for the lamp " +
+      "(PUID ownership under the books root). Fix permissions, then Apply again.";
+    assert.equal(humanError({ status: 400, message: locked }), locked);
+    assert.match(
+      humanError({ status: 500, message: `[Errno 13] Permission denied: "/data/media/library/books/Author/Title"` }),
+      /library shelf|PUID/i,
+    );
+  });
+
   it("keeps Review Apply collision guidance instead of masking it", () => {
     const collision =
       "A file already exists at the library destination. " +

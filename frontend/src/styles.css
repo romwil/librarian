@@ -2126,8 +2126,8 @@ body:has(.listen-room) .work-hero-scrim {
 }
 
 .alert {
-  color: #ffd4cc;
-  background: color-mix(in srgb, var(--danger) 22%, transparent);
+  color: var(--text);
+  background: color-mix(in srgb, var(--danger) 18%, var(--surface));
   padding: 0.7rem 0.9rem;
   border-radius: var(--radius);
   margin: 0;

@@ -94,6 +94,14 @@ COLLISION_APPLY_ERROR = (
     "A file already exists at the library destination. "
     "Apply will not overwrite — change the title/folder, or Skip to keep the shelf copy."
 )
+PERMISSION_APPLY_ERROR = (
+    "Couldn't write into the library shelf — a folder is locked for the lamp "
+    "(PUID ownership under the books root). Fix permissions, then Apply again."
+)
+EXTRA_FILES_NO_MATCH_APPLY_ERROR = (
+    "Could not match a file in this dump to the confirmed title/author/ISBN. "
+    "Adjust the fields to match a filename here, or Skip."
+)
 
 
 def _part_fields_for_organize(
@@ -450,9 +458,18 @@ def organize_identified(
             identity["confidence"] = "low"
             result["auto_organize"] = False
     # Never shelve comic archives + ebook encodings as one work (even on force Apply).
-    from librarian.identify import is_mixed_comic_ebook_payload
+    from librarian.identify import is_mixed_comic_ebook_payload, unexpected_extra_files
 
     if files and is_mixed_comic_ebook_payload(files):
+        identity["review_reason"] = REVIEW_EXTRA
+        identity["confidence"] = "low"
+        result["auto_organize"] = False
+    # Never force-shelve a multi-title dump under one identity (NYT Fiction, etc.).
+    elif (
+        files
+        and unexpected_extra_files(files)
+        and str(identity.get("kind") or "") not in (KIND_MUSIC, KIND_AUDIOBOOK, KIND_MAGAZINE)
+    ):
         identity["review_reason"] = REVIEW_EXTRA
         identity["confidence"] = "low"
         result["auto_organize"] = False
@@ -728,16 +745,19 @@ def apply_review(
         "guid": work.get("indexer_guid"),
         "name": resolved.name,
     }
-    result = organize_identified(
-        db,
-        settings,
-        folder=resolved,
-        indexer_item=fake_item,
-        apply=True,
-        identity_overrides=merged,
-        force=True,
-        move_source=True,
-    )
+    try:
+        result = organize_identified(
+            db,
+            settings,
+            folder=resolved,
+            indexer_item=fake_item,
+            apply=True,
+            identity_overrides=merged,
+            force=True,
+            move_source=True,
+        )
+    except PermissionError as error:
+        raise ValueError(PERMISSION_APPLY_ERROR) from error
     if result.get("skipped_duplicate"):
         # Shelf already holds the same bytes (possibly under Calibre filenames).
         # Remove this Review slip; keep the shelved catalog row.
@@ -755,7 +775,11 @@ def apply_review(
     if not result["organized"]:
         reason = result.get("identity", {}).get("review_reason") or result["work"].get("review_reason")
         if reason == REVIEW_EXTRA:
-            from librarian.identify import expand_organize_payload, is_mixed_comic_ebook_payload
+            from librarian.identify import (
+                expand_organize_payload,
+                is_mixed_comic_ebook_payload,
+                unexpected_extra_files,
+            )
             from librarian.split_mixed_kinds import split_mixed_payload_folder
 
             payload = expand_organize_payload(resolved)
@@ -767,6 +791,16 @@ def apply_review(
                     folder=resolved,
                     requested_by=str(work.get("requested_by") or "owner"),
                 )
+            if unexpected_extra_files(payload):
+                return _peel_matched_extra_files(
+                    db,
+                    settings,
+                    work=work,
+                    folder=resolved,
+                    identity=merged,
+                    indexer_item=fake_item,
+                    payload=payload,
+                )
         if reason == REVIEW_UNPACK_STUCK:
             raise ValueError(UNPACK_STUCK_APPLY_ERROR)
         if reason == REVIEW_NO_PAYLOAD:
@@ -774,6 +808,93 @@ def apply_review(
         if reason == REVIEW_COLLISION:
             raise ValueError(COLLISION_APPLY_ERROR)
     return result
+
+
+def _peel_matched_extra_files(
+    db: Database,
+    settings: Settings,
+    *,
+    work: Dict[str, Any],
+    folder: Path,
+    identity: Dict[str, Any],
+    indexer_item: Dict[str, Any],
+    payload: List[Path],
+) -> Dict[str, Any]:
+    """Shelve files matching the confirmed identity; leave other titles in the dump."""
+    from librarian.identify import (
+        match_payload_files_to_identity,
+        safe_path_part,
+        tidy_title,
+    )
+
+    matched = match_payload_files_to_identity(payload, identity)
+    if not matched:
+        raise ValueError(EXTRA_FILES_NO_MATCH_APPLY_ERROR)
+
+    peel_label = safe_path_part(str(identity.get("title") or "Peeled"), fallback="Peeled")
+    stage = folder / f".librarian-peel-{peel_label}"
+    if stage.exists():
+        stage = folder / f".librarian-peel-{str(work.get('id') or 'x')[:8]}"
+    stage.mkdir(parents=True, exist_ok=True)
+    moved: List[Path] = []
+    try:
+        for src in matched:
+            dest = stage / src.name
+            if src.resolve() != dest.resolve():
+                shutil.move(str(src), str(dest))
+            moved.append(dest)
+        try:
+            result = organize_identified(
+                db,
+                settings,
+                folder=stage,
+                indexer_item=indexer_item,
+                apply=True,
+                identity_overrides=identity,
+                force=True,
+                move_source=True,
+            )
+        except PermissionError as error:
+            raise ValueError(PERMISSION_APPLY_ERROR) from error
+    except Exception:
+        # Best-effort restore so the dump stays intact for a retry.
+        for path in moved:
+            restore = folder / path.name
+            if path.exists() and not restore.exists():
+                try:
+                    shutil.move(str(path), str(restore))
+                except OSError:
+                    pass
+        if stage.exists() and stage.is_dir() and not any(stage.iterdir()):
+            shutil.rmtree(stage, ignore_errors=True)
+        raise
+
+    remaining = list_payload_files(folder)
+    leftover = None
+    if remaining:
+        leftover_title = tidy_title(remaining[0].stem.split(" - ", 1)[0]) or folder.name
+        leftover = db.upsert_work(
+            {
+                "kind": str(identity.get("kind") or work.get("kind") or "book"),
+                "title": leftover_title,
+                "author": None,
+                "folder_path": str(folder),
+                "review_state": "needs_review",
+                "review_reason": REVIEW_EXTRA,
+                "confidence": "low",
+                "requested_by": work.get("requested_by"),
+            }
+        )
+    elif stage.exists() and stage.is_dir() and not any(stage.iterdir()):
+        shutil.rmtree(stage, ignore_errors=True)
+
+    return {
+        **result,
+        "peeled": True,
+        "peeled_files": [str(path) for path in matched],
+        "remaining": len(remaining),
+        "leftover_work": leftover,
+    }
 
 
 def repair_review(

@@ -9,7 +9,15 @@ async function request(path, options = {}) {
     ...options,
   });
   if (response.status === 204) return null;
-  const data = await response.json().catch(() => ({}));
+  const text = await response.text();
+  let data = {};
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { detail: text.trim() };
+    }
+  }
   if (!response.ok) {
     const error = new Error(detailText(data.detail) || response.statusText);
     error.status = response.status;

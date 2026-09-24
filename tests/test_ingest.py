@@ -250,6 +250,25 @@ def test_list_ingest_targets_keeps_single_volume_folder(tmp_path):
     assert list_ingest_targets(folder) == [folder]
 
 
+def test_list_ingest_targets_expands_flat_multi_title_ebook_dump(tmp_path):
+    """NYT / Usenet Fiction folders with many Title - Author.epub siblings."""
+    folder = tmp_path / "complete" / "NYT Fiction"
+    folder.mkdir(parents=True)
+    names = [
+        "A Calamity of Souls - David Baldacci.epub",
+        "Fourth Wing - Rebecca Yarros.epub",
+        "The Women - Kristin Hannah.epub",
+        "Fourth Wing - Rebecca Yarros.mobi",  # same stem → one target
+    ]
+    for name in names:
+        (folder / name).write_bytes(b"x")
+    targets = list_ingest_targets(folder)
+    assert len(targets) == 3
+    assert all(t.is_file() for t in targets)
+    stems = {t.stem.split(" - ", 1)[0] for t in targets}
+    assert stems == {"A Calamity of Souls", "Fourth Wing", "The Women"}
+
+
 def test_list_ingest_targets_expands_calibre_author_tree(tmp_path):
     library = tmp_path / "newlib"
     a1 = library / "Abby Jimenez" / "Just for the Summer (10103)"

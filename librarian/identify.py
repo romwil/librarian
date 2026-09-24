@@ -1528,6 +1528,72 @@ def ingest_targets_for_mixed_payload(files: Sequence[Path]) -> List[Path]:
     return targets
 
 
+def ingest_targets_for_multi_title_payload(files: Sequence[Path]) -> List[Path]:
+    """One ingest target per distinct title stem in a flat multi-book dump.
+
+    NYT / Usenet Fiction folders often hold dozens of ``Title - Author.epub``
+    siblings. Clear-extra and ingest must not treat that as one volume — pick a
+    representative file per stem; ``expand_organize_payload`` pulls same-stem
+    multi-format siblings later.
+    """
+    groups: Dict[str, List[Path]] = {}
+    for path in files:
+        key = _normalized_payload_stem(path) or path.stem.lower()
+        groups.setdefault(key, []).append(path)
+    targets: List[Path] = []
+    for key in sorted(groups.keys()):
+        ordered = sorted(
+            groups[key],
+            key=lambda item: (
+                0 if item.suffix.lower() == ".epub" else 1,
+                item.name.lower(),
+            ),
+        )
+        targets.append(ordered[0])
+    return targets
+
+
+def match_payload_files_to_identity(
+    files: Sequence[Path],
+    identity: Mapping[str, Any],
+) -> List[Path]:
+    """Return media files in ``files`` that belong to the confirmed Review identity.
+
+    Used when Apply peels one volume out of a multi-title dump (extra_files).
+    Matches ISBN-in-name, normalized title stem, or title substring in the stem;
+    then expands to same-stem multi-format siblings.
+    """
+    title = tidy_title(str(identity.get("title") or ""))
+    isbn = extract_isbn(str(identity.get("isbn") or "")) or ""
+    title_norm = _normalized_payload_stem(Path(f"{title}.epub")) if title else ""
+    title_l = title.lower()
+    hits: List[Path] = []
+    for path in files:
+        stem_norm = _normalized_payload_stem(path)
+        name_digits = re.sub(r"[^0-9]", "", path.name)
+        if isbn and isbn in name_digits:
+            hits.append(path)
+            continue
+        if title_norm and stem_norm == title_norm:
+            hits.append(path)
+            continue
+        if title_l and title_l in path.stem.lower():
+            hits.append(path)
+    if not hits:
+        return []
+    stems = {_normalized_payload_stem(path) for path in hits}
+    stems.discard("")
+    return sorted(
+        [path for path in files if _normalized_payload_stem(path) in stems],
+        key=lambda item: item.name.lower(),
+    )
+
+
+def unexpected_extra_files(files: Sequence[Path]) -> bool:
+    """Public: folder looks like multiple distinct works (not one multi-format book)."""
+    return _unexpected_extra_files(files)
+
+
 def expand_organize_payload(target: Path) -> List[Path]:
     """Media files for identify/organize.
 
