@@ -284,6 +284,8 @@ def list_ingest_targets(path: Path) -> List[Path]:
 
 def iter_ingest_targets(path: Path):
     """Yield ingest targets depth-first (same rules as ``list_ingest_targets``)."""
+    from librarian.identify import ingest_targets_for_mixed_payload, is_mixed_comic_ebook_payload
+
     if not path.is_dir():
         yield path
         return
@@ -304,7 +306,11 @@ def iter_ingest_targets(path: Path):
     if dirs and media_files:
         for child in dirs:
             yield from iter_ingest_targets(child)
-        yield from media_files
+        # Mixed comic+ebook at the dump root: never one blended volume.
+        if is_mixed_comic_ebook_payload(media_files):
+            yield from ingest_targets_for_mixed_payload(media_files)
+        else:
+            yield from media_files
         return
     if len(dirs) >= 2:
         for child in dirs:
@@ -312,6 +318,10 @@ def iter_ingest_targets(path: Path):
         return
     if len(dirs) == 1 and not media_files:
         yield from iter_ingest_targets(dirs[0])
+        return
+    # Leaf volume with both comic archives and ebook encodings → separate works.
+    if media_files and is_mixed_comic_ebook_payload(media_files):
+        yield from ingest_targets_for_mixed_payload(media_files)
         return
     yield path
 

@@ -108,6 +108,9 @@ MEDIA_EXTENSIONS = {
 }
 # Alternate ebook encodings of one title (SAB multi-format / Calibre).
 BOOK_FORMAT_EXTENSIONS = {".epub", ".pdf", ".mobi", ".azw3", ".kepub"}
+# Clear ebook encodings (not PDF — PDF is comic-or-book depending on siblings).
+EBOOK_FORMAT_EXTENSIONS = {".epub", ".mobi", ".azw3", ".kepub"}
+COMIC_ARCHIVE_EXTENSIONS = {".cbz", ".cbr", ".cbt"}
 SIDECAR_NAMES = {"metadata.opf", "comicinfo.xml", "cover.jpg", "cover.png", "nfo"}
 JUNK_EXTENSIONS = {".par2", ".nzb", ".nfo", ".sfv", ".srr", ".url"}
 JUNK_NAMES = {".ds_store", "thumbs.db", "desktop.ini"}
@@ -1067,7 +1070,7 @@ def identify_completed(
     Layers, strongest first: sought/selected/retrieved → embedded metadata →
     kind-specific filename parse → catalog lookup with a real key. Later layers fill holes only.
     """
-    files = list_payload_files(folder)
+    files = expand_organize_payload(folder)
     item = dict(indexer_item or {})
     if category is not None:
         item["category"] = category or item.get("category")
@@ -1456,20 +1459,113 @@ def _catalog_comic(identity: Identity, settings: Any, *, transport: Any = None) 
 def _kind_from_payload(files: Sequence[Path], folder: Path) -> str:
     suffixes = {path.suffix.lower() for path in files}
     names = " ".join([folder.name, *(path.name for path in files)]).lower()
-    if suffixes & {".cbz", ".cbr", ".cbt"}:
+    # Comic archives win only when no clear ebook encodings share the payload.
+    # Mixed comic+ebook is handled by partition/split — never blend as comic.
+    if suffixes & COMIC_ARCHIVE_EXTENSIONS and not (suffixes & EBOOK_FORMAT_EXTENSIONS):
         return KIND_COMIC
     if suffixes & {".m4b"} or _AUDIOBOOK_HINT.search(names):
         return KIND_AUDIOBOOK
     if suffixes & {".flac", ".mp3", ".m4a", ".ogg", ".opus"} and ".epub" not in suffixes:
         return KIND_MUSIC
-    if suffixes & {".epub", ".mobi", ".azw3", ".kepub"}:
+    if suffixes & EBOOK_FORMAT_EXTENSIONS:
         return KIND_BOOK
     if suffixes == {".pdf"}:
         return KIND_BOOK
+    if suffixes & COMIC_ARCHIVE_EXTENSIONS:
+        return KIND_COMIC
     return ""
 
 
+def is_mixed_comic_ebook_payload(files: Sequence[Path]) -> bool:
+    """True when a volume holds both comic archives and clear ebook encodings.
+
+    Those are separate works (comic adaptation vs prose book), never alternate
+    formats of one title. PDF alone does not trigger this — PDF+cbz stays comic.
+    """
+    suffixes = {path.suffix.lower() for path in files}
+    return bool(suffixes & COMIC_ARCHIVE_EXTENSIONS) and bool(suffixes & EBOOK_FORMAT_EXTENSIONS)
+
+
+def partition_comic_ebook_files(files: Sequence[Path]) -> Dict[str, List[Path]]:
+    """Split media into comic archives vs ebook encodings (PDF follows ebooks when mixed)."""
+    comics: List[Path] = []
+    ebooks: List[Path] = []
+    pdfs: List[Path] = []
+    other: List[Path] = []
+    for path in files:
+        suffix = path.suffix.lower()
+        if suffix in COMIC_ARCHIVE_EXTENSIONS:
+            comics.append(path)
+        elif suffix in EBOOK_FORMAT_EXTENSIONS:
+            ebooks.append(path)
+        elif suffix == ".pdf":
+            pdfs.append(path)
+        else:
+            other.append(path)
+    if comics and ebooks:
+        return {"comic": comics, "book": ebooks + pdfs, "other": other}
+    if comics:
+        return {"comic": comics + pdfs, "book": [], "other": other + ebooks}
+    return {"comic": [], "book": ebooks + pdfs, "other": other}
+
+
+def ingest_targets_for_mixed_payload(files: Sequence[Path]) -> List[Path]:
+    """Paths to enqueue when a leaf folder mixed comics with ebooks.
+
+    Each comic archive is its own volume. Ebook encodings that share a
+    normalized stem stay one volume (representative file; siblings expand later).
+    """
+    parts = partition_comic_ebook_files(files)
+    targets: List[Path] = list(parts.get("comic") or [])
+    book_groups: Dict[str, List[Path]] = {}
+    for path in parts.get("book") or []:
+        key = _normalized_payload_stem(path) or path.stem.lower()
+        book_groups.setdefault(key, []).append(path)
+    for group in book_groups.values():
+        ordered = sorted(group, key=lambda item: item.name.lower())
+        targets.append(ordered[0])
+    targets.extend(parts.get("other") or [])
+    return targets
+
+
+def expand_organize_payload(target: Path) -> List[Path]:
+    """Media files for identify/organize.
+
+    When the target is a single ebook file, include same-stem ebook siblings in
+    the same folder (Calibre multi-format) but never comic archives — so a mass
+    import that split a mixed folder still shelves epub+azw3 as one book.
+    """
+    if target.is_file():
+        if _is_junk_file(target) or _is_archive_file(target):
+            return []
+        suffix = target.suffix.lower()
+        if suffix not in MEDIA_EXTENSIONS:
+            return []
+        if suffix in EBOOK_FORMAT_EXTENSIONS or suffix == ".pdf":
+            stem = _normalized_payload_stem(target)
+            siblings: List[Path] = []
+            try:
+                for child in target.parent.iterdir():
+                    if not child.is_file():
+                        continue
+                    child_suffix = child.suffix.lower()
+                    if child_suffix not in EBOOK_FORMAT_EXTENSIONS and child_suffix != ".pdf":
+                        continue
+                    if _normalized_payload_stem(child) != stem:
+                        continue
+                    siblings.append(child)
+            except OSError:
+                return [target]
+            return sorted(siblings or [target], key=lambda item: item.name.lower())
+        return [target]
+    return list_payload_files(target)
+
+
 def _apply_review_gates(identity: Identity, files: Sequence[Path]) -> None:
+    if is_mixed_comic_ebook_payload(files):
+        identity.review_reason = REVIEW_EXTRA
+        identity.confidence = "low"
+        return
     extra = _unexpected_extra_files(files)
     if extra and identity.kind not in (KIND_MUSIC, KIND_AUDIOBOOK, KIND_MAGAZINE):
         identity.review_reason = REVIEW_EXTRA
@@ -1568,7 +1664,11 @@ def _unexpected_extra_files(files: Sequence[Path]) -> bool:
 
 def _apply_post_llm_review(identity: Identity, folder: Path) -> List[Path]:
     """Folder hygiene after a successful LLM identity. Keep true multi-work extras in Review."""
-    files = list_payload_files(folder)
+    files = expand_organize_payload(folder)
+    if is_mixed_comic_ebook_payload(files):
+        identity.review_reason = REVIEW_EXTRA
+        identity.confidence = "low"
+        return files
     extra = _unexpected_extra_files(files)
     if extra and identity.kind not in (KIND_MUSIC, KIND_AUDIOBOOK, KIND_MAGAZINE):
         identity.review_reason = REVIEW_EXTRA

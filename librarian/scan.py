@@ -10,9 +10,12 @@ from typing import Any, Dict, List, Mapping, Optional, Protocol, Sequence, Tuple
 from librarian.config import Settings
 from librarian.db import Database
 from librarian.identify import (
+    COMIC_ARCHIVE_EXTENSIONS,
+    EBOOK_FORMAT_EXTENSIONS,
     REVIEW_COLLISION,
     REVIEW_UNKNOWN,
     extract_isbn,
+    is_mixed_comic_ebook_payload,
     list_payload_files,
     parse_usenet_name,
     tidy_title,
@@ -250,7 +253,17 @@ def _ingest_folder(
     payload = _merge_work(existing, identity)
     work = db.upsert_work(payload)
     created = existing is None
-    for path in files:
+
+    attach = list(files)
+    leftover_books: List[Path] = []
+    if kind == KIND_COMIC and is_mixed_comic_ebook_payload(files):
+        attach = [path for path in files if path.suffix.lower() in COMIC_ARCHIVE_EXTENSIONS]
+        leftover_books = [
+            path
+            for path in files
+            if path.suffix.lower() in EBOOK_FORMAT_EXTENSIONS or path.suffix.lower() == ".pdf"
+        ]
+    for path in attach:
         claimed = db.get_file_by_path(str(path))
         if claimed and claimed.get("work_id") not in (None, work["id"]):
             continue
@@ -261,6 +274,31 @@ def _ingest_folder(
                 "filename": path.name,
                 "kind": kind,
                 "size": path.stat().st_size if path.is_file() else 0,
+            }
+        )
+    # Ebooks that landed under a comics folder become their own book work on scan.
+    for book_path in leftover_books:
+        book_identity = identity_from_library_folder(KIND_BOOK, folder, [book_path], root=root)
+        book_identity["kind"] = KIND_BOOK
+        book_identity["folder_path"] = str(book_path.parent)
+        book_identity["review_state"] = "none"
+        book_identity["review_reason"] = None
+        if not str(book_identity.get("title") or "").strip():
+            book_identity["title"] = tidy_title(book_path.stem) or "Untitled"
+        existing_book, _ = _match_existing(
+            db, book_identity, folder_path=str(book_path.parent), files=[book_path]
+        )
+        book_work = db.upsert_work(_merge_work(existing_book, book_identity))
+        claimed = db.get_file_by_path(str(book_path))
+        if claimed and claimed.get("work_id") not in (None, book_work["id"]):
+            continue
+        db.upsert_file(
+            {
+                "work_id": book_work["id"],
+                "path": str(book_path),
+                "filename": book_path.name,
+                "kind": KIND_BOOK,
+                "size": book_path.stat().st_size if book_path.is_file() else 0,
             }
         )
     return {

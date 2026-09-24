@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [0.4.11] — 2026-09-24
+
+### Fixed
+
+- **Comic + ebook blends.** Mass-import / Clear-extra no longer shelves a `.cbz` next to `.epub`/`.azw3`/`.mobi` as one comic work. Mixed folders split into separate comic and book volumes on ingest; Apply / Clear extra-files peel the same way instead of force-organizing as comic.
+- **Work detail width.** Work meta / files use the full reading column (same Maintain-style max-width fix) so long filenames and dual CTAs are not pinned to a phone column.
+
+### Added
+
+- **Maintain Split comic/book blends.** Owner bulk repair finds shelved works whose file rows mix comic archives with ebook encodings, moves the ebooks under `books_root`, and leaves the comic on its own work — media is never deleted.
+
 ## [0.4.10] — 2026-09-23
 
 ### Fixed

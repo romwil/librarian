@@ -1702,7 +1702,8 @@ body:has(.peek) .topbar {
 .work-meta {
   display: grid;
   gap: var(--space-3);
-  max-width: 42rem;
+  width: 100%;
+  max-width: none;
 }
 .catalog-edit {
   display: grid;

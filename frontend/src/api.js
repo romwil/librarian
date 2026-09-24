@@ -94,6 +94,11 @@ export const api = {
       method: "POST",
     }),
   maintainPurgeShellsStatus: () => request("/maintain/purge-shells/status"),
+  maintainSplitMixedKinds: (limit = 0) =>
+    request(`/maintain/split-mixed-kinds${limit ? `?limit=${encodeURIComponent(String(limit))}` : ""}`, {
+      method: "POST",
+    }),
+  maintainSplitMixedKindsStatus: () => request("/maintain/split-mixed-kinds/status"),
   queue: () => request("/queue"),
   confirmJob: (id) => request(`/queue/${id}/confirm`, { method: "POST" }),
   gaps: () => request("/gaps"),

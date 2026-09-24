@@ -181,6 +181,15 @@ from librarian.sessions import (
     has_usable_session_secret,
     is_dev_session_secret,
 )
+from librarian.split_mixed_kinds import count_mixed_kind_works, split_mixed_kind_works
+from librarian.split_mixed_kinds_progress import (
+    SplitMixedKindsProgressReporter,
+    begin_split_mixed_kinds_run,
+    finish_split_mixed_kinds_run,
+    is_split_mixed_kinds_running,
+    is_split_mixed_kinds_stale,
+    read_split_mixed_kinds_progress,
+)
 from librarian.suggest import SUGGEST_FIELDS, refresh_suggest_cache, suggest_items
 
 logger = logging.getLogger(__name__)
@@ -461,6 +470,8 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
     purge_duplicates_thread: Dict[str, Optional[threading.Thread]] = {"thread": None}
     purge_shells_lock = threading.Lock()
     purge_shells_thread: Dict[str, Optional[threading.Thread]] = {"thread": None}
+    split_mixed_kinds_lock = threading.Lock()
+    split_mixed_kinds_thread: Dict[str, Optional[threading.Thread]] = {"thread": None}
 
     def settings():
         return load_merged_settings(root)
@@ -1700,6 +1711,65 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             error = "Purge shells stopped — the lamp was restarted. Try again."
         finished = finish_purge_shells_run(root, error=error)
         finished["shells_remaining"] = db.count_shell_works()
+        return finished
+
+    @app.post("/api/maintain/split-mixed-kinds")
+    def maintain_split_mixed_kinds(request: Request, limit: int = 0):
+        """Owner bulk: split works that blend comic archives with ebook encodings."""
+        require_role(request.state.user, "owner", "op")
+        run_limit = max(0, int(limit or 0))
+        with split_mixed_kinds_lock:
+            live = split_mixed_kinds_thread.get("thread")
+            alive = live is not None and live.is_alive()
+            if is_split_mixed_kinds_running(root) and alive:
+                payload = read_split_mixed_kinds_progress(root)
+                payload["mixed_remaining"] = count_mixed_kind_works(db)
+                return {**payload, "kicked_off": False}
+            begin_split_mixed_kinds_run(root, total=0, phase="starting")
+
+            def run_split() -> None:
+                reporter = SplitMixedKindsProgressReporter(root)
+                try:
+                    split_mixed_kind_works(
+                        db,
+                        settings(),
+                        limit=run_limit,
+                        progress=reporter,
+                    )
+                except Exception as error:
+                    logger.exception("Split mixed kinds failed")
+                    reporter.fail(str(error) or "Split mixed kinds failed")
+
+            thread = threading.Thread(
+                target=run_split,
+                name="librarian-split-mixed-kinds",
+                daemon=True,
+            )
+            split_mixed_kinds_thread["thread"] = thread
+            thread.start()
+        payload = read_split_mixed_kinds_progress(root)
+        payload["mixed_remaining"] = count_mixed_kind_works(db)
+        return {**payload, "kicked_off": True}
+
+    @app.get("/api/maintain/split-mixed-kinds/status")
+    def maintain_split_mixed_kinds_status(request: Request):
+        """Poll split-mixed-kinds progress (survives refresh via DATA_DIR JSON)."""
+        require_role(request.state.user, "owner", "op")
+        progress = read_split_mixed_kinds_progress(root)
+        if str(progress.get("status") or "") != "running":
+            progress["mixed_remaining"] = count_mixed_kind_works(db)
+            return progress
+        live = split_mixed_kinds_thread.get("thread")
+        alive = live is not None and live.is_alive()
+        if alive and not is_split_mixed_kinds_stale(progress):
+            progress["mixed_remaining"] = count_mixed_kind_works(db)
+            return progress
+        if alive:
+            error = "Split mixed kinds stalled (no progress heartbeat). Try again."
+        else:
+            error = "Split mixed kinds stopped — the lamp was restarted. Try again."
+        finished = finish_split_mixed_kinds_run(root, error=error)
+        finished["mixed_remaining"] = count_mixed_kind_works(db)
         return finished
 
     @app.post("/api/review/{work_id}/suggest")

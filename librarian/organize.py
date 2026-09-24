@@ -449,6 +449,13 @@ def organize_identified(
             )
             identity["confidence"] = "low"
             result["auto_organize"] = False
+    # Never shelve comic archives + ebook encodings as one work (even on force Apply).
+    from librarian.identify import is_mixed_comic_ebook_payload
+
+    if files and is_mixed_comic_ebook_payload(files):
+        identity["review_reason"] = REVIEW_EXTRA
+        identity["confidence"] = "low"
+        result["auto_organize"] = False
     result["identity"] = identity
     source_folder = _source_folder_value(folder)
     payload_names = [path.name for path in files]
@@ -747,6 +754,19 @@ def apply_review(
         }
     if not result["organized"]:
         reason = result.get("identity", {}).get("review_reason") or result["work"].get("review_reason")
+        if reason == REVIEW_EXTRA:
+            from librarian.identify import expand_organize_payload, is_mixed_comic_ebook_payload
+            from librarian.split_mixed_kinds import split_mixed_payload_folder
+
+            payload = expand_organize_payload(resolved)
+            if is_mixed_comic_ebook_payload(payload):
+                return split_mixed_payload_folder(
+                    db,
+                    settings,
+                    work_id=work_id,
+                    folder=resolved,
+                    requested_by=str(work.get("requested_by") or "owner"),
+                )
         if reason == REVIEW_UNPACK_STUCK:
             raise ValueError(UNPACK_STUCK_APPLY_ERROR)
         if reason == REVIEW_NO_PAYLOAD:
@@ -864,7 +884,9 @@ def reprocess_extra_files_work(
     Large splits enqueue without ``process=True`` so the job poller shelves them and the
     Clear thread keeps heartbeating / releasing the write queue for interactive Review.
     """
+    from librarian.identify import expand_organize_payload, is_mixed_comic_ebook_payload
     from librarian.ingest import enqueue_ingest, list_ingest_targets
+    from librarian.split_mixed_kinds import split_mixed_payload_folder
 
     work = db.get_work(work_id)
     if work is None:
@@ -875,6 +897,18 @@ def reprocess_extra_files_work(
     folder = Path(str(work.get("folder_path") or ""))
     if not usable_folder(folder):
         raise ValueError(MISSING_FOLDER_APPLY_ERROR)
+
+    # Flat folder with cbz + epub/azw3: never force-Apply as one comic.
+    payload = expand_organize_payload(folder)
+    if is_mixed_comic_ebook_payload(payload):
+        return split_mixed_payload_folder(
+            db,
+            settings,
+            work_id=work_id,
+            folder=folder,
+            requested_by=requested_by,
+            on_progress=on_progress,
+        )
 
     targets = list_ingest_targets(folder)
     split_targets = [path for path in targets if not _same_path(path, folder)]

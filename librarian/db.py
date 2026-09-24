@@ -1456,6 +1456,19 @@ class Database:
             ).fetchall()
         return [_row_dict(row) or {} for row in rows]
 
+    def delete_file(self, file_id: str) -> bool:
+        """Remove one file row. Does not touch media on disk."""
+        fid = str(file_id or "").strip()
+        if not fid or self.get_file(fid) is None:
+            return False
+
+        def _write() -> Any:
+            with self._connect() as conn:
+                conn.execute("DELETE FROM files WHERE id = ?", (fid,))
+
+        self.run_write(_write, label="delete_file")
+        return self.get_file(fid) is None
+
     def relocate_work_files(self, work_id: str, src_folder: str, dest_folder: str) -> int:
         """Rewrite stored file paths after a folder move (music promote)."""
         src = str(src_folder).rstrip("/")

@@ -39,6 +39,27 @@ function purgeShellsProgressSummary(status) {
   return status.phase ? `Purging shells… ${status.phase}` : "Purging shells…";
 }
 
+function splitMixedIsRunning(status) {
+  return String(status?.status || "") === "running";
+}
+
+function splitMixedProgressSummary(status) {
+  if (!status) return "";
+  const state = String(status.status || "");
+  if (state === "failed") return status.error || "Split mixed kinds failed.";
+  if (state === "completed") {
+    const split = Number(status.split ?? status.result?.split) || 0;
+    const failed = Number(status.failed ?? status.result?.failed) || 0;
+    return `Split ${split} blend${split === 1 ? "" : "s"}${failed ? ` · ${failed} failed` : ""}`;
+  }
+  if (state !== "running") return "";
+  const done = Number(status.done) || 0;
+  const total = Number(status.total) || 0;
+  const split = Number(status.split) || 0;
+  if (total > 0) return `Splitting blends… ${done} of ${total} · split ${split}`;
+  return status.phase ? `Splitting blends… ${status.phase}` : "Splitting blends…";
+}
+
 export default function MaintainPage() {
   const { user } = useOutletContext() || {};
   const [scan, setScan] = useState("");
@@ -63,6 +84,11 @@ export default function MaintainPage() {
   const [shellBacklog, setShellBacklog] = useState(0);
   const [shellStatus, setShellStatus] = useState(null);
   const shellPollRef = useRef(0);
+  const [mixNote, setMixNote] = useState("");
+  const [mixSplitting, setMixSplitting] = useState(false);
+  const [mixBacklog, setMixBacklog] = useState(0);
+  const [mixStatus, setMixStatus] = useState(null);
+  const mixPollRef = useRef(0);
 
   useEffect(() => {
     if (user?.role !== "owner") return undefined;
@@ -122,6 +148,20 @@ export default function MaintainPage() {
         if (purgeShellsIsRunning(status)) {
           setShellPurging(true);
           setShellNote(purgeShellsProgressSummary(status) || "Purging shells…");
+        }
+      })
+      .catch(() => {});
+    api
+      .maintainSplitMixedKindsStatus()
+      .then((status) => {
+        if (cancelled) return;
+        setMixStatus(status);
+        if (status?.mixed_remaining != null) {
+          setMixBacklog(Number(status.mixed_remaining) || 0);
+        }
+        if (splitMixedIsRunning(status)) {
+          setMixSplitting(true);
+          setMixNote(splitMixedProgressSummary(status) || "Splitting blends…");
         }
       })
       .catch(() => {});
@@ -255,6 +295,39 @@ export default function MaintainPage() {
     };
   }, [shellPurging]);
 
+  useEffect(() => {
+    if (!mixSplitting) return undefined;
+    let cancelled = false;
+    async function poll() {
+      try {
+        const status = await api.maintainSplitMixedKindsStatus();
+        if (cancelled) return;
+        setMixStatus(status);
+        if (status?.mixed_remaining != null) {
+          setMixBacklog(Number(status.mixed_remaining) || 0);
+        }
+        const summary = splitMixedProgressSummary(status);
+        if (summary) setMixNote(summary);
+        if (splitMixedIsRunning(status)) {
+          mixPollRef.current = window.setTimeout(poll, 700);
+          return;
+        }
+        setMixSplitting(false);
+        if (status?.status === "failed") setMixNote(status.error || "Split mixed kinds failed.");
+        else if (status?.status === "completed") setMixNote(summary || "Finished splitting blends.");
+      } catch (err) {
+        if (cancelled) return;
+        setMixSplitting(false);
+        setMixNote(humanError(err));
+      }
+    }
+    mixPollRef.current = window.setTimeout(poll, 400);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(mixPollRef.current);
+    };
+  }, [mixSplitting]);
+
   if (!user) return null;
   if (user.role !== "owner") {
     return <Navigate to="/" replace />;
@@ -354,6 +427,26 @@ export default function MaintainPage() {
     }
   }
 
+  async function splitMixedKinds() {
+    setMixSplitting(true);
+    setMixNote("Splitting blends…");
+    try {
+      const started = await api.maintainSplitMixedKinds();
+      setMixStatus(started);
+      if (started?.mixed_remaining != null) {
+        setMixBacklog(Number(started.mixed_remaining) || 0);
+      }
+      setMixNote(splitMixedProgressSummary(started) || "Splitting blends…");
+      if (!splitMixedIsRunning(started) && started?.status === "completed") {
+        setMixSplitting(false);
+        setMixNote(splitMixedProgressSummary(started) || "Finished splitting blends.");
+      }
+    } catch (err) {
+      setMixSplitting(false);
+      setMixNote(humanError(err));
+    }
+  }
+
   return (
     <div className="admin-room maintain-page" data-testid="maintain-page">
       <p className="kicker">Owner</p>
@@ -437,6 +530,37 @@ export default function MaintainPage() {
         {shellStatus && shellPurging ? (
           <p className="sr-only" data-testid="maintain-purge-shells-running">
             Purge shells running
+          </p>
+        ) : null}
+      </section>
+
+      <section className="maintain-section" data-testid="maintain-split-mixed">
+        <p className="kicker">Catalog</p>
+        <h2>Split comic / book blends</h2>
+        <p className="lede">
+          Mass-import sometimes shelved a comic archive next to ebook formats under one work. This peels the ebooks
+          onto their own book volume — media stays on disk.
+        </p>
+        <div className="cta-row">
+          <button
+            type="button"
+            className="cta outline"
+            disabled={mixSplitting}
+            aria-busy={mixSplitting || undefined}
+            onClick={splitMixedKinds}
+            data-testid="maintain-split-mixed-kinds"
+          >
+            {mixSplitting
+              ? "Splitting…"
+              : mixBacklog > 0
+                ? `Split blends (${mixBacklog})`
+                : "Split comic/book blends"}
+          </button>
+        </div>
+        {mixNote ? <p className="muted">{mixNote}</p> : null}
+        {mixStatus && mixSplitting ? (
+          <p className="sr-only" data-testid="maintain-split-mixed-running">
+            Split mixed kinds running
           </p>
         ) : null}
       </section>
