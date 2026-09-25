@@ -3376,6 +3376,51 @@ button.cover {
   margin: 0 0 var(--space-4);
   align-items: center;
 }
+.holds-desk-groups {
+  display: grid;
+  gap: var(--space-6);
+  margin-top: var(--space-5);
+}
+.holds-group {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.holds-group-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px dashed var(--border);
+}
+.holds-group-title {
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+.holds-group-count {
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  font-weight: 400;
+}
+.holds-group-hint {
+  margin: 0.35rem 0 0;
+  max-width: 48ch;
+}
+.holds-group-motion {
+  margin: 0;
+  align-self: center;
+}
+.holds-group-slips {
+  margin-top: 0;
+}
+.hold-slip {
+  /* alias of .ticket — library voice without a ticket-queue feel */
+}
 .review-extra-files-progress {
   margin: 0 0 var(--space-5);
 }

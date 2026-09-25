@@ -14,7 +14,11 @@ from librarian.db import Database
 from librarian.delight import in_quiet_hours
 from librarian.file_identity import files_byte_identical, volume_content_fingerprint
 from librarian.identify import (
+    REVIEW_AUDNEXUS_AMBIGUOUS,
+    REVIEW_AUDNEXUS_UNMATCHED,
     REVIEW_COLLISION,
+    REVIEW_COMICVINE_AMBIGUOUS,
+    REVIEW_COMICVINE_UNMATCHED,
     REVIEW_CONVERT,
     REVIEW_EXTRA,
     REVIEW_LOW,
@@ -218,6 +222,80 @@ _RETRYABLE_REVIEW_REASONS = frozenset(
 )
 
 
+def review_recommended_motion(
+    *,
+    reason: str,
+    problem: str,
+    can_repair: bool,
+    can_retry: bool,
+    can_regrab: bool,
+    can_suggest_llm: bool,
+    needs_llm_suggest: bool,
+    diagnosis: Dict[str, Any],
+) -> str:
+    """One recommended motion per hold slip — sorting returns, not a ticket queue."""
+    stored = str(reason or "").strip()
+    live = str(problem or "").strip()
+    # Parked filing reasons win over live folder overlays (a collision slip whose
+    # complete folder is gone is still a collision — Skip, not Request new).
+    parked = {
+        REVIEW_COLLISION,
+        REVIEW_EXTRA,
+        REVIEW_UNKNOWN,
+        REVIEW_LOW,
+        REVIEW_UNEXPECTED,
+        REVIEW_CONVERT,
+        REVIEW_COMICVINE_AMBIGUOUS,
+        REVIEW_COMICVINE_UNMATCHED,
+        REVIEW_AUDNEXUS_AMBIGUOUS,
+        REVIEW_AUDNEXUS_UNMATCHED,
+    }
+    if stored in parked:
+        effective = stored
+    elif live in {
+        REVIEW_UNPACK_STUCK,
+        REVIEW_MISSING_FOLDER,
+        REVIEW_NO_PAYLOAD,
+        REVIEW_QUIET_HOURS,
+    }:
+        effective = live
+    else:
+        effective = stored or live
+    if effective == REVIEW_QUIET_HOURS:
+        return "wait"
+    if effective == REVIEW_UNPACK_STUCK:
+        if can_repair:
+            return "repair"
+        if can_regrab:
+            return "regrab"
+        if can_retry:
+            return "retry"
+        return "apply"
+    if effective == REVIEW_EXTRA:
+        titles = int(diagnosis.get("distinct_title_count") or 0)
+        if diagnosis.get("collection_dump") or titles >= 2:
+            return "clear_extra_files"
+        return "apply"
+    if effective == REVIEW_COLLISION:
+        return "skip"
+    if effective in {
+        REVIEW_COMICVINE_AMBIGUOUS,
+        REVIEW_COMICVINE_UNMATCHED,
+        REVIEW_AUDNEXUS_AMBIGUOUS,
+        REVIEW_AUDNEXUS_UNMATCHED,
+    }:
+        return "pick_match"
+    if needs_llm_suggest or can_suggest_llm:
+        return "suggest"
+    if effective in {REVIEW_MISSING_FOLDER, REVIEW_NO_PAYLOAD}:
+        if diagnosis.get("suggested_folder"):
+            return "apply"
+        return "request_new"
+    if effective == REVIEW_CONVERT:
+        return "apply"
+    return "apply"
+
+
 def review_slip_actions(
     work: Dict[str, Any],
     diagnosis: Dict[str, Any],
@@ -238,24 +316,38 @@ def review_slip_actions(
     author = str(work.get("author") or "").strip()
     dumpish = looks_like_dump_title(title) or (not author and reason in {REVIEW_UNKNOWN, REVIEW_LOW, ""})
     identity_weak = reason in {REVIEW_UNKNOWN, REVIEW_LOW, REVIEW_UNEXPECTED} or dumpish
+    can_repair = problem == REVIEW_UNPACK_STUCK and par2_count > 0
+    can_regrab = fails >= 2 and problem == REVIEW_UNPACK_STUCK
+    can_suggest_llm = bool(llm_configured) and identity_weak and problem not in {
+        REVIEW_MISSING_FOLDER,
+        REVIEW_NO_PAYLOAD,
+        REVIEW_UNPACK_STUCK,
+    }
+    needs_llm_suggest = bool(llm_configured) and dumpish and problem not in {
+        REVIEW_MISSING_FOLDER,
+        REVIEW_NO_PAYLOAD,
+        REVIEW_UNPACK_STUCK,
+    }
     return {
-        "can_repair": problem == REVIEW_UNPACK_STUCK and par2_count > 0,
+        "can_repair": can_repair,
         "can_retry": can_retry,
         "find_query": review_find_query(work),
         "quiet_hours": problem == REVIEW_QUIET_HOURS,
-        "can_regrab": fails >= 2 and problem == REVIEW_UNPACK_STUCK,
+        "can_regrab": can_regrab,
         "repair_fail_count": fails,
         "llm_configured": bool(llm_configured),
-        "can_suggest_llm": bool(llm_configured) and identity_weak and problem not in {
-            REVIEW_MISSING_FOLDER,
-            REVIEW_NO_PAYLOAD,
-            REVIEW_UNPACK_STUCK,
-        },
-        "needs_llm_suggest": bool(llm_configured) and dumpish and problem not in {
-            REVIEW_MISSING_FOLDER,
-            REVIEW_NO_PAYLOAD,
-            REVIEW_UNPACK_STUCK,
-        },
+        "can_suggest_llm": can_suggest_llm,
+        "needs_llm_suggest": needs_llm_suggest,
+        "recommended_motion": review_recommended_motion(
+            reason=reason,
+            problem=problem,
+            can_repair=can_repair,
+            can_retry=can_retry,
+            can_regrab=can_regrab,
+            can_suggest_llm=can_suggest_llm,
+            needs_llm_suggest=needs_llm_suggest,
+            diagnosis=diagnosis if isinstance(diagnosis, dict) else {},
+        ),
     }
 
 
