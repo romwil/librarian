@@ -574,7 +574,7 @@ export default function FindPage() {
   }
 
   return (
-    <div className="search-page">
+    <div className="search-page page-settle">
       <QueryForm
         inputId="find-search"
         draft={draft}

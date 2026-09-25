@@ -2,6 +2,7 @@
    Soul: night library, brass lamp, paper dust, gilt. */
 
 @import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,600;0,7..72,700;1,7..72,400;1,7..72,600&family=Source+Sans+3:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap");
+@import "./styles/motion.css";
 
 :root {
   /* Fallback night-library colors before FOUC / data-theme apply */
@@ -13,6 +14,7 @@
   --border-subtle: #3a2e22;
   --border: #4a3c2c;
   --text: #f4ead6;
+  --fg: #f4ead6;
   --muted: #b5a48a;
   --paper: #e8dcc4;
   --gilt: #e4c078;
@@ -90,6 +92,7 @@ html[data-theme="lights-down"] {
   --border-subtle: #3a2e22;
   --border: #4a3c2c;
   --text: #f4ead6;
+  --fg: #f4ead6;
   --muted: #b5a48a;
   --paper: #e8dcc4;
   --gilt: #e4c078;
@@ -119,6 +122,7 @@ html[data-theme="lights-up"] {
   --border-subtle: #d4c4a8;
   --border: #c0ab88;
   --text: #1a1208;
+  --fg: #1a1208;
   --muted: #5c4e3a;
   --paper: #3a2e22;
   --gilt: #9a6b2f;
@@ -2126,11 +2130,12 @@ body:has(.listen-room) .work-hero-scrim {
 }
 
 .alert {
-  color: var(--text);
-  background: color-mix(in srgb, var(--danger) 18%, var(--surface));
+  color: var(--fg, var(--text));
+  background: color-mix(in srgb, var(--danger) 22%, var(--surface-raised));
   padding: 0.7rem 0.9rem;
   border-radius: var(--radius);
   margin: 0;
+  border: 1px solid color-mix(in srgb, var(--danger) 45%, var(--border));
   border-left: 3px solid var(--danger);
 }
 
@@ -2139,9 +2144,25 @@ body:has(.listen-room) .work-hero-scrim {
   margin: 0 auto var(--space-5);
   padding: 0.85rem 1rem;
   border-radius: var(--radius);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
   border-left: 3px solid var(--accent);
-  background: var(--accent-soft);
-  color: var(--paper);
+  background: color-mix(in srgb, var(--accent-soft) 70%, var(--surface-raised));
+  color: var(--fg, var(--text));
+}
+
+/* Maintain / Review slips — Needs-you and status notes stay readable in both themes */
+.maintain-page .alert,
+.maintain-page .callout,
+.review-page .alert,
+.ticket .alert {
+  color: var(--fg, var(--text));
+  background: color-mix(in srgb, var(--danger) 16%, var(--surface-raised));
+}
+
+.maintain-page .muted,
+.review-page .empty-note,
+.ticket .empty-note {
+  color: var(--muted);
 }
 
 .hall-alert {
@@ -2396,18 +2417,23 @@ body:has(.listen-room) .work-hero-scrim {
 
 .live-chip.is-asked {
   background: color-mix(in srgb, var(--accent) 88%, var(--surface));
+  color: var(--accent-text);
 }
 .live-chip.is-failed {
   background: color-mix(in srgb, var(--danger) 88%, var(--surface));
+  color: #fbf6eb;
 }
 .live-chip.is-review {
   background: color-mix(in srgb, var(--gilt) 55%, var(--danger));
+  color: #1a1208;
 }
 .live-chip.is-transit {
   background: color-mix(in srgb, var(--accent) 70%, var(--success));
+  color: var(--accent-text);
 }
 .live-chip.is-arrived {
   background: color-mix(in srgb, var(--success) 88%, var(--surface));
+  color: var(--accent-text);
 }
 
 button.cover {
@@ -2903,22 +2929,7 @@ button.cover {
   margin-top: var(--space-3);
   height: 8rem;
   border-radius: 10px;
-  background: linear-gradient(
-    90deg,
-    color-mix(in srgb, var(--fg) 4%, transparent),
-    color-mix(in srgb, var(--accent) 12%, transparent),
-    color-mix(in srgb, var(--fg) 4%, transparent)
-  );
-  background-size: 200% 100%;
-  animation: hall-warm 1.4s ease-in-out infinite;
-}
-@keyframes hall-warm {
-  0% {
-    background-position: 100% 0;
-  }
-  100% {
-    background-position: -100% 0;
-  }
+  /* shimmer animation owned by styles/motion.css (lamp-warm) */
 }
 .hall-discover {
   margin-top: var(--space-3);
@@ -3341,9 +3352,7 @@ button.cover {
 .ticket {
   min-width: 0;
 }
-.ticket-enter {
-  animation: ticket-enter 200ms ease-out;
-}
+/* ticket-enter animation owned by styles/motion.css (soft-enter) */
 .ticket-diagnosis {
   margin: 0 0 var(--space-3);
   min-width: 0;
@@ -3369,16 +3378,6 @@ button.cover {
 }
 .review-extra-files-progress {
   margin: 0 0 var(--space-5);
-}
-@keyframes ticket-enter {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
 }
 
 .bag-glyph {

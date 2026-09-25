@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+## [0.4.25] — 2026-09-25
+
+### Highlights
+
+- **The room settles in.** Pages arrive with a soft settle, hold slips ease onto the desk, and the lamp warms while shelves load — motion that respects `prefers-reduced-motion`.
+- **No empty flash.** Queue, Stacks, Reading room, People, Settings, and Inbox show warm lamp skeletons instead of blank panels.
+- **Lights Up and Lights Down stay readable.** Alerts, callouts, chips, and Settings nav pick up a real `--fg` ink so cream-on-cream and dark-on-dark stop sneaking through.
+
+### Changed
+
+- **`frontend/src/styles/motion.css`.** Motion tokens (`--motion-presence`, `--motion-settle`, `--motion-warm`), page-settle / lamp-warm / soft-enter, consolidated reduced-motion paths.
+- **Warm loads.** Shared `WarmLoad` on Queue, Browse, Work, People, Settings, Inbox; Hall / Holds desk keep their lexicon warming copy.
+- **Contrast.** `--fg` in both themes; alert/callout/Maintain/Review ink; live-chip label contrast.
+- **Copy.** Sterile “Internal Server Error” never reaches the household — filing-slip warmth instead.
+- **Playwright.** Hall reduced-motion smoke; Settings Library card menu; Holds desk lexicon retained (port 8794).
+
 ## [0.4.24] — 2026-09-25
 
 ### Highlights

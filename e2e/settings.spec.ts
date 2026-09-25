@@ -18,6 +18,15 @@ test.describe("Settings nav", () => {
     await expect(page.getByRole("slider", { name: "Text size" })).toBeVisible();
   });
 
+  test("Library card menu opens from the top bar", async ({ page }) => {
+    await page.goto("/");
+    await dismissWhatsNewIfPresent(page);
+    await page.getByRole("button", { name: "Library card" }).click();
+    await expect(page.getByRole("menu")).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Inbox" })).toBeVisible();
+    await expect(page.getByRole("radiogroup", { name: "Theme" })).toBeVisible();
+  });
+
   test("Settings Mail section is reachable from nav", async ({ page }) => {
     await page.goto("/settings");
     await dismissWhatsNewIfPresent(page);

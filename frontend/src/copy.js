@@ -292,8 +292,12 @@ export function humanError(error, context = "") {
   ) {
     return raw;
   }
-  // Bare 500 / empty body — don't pretend we have detail.
-  if (status === 500 || /^internal server error$/i.test(raw)) {
+  // Bare 500 / empty body / sterile status text — never show "Internal Server Error".
+  if (
+    status === 500 ||
+    /^internal server error$/i.test(raw) ||
+    /^internal server error$/i.test(String(error?.statusText || ""))
+  ) {
     if (raw && !/^internal server error$/i.test(raw) && raw.length <= 180 && !/traceback|exception/i.test(raw)) {
       return raw;
     }

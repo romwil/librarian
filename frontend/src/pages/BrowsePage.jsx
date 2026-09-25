@@ -15,6 +15,7 @@ import {
   toggleBrowseFold,
 } from "../browse.js";
 import CoverCard from "../components/CoverCard.jsx";
+import WarmLoad from "../components/WarmLoad.jsx";
 import { humanError } from "../copy.js";
 
 const PAGE_SIZE = 48;
@@ -140,7 +141,7 @@ export default function BrowsePage() {
   const showGenres = Boolean(facets?.genre_ready) || Boolean(filters.genre);
 
   return (
-    <div className="browse-page" data-testid="browse-page">
+    <div className="browse-page page-settle" data-testid="browse-page">
       <section className="browse-hero">
         <p className="kicker">Stacks</p>
         <h1>{heading}</h1>
@@ -328,7 +329,9 @@ export default function BrowsePage() {
         <p className="browse-count muted" data-testid="browse-count">
           {browseCountLine({ kind: filters.kind, shelf: filters.shelf, total, loading })}
         </p>
-        {loading ? null : items.length ? (
+        {loading ? (
+          <WarmLoad message="Warming the lamp on these stacks…" testId="browse-loading" />
+        ) : items.length ? (
           <div className="browse-grid" data-testid="browse-grid">
             {items.map((work) => (
               <CoverCard key={work.id} work={work} />

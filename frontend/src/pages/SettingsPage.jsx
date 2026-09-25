@@ -11,6 +11,7 @@ import LlmSettingsPanel from "../components/LlmSettingsPanel.jsx";
 import AppearancePrefsPanel from "../components/AppearancePrefsPanel.jsx";
 import MailSettingsPanel from "../components/MailSettingsPanel.jsx";
 import NotificationsPrefsPanel from "../components/NotificationsPrefsPanel.jsx";
+import WarmLoad from "../components/WarmLoad.jsx";
 
 const MORE_FIELDS = [
   ["audiobook_target", "Audiobook target"],
@@ -100,7 +101,7 @@ export default function SettingsPage() {
 
   if (user && user.role !== "owner") {
     return (
-      <div className="admin-room settings-page">
+      <div className="admin-room settings-page page-settle">
         <p className="alert">Settings are for the household owner.</p>
         <Link className="cta outline" to="/">
           Back to the Hall
@@ -109,10 +110,16 @@ export default function SettingsPage() {
     );
   }
 
-  if (!settings && !error) return <p className="muted admin-room settings-page">Lamp is warming…</p>;
+  if (!settings && !error) {
+    return (
+      <div className="admin-room settings-page page-settle">
+        <WarmLoad message="Warming the lamp on Settings…" testId="settings-loading" />
+      </div>
+    );
+  }
   if (!settings) {
     return (
-      <div className="admin-room settings-page">
+      <div className="admin-room settings-page page-settle">
         <p className="alert">{error}</p>
       </div>
     );
@@ -121,7 +128,7 @@ export default function SettingsPage() {
   const done = setupComplete(settings);
 
   return (
-    <div className="admin-room settings-page settings-layout" data-testid="settings-page">
+    <div className="admin-room settings-page settings-layout page-settle" data-testid="settings-page">
       <header className="settings-layout-head">
         <p className="kicker">Owner</p>
         <h1>Settings</h1>

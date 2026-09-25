@@ -154,7 +154,7 @@ export default function HallPage() {
   }
 
   return (
-    <div className="hall" data-testid="hall">
+    <div className="hall hall-page page-settle" data-testid="hall">
       <section className="hero-search-block">
         <p className="kicker">The Hall</p>
         <h1>What are you looking for?</h1>

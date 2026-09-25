@@ -575,7 +575,7 @@ export default function ReviewPage() {
   const purgeStatusLine = showPurgeProgress ? purgeDuplicatesProgressSummary(purgeProgress) : "";
 
   return (
-    <div className="admin-room">
+    <div className="admin-room review-page page-settle">
       <p className="kicker">Holds desk</p>
       <h1>Review</h1>
       <p className="lede">

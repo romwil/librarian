@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
 import { humanError } from "../copy.js";
+import WarmLoad from "../components/WarmLoad.jsx";
 import {
   INBOX_LIST_PARAMS,
   inboxCardCopy,
@@ -65,7 +66,7 @@ export default function InboxPage() {
   const headline = inboxHeadline(items);
 
   return (
-    <div className="admin-room inbox-page" data-testid="inbox-page">
+    <div className="admin-room inbox-page page-settle" data-testid="inbox-page">
       <header className="inbox-page-head">
         <p className="kicker">Inbox</p>
         <h1>{headline}</h1>
@@ -87,9 +88,7 @@ export default function InboxPage() {
 
       {error ? <p className="alert">{error}</p> : null}
       {loading ? (
-        <p className="muted" aria-busy="true">
-          Checking the desk…
-        </p>
+        <WarmLoad message="Warming the lamp on the desk…" testId="inbox-loading" />
       ) : null}
       {!loading && !items.length && !error ? (
         <div className="inbox-empty" data-testid="inbox-empty">

@@ -461,7 +461,7 @@ export default function MaintainPage() {
   }
 
   return (
-    <div className="admin-room maintain-page" data-testid="maintain-page">
+    <div className="admin-room maintain-page page-settle" data-testid="maintain-page">
       <p className="kicker">Owner</p>
       <h1>Maintain</h1>
       <p className="lede">

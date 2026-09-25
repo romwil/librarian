@@ -143,6 +143,11 @@ describe("reading room copy", () => {
   it("turns bare Internal Server Error / empty 500 into filing copy", () => {
     assert.match(humanError({ status: 500, message: "Internal Server Error" }), /filing this slip|Librarian logs/i);
     assert.match(humanError({ status: 500, message: "" }), /filing this slip|Librarian logs/i);
+    assert.match(
+      humanError({ status: 500, message: "Internal Server Error", statusText: "Internal Server Error" }),
+      /filing this slip|Librarian logs/i,
+    );
+    assert.doesNotMatch(humanError({ status: 500, message: "Internal Server Error" }), /Internal Server Error/);
   });
 
   it("keeps Apply shelf PermissionError guidance", () => {

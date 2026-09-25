@@ -1,0 +1,162 @@
+/* Librarian motion tokens — lamp presence, settle-in, warm loads.
+   Contrast/theme tokens stay in styles.css; this file owns animation only. */
+
+:root {
+  /* Presence — short chrome transitions (buttons, peeks, chips) */
+  --motion-presence: 200ms ease;
+  /* Settle — page/outlet entrance (fade + slight rise) */
+  --motion-settle: 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  /* Warm — lamp shimmer on loading skeletons */
+  --motion-warm: 1.4s ease-in-out;
+}
+
+/* Alias legacy --motion to presence so existing rules keep working */
+:root {
+  --motion: var(--motion-presence);
+}
+
+/* —— Intentional motions (2–3) —— */
+
+/* 1. Settle-in: main room content arrives gently */
+@keyframes page-settle {
+  from {
+    opacity: 0;
+    transform: translateY(0.4rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.page-settle,
+.admin-room.page-settle,
+.hall-page.page-settle,
+.work-page.page-settle {
+  animation: page-settle var(--motion-settle) both;
+}
+
+/* 2. Lamp warm: skeleton shimmer while shelves/desks load */
+@keyframes lamp-warm {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+.hall-shelves-skeleton,
+.warm-load-skeleton {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--fg, var(--text)) 4%, transparent),
+    color-mix(in srgb, var(--accent) 12%, transparent),
+    color-mix(in srgb, var(--fg, var(--text)) 4%, transparent)
+  );
+  background-size: 200% 100%;
+  animation: lamp-warm var(--motion-warm) infinite;
+}
+
+/* 3. Soft enter for hold slips / toast / peek (duration tokens; keyframes may live in styles.css) */
+@keyframes soft-enter {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.ticket-enter {
+  animation: soft-enter var(--motion-settle) both;
+}
+
+.warm-load {
+  margin-top: var(--space-4, 1rem);
+  max-width: 28rem;
+}
+
+.warm-load-skeleton {
+  margin-top: var(--space-3, 0.75rem);
+  height: 6rem;
+  border-radius: 10px;
+}
+
+.boot-lamp {
+  min-height: 100vh;
+  background:
+    radial-gradient(ellipse 55% 40% at 50% 28%, color-mix(in srgb, var(--lamp, #f0b85a) 22%, transparent), transparent 70%),
+    var(--bg, #110d09);
+  animation: boot-lamp-glow 2.2s ease-in-out infinite alternate;
+}
+
+@keyframes boot-lamp-glow {
+  from {
+    filter: brightness(1);
+  }
+  to {
+    filter: brightness(1.06);
+  }
+}
+
+/* —— prefers-reduced-motion: keep presence, drop motion —— */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-presence: 1ms;
+    --motion-settle: 1ms;
+    --motion-warm: 1ms;
+    --motion: 1ms;
+  }
+
+  .page-settle,
+  .admin-room.page-settle,
+  .hall-page.page-settle,
+  .work-page.page-settle,
+  .ticket-enter,
+  .boot-lamp,
+  .hall-shelves-skeleton,
+  .warm-load-skeleton,
+  .skeleton-cover,
+  .lamp-shaft,
+  .dust,
+  .page-turn,
+  .peek,
+  .part-chase.is-shimmer,
+  .bag.is-pulse,
+  .bag.is-pulse[data-count]::after,
+  .part-bead.is-pulse,
+  .plexamp-toast,
+  .tonight-shelf,
+  .room.ambient-paper::before,
+  .room.ambient-lamp::before {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .hall-shelves-skeleton,
+  .warm-load-skeleton {
+    background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+    background-size: auto;
+  }
+
+  .part-chase.is-shimmer {
+    color: color-mix(in srgb, var(--gilt) 80%, var(--muted));
+    background: none;
+    -webkit-background-clip: unset;
+    background-clip: unset;
+  }
+
+  .cover:hover,
+  .cover:focus-visible,
+  .cta:hover {
+    transform: none;
+  }
+
+  .work-hero-art.has-wash,
+  .peek-wash {
+    transform: none;
+  }
+}

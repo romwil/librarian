@@ -1,17 +1,25 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
+import WarmLoad from "../components/WarmLoad.jsx";
 import { humanError } from "../copy.js";
 
 export default function PeoplePage() {
   const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [link, setLink] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
     api
       .people()
-      .then((data) => setUsers(data.users || []))
-      .catch((err) => setError(humanError(err)));
+      .then((data) => {
+        setUsers(data.users || []);
+        setLoading(false);
+      })
+      .catch((err) => {
+        setError(humanError(err));
+        setLoading(false);
+      });
   }, []);
 
   async function mint(role) {
@@ -25,7 +33,7 @@ export default function PeoplePage() {
   }
 
   return (
-    <div className="admin-room">
+    <div className="admin-room page-settle">
       <p className="kicker">Household</p>
       <h1>People</h1>
       <p className="lede">Invite-only. The raw token is shown once.</p>
@@ -39,14 +47,17 @@ export default function PeoplePage() {
         </button>
       </div>
       {link ? <p className="join-once">{link}</p> : null}
-      <ul className="stack">
-        {users.map((person) => (
-          <li key={person.id} className="card">
-            <strong>{person.display_name}</strong>
-            <p className="muted">{person.role}</p>
-          </li>
-        ))}
-      </ul>
+      {loading ? <WarmLoad message="Warming the lamp on the household roll…" testId="people-loading" /> : null}
+      {!loading ? (
+        <ul className="stack">
+          {users.map((person) => (
+            <li key={person.id} className="card">
+              <strong>{person.display_name}</strong>
+              <p className="muted">{person.role}</p>
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </div>
   );
 }

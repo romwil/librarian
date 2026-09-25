@@ -116,7 +116,7 @@ export default function SearchPage() {
   const ctaFields = fieldsFromState(draft.trim() || fields.q, kind, advanced);
 
   return (
-    <div className="search-page">
+    <div className="search-page page-settle">
       <QueryForm
         inputId="hall-search"
         draft={draft}

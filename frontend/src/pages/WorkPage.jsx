@@ -16,6 +16,7 @@ import Rail from "../components/Rail.jsx";
 import Reader from "../components/Reader.jsx";
 import AudiobookPlayer from "../components/AudiobookPlayer.jsx";
 import PlexampToast from "../components/PlexampToast.jsx";
+import WarmLoad from "../components/WarmLoad.jsx";
 
 export default function WorkPage() {
   const { id } = useParams();
@@ -132,12 +133,18 @@ export default function WorkPage() {
 
   if (error) {
     return (
-      <div className="admin-room">
+      <div className="admin-room page-settle">
         <p className="alert">{error}</p>
       </div>
     );
   }
-  if (!data) return <p className="lede" style={{ padding: "var(--space-8) var(--gutter)" }}>Opening the volume…</p>;
+  if (!data) {
+    return (
+      <div className="admin-room page-settle work-page">
+        <WarmLoad message="Warming the lamp on this volume…" testId="work-loading" />
+      </div>
+    );
+  }
 
   const work = data.work;
   const canRead = Boolean(data.can_read) && canReadInApp(work, data.files);
@@ -295,7 +302,7 @@ export default function WorkPage() {
   }
 
   return (
-    <article>
+    <article className="work-page page-settle">
       <section className={`work-hero${data.can_download ? "" : " is-bare"}${washUrl ? " has-wash" : ""}`}>
         <div
           className={`work-hero-art${washUrl ? " has-wash" : ""}`}
