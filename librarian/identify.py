@@ -16,23 +16,50 @@ from librarian.kinds import (
     KIND_MUSIC,
     kind_from_newznab,
 )
+from librarian.review_reasons import (
+    REVIEW_AUDNEXUS_AMBIGUOUS as REVIEW_AUDNEXUS_AMBIGUOUS,
+)
+from librarian.review_reasons import (
+    REVIEW_AUDNEXUS_UNMATCHED as REVIEW_AUDNEXUS_UNMATCHED,
+)
+from librarian.review_reasons import (
+    REVIEW_COLLISION as REVIEW_COLLISION,
+)
+from librarian.review_reasons import (
+    REVIEW_COMICVINE_AMBIGUOUS as REVIEW_COMICVINE_AMBIGUOUS,
+)
+from librarian.review_reasons import (
+    REVIEW_COMICVINE_UNMATCHED as REVIEW_COMICVINE_UNMATCHED,
+)
+from librarian.review_reasons import (
+    REVIEW_CONVERT as REVIEW_CONVERT,
+)
+from librarian.review_reasons import (
+    REVIEW_EXTRA as REVIEW_EXTRA,
+)
+from librarian.review_reasons import (
+    REVIEW_LOW as REVIEW_LOW,
+)
+from librarian.review_reasons import (
+    REVIEW_MISSING_FOLDER as REVIEW_MISSING_FOLDER,
+)
+from librarian.review_reasons import (
+    REVIEW_NO_PAYLOAD as REVIEW_NO_PAYLOAD,
+)
+from librarian.review_reasons import (
+    REVIEW_UNEXPECTED as REVIEW_UNEXPECTED,
+)
+from librarian.review_reasons import (
+    REVIEW_UNKNOWN as REVIEW_UNKNOWN,
+)
+from librarian.review_reasons import (
+    REVIEW_UNPACK_STUCK as REVIEW_UNPACK_STUCK,
+)
+from librarian.review_reasons import (
+    UNPACK_STUCK as UNPACK_STUCK,
+)
 
 COMPLETE_ROOT_FALLBACKS = ("/data/usenet/complete",)
-
-REVIEW_UNKNOWN = "unknown_identity"
-REVIEW_LOW = "low_confidence"
-REVIEW_UNEXPECTED = "unexpected_kind"
-REVIEW_NO_PAYLOAD = "no_payload"
-REVIEW_UNPACK_STUCK = "unpack_stuck"
-REVIEW_EXTRA = "extra_files"
-REVIEW_CONVERT = "convert_failed"
-REVIEW_COLLISION = "collision"
-REVIEW_MISSING_FOLDER = "missing_folder"
-REVIEW_COMICVINE_AMBIGUOUS = "comicvine_ambiguous"
-REVIEW_COMICVINE_UNMATCHED = "comicvine_unmatched"
-# Audiobook Audnexus match bands (see audiobook_normalize / audnexus).
-REVIEW_AUDNEXUS_AMBIGUOUS = "audnexus_ambiguous"
-REVIEW_AUDNEXUS_UNMATCHED = "audnexus_unmatched"
 
 _DOT_GROUP = re.compile(r"[\.\-_]+")
 _ISBN = re.compile(r"\b(?:97[89][-\s]?)?(?:\d[-\s]?){9}[\dXx]\b")
@@ -124,7 +151,6 @@ _STEM_EXTENSIONS = MEDIA_EXTENSIONS | JUNK_EXTENSIONS | ARCHIVE_EXTENSIONS | {
     ".png",
     ".webp",
 }
-UNPACK_STUCK = REVIEW_UNPACK_STUCK  # jobs / ingest compare against this name
 HOST_DATA_PREFIX = "/mnt/user/data/"
 CONTAINER_DATA_PREFIX = "/data/"
 DOWNLOADS_PREFIXES = (
@@ -1099,8 +1125,6 @@ def identify_completed(
             )
         inspection = inspect_complete_folder(folder)
         problem = inspection.get("problem") or REVIEW_NO_PAYLOAD
-        if problem == REVIEW_MISSING_FOLDER:
-            problem = REVIEW_NO_PAYLOAD
         identity.review_reason = str(problem)
         identity.confidence = "low"
         return {"identity": identity.as_dict(), "files": [], "auto_organize": False}

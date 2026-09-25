@@ -22,8 +22,6 @@ if ! docker pull "$HUB_IMAGE"; then
   echo "No Hub image is published yet (or Docker Hub is unreachable)." >&2
   echo "Build on this host instead:" >&2
   echo "  ./docker-run.sh" >&2
-  echo "Publish later from a real git checkout (not this kit):" >&2
-  echo "  ./scripts/docker-release.sh" >&2
   exit 1
 fi
 

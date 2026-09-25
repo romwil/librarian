@@ -99,7 +99,7 @@ WAL-safe database backup steps live in [DOCKER.md](DOCKER.md).
 | SABnzbd | `sabnzbd_api_key` | Settings or env |
 | LLM | `llm_api_key` | Optional; identify + curated Bestsellers lists |
 | Hardcover | `hardcover_api_token` | Optional GraphQL token; Settings or `HARDCOVER_API_TOKEN` |
-| NYT Books | `nyt_books_api_key` | Optional soft-deprecated fallback; prefer BYO LLM for Bestsellers |
+| NYT Books | `nyt_books_api_key` | Legacy optional env only; Bestsellers use BYO LLM — Settings no longer advertises this key |
 | Comic Vine | `comicvine_api_key` | Optional; Settings or `COMICVINE_API_KEY`. Needed for comic issue lists beyond local holes |
 | Audiobookshelf | `audiobookshelf_api_token` | Optional; Settings or `AUDIOBOOKSHELF_API_TOKEN` |
 

@@ -9,7 +9,6 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence
 from librarian.kinds import KIND_AUDIOBOOK, KIND_COMIC, KIND_MUSIC
 
 AMBIENT_CHOICES = ("off", "paper", "lamp")
-REVIEW_QUIET_HOURS = "quiet_hours"
 WHISPER_MAX_LEN = 280
 WHISPER_LIST_LIMIT = 40
 

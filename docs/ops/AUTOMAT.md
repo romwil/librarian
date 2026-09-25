@@ -56,8 +56,8 @@ Members may later reach the library through a **user reverse proxy** (Caddy / NP
 /mnt/user/appdata/librarian/          # kit (Dockerfile, docker-run.sh, source)
 ├── config/                           # settings.json, librarian.db, session_secret — KEEP; never wipe
 ├── .env                              # owner + session secret + indexer keys — not in git
-├── docker-run.sh                     # on-host build (current path)
-├── rollout.sh                        # Hub pull later (romwil/librarian)
+├── docker-run.sh                     # on-host build — **current Automat path**
+├── rollout.sh                        # Hub pull stub only (fails until image exists; not current truth)
 └── .source-rev                       # stamped at rsync time
 ```
 
@@ -126,7 +126,9 @@ curl -s http://127.0.0.1:8793/api/health
 
 `docker-run.sh` waits for `/api/health`, prints `/app/.build-info`, and does **not** wipe `./config`.
 
-**Later:** Hub `romwil/librarian` + pull-only `./rollout.sh X.Y.Z`. A host `docker build` is not Unraid CA proof.
+**Do not invent Hub publish as the current Automat path.** There is no active `docker-release.sh` /
+Hub pull-only ship for Librarian yet. `./rollout.sh` is a stub that fails until `romwil/librarian`
+exists — use `./docker-run.sh` on the kit. Hub publish stays a later milestone.
 
 Do **not** stop Projectionist (`:8788`) or Smart Map (`:8790`) while deploying Librarian.
 

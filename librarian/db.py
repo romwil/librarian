@@ -898,6 +898,7 @@ class Database:
         *,
         kind: Optional[str] = None,
         review_state: Optional[str] = None,
+        review_reason: Optional[str] = None,
         music_state: Optional[str] = None,
         require_files: bool = False,
         limit: int = 48,
@@ -911,6 +912,9 @@ class Database:
         if review_state:
             clauses.append("review_state = ?")
             args.append(review_state)
+        if review_reason:
+            clauses.append("review_reason = ?")
+            args.append(review_reason)
         if music_state:
             clauses.append("music_state = ?")
             args.append(music_state)

@@ -75,7 +75,3 @@ export function SetupFields({ step, settings, onChange }) {
   );
 }
 
-/** @deprecated Use SetupFields — kept for any residual imports. */
-export default function SetupWizard({ settings, onChange, step }) {
-  return <SetupFields step={step} settings={settings} onChange={onChange} />;
-}

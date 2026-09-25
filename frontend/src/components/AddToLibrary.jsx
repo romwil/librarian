@@ -15,7 +15,7 @@ import {
 } from "../ingest.js";
 import { FieldLabel } from "./FieldHelp.jsx";
 
-export default function AddToLibrary({ compact = false, embedded = false } = {}) {
+export default function AddToLibrary({ embedded = false } = {}) {
   const [path, setPath] = useState("");
   const [root, setRoot] = useState("");
   const [parent, setParent] = useState(null);
@@ -152,9 +152,7 @@ export default function AddToLibrary({ compact = false, embedded = false } = {})
     }
   }
 
-  const heading = compact ? (
-    <summary className="kicker">Add a volume already on disk</summary>
-  ) : embedded ? null : (
+  const heading = embedded ? null : (
     <>
       <p className="kicker">Already on disk</p>
       <h2>Add to the shelves</h2>
@@ -243,9 +241,9 @@ export default function AddToLibrary({ compact = false, embedded = false } = {})
       {status && !showProgress ? <p className="muted">{status}</p> : null}
       {progressPanel}
       <div className="field">
-        <FieldLabel htmlFor={compact ? "hall-ingest-path" : "ingest-path"} label="Path" help={FIELD_HELP.ingest_path} />
+        <FieldLabel htmlFor="ingest-path" label="Path" help={FIELD_HELP.ingest_path} />
         <input
-          id={compact ? "hall-ingest-path" : "ingest-path"}
+          id="ingest-path"
           value={path}
           onChange={(event) => setPath(event.target.value)}
           spellCheck={false}
@@ -279,15 +277,6 @@ export default function AddToLibrary({ compact = false, embedded = false } = {})
       </div>
     </>
   );
-
-  if (compact) {
-    return (
-      <details className="more-settings hall-ingest">
-        {heading}
-        {body}
-      </details>
-    );
-  }
 
   if (embedded) {
     return <div className="settings-ingest-add">{body}</div>;

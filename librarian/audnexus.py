@@ -9,20 +9,18 @@ import sqlite3
 import threading
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Optional
 from urllib.parse import urlencode
 
 import httpx
 
 from librarian.covers import DEFAULT_USER_AGENT
+from librarian.review_reasons import REVIEW_AUDNEXUS_AMBIGUOUS, REVIEW_AUDNEXUS_UNMATCHED
 
 logger = logging.getLogger(__name__)
 
 AUDNEXUS_BASE = "https://api.audnex.us"
 AUDIBLE_CATALOG = "https://api.audible.com/1.0/catalog/products"
-
-REVIEW_AUDNEXUS_AMBIGUOUS = "audnexus_ambiguous"
-REVIEW_AUDNEXUS_UNMATCHED = "audnexus_unmatched"
 
 SCORE_AUTO = 0.85
 SCORE_REVIEW = 0.65

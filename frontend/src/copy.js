@@ -70,7 +70,6 @@ export const FIELD_HELP = {
   llm_base_url: "Optional. Provider default is fine. Override only for a reverse proxy.",
   llm_api_key: "Optional. Paste the provider key (or set GEMINI_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY in .env). Never invents an ISBN.",
   llm_model: "Model id for the selected provider. Use a recommended chip for a sensible household default.",
-  nyt_books_api_key: "Optional soft-deprecated fallback. Prefer BYO LLM for Bestsellers.",
   hardcover_api_token: "Optional Hardcover GraphQL token. Fills thin books and series gaps; stays on this host.",
   comicvine_api_key: "Optional Comic Vine key. Fills comic issue lists beyond local holes. Stays on this host.",
   komga_url: "Komga base URL (LAN). After a comic shelves, Librarian asks Komga to scan — fail-soft.",

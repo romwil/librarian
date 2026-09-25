@@ -154,6 +154,15 @@ from librarian.purge_shells_progress import (
     read_purge_shells_progress,
 )
 from librarian.rate_limit import enforce_rate_limit
+from librarian.review_reasons import (
+    REVIEW_COMICVINE_AMBIGUOUS,
+    REVIEW_COMICVINE_UNMATCHED,
+    REVIEW_EXTRA,
+    REVIEW_LOW,
+    REVIEW_NO_PAYLOAD,
+    REVIEW_UNKNOWN,
+    REVIEW_UNPACK_STUCK,
+)
 from librarian.rss import create_rss_feed, poll_rss_feeds, public_rss_feed, update_rss_feed
 from librarian.sabnzbd import SABError
 from librarian.scan import scan_library
@@ -880,7 +889,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
 
     @app.get("/api/lists/nyt/names")
     def nyt_list_names(request: Request):
-        """Optional NYT Books API names — soft-deprecated; prefer POST /api/lists/llm."""
+        """Legacy NYT Books API names — prefer POST /api/lists/llm."""
         require_role(request.state.user, "owner", "op", "reader")
         cfg = settings()
         key = str(cfg.nyt_books_api_key or "").strip()
@@ -889,7 +898,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
                 "configured": False,
                 "names": default_list_names(),
                 "empty_reason": "missing_key",
-                "empty_copy": "Add a BYO LLM in Settings for curated bestseller lists (NYT Books API key is optional fallback).",
+                "empty_copy": "Add a BYO LLM in Settings for curated bestseller lists.",
                 "deprecated": True,
             }
         client = NytBooksClient(key, data_dir=root)
@@ -978,7 +987,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         empty_reason = str(payload.get("empty_reason") or "")
         empty_copy = ""
         if empty_reason == "missing_key":
-            empty_copy = "Add a BYO LLM in Settings for curated bestseller lists (NYT Books API key is optional fallback)."
+            empty_copy = "Add a BYO LLM in Settings for curated bestseller lists."
         elif empty_reason == "empty_list":
             empty_copy = "That list came back empty for this date."
         elif not books and not empty_reason:
@@ -1485,23 +1494,23 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             problem = diagnosis.get("problem")
             stored = str(work.get("review_reason") or "")
             # Response overlay only — SQLite soft-repair runs in the poller.
-            if problem == "unpack_stuck" and stored in {"", "no_payload"}:
-                work["review_reason"] = "unpack_stuck"
+            if problem == REVIEW_UNPACK_STUCK and stored in {"", REVIEW_NO_PAYLOAD}:
+                work["review_reason"] = REVIEW_UNPACK_STUCK
             shelf = shelf_work_for_collision(db, work)
             work["shelf_work"] = shelf
             work["actions"] = review_slip_actions(work, diagnosis, llm_configured=llm_ok)
             reason = str(work.get("review_reason") or "")
             if work.get("kind") == "comic" and reason in (
-                "comicvine_ambiguous",
-                "comicvine_unmatched",
-                "low_confidence",
-                "unknown_identity",
+                REVIEW_COMICVINE_AMBIGUOUS,
+                REVIEW_COMICVINE_UNMATCHED,
+                REVIEW_LOW,
+                REVIEW_UNKNOWN,
             ):
                 try:
                     work["match_candidates"] = list_match_candidates(work, settings=cfg, limit=6)
                 except Exception:
                     work["match_candidates"] = []
-        extra_files_count = db.count_works(review_state="needs_review", review_reason="extra_files")
+        extra_files_count = db.count_works(review_state="needs_review", review_reason=REVIEW_EXTRA)
         needs_review_count = db.count_works(review_state="needs_review")
         return {
             "works": works,
@@ -1533,14 +1542,14 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
                 reporter.fail(str(error) or "Clear extra-files failed")
 
         kicked = extra_files_reprocess_job.start_if_idle(
-            already_running=is_extra_files_reprocess_running(root),
+            is_running=lambda: is_extra_files_reprocess_running(root),
             begin=lambda: begin_extra_files_reprocess_run(root, total=0, phase="starting"),
             target=run_reprocess,
             name="librarian-extra-files-reprocess",
         )
         payload = read_extra_files_reprocess_progress(root)
         payload["extra_files_remaining"] = db.count_works(
-            review_state="needs_review", review_reason="extra_files"
+            review_state="needs_review", review_reason=REVIEW_EXTRA
         )
         return {**payload, "kicked_off": kicked}
 
@@ -1551,13 +1560,13 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         progress = read_extra_files_reprocess_progress(root)
         if str(progress.get("status") or "") != "running":
             progress["extra_files_remaining"] = db.count_works(
-                review_state="needs_review", review_reason="extra_files"
+                review_state="needs_review", review_reason=REVIEW_EXTRA
             )
             return progress
         alive = extra_files_reprocess_job.alive()
         if alive and not is_extra_files_reprocess_stale(progress):
             progress["extra_files_remaining"] = db.count_works(
-                review_state="needs_review", review_reason="extra_files"
+                review_state="needs_review", review_reason=REVIEW_EXTRA
             )
             return progress
         if alive:
@@ -1569,7 +1578,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             error = "Clear extra-files stopped — the lamp was restarted. Try again."
         finished = finish_extra_files_reprocess_run(root, error=error)
         finished["extra_files_remaining"] = db.count_works(
-            review_state="needs_review", review_reason="extra_files"
+            review_state="needs_review", review_reason=REVIEW_EXTRA
         )
         return finished
 
@@ -1593,7 +1602,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
                 reporter.fail(str(error) or "Purge duplicates failed")
 
         kicked = purge_duplicates_job.start_if_idle(
-            already_running=is_purge_duplicates_running(root),
+            is_running=lambda: is_purge_duplicates_running(root),
             begin=lambda: begin_purge_duplicates_run(root, total=0, phase="starting"),
             target=run_purge,
             name="librarian-purge-duplicates",
@@ -1645,7 +1654,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
                 reporter.fail(str(error) or "Purge shells failed")
 
         kicked = purge_shells_job.start_if_idle(
-            already_running=is_purge_shells_running(root),
+            is_running=lambda: is_purge_shells_running(root),
             begin=lambda: begin_purge_shells_run(root, total=0, phase="starting"),
             target=run_purge,
             name="librarian-purge-shells",
@@ -1694,7 +1703,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
                 reporter.fail(str(error) or "Split mixed kinds failed")
 
         kicked = split_mixed_kinds_job.start_if_idle(
-            already_running=is_split_mixed_kinds_running(root),
+            is_running=lambda: is_split_mixed_kinds_running(root),
             begin=lambda: begin_split_mixed_kinds_run(root, total=0, phase="starting"),
             target=run_split,
             name="librarian-split-mixed-kinds",
@@ -2041,7 +2050,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
                 reporter.fail(str(error) or "Scan failed")
 
         kicked = scan_job.start_if_idle(
-            already_running=is_scan_running(root),
+            is_running=lambda: is_scan_running(root),
             begin=lambda: begin_scan_run(root, source="manual", total=0, phase="starting"),
             target=run_scan,
             name="librarian-scan",
@@ -2100,7 +2109,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
 
         # Expand recursively in the worker so the meter denominator is real.
         kicked = ingest_job.start_if_idle(
-            already_running=is_ingest_running(root),
+            is_running=lambda: is_ingest_running(root),
             begin=lambda: begin_ingest_run(root, source_path=source_path, total=0, phase="scanning"),
             target=run_ingest,
             name="librarian-ingest",
@@ -2135,7 +2144,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
                 reporter.fail(friendly_enrich_error(error) or "Enrich failed")
 
         kicked = enrich_job.start_if_idle(
-            already_running=is_enrich_running(root),
+            is_running=lambda: is_enrich_running(root),
             begin=lambda: begin_enrich_run(root, source="manual", total=0, phase="starting"),
             target=run_enrich,
             name="librarian-enrich",

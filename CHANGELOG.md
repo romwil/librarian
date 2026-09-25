@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+## [0.4.19] — 2026-09-25
+
+### Highlights
+
+- **Dead chrome leaves the room.** Soft-deprecated NYT Books Settings copy, CelebrationBanner, unused wizard/celebration CSS, and Hall compact Add-to-library are gone — Bestsellers stay on BYO LLM.
+- **One vocabulary for Review reasons.** Canonical `review_reasons` constants drive SQLite filters and diagnosis; `missing_folder` stays distinct from `no_payload`; Clear extra-files queries by reason.
+- **Docs match Automat truth.** HELP covers Maintain, Indexers, and collection Clear; AGENTS / AUTOMAT / ROADMAP say host `./docker-run.sh` is the ship path — not a missing Hub `docker-release.sh`.
+
+### Removed
+
+- CelebrationBanner + FE `celebrationSeen` client; SetupWizard default export; AddToLibrary `compact` / `hall-ingest` path; wizard / enrich-progress / celebration CSS dead weight.
+- Settings NYT Books API key field and FIELD_HELP; FE `nytList` / `nytListNames` clients (LLM lists remain).
+
+### Changed
+
+- **`librarian/review_reasons.py`.** Single source for Review reason codes; identify / audnexus / delight / app import from there.
+- **`Database.list_works(..., review_reason=)`.** Clear extra-files and counts filter in SQL instead of page-and-filter.
+- **Identify missing folders.** Gone paths keep `missing_folder` instead of collapsing to `no_payload`.
+- HELP / ROADMAP / AGENTS / AUTOMAT / DOCKER / SECURITY Automat + Maintain / Indexers / Clear truth.
+
 ## [0.4.18] — 2026-09-25
 
 ### Highlights

@@ -11,7 +11,7 @@ from librarian.config import Settings
 from librarian.convert import maybe_convert_payload, maybe_par2_repair, maybe_unpack_archives
 from librarian.covers import ensure_music_cover, fetch_cover
 from librarian.db import Database
-from librarian.delight import REVIEW_QUIET_HOURS, in_quiet_hours
+from librarian.delight import in_quiet_hours
 from librarian.file_identity import files_byte_identical, volume_content_fingerprint
 from librarian.identify import (
     REVIEW_COLLISION,
@@ -20,6 +20,7 @@ from librarian.identify import (
     REVIEW_LOW,
     REVIEW_MISSING_FOLDER,
     REVIEW_NO_PAYLOAD,
+    REVIEW_UNEXPECTED,
     REVIEW_UNKNOWN,
     REVIEW_UNPACK_STUCK,
     Identity,
@@ -44,6 +45,7 @@ from librarian.llm import (
 )
 from librarian.metadata import apply_audio_tags_in_folder, comicinfo_xml, write_comicinfo, write_opf
 from librarian.parts import infer_part_fields, merge_part_fields_for_work, part_for_filename
+from librarian.review_reasons import REVIEW_QUIET_HOURS
 
 
 def _copy_into(src: Path, dest: Path, *, move: bool = False) -> Path:
@@ -233,7 +235,7 @@ def review_slip_actions(
     title = str(work.get("title") or "")
     author = str(work.get("author") or "").strip()
     dumpish = looks_like_dump_title(title) or (not author and reason in {REVIEW_UNKNOWN, REVIEW_LOW, ""})
-    identity_weak = reason in {REVIEW_UNKNOWN, REVIEW_LOW, "unexpected_kind"} or dumpish
+    identity_weak = reason in {REVIEW_UNKNOWN, REVIEW_LOW, REVIEW_UNEXPECTED} or dumpish
     return {
         "can_repair": problem == REVIEW_UNPACK_STUCK and par2_count > 0,
         "can_retry": can_retry,
@@ -1189,12 +1191,14 @@ def reprocess_extra_files_reviews(
     """Owner bulk clear for ``extra_files`` needs_review slips (newlib / multi-format backlog)."""
     import threading
 
-    # Always fetch a large needs_review page, then filter to REVIEW_EXTRA.
-    # Applying ``limit`` to list_works would miss extras buried under other review slips.
-    works = db.list_works(review_state="needs_review", limit=5000)
-    extras = [row for row in works if str(row.get("review_reason") or "") == REVIEW_EXTRA]
+    fetch_limit = 5000
     if limit and limit > 0:
-        extras = extras[: int(limit)]
+        fetch_limit = max(1, int(limit))
+    extras = db.list_works(
+        review_state="needs_review",
+        review_reason=REVIEW_EXTRA,
+        limit=fetch_limit,
+    )
     total = len(extras)
     if progress is not None:
         progress.start(total=total, phase="reprocessing")

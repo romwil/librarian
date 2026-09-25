@@ -778,6 +778,17 @@ def test_diagnose_review_folder_flags_collection_dump(tmp_path):
     assert "collection dump" in diagnosis["tried"].lower() or "different title" in diagnosis["tried"].lower()
 
 
+def test_identify_missing_folder_keeps_reason(tmp_path):
+    """Gone paths stay missing_folder — not collapsed into no_payload."""
+    from librarian.identify import identify_completed
+
+    missing = tmp_path / "gone-release"
+    result = identify_completed(missing, indexer_item={"title": "Mystery", "category": 7020})
+    assert result["auto_organize"] is False
+    assert result["identity"]["review_reason"] == "missing_folder"
+    assert result["files"] == []
+
+
 def test_diagnose_review_folder_missing_path(tmp_path):
     from librarian.identify import diagnose_review_folder
 

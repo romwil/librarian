@@ -73,6 +73,32 @@ def test_review_list_diagnoses_unpack_stuck_without_sqlite_write(tmp_path, monke
     assert refreshed["review_reason"] == "no_payload"
 
 
+def test_list_works_filters_by_review_reason(tmp_path):
+    from librarian.db import Database
+
+    db = Database(tmp_path / "librarian.db")
+    db.upsert_work(
+        {
+            "kind": "book",
+            "title": "Extra Dump",
+            "review_state": "needs_review",
+            "review_reason": "extra_files",
+        }
+    )
+    db.upsert_work(
+        {
+            "kind": "book",
+            "title": "Unknown Slip",
+            "review_state": "needs_review",
+            "review_reason": "unknown_identity",
+        }
+    )
+    extras = db.list_works(review_state="needs_review", review_reason="extra_files", limit=20)
+    assert len(extras) == 1
+    assert extras[0]["title"] == "Extra Dump"
+    assert db.count_works(review_state="needs_review", review_reason="extra_files") == 1
+
+
 def test_soft_repair_review_reasons_promotes_unpack_stuck(tmp_path):
     from librarian.db import Database
     from librarian.organize import soft_repair_review_reasons

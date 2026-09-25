@@ -13,7 +13,6 @@ import AppearancePrefsPanel from "../components/AppearancePrefsPanel.jsx";
 const MORE_FIELDS = [
   ["audiobook_target", "Audiobook target"],
   ["hardcover_api_token", "Hardcover token", true],
-  ["nyt_books_api_key", "NYT Books API key", true],
   ["comicvine_api_key", "Comic Vine key", true],
   ["komga_url", "Komga URL"],
   ["komga_api_key", "Komga API key", true],

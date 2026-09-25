@@ -16,7 +16,7 @@ Find can query more than NZBFinder. Extra Newznab v2 hosts live in Settings; res
 
 **Discover** reads each host’s capabilities category tree (comics `7030`, magazines `7010`, other books `70xx`, audiobooks `3030`, music `3010`/`3040`/`3999`, and real subcats the indexer lists). Latest-in-category uses category RSS (`/rss/category?id=` on NZBFinder, then classic `/rss?t=` or `/api?t=search&cat=`). NZBFinder v2 search needs a real query, so Discover does not call empty-query v2. It does not scrape HTML and does not auto-queue SAB. Each rail is a short latest slice — click the category title or **See all** to open that feed (`/find?discover=7030`) and browse many more results with the same Request / peek chips.
 
-**Bestsellers / curated lists** is a Find preset (`/find?preset=nyt&list=hardcover-fiction`). Hall and idle Find link to it. With a BYO LLM in Settings (OpenAI Chat Completions, Anthropic Messages, or Google Gemini `generateContent` — native APIs, not OpenAI shims), Librarian asks the model once for the chosen category — most recent, or the list closest to a date you pick — then matches each title against the local shelves (ISBN when the model returns a check-digit-valid one; otherwise title+author). ISBN is never invented. List responses are briefly cached under `/config/lists-cache`. Without an LLM the panel stays honest and empty. If the provider rate-limits (HTTP 429), the panel shows a clear wait message — not a raw status code — and shelves / Find keep working. Shelved titles deep-link to the work; missing ones can be multi-selected. **Request missing** Finds beyond for the ebook and the audiobook together, ranks hits with the BYO LLM when configured (otherwise title/author heuristic), remembers alternates on the slip, then calls `/api/request` for each real hit (owners/ops queue SAB; readers file Asked slips). LLM calls are process-serialized with Retry-After / exponential backoff; after a rate-limit, remaining chase titles degrade to heuristic without failing the batch. Guids are never invented — only chase hits are requested. Each chased row has a collapsed **Chase details** disclosure with conversation, query steps, the full accepted/rejected result set, and remembered alternates. An optional `nyt_books_api_key` remains as a soft-deprecated fallback path only.
+**Bestsellers / curated lists** is a Find preset (`/find?preset=nyt&list=hardcover-fiction`). Hall and idle Find link to it. With a BYO LLM in Settings (OpenAI Chat Completions, Anthropic Messages, or Google Gemini `generateContent` — native APIs, not OpenAI shims), Librarian asks the model once for the chosen category — most recent, or the list closest to a date you pick — then matches each title against the local shelves (ISBN when the model returns a check-digit-valid one; otherwise title+author). ISBN is never invented. List responses are briefly cached under `/config/lists-cache`. Without an LLM the panel stays honest and empty. If the provider rate-limits (HTTP 429), the panel shows a clear wait message — not a raw status code — and shelves / Find keep working. Shelved titles deep-link to the work; missing ones can be multi-selected. **Request missing** Finds beyond for the ebook and the audiobook together, ranks hits with the BYO LLM when configured (otherwise title/author heuristic), remembers alternates on the slip, then calls `/api/request` for each real hit (owners/ops queue SAB; readers file Asked slips). LLM calls are process-serialized with Retry-After / exponential backoff; after a rate-limit, remaining chase titles degrade to heuristic without failing the batch. Guids are never invented — only chase hits are requested. Each chased row has a collapsed **Chase details** disclosure with conversation, query steps, the full accepted/rejected result set, and remembered alternates.
 
 **Find beyond / re-grab** also rank the full indexer result set the same way (one LLM call per search, not per hit), surface a collapsed search-details trail, and store candidates on the job for dud-primary fallback. Confirm-before-SAB is unchanged.
 
@@ -87,6 +87,27 @@ A **slip** is a download (or Add-to-shelves dump) that identify/organize could n
 **About `…/complete/downloads/…`:** that path is normal when SAB’s complete root is `…/complete` and the job used a **downloads** category. It is not a doubled map by itself.
 
 **Apply** files a ticket once the folder has media Librarian can read. **Skip** dismisses the slip without shelving.
+
+## Maintain
+
+Owners and ops keep the lamp healthy from **Maintain** (`/maintain`) — not Settings scan buttons alone.
+
+| Action | What it does |
+| --- | --- |
+| **Scan the shelves** | Walks Settings library roots into the catalog; never moves files |
+| **Enrich the shelves** | Fills thin book/audiobook metadata (Hardcover → Open Library); never invents an ISBN |
+| **Add to the shelves** | Ingest a dump already on disk under `/data` (same as Settings → Ingest) |
+| **Open Review** | Bagging slips that need identity / folder help |
+| **Clear extra-files** | Bulk reprocess `extra_files` slips — including flat multi-title **collection dumps** (Fiction folders with many `Title - Author.epub` stems). Prefer Clear over Apply 29 times |
+| **Purge duplicates / shells** | Dismiss safely redundant Review slips or empty catalog shells when offered |
+
+Long jobs share one **status dock** on Maintain (scan, enrich, shelving, Clear, Purge). Progress survives refresh under `/config`.
+
+If Review **Apply** hits a PUID-locked author folder (often after Calibre migrate as uid 1000), Maintain repeats the host tip: `chown -R 99:100` on `library/books` to match the container PUID.
+
+## Indexers
+
+**NZBFinder** is the primary Newznab v2 host (token in Settings / env only). Owners can **Ping NZBFinder** on Settings → Indexer. Extra Newznab v2 hosts join Find only — Search stays on the local stacks. If one host fails, the others still appear. Capabilities / Discover feeds come from each host’s category tree; empty Find is Discover, not a second Hall.
 
 ## Gaps
 

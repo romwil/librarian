@@ -6,11 +6,22 @@ Living product/build checklist. Flip boxes when a slice ships. Append the story 
 
 | | |
 | --- | --- |
-| **Date** | 2026-09-15 |
-| **Branch** | `main` (uncommitted Library-first slices) |
-| **Last SHA** | committed `2f5f4ae` · working tree dirty |
-| **Green** | `270 passed`, coverage **78%** (floor 70%); ruff + scoped mypy not re-run this pass; frontend `42 passed`. LAN truth remains `http://10.10.1.202:8793`. |
-| **Next** | Hub `romwil/librarian` later. In-app audiobook player later. |
+| **Date** | 2026-09-25 |
+| **Branch** | `main` |
+| **Last SHA** | `eef4b57` (0.4.18 unified progress) → sprint **1.3** ships **0.4.19** on this commit |
+| **Green** | pytest coverage floor **70%**; frontend `npm test`; Playwright e2e on **8794**. LAN truth `http://10.10.1.202:8793`. |
+| **Next** | Sprint **2.1** `web-routers-shelf-health` → **0.4.20**. Automat path remains host `./docker-run.sh` (Hub deferred). |
+
+## Living library major build
+
+Protocol: [ops/MAJOR_BUILDS.md](ops/MAJOR_BUILDS.md). Phase 1 engine-room sprints:
+
+| Sprint | Feature | Version | Status |
+| --- | --- | --- | --- |
+| 1.1 | `review-get-readonly` | 0.4.17 | shipped |
+| 1.2 | `unified-progress` | 0.4.18 | shipped |
+| 1.3 | `dead-weight-docs-truth` | 0.4.19 | this release |
+| 2.1 | `web-routers-shelf-health` | 0.4.20 | next |
 
 ## North star
 

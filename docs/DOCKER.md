@@ -2,7 +2,7 @@
 
 Librarian is a single container. The web UI listens on **8793**.
 
-Everyday path **now:** on-host build with `docker-run.sh` (same early Smart Map kit). **Later:** Hub `romwil/librarian` + pull-only `rollout.sh`. Never treat public DNS as version truth; LAN host only — [ops/AUTOMAT.md](ops/AUTOMAT.md).
+Everyday Automat path **now:** on-host build with `./docker-run.sh` (same early Smart Map kit). Hub `romwil/librarian` + pull-only `rollout.sh` are **not** current truth — deferred milestone. Never treat public DNS as version truth; LAN host only — [ops/AUTOMAT.md](ops/AUTOMAT.md).
 
 ## Ports — do not collide
 
@@ -66,8 +66,8 @@ Stock Unraid has no Compose. Kit lives at `/mnt/user/appdata/librarian`:
 ```bash
 ssh automat
 cd /mnt/user/appdata/librarian
-./docker-run.sh          # on-host build (current)
-# ./rollout.sh           # Hub pull later — fails until romwil/librarian exists
+./docker-run.sh          # on-host build — current Automat path
+# ./rollout.sh           # Hub stub only — not current; fails until romwil/librarian exists
 ```
 
 When rsyncing the kit, stamp the checkout rev so `.build-info` is honest:

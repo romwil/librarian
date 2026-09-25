@@ -130,13 +130,6 @@ export const api = {
     const qs = params.toString();
     return request(`/discover${qs ? `?${qs}` : ""}`);
   },
-  nytListNames: () => request("/lists/nyt/names"),
-  nytList: ({ list = "hardcover-fiction", date = "current" } = {}) => {
-    const params = new URLSearchParams();
-    if (list) params.set("list", list);
-    if (date) params.set("date", date);
-    return request(`/lists/nyt?${params.toString()}`);
-  },
   listPresets: () => request("/lists/presets"),
   llmList: ({ preset = "hardcover-fiction", date = "current", query = "" } = {}) =>
     request("/lists/llm", {
@@ -193,7 +186,6 @@ export const api = {
   savePrefs: (body) => request("/prefs", { method: "PUT", body: JSON.stringify(body) }),
   whispers: (id) => request(`/works/${id}/whispers`),
   addWhisper: (id, body) => request(`/works/${id}/whispers`, { method: "POST", body: JSON.stringify({ body }) }),
-  celebrationSeen: (key) => request("/celebrations/seen", { method: "POST", body: JSON.stringify({ key }) }),
   finishEta: ({ missingCount, kind = "", totalBytes = null, multipart = false } = {}) =>
     request("/find/finish-eta", {
       method: "POST",
