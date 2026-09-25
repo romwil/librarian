@@ -1152,7 +1152,9 @@ def reprocess_extra_files_reviews(
     """Owner bulk clear for ``extra_files`` needs_review slips (newlib / multi-format backlog)."""
     import threading
 
-    works = db.list_works(review_state="needs_review", limit=max(int(limit) or 5000, 1))
+    # Always fetch a large needs_review page, then filter to REVIEW_EXTRA.
+    # Applying ``limit`` to list_works would miss extras buried under other review slips.
+    works = db.list_works(review_state="needs_review", limit=5000)
     extras = [row for row in works if str(row.get("review_reason") or "") == REVIEW_EXTRA]
     if limit and limit > 0:
         extras = extras[: int(limit)]

@@ -104,3 +104,64 @@ def test_reprocess_skips_item_on_timeout(tmp_path, monkeypatch):
         assert "Timed out" in result["errors"][0]
     finally:
         db.close()
+
+
+def test_reprocess_limit_applies_after_extra_files_filter(tmp_path, monkeypatch):
+    """limit must not cap list_works before REVIEW_EXTRA filtering.
+
+    Extra slips are often a minority of needs_review. If limit N is passed to
+    list_works (ordered by updated_at DESC), newer non-extra slips consume the
+    page and older extra_files rows are never seen.
+    """
+    monkeypatch.setenv("LIBRARIAN_FS_ROOT", str(tmp_path))
+    db = Database(tmp_path / "librarian.db")
+    try:
+        settings = _settings(tmp_path)
+        seen: list[str] = []
+
+        # Older extra_files slips (created first → lower updated_at).
+        for index in range(5):
+            folder = tmp_path / "complete" / f"Extra Dump {index}"
+            folder.mkdir(parents=True)
+            (folder / f"Extra Dump {index}.epub").write_bytes(b"epub")
+            work = db.upsert_work(
+                {
+                    "kind": "book",
+                    "title": f"Extra Dump {index}",
+                    "author": "Anon",
+                    "review_state": "needs_review",
+                    "review_reason": "extra_files",
+                    "folder_path": str(folder),
+                }
+            )
+            seen.append(str(work["id"]))
+
+        # Newer non-extra review slips that would fill a limit=3 DB page.
+        for index in range(10):
+            folder = tmp_path / "complete" / f"Other Review {index}"
+            folder.mkdir(parents=True)
+            (folder / f"Other Review {index}.epub").write_bytes(b"epub")
+            db.upsert_work(
+                {
+                    "kind": "book",
+                    "title": f"Other Review {index}",
+                    "author": "Anon",
+                    "review_state": "needs_review",
+                    "review_reason": "low_confidence",
+                    "folder_path": str(folder),
+                }
+            )
+
+        processed: list[str] = []
+
+        def _noop(*_a, work_id: str, **_k):
+            processed.append(str(work_id))
+            return {"action": "apply", "organized": True}
+
+        monkeypatch.setattr("librarian.organize.reprocess_extra_files_work", _noop)
+        result = reprocess_extra_files_reviews(db, settings, limit=3)
+        assert int(result["considered"]) == 3
+        assert len(processed) == 3
+        assert set(processed).issubset(set(seen))
+    finally:
+        db.close()
