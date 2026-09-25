@@ -18,10 +18,14 @@ import {
   extraFilesReprocessProgressPercent,
   extraFilesReprocessProgressSummary,
   fieldsFromWork,
+  groupHoldSlipsByReason,
+  holdsDeskLedeCopy,
   looksLikeDumpTitle,
   purgeDuplicatesIsRunning,
   purgeDuplicatesProgressPercent,
   purgeDuplicatesProgressSummary,
+  recommendedMotionCtaClass,
+  recommendedMotionLabel,
   reviewActionsFromWork,
   reviewBulkClearVisible,
   reviewBulkPurgeVisible,
@@ -573,15 +577,13 @@ export default function ReviewPage() {
     ? extraFilesReprocessProgressSummary(extraFilesProgress)
     : "";
   const purgeStatusLine = showPurgeProgress ? purgeDuplicatesProgressSummary(purgeProgress) : "";
+  const holdGroups = groupHoldSlipsByReason(works);
 
   return (
     <div className="admin-room review-page page-settle">
       <p className="kicker">Holds desk</p>
-      <h1>Review</h1>
-      <p className="lede">
-        Hold slips are downloads organize could not finish filing. Happy-path ISBN books never appear here. Apply files a
-        hold slip once the folder has readable media — Skip dismisses without shelving.
-      </p>
+      <h1>Sorting returns</h1>
+      <p className="lede">{holdsDeskLedeCopy()}</p>
       {quiet ? (
         <details className="more-settings" data-testid="review-quiet-hours">
           <summary className="kicker">Quiet hours</summary>
@@ -724,8 +726,29 @@ export default function ReviewPage() {
           <p className="lede empty-note">{emptyReviewCopy()}</p>
         </section>
       ) : null}
-      <ul className="stack">
-        {works.map((work) => {
+      <div className="holds-desk-groups" data-testid="holds-desk-groups">
+        {holdGroups.map((group) => (
+          <section
+            key={group.reason || "other"}
+            className="holds-group ticket-enter"
+            data-testid="holds-group"
+            data-reason={group.reason || ""}
+            aria-labelledby={`holds-group-${group.reason || "other"}`}
+          >
+            <header className="holds-group-head">
+              <div>
+                <h2 className="holds-group-title" id={`holds-group-${group.reason || "other"}`}>
+                  {group.label}
+                  <span className="holds-group-count muted"> · {group.works.length}</span>
+                </h2>
+                <p className="muted holds-group-hint">{group.hint}</p>
+              </div>
+              <p className="chip holds-group-motion" data-testid="holds-group-motion">
+                Recommended: {recommendedMotionLabel(group.recommendedMotion)}
+              </p>
+            </header>
+            <ul className="stack holds-group-slips">
+              {group.works.map((work) => {
           const draft = drafts[work.id] || fieldsFromWork(work);
           const focused = Boolean(focusId) && work.id === focusId;
           const reason = effectiveReviewReason(work);
@@ -742,8 +765,8 @@ export default function ReviewPage() {
             <li
               key={work.id}
               ref={focused ? focusRef : null}
-              className={["card", "ticket", "ticket-enter", focused ? "is-focus" : ""].filter(Boolean).join(" ")}
-              data-testid="review-ticket"
+              className={["card", "ticket", "hold-slip", "ticket-enter", focused ? "is-focus" : ""].filter(Boolean).join(" ")}
+              data-testid="hold-slip"
               data-work-id={work.id}
               data-focused={focused ? "true" : "false"}
               data-reason={reason || ""}
@@ -754,6 +777,11 @@ export default function ReviewPage() {
                 <span className="seal">{draft.kind || work.kind}</span>
               </header>
               <strong className="ticket-title">{draft.title || work.title || "Untitled"}</strong>
+              {actions.recommendedMotion ? (
+                <p className="chip is-on" data-testid="hold-slip-recommended">
+                  Recommended: {recommendedMotionLabel(actions.recommendedMotion)}
+                </p>
+              ) : null}
               {actions.quietHours ? (
                 <p className="chip is-on" data-testid="quiet-hours-chip">
                   Queued for tonight
@@ -880,7 +908,7 @@ export default function ReviewPage() {
                   {actions.canSuggestLlm ? (
                     <button
                       type="button"
-                      className="cta outline compact"
+                      className={recommendedMotionCtaClass(work, "suggest")}
                       disabled={workBusy}
                       aria-busy={activeAction === "suggest" || undefined}
                       onClick={() => suggestWithLlm(work)}
@@ -892,7 +920,7 @@ export default function ReviewPage() {
                   {actions.canRepair ? (
                     <button
                       type="button"
-                      className="cta compact"
+                      className={recommendedMotionCtaClass(work, "repair")}
                       disabled={workBusy}
                       aria-busy={activeAction === "repair" || undefined}
                       onClick={() => repair(work)}
@@ -904,7 +932,7 @@ export default function ReviewPage() {
                   {actions.canRetry ? (
                     <button
                       type="button"
-                      className={`cta compact${actions.canRepair ? " outline" : ""}`}
+                      className={recommendedMotionCtaClass(work, "retry")}
                       disabled={workBusy}
                       aria-busy={activeAction === "retry" || undefined}
                       onClick={() => retry(work)}
@@ -916,7 +944,7 @@ export default function ReviewPage() {
                   {actions.canRegrab ? (
                     <button
                       type="button"
-                      className="cta outline compact"
+                      className={recommendedMotionCtaClass(work, "regrab")}
                       disabled={workBusy}
                       aria-busy={activeAction === "regrab" || undefined}
                       onClick={() => loadRegrab(work)}
@@ -927,7 +955,7 @@ export default function ReviewPage() {
                   ) : null}
                   {actions.canRequestNew ? (
                     <Link
-                      className="cta outline compact"
+                      className={recommendedMotionCtaClass(work, "request_new")}
                       to={findTo}
                       data-testid="review-request-new"
                     >
@@ -1082,7 +1110,7 @@ export default function ReviewPage() {
                 <div className="cta-row field-wide">
                   <button
                     type="submit"
-                    className="cta"
+                    className={recommendedMotionCtaClass(work, "apply", { compact: false })}
                     disabled={!canApply || workBusy}
                     aria-busy={activeAction === "apply" || undefined}
                     title={
@@ -1096,7 +1124,11 @@ export default function ReviewPage() {
                   </button>
                   <button
                     type="button"
-                    className="cta ghost"
+                    className={
+                      actions.recommendedMotion === "skip"
+                        ? recommendedMotionCtaClass(work, "skip", { compact: false })
+                        : "cta ghost"
+                    }
                     disabled={workBusy}
                     aria-busy={activeAction === "skip" || undefined}
                     onClick={() => skip(work)}
@@ -1108,8 +1140,11 @@ export default function ReviewPage() {
               </form>
             </li>
           );
-        })}
-      </ul>
+              })}
+            </ul>
+          </section>
+        ))}
+      </div>
     </div>
   );
 }

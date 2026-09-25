@@ -33,6 +33,12 @@ import {
   extraFilesReprocessIsRunning,
   extraFilesReprocessProgressPercent,
   extraFilesReprocessProgressSummary,
+  groupHoldSlipsByReason,
+  holdsDeskLedeCopy,
+  inferRecommendedMotion,
+  recommendedMotionCtaClass,
+  recommendedMotionLabel,
+  reviewReasonGroupLabel,
 } from "./review.js";
 
 const root = dirname(fileURLToPath(import.meta.url));
@@ -416,5 +422,62 @@ describe("ReviewPage loading", () => {
     );
     assert.match(purgePanel, /statusLine=\{purgeStatusLine\}/);
     assert.doesNotMatch(purgePanel, /\{bulkNote\}/);
+  });
+});
+
+
+describe("smart Holds desk grouping", () => {
+  it("groups hold slips by effective reason with sorting-returns order", () => {
+    const groups = groupHoldSlipsByReason([
+      { id: "a", title: "A", review_reason: "collision" },
+      { id: "b", title: "B", review_reason: "extra_files", folder_diagnosis: { collection_dump: true, distinct_title_count: 4 } },
+      { id: "c", title: "C", review_reason: "no_payload", folder_diagnosis: { problem: "unpack_stuck" } },
+      { id: "d", title: "D", review_reason: "extra_files" },
+    ]);
+    assert.deepEqual(
+      groups.map((g) => g.reason),
+      ["extra_files", "unpack_stuck", "collision"],
+    );
+    assert.equal(groups[0].works.length, 2);
+    assert.equal(groups[0].recommendedMotion, "clear_extra_files");
+    assert.equal(groups[1].reason, "unpack_stuck");
+    assert.match(groups[0].label, /Extra files/i);
+    assert.match(holdsDeskLedeCopy(), /sorting returns|ticket queue/i);
+    assert.equal(reviewReasonGroupLabel("unpack_stuck"), "Unpack stuck");
+  });
+
+  it("picks one recommended motion per slip and styles the primary CTA", () => {
+    const unpack = {
+      id: "u1",
+      title: "Stuck",
+      review_reason: "unpack_stuck",
+      folder_diagnosis: { problem: "unpack_stuck", par2_count: 2 },
+      actions: { can_repair: true, can_retry: true, recommended_motion: "repair" },
+    };
+    assert.equal(reviewActionsFromWork(unpack).recommendedMotion, "repair");
+    assert.equal(recommendedMotionLabel("repair"), "Repair");
+    assert.equal(recommendedMotionCtaClass(unpack, "repair"), "cta compact");
+    assert.equal(recommendedMotionCtaClass(unpack, "retry"), "cta outline compact");
+
+    const collision = {
+      id: "c1",
+      title: "Twin",
+      review_reason: "collision",
+      actions: {},
+    };
+    assert.equal(inferRecommendedMotion(collision, { reason: "collision" }), "skip");
+    assert.equal(reviewActionsFromWork(collision).recommendedMotion, "skip");
+  });
+
+  it("renders Holds desk groups and recommended motion chrome", () => {
+    assert.match(reviewPageSrc, /groupHoldSlipsByReason/);
+    assert.match(reviewPageSrc, /Sorting returns/);
+    assert.match(reviewPageSrc, /holdsDeskLedeCopy/);
+    assert.match(reviewPageSrc, /data-testid="holds-desk-groups"/);
+    assert.match(reviewPageSrc, /data-testid="holds-group"/);
+    assert.match(reviewPageSrc, /data-testid="hold-slip"/);
+    assert.match(reviewPageSrc, /data-testid="hold-slip-recommended"/);
+    assert.match(reviewPageSrc, /recommendedMotionCtaClass/);
+    assert.doesNotMatch(reviewPageSrc, /bagging/i);
   });
 });

@@ -166,7 +166,7 @@ export function reviewActionsFromWork(work = {}) {
   const actions = work?.actions || {};
   const reason = effectiveReviewReason(work);
   const findQuery = String(actions.find_query || "").trim();
-  return {
+  const flags = {
     canRepair: Boolean(actions.can_repair),
     canRetry: Boolean(actions.can_retry),
     canRequestNew: Boolean(findQuery) || Boolean(work?.title),
@@ -180,6 +180,9 @@ export function reviewActionsFromWork(work = {}) {
     canSuggestLlm: Boolean(actions.can_suggest_llm),
     needsLlmSuggest: Boolean(actions.needs_llm_suggest) || looksLikeDumpTitle(work?.title),
   };
+  const fromApi = String(actions.recommended_motion || "").trim();
+  flags.recommendedMotion = fromApi || inferRecommendedMotion(work, flags);
+  return flags;
 }
 
 /** Deep-link for Request a new version — Confirm still required on Find. */
@@ -502,4 +505,184 @@ export function purgeDuplicatesProgressSummary(status) {
   const mid = tallies.length ? ` · ${tallies.join(" · ")}` : "";
   const tail = title ? ` · ${title}` : "";
   return `${head}${mid}${tail}` || "Purging duplicates…";
+}
+
+/** Desk pile order — bulk-clearable returns first, then stuck unpacks, then identity piles. */
+export const REVIEW_REASON_GROUP_ORDER = [
+  "extra_files",
+  "unpack_stuck",
+  "missing_folder",
+  "no_payload",
+  "collision",
+  "quiet_hours",
+  "unknown_identity",
+  "low_confidence",
+  "unexpected_kind",
+  "convert_failed",
+  "comicvine_ambiguous",
+  "comicvine_unmatched",
+  "audnexus_ambiguous",
+  "audnexus_unmatched",
+];
+
+/** Short pile heading for the Holds desk (sorting returns). */
+export function reviewReasonGroupLabel(reason) {
+  const key = String(reason || "").trim();
+  if (key === "extra_files") return "Extra files";
+  if (key === "unpack_stuck") return "Unpack stuck";
+  if (key === "missing_folder") return "Missing folder";
+  if (key === "no_payload") return "No payload";
+  if (key === "collision") return "Collision";
+  if (key === "quiet_hours") return "Quiet hours";
+  if (key === "unknown_identity") return "Identity missing";
+  if (key === "low_confidence") return "Low confidence";
+  if (key === "unexpected_kind") return "Unexpected kind";
+  if (key === "convert_failed") return "Convert failed";
+  if (key === "comicvine_ambiguous") return "Comic Vine — pick a match";
+  if (key === "comicvine_unmatched") return "Comic Vine — unmatched";
+  if (key === "audnexus_ambiguous") return "Audnexus — pick a match";
+  if (key === "audnexus_unmatched") return "Audnexus — unmatched";
+  return key ? key.replace(/_/g, " ") : "Other returns";
+}
+
+/** One-line pile hint under the group heading. */
+export function reviewReasonGroupHint(reason) {
+  const key = String(reason || "").trim();
+  if (key === "extra_files") {
+    return "Collection dumps clear as a pile — one Clear, not Apply twenty-nine times.";
+  }
+  if (key === "unpack_stuck") {
+    return "Archives still in the complete folder — Repair when par2 is present, then Retry.";
+  }
+  if (key === "collision") {
+    return "Already on the shelf at that path — Skip keeps the shelf copy.";
+  }
+  if (key === "quiet_hours") {
+    return "Parked for tonight — Organize waits for the household window.";
+  }
+  if (key === "missing_folder" || key === "no_payload") {
+    return "Point Complete folder at readable media, or Request a new version beyond the shelves.";
+  }
+  if (key.startsWith("comicvine_") || key.startsWith("audnexus_")) {
+    return "Pick the right match, then Apply to file the hold slip.";
+  }
+  if (key === "unknown_identity" || key === "low_confidence" || key === "unexpected_kind") {
+    return "Confirm identity (Suggest with LLM when configured), then Apply.";
+  }
+  if (key === "convert_failed") {
+    return "Apply retries the CBZ remux so comics land on the shelf.";
+  }
+  return "Confirm the fields and folder, then take the recommended motion.";
+}
+
+/** Client fallback when API omits recommended_motion (older kits / unit fixtures). */
+export function inferRecommendedMotion(work = {}, flags = {}) {
+  const reason = flags.reason || effectiveReviewReason(work);
+  const diagnosis = work?.folder_diagnosis || {};
+  const canRepair = Boolean(flags.canRepair);
+  const canRetry = Boolean(flags.canRetry);
+  const canRegrab = Boolean(flags.canRegrab);
+  const quietHours = Boolean(flags.quietHours) || reason === "quiet_hours";
+  const canSuggestLlm = Boolean(flags.canSuggestLlm);
+  const needsLlmSuggest = Boolean(flags.needsLlmSuggest);
+  if (quietHours) return "wait";
+  if (reason === "unpack_stuck") {
+    if (canRepair) return "repair";
+    if (canRegrab) return "regrab";
+    if (canRetry) return "retry";
+    return "apply";
+  }
+  if (reason === "extra_files") {
+    const titles = Number(diagnosis.distinct_title_count || 0);
+    if (diagnosis.collection_dump || titles >= 2) return "clear_extra_files";
+    return "apply";
+  }
+  if (reason === "collision") return "skip";
+  if (
+    reason === "comicvine_ambiguous" ||
+    reason === "comicvine_unmatched" ||
+    reason === "audnexus_ambiguous" ||
+    reason === "audnexus_unmatched"
+  ) {
+    return "pick_match";
+  }
+  if (needsLlmSuggest || canSuggestLlm) return "suggest";
+  if (reason === "missing_folder" || reason === "no_payload") {
+    if (diagnosis.suggested_folder) return "apply";
+    return "request_new";
+  }
+  return "apply";
+}
+
+/** Household label for the recommended motion chip / primary CTA. */
+export function recommendedMotionLabel(motion) {
+  const key = String(motion || "").trim();
+  if (key === "repair") return "Repair";
+  if (key === "retry") return "Retry";
+  if (key === "regrab") return "Smart re-grab";
+  if (key === "clear_extra_files") return "Clear extra-files";
+  if (key === "suggest") return "Suggest with LLM";
+  if (key === "pick_match") return "Pick a match";
+  if (key === "request_new") return "Request new version";
+  if (key === "skip") return "Skip";
+  if (key === "wait") return "Wait for quiet hours";
+  if (key === "apply") return "Apply";
+  return "Apply";
+}
+
+/** True when this CTA is the slip's one recommended motion. */
+export function isRecommendedMotion(work, motionKey) {
+  const recommended = reviewActionsFromWork(work).recommendedMotion;
+  return String(recommended || "") === String(motionKey || "");
+}
+
+/** Primary vs outline classes — one filled CTA per slip. */
+export function recommendedMotionCtaClass(work, motionKey, { compact = true } = {}) {
+  const primary = isRecommendedMotion(work, motionKey);
+  const size = compact ? " compact" : "";
+  if (primary) return `cta${size}`;
+  return `cta outline${size}`;
+}
+
+/**
+ * Group hold slips by effective review reason for the Smart Holds desk.
+ * @returns {{ reason: string, label: string, hint: string, recommendedMotion: string, works: object[] }[]}
+ */
+export function groupHoldSlipsByReason(works = []) {
+  const buckets = new Map();
+  for (const work of works || []) {
+    const reason = effectiveReviewReason(work) || "";
+    if (!buckets.has(reason)) buckets.set(reason, []);
+    buckets.get(reason).push(work);
+  }
+  const known = new Set(REVIEW_REASON_GROUP_ORDER);
+  const orderedKeys = [
+    ...REVIEW_REASON_GROUP_ORDER.filter((key) => buckets.has(key)),
+    ...[...buckets.keys()].filter((key) => !known.has(key)).sort(),
+  ];
+  return orderedKeys.map((reason) => {
+    const groupWorks = buckets.get(reason) || [];
+    const motions = groupWorks.map((work) => reviewActionsFromWork(work).recommendedMotion);
+    const preferred =
+      motions.find((m) => m === "clear_extra_files") ||
+      motions.find((m) => m === "repair") ||
+      motions.find((m) => m === "retry") ||
+      motions[0] ||
+      "apply";
+    return {
+      reason,
+      label: reviewReasonGroupLabel(reason),
+      hint: reviewReasonGroupHint(reason),
+      recommendedMotion: preferred,
+      works: groupWorks,
+    };
+  });
+}
+
+/** Holds desk lede — sorting returns, not a ticket queue. */
+export function holdsDeskLedeCopy() {
+  return (
+    "Hold slips are returns waiting to be sorted — grouped by why they paused. " +
+    "Each pile names one recommended motion so filing stays calm, not a ticket queue."
+  );
 }

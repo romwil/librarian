@@ -1034,3 +1034,91 @@ def test_review_apply_permission_error_is_400(tmp_path, monkeypatch):
     assert "Locked path:" in detail
     assert "Author" in detail
     assert "Locked" in detail
+
+
+def test_review_list_includes_recommended_motion(tmp_path, monkeypatch):
+    """Smart Holds desk: each slip names one recommended motion."""
+    folder = tmp_path / "complete" / "stuck"
+    folder.mkdir(parents=True)
+    (folder / "part.rar").write_bytes(b"Rar!")
+    (folder / "part.par2").write_bytes(b"PAR2")
+    settings = Settings(
+        books_root=str(tmp_path / "books"),
+        complete_root=str(tmp_path / "complete"),
+    )
+    client, app = _client(tmp_path, monkeypatch, settings=settings)
+    db = app.state.db
+    stuck = db.upsert_work(
+        {
+            "kind": "audiobook",
+            "title": "Stuck Archive",
+            "author": "VA",
+            "review_state": "needs_review",
+            "review_reason": "unpack_stuck",
+            "folder_path": str(folder),
+        }
+    )
+    collision = db.upsert_work(
+        {
+            "kind": "book",
+            "title": "Twin",
+            "author": "Author",
+            "review_state": "needs_review",
+            "review_reason": "collision",
+            "folder_path": str(tmp_path / "complete" / "twin"),
+        }
+    )
+    listed = client.get("/api/review")
+    assert listed.status_code == 200
+    by_id = {row["id"]: row for row in listed.json()["works"]}
+    assert by_id[stuck["id"]]["actions"]["recommended_motion"] in {"repair", "retry", "apply"}
+    assert by_id[collision["id"]]["actions"]["recommended_motion"] == "skip"
+
+
+def test_review_recommended_motion_helper_priority():
+    from librarian.organize import review_recommended_motion
+    from librarian.review_reasons import (
+        REVIEW_COLLISION,
+        REVIEW_EXTRA,
+        REVIEW_UNPACK_STUCK,
+    )
+
+    assert (
+        review_recommended_motion(
+            reason=REVIEW_UNPACK_STUCK,
+            problem=REVIEW_UNPACK_STUCK,
+            can_repair=True,
+            can_retry=True,
+            can_regrab=False,
+            can_suggest_llm=False,
+            needs_llm_suggest=False,
+            diagnosis={},
+        )
+        == "repair"
+    )
+    assert (
+        review_recommended_motion(
+            reason=REVIEW_EXTRA,
+            problem=REVIEW_EXTRA,
+            can_repair=False,
+            can_retry=False,
+            can_regrab=False,
+            can_suggest_llm=False,
+            needs_llm_suggest=False,
+            diagnosis={"collection_dump": True, "distinct_title_count": 9},
+        )
+        == "clear_extra_files"
+    )
+    assert (
+        review_recommended_motion(
+            reason=REVIEW_COLLISION,
+            problem=REVIEW_COLLISION,
+            can_repair=False,
+            can_retry=False,
+            can_regrab=False,
+            can_suggest_llm=False,
+            needs_llm_suggest=False,
+            diagnosis={},
+        )
+        == "skip"
+    )
