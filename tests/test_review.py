@@ -780,10 +780,138 @@ def test_review_apply_peels_matched_file_from_multi_title_dump(tmp_path, monkeyp
     assert (folder / "Fourth Wing - Rebecca Yarros.epub").exists()
     assert (folder / "The Women - Kristin Hannah.epub").exists()
     assert not (folder / "A Calamity of Souls - David Baldacci.epub").exists()
-    leftover = body.get("leftover_work")
-    assert leftover is not None
-    assert leftover["review_reason"] == "extra_files"
-    assert leftover["folder_path"] == str(folder)
+    assert body.get("leftover_work") is None
+    expanded = body.get("expanded_remaining") or {}
+    assert expanded.get("action") == "split"
+    assert int(expanded.get("targets") or 0) == 2
+    # No leftover extra_files slip for the rest of the dump.
+    leftovers = [
+        row
+        for row in db.list_works(review_state="needs_review", limit=50)
+        if str(row.get("review_reason") or "") == "extra_files"
+        and str(row.get("folder_path") or "") == str(folder)
+    ]
+    assert leftovers == []
+
+
+def test_organize_auto_expands_flat_multi_title_dump(tmp_path, monkeypatch):
+    """NYT Fiction dumps expand into per-title ingest — no single extra_files slip."""
+    monkeypatch.setenv("LIBRARIAN_FS_ROOT", str(tmp_path))
+    from librarian.config import Settings
+    from librarian.db import Database
+    from librarian.organize import organize_identified
+
+    settings = Settings(
+        books_root=str(tmp_path / "books"),
+        magazines_root=str(tmp_path / "magazines"),
+        comics_root=str(tmp_path / "comics"),
+        audiobooks_root=str(tmp_path / "audiobooks"),
+        incoming_music_root=str(tmp_path / "incoming"),
+        music_root=str(tmp_path / "music"),
+        complete_root=str(tmp_path / "complete"),
+    )
+    db = Database(tmp_path / "lib.sqlite3")
+    folder = tmp_path / "complete" / "NYT Fiction"
+    folder.mkdir(parents=True)
+    (folder / "A Calamity of Souls - David Baldacci.epub").write_bytes(b"calamity")
+    (folder / "Fourth Wing - Rebecca Yarros.epub").write_bytes(b"fourth")
+    (folder / "The Women - Kristin Hannah.epub").write_bytes(b"women")
+
+    # Avoid live LLM. Directory dumps trip the extra_files gate; single-file
+    # children from expand should still shelve under a high-confidence identity.
+    def _fake_identify(folder, **_kwargs):
+        from pathlib import Path as P
+
+        from librarian.identify import REVIEW_EXTRA, list_payload_files, unexpected_extra_files
+
+        path = P(folder)
+        files = list_payload_files(path)
+        if path.is_dir() and unexpected_extra_files(files):
+            return {
+                "identity": {
+                    "kind": "book",
+                    "title": path.name,
+                    "author": None,
+                    "confidence": "low",
+                    "review_reason": REVIEW_EXTRA,
+                },
+                "files": [str(item) for item in files],
+                "auto_organize": False,
+            }
+        stem = path.stem if path.is_file() else path.name
+        title, _, author = stem.partition(" - ")
+        return {
+            "identity": {
+                "kind": "book",
+                "title": title or stem,
+                "author": author or "Unknown",
+                "isbn": "9780000000001",
+                "confidence": "high",
+                "review_reason": None,
+            },
+            "files": [str(item) for item in files],
+            "auto_organize": True,
+        }
+
+    monkeypatch.setattr("librarian.organize.identify_completed", _fake_identify)
+    result = organize_identified(db, settings, folder=folder, move_source=False)
+    assert result.get("expanded") is True
+    assert result.get("action") == "split"
+    assert int(result.get("targets") or 0) == 3
+    work = result.get("work") or {}
+    assert work.get("review_state") == "resolved"
+    extras = [
+        row
+        for row in db.list_works(review_state="needs_review", limit=50)
+        if str(row.get("review_reason") or "") == "extra_files"
+    ]
+    assert extras == []
+
+
+def test_review_reprocess_extra_files_splits_flat_nyt_dump(tmp_path, monkeypatch):
+    """Clear extra-files expands leftover NYT Fiction slips into per-title ingest."""
+    monkeypatch.setenv("LIBRARIAN_FS_ROOT", str(tmp_path))
+    settings = Settings(
+        books_root=str(tmp_path / "books"),
+        magazines_root=str(tmp_path / "magazines"),
+        comics_root=str(tmp_path / "comics"),
+        audiobooks_root=str(tmp_path / "audiobooks"),
+        incoming_music_root=str(tmp_path / "incoming"),
+        music_root=str(tmp_path / "music"),
+        complete_root=str(tmp_path / "complete"),
+    )
+    client, app = _client(tmp_path, monkeypatch, settings=settings)
+    db = app.state.db
+    folder = tmp_path / "media" / "newbooks" / "NYT" / "Fiction"
+    folder.mkdir(parents=True)
+    (folder / "Fourth Wing - Rebecca Yarros.epub").write_bytes(b"fourth")
+    (folder / "The Women - Kristin Hannah.epub").write_bytes(b"women")
+    (folder / "Funny Story - Emily Henry.epub").write_bytes(b"funny")
+    work = db.upsert_work(
+        {
+            "kind": "book",
+            "title": "Fourth Wing",
+            "author": "Rebecca Yarros",
+            "review_state": "needs_review",
+            "review_reason": "extra_files",
+            "folder_path": str(folder),
+        }
+    )
+    resp = client.post("/api/review/reprocess-extra-files")
+    assert resp.status_code == 200
+    status = _wait_extra_files_reprocess_status(client, timeout=30.0)
+    assert status["status"] == "completed"
+    result = status.get("result") or {}
+    assert int(result.get("split") or status.get("split") or 0) == 1
+    refreshed = db.get_work(work["id"])
+    assert refreshed["review_state"] == "resolved"
+    leftovers = [
+        row
+        for row in db.list_works(review_state="needs_review", limit=50)
+        if str(row.get("folder_path") or "") == str(folder)
+        and str(row.get("review_reason") or "") == "extra_files"
+    ]
+    assert leftovers == []
 
 
 def test_review_apply_permission_error_is_400(tmp_path, monkeypatch):

@@ -48,6 +48,22 @@ describe("review identify form", () => {
     assert.match(copy, /unpack/i);
   });
 
+  it("explains collection-dump extra_files differently from one-book extras", () => {
+    const copy = reviewReasonCopy("extra_files", {
+      collection_dump: true,
+      distinct_title_count: 29,
+    });
+    assert.match(copy, /multi-title collection dump/i);
+    assert.match(copy, /Clear extra-files/);
+    assert.doesNotMatch(copy, /Confirm the identity and Apply/);
+    const diagnosis = reviewDiagnosisCopy({
+      review_reason: "extra_files",
+      folder_diagnosis: { collection_dump: true, distinct_title_count: 29, tried: "Opened Fiction." },
+    });
+    assert.match(diagnosis.meaning, /Clear extra-files/);
+    assert.match(diagnosis.nextSteps, /Clear extra-files once/);
+  });
+
   it("builds a diagnosis block for Guardians-style unpack stuck", () => {
     const work = {
       review_reason: "no_payload",
@@ -96,7 +112,7 @@ describe("review identify form", () => {
   });
 
   it("shortens review reasons for Queue Needs you cards", () => {
-    assert.match(queueReviewReasonCopy("extra_files"), /Extra files/);
+    assert.match(queueReviewReasonCopy("extra_files"), /Multi-title dump|extra files/i);
     assert.match(queueReviewReasonCopy("collision"), /Open Review/i);
     assert.match(queueReviewReasonCopy("collision"), /shelf/i);
     assert.match(queueReviewReasonCopy("unpack_stuck"), /Archives/);

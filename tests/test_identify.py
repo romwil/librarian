@@ -764,6 +764,20 @@ def test_suggest_payload_folder_skips_library_root_parent(tmp_path):
     assert suggest_payload_folder(empty) is None
 
 
+def test_diagnose_review_folder_flags_collection_dump(tmp_path):
+    from librarian.identify import diagnose_review_folder
+
+    folder = tmp_path / "Fiction"
+    folder.mkdir()
+    (folder / "Fourth Wing - Rebecca Yarros.epub").write_bytes(b"a")
+    (folder / "The Women - Kristin Hannah.epub").write_bytes(b"b")
+    (folder / "Funny Story - Emily Henry.epub").write_bytes(b"c")
+    diagnosis = diagnose_review_folder(folder, str(tmp_path))
+    assert diagnosis["collection_dump"] is True
+    assert diagnosis["distinct_title_count"] == 3
+    assert "collection dump" in diagnosis["tried"].lower() or "different title" in diagnosis["tried"].lower()
+
+
 def test_diagnose_review_folder_missing_path(tmp_path):
     from librarian.identify import diagnose_review_folder
 

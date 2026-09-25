@@ -71,7 +71,7 @@ export function effectiveReviewReason(work) {
   return stored || problem || "";
 }
 
-export function reviewReasonCopy(reason) {
+export function reviewReasonCopy(reason, diagnosis = {}) {
   if (reason === "quiet_hours") {
     return "Queued for tonight — quiet hours defer unpack and convert until the household window.";
   }
@@ -94,6 +94,14 @@ export function reviewReasonCopy(reason) {
     return "Kind does not match a library shelf. Pick book, magazine, comic, audiobook, or music.";
   }
   if (reason === "extra_files") {
+    const titles = Number(diagnosis?.distinct_title_count || 0);
+    if (diagnosis?.collection_dump || titles >= 2) {
+      const label = titles >= 2 ? `${titles} different titles` : "many different titles";
+      return (
+        `This folder looks like a multi-title collection dump (${label}), not leftover junk beside one book. ` +
+        "Use Clear extra-files to shelve each title — you should not Apply one-by-one."
+      );
+    }
     return "Extra files in the complete folder. Confirm the identity and Apply to file what is there.";
   }
   if (reason === "convert_failed") {
@@ -117,7 +125,14 @@ export function reviewReasonCopy(reason) {
   return "Unexpected item in the bagging area. Confirm identity and the complete folder, then Apply or Skip.";
 }
 
-export function reviewSlipMeaning() {
+export function reviewSlipMeaning(reason, diagnosis = {}) {
+  const titles = Number(diagnosis?.distinct_title_count || 0);
+  if (reason === "extra_files" && (diagnosis?.collection_dump || titles >= 2)) {
+    return (
+      "Organize found many different books in one dump folder. That is normal for NYT / Usenet " +
+      "collections — Clear extra-files peels them apart into one ticket per title."
+    );
+  }
   return "A slip means organize could not finish filing this download — it needs you before it can land on a shelf.";
 }
 
@@ -136,6 +151,12 @@ export function reviewNextStepsCopy(reason, diagnosis = {}) {
   }
   if (reason === "collision") {
     return collisionActionCopy();
+  }
+  if (reason === "extra_files") {
+    const titles = Number(diagnosis?.distinct_title_count || 0);
+    if (diagnosis?.collection_dump || titles >= 2) {
+      return "Click Clear extra-files once — Librarian expands each title onto its own ingest ticket. Keep Apply for true one-book ambiguity only.";
+    }
   }
   return "Confirm the fields and Complete folder, then Apply to file a ticket — or Skip to dismiss.";
 }
@@ -194,9 +215,9 @@ export function reviewDiagnosisCopy(work) {
           ? diagnosis.junk_count
             ? `Only non-media files (${diagnosis.junk_count}) — no book, comic, or audio.`
             : "No readable book, comic, or audio file here."
-          : reviewReasonCopy(reason);
+          : reviewReasonCopy(reason, diagnosis);
   return {
-    meaning: reviewSlipMeaning(),
+    meaning: reviewSlipMeaning(reason, diagnosis),
     tried: diagnosis.tried || "Checked the complete folder for files this Librarian can shelve.",
     lookedFor: diagnosis.looked_for || "book, comic, or audio files",
     whatsWrong,
@@ -247,7 +268,7 @@ export function queueReviewReasonCopy(reason) {
     return "Wrong shelf kind — pick one in Review.";
   }
   if (reason === "extra_files") {
-    return "Extra files in the dump — confirm in Review.";
+    return "Multi-title dump or extra files — open Review (Clear extra-files for collections).";
   }
   if (reason === "convert_failed") {
     return "Conversion still needed — open Review.";

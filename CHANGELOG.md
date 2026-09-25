@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.4.13] — 2026-09-24
+
+### Fixed
+
+- **Collection dumps vs “extra files.”** Flat NYT / Usenet Fiction folders (many distinct ebook stems) auto-expand into per-title ingest instead of parking one confusing `extra_files` Review slip. Apply peel shelves the confirmed title and expands the rest the same way — no leftover slip that forces Apply 29 times. Clear extra-files still repairs residual collection slips in one click.
+- **Review copy for collections.** Household language distinguishes multi-title collection dumps from true same-title ambiguity; Clear extra-files is the call to action.
+
 ## [0.4.12] — 2026-09-24
 
 ### Fixed

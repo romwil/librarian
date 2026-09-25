@@ -943,6 +943,14 @@ def diagnose_review_folder(folder: Path, complete_root: str = "") -> Dict[str, A
         tried = f"Opened {resolved}. Found {len(junk)} non-media file(s) and no {looked_for}."
     else:
         tried = f"Opened {resolved}. Found {len(payload)} readable file(s) this Librarian can shelve."
+    dump_meta = collection_dump_meta([Path(path) for path in payload])
+    if dump_meta.get("collection_dump") and not problem:
+        n = int(dump_meta.get("distinct_title_count") or 0)
+        tried = (
+            f"Opened {resolved}. Found {len(payload)} readable file(s) across "
+            f"{n} different title name(s) — this looks like a multi-title collection dump, "
+            f"not one book with leftover junk."
+        )
     return {
         "path": str(resolved) if usable_folder(resolved) else str(raw or ""),
         "resolved_path": str(resolved) if usable_folder(resolved) else "",
@@ -955,6 +963,8 @@ def diagnose_review_folder(folder: Path, complete_root: str = "") -> Dict[str, A
         "tried": tried,
         "path_note": path_layout_note(resolved if usable_folder(resolved) else raw),
         "suggested_folder": str(suggested) if suggested is not None else None,
+        "collection_dump": bool(dump_meta.get("collection_dump")),
+        "distinct_title_count": int(dump_meta.get("distinct_title_count") or 0),
     }
 
 
@@ -1592,6 +1602,24 @@ def match_payload_files_to_identity(
 def unexpected_extra_files(files: Sequence[Path]) -> bool:
     """Public: folder looks like multiple distinct works (not one multi-format book)."""
     return _unexpected_extra_files(files)
+
+
+def collection_dump_meta(files: Sequence[Path]) -> Dict[str, Any]:
+    """Household signal: flat/multi-stem dump vs one book with alternate formats.
+
+    NYT Fiction / Usenet collection folders have many distinct title stems. That is
+    not "extra junk beside one download" — Clear / ingest should expand per title.
+    Mixed comic+ebook is a different repair path and is not flagged here.
+    """
+    payload = [Path(path) for path in files]
+    if is_mixed_comic_ebook_payload(payload):
+        return {"collection_dump": False, "distinct_title_count": 0}
+    if not _unexpected_extra_files(payload):
+        return {"collection_dump": False, "distinct_title_count": 0}
+    stems = {_normalized_payload_stem(path) for path in payload}
+    stems.discard("")
+    count = len(stems)
+    return {"collection_dump": count >= 2, "distinct_title_count": count}
 
 
 def expand_organize_payload(target: Path) -> List[Path]:

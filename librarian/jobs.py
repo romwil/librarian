@@ -326,7 +326,7 @@ def poll_job(
         )
         if organized.get("skipped_duplicate"):
             final = "skipped"
-        elif organized["organized"]:
+        elif organized["organized"] or organized.get("expanded"):
             final = "organized"
         else:
             final = "review"

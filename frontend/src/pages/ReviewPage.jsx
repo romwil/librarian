@@ -840,7 +840,7 @@ export default function ReviewPage() {
                 </p>
               ) : null}
               <p className="lede" data-testid="review-reason-copy">
-                {reviewReasonCopy(reason)}
+                {reviewReasonCopy(reason, work.folder_diagnosis || {})}
               </p>
               <details className="ticket-diagnosis" data-testid="review-diagnosis">
                 <summary>About this slip</summary>

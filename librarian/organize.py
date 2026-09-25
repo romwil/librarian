@@ -497,6 +497,35 @@ def organize_identified(
                 "indexer_guid": (indexer_item or {}).get("guid"),
             }
         )
+        # Flat multi-title / Calibre dumps: expand into per-title ingest instead of one
+        # confusing extra_files Review slip. Skip when force Apply (peel path) or mixed kinds.
+        if (
+            apply
+            and not force
+            and identity.get("review_reason") == REVIEW_EXTRA
+            and files
+            and not is_mixed_comic_ebook_payload(files)
+            and unexpected_extra_files(files)
+            and usable_folder(folder)
+            and folder.is_dir()
+        ):
+            expanded = expand_extra_files_folder(
+                db,
+                settings,
+                folder=folder,
+                work=work,
+                requested_by=str((indexer_item or {}).get("requested_by") or "owner"),
+            )
+            if expanded is not None:
+                refreshed = db.get_work(work["id"]) or work
+                return {
+                    "work": refreshed,
+                    "identity": identity,
+                    "organized": False,
+                    "expanded": True,
+                    "files": [str(p) for p in files],
+                    **expanded,
+                }
         return {"work": work, "identity": identity, "organized": False, "files": [str(p) for p in files]}
 
     # Preflight every dest before moving any file — a mid-loop collision with
@@ -824,7 +853,6 @@ def _peel_matched_extra_files(
     from librarian.identify import (
         match_payload_files_to_identity,
         safe_path_part,
-        tidy_title,
     )
 
     matched = match_payload_files_to_identity(payload, identity)
@@ -870,20 +898,15 @@ def _peel_matched_extra_files(
         raise
 
     remaining = list_payload_files(folder)
-    leftover = None
+    expanded_remaining = None
     if remaining:
-        leftover_title = tidy_title(remaining[0].stem.split(" - ", 1)[0]) or folder.name
-        leftover = db.upsert_work(
-            {
-                "kind": str(identity.get("kind") or work.get("kind") or "book"),
-                "title": leftover_title,
-                "author": None,
-                "folder_path": str(folder),
-                "review_state": "needs_review",
-                "review_reason": REVIEW_EXTRA,
-                "confidence": "low",
-                "requested_by": work.get("requested_by"),
-            }
+        # Do not park another confusing extra_files slip — expand the rest like Clear.
+        expanded_remaining = expand_extra_files_folder(
+            db,
+            settings,
+            folder=folder,
+            work=None,
+            requested_by=str(work.get("requested_by") or "owner"),
         )
     elif stage.exists() and stage.is_dir() and not any(stage.iterdir()):
         shutil.rmtree(stage, ignore_errors=True)
@@ -893,7 +916,8 @@ def _peel_matched_extra_files(
         "peeled": True,
         "peeled_files": [str(path) for path in matched],
         "remaining": len(remaining),
-        "leftover_work": leftover,
+        "leftover_work": None,
+        "expanded_remaining": expanded_remaining,
     }
 
 
@@ -988,6 +1012,64 @@ EXTRA_FILES_SYNC_CHILD_LIMIT = 4
 EXTRA_FILES_ITEM_TIMEOUT_S = 120.0
 
 
+def expand_extra_files_folder(
+    db: Database,
+    settings: Settings,
+    *,
+    folder: Path,
+    work: Optional[Dict[str, Any]] = None,
+    requested_by: str = "owner",
+    on_progress: Any = None,
+) -> Optional[Dict[str, Any]]:
+    """Expand a multi-title dump into per-title ingest jobs.
+
+    Used by Clear extra-files, auto-organize of collection folders, and Apply peel
+    leftovers. Returns None when the folder is a single volume (caller may Apply).
+    """
+    from librarian.ingest import enqueue_ingest, list_ingest_targets
+
+    targets = list_ingest_targets(folder)
+    split_targets = [path for path in targets if not _same_path(path, folder)]
+    if not (len(targets) > 1 or split_targets):
+        return None
+    children = split_targets or targets
+    work_id = str((work or {}).get("id") or "") or None
+    if work is not None and work_id:
+        db.upsert_work({**work, "review_state": "resolved", "review_reason": None})
+    process_sync = len(children) <= EXTRA_FILES_SYNC_CHILD_LIMIT
+    jobs: List[Dict[str, Any]] = []
+    for index, target in enumerate(children, start=1):
+        if on_progress is not None:
+            on_progress(
+                child_index=index,
+                child_total=len(children),
+                child_title=target.name,
+                process_sync=process_sync,
+            )
+        jobs.append(
+            enqueue_ingest(
+                db,
+                settings,
+                path=target,
+                requested_by=requested_by,
+                source="ingest",
+                process=process_sync,
+            )
+        )
+    shelved = sum(1 for job in jobs if str(job.get("status") or "") == "organized")
+    review = sum(1 for job in jobs if str(job.get("status") or "") == "review")
+    return {
+        "action": "split",
+        "work_id": work_id,
+        "targets": len(children),
+        "shelved": shelved,
+        "review": review,
+        "queued": 0 if process_sync else len(children),
+        "process_sync": process_sync,
+        "jobs": [{"id": job.get("id"), "status": job.get("status"), "title": job.get("title")} for job in jobs],
+    }
+
+
 def reprocess_extra_files_work(
     db: Database,
     settings: Settings,
@@ -1006,7 +1088,6 @@ def reprocess_extra_files_work(
     Clear thread keeps heartbeating / releasing the write queue for interactive Review.
     """
     from librarian.identify import expand_organize_payload, is_mixed_comic_ebook_payload
-    from librarian.ingest import enqueue_ingest, list_ingest_targets
     from librarian.split_mixed_kinds import split_mixed_payload_folder
 
     work = db.get_work(work_id)
@@ -1031,43 +1112,16 @@ def reprocess_extra_files_work(
             on_progress=on_progress,
         )
 
-    targets = list_ingest_targets(folder)
-    split_targets = [path for path in targets if not _same_path(path, folder)]
-    if len(targets) > 1 or split_targets:
-        children = split_targets or targets
-        db.upsert_work({**work, "review_state": "resolved", "review_reason": None})
-        process_sync = len(children) <= EXTRA_FILES_SYNC_CHILD_LIMIT
-        jobs: List[Dict[str, Any]] = []
-        for index, target in enumerate(children, start=1):
-            if on_progress is not None:
-                on_progress(
-                    child_index=index,
-                    child_total=len(children),
-                    child_title=target.name,
-                    process_sync=process_sync,
-                )
-            jobs.append(
-                enqueue_ingest(
-                    db,
-                    settings,
-                    path=target,
-                    requested_by=requested_by,
-                    source="ingest",
-                    process=process_sync,
-                )
-            )
-        shelved = sum(1 for job in jobs if str(job.get("status") or "") == "organized")
-        review = sum(1 for job in jobs if str(job.get("status") or "") == "review")
-        return {
-            "action": "split",
-            "work_id": work_id,
-            "targets": len(children),
-            "shelved": shelved,
-            "review": review,
-            "queued": 0 if process_sync else len(children),
-            "process_sync": process_sync,
-            "jobs": [{"id": job.get("id"), "status": job.get("status"), "title": job.get("title")} for job in jobs],
-        }
+    expanded = expand_extra_files_folder(
+        db,
+        settings,
+        folder=folder,
+        work=work,
+        requested_by=requested_by,
+        on_progress=on_progress,
+    )
+    if expanded is not None:
+        return expanded
 
     if on_progress is not None:
         on_progress(child_index=1, child_total=1, child_title=folder.name, process_sync=True)

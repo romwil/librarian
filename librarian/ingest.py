@@ -730,7 +730,7 @@ def progress_ingest_job(db: Database, settings: Settings, job_id: str) -> Dict[s
     work = organized["work"]
     if organized.get("skipped_duplicate"):
         final = "skipped"
-    elif organized["organized"]:
+    elif organized["organized"] or organized.get("expanded"):
         final = "organized"
     else:
         final = "review"
