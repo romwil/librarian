@@ -26,6 +26,8 @@ LIBRARIAN_PBKDF2_ITERATIONS=1000 LIBRARIAN_SKIP_APP_BOOT=1 \
 ```
 
 Coverage is configured in `pyproject.toml` (`--cov=librarian --cov-fail-under=70`).
+**Every major-build sprint** must keep this floor and `cd frontend && npm test` green — new behavior
+ships with value-based tests, not a later cleanup pass. See [docs/ops/MAJOR_BUILDS.md](docs/ops/MAJOR_BUILDS.md).
 
 ## What to assert
 
@@ -50,5 +52,6 @@ Frontend unit tests for naming/filters/review copy land with the SPA polish pass
 ## Related
 
 - Playwright / docs gate: [docs/TESTING.md](docs/TESTING.md)
+- Major-build protocol (sprints, lanes, coverage, UX gates): [docs/ops/MAJOR_BUILDS.md](docs/ops/MAJOR_BUILDS.md)
 - Handshake allowlist + proxy fail-closed: [docs/SECURITY.md](docs/SECURITY.md)
 - Automat kit: [docs/ops/AUTOMAT.md](docs/ops/AUTOMAT.md)

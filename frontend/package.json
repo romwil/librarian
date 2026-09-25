@@ -1,7 +1,7 @@
 {
   "name": "librarian-frontend",
   "private": true,
-  "version": "0.4.15",
+  "version": "0.4.16",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,7 +9,8 @@
     "release-notes": "bash ../scripts/generate-release-notes.sh --require-version $(node -p \"require('./package.json').version\")",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test src/*.test.js src/lib/*.test.js"
+    "test": "node --test src/*.test.js src/lib/*.test.js",
+    "test:e2e": "cd .. && npm run test:e2e"
   },
   "dependencies": {
     "foliate-js": "^1.0.1",

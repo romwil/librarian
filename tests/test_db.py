@@ -11,13 +11,25 @@ def test_wal_pragmas(tmp_path):
 
 def test_fts_exact_titles(tmp_path):
     db = Database(tmp_path / "librarian.db")
-    db.upsert_work({"kind": "book", "title": "Dune", "author": "Herbert", "genre": "sf"})
-    db.upsert_work({"kind": "book", "title": "Kindred", "author": "Butler", "genre": "sf"})
+    dune = db.upsert_work({"kind": "book", "title": "Dune", "author": "Herbert", "genre": "sf"})
+    kindred = db.upsert_work({"kind": "book", "title": "Kindred", "author": "Butler", "genre": "sf"})
+    db.add_file({"work_id": dune["id"], "path": "/b/Dune.epub", "filename": "Dune.epub", "kind": "book"})
+    db.add_file({"work_id": kindred["id"], "path": "/b/Kindred.epub", "filename": "Kindred.epub", "kind": "book"})
     hits = db.search_works("Dune")
     assert [row["title"] for row in hits] == ["Dune"]
     empty = db.search_works("zzz-no-such")
     assert empty == []
-    db.upsert_work({"kind": "music", "title": "Dune Soundtrack", "author": "Zimmer", "music_state": "incoming"})
+    soundtrack = db.upsert_work(
+        {"kind": "music", "title": "Dune Soundtrack", "author": "Zimmer", "music_state": "incoming"}
+    )
+    db.add_file(
+        {
+            "work_id": soundtrack["id"],
+            "path": "/m/Dune Soundtrack.flac",
+            "filename": "Dune Soundtrack.flac",
+            "kind": "music",
+        }
+    )
     assert [row["kind"] for row in db.search_works("Dune", kind="music")] == ["music"]
     assert [row["title"] for row in db.search_works("Dune", kind="book")] == ["Dune"]
 
@@ -37,6 +49,7 @@ def test_favorites_are_user_scoped(tmp_path):
         role="reader",
     )
     work = db.upsert_work({"kind": "comic", "title": "Saga #1", "series_name": "Saga", "series_index": "1"})
+    db.add_file({"work_id": work["id"], "path": "/c/Saga1.cbz", "filename": "Saga1.cbz", "kind": "comic"})
     assert db.toggle_favorite(owner["id"], work["id"]) is True
     assert db.is_favorite(owner["id"], work["id"]) is True
     assert db.add_favorite(owner["id"], work["id"]) is False

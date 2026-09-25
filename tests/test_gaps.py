@@ -32,10 +32,18 @@ def test_comic_issue_holes_exact():
 
 def test_local_gaps_from_catalog(tmp_path):
     db = Database(tmp_path / "librarian.db")
-    db.upsert_work({"kind": "magazine", "title": "Linux Magazin", "series_name": "Linux Magazin", "series_index": "2026-08"})
-    db.upsert_work({"kind": "magazine", "title": "Linux Magazin", "series_name": "Linux Magazin", "series_index": "2026-10"})
-    db.upsert_work({"kind": "comic", "title": "Saga #1", "series_name": "Saga", "series_index": "1"})
-    db.upsert_work({"kind": "comic", "title": "Saga #3", "series_name": "Saga", "series_index": "3"})
+    mag_a = db.upsert_work(
+        {"kind": "magazine", "title": "Linux Magazin", "series_name": "Linux Magazin", "series_index": "2026-08"}
+    )
+    mag_b = db.upsert_work(
+        {"kind": "magazine", "title": "Linux Magazin", "series_name": "Linux Magazin", "series_index": "2026-10"}
+    )
+    comic_a = db.upsert_work({"kind": "comic", "title": "Saga #1", "series_name": "Saga", "series_index": "1"})
+    comic_b = db.upsert_work({"kind": "comic", "title": "Saga #3", "series_name": "Saga", "series_index": "3"})
+    db.add_file({"work_id": mag_a["id"], "path": "/m/2026-08.pdf", "filename": "2026-08.pdf", "kind": "magazine"})
+    db.add_file({"work_id": mag_b["id"], "path": "/m/2026-10.pdf", "filename": "2026-10.pdf", "kind": "magazine"})
+    db.add_file({"work_id": comic_a["id"], "path": "/c/Saga1.cbz", "filename": "Saga1.cbz", "kind": "comic"})
+    db.add_file({"work_id": comic_b["id"], "path": "/c/Saga3.cbz", "filename": "Saga3.cbz", "kind": "comic"})
     rows = local_gaps(db)
     mag = next(row for row in rows if row["series_name"] == "Linux Magazin")
     comic = next(row for row in rows if row["series_name"] == "Saga")
@@ -241,7 +249,7 @@ def _catalog_handler(request: httpx.Request) -> httpx.Response:
 
 def test_book_series_missing_volume_is_gap(tmp_path):
     db = Database(tmp_path / "librarian.db")
-    db.upsert_work(
+    dune = db.upsert_work(
         {
             "kind": "book",
             "title": "Dune",
@@ -251,13 +259,22 @@ def test_book_series_missing_volume_is_gap(tmp_path):
             "isbn": "9780441172719",
         }
     )
-    db.upsert_work(
+    children = db.upsert_work(
         {
             "kind": "book",
             "title": "Children of Dune",
             "author": "Frank Herbert",
             "series_name": "Dune",
             "series_index": "3",
+        }
+    )
+    db.add_file({"work_id": dune["id"], "path": "/b/Dune.epub", "filename": "Dune.epub", "kind": "book"})
+    db.add_file(
+        {
+            "work_id": children["id"],
+            "path": "/b/Children.epub",
+            "filename": "Children.epub",
+            "kind": "book",
         }
     )
     settings = Settings(hardcover_api_token="hardcover-test-token")
@@ -301,17 +318,22 @@ def test_owned_series_volume_is_not_a_gap(tmp_path):
 
 def test_no_token_no_remote_catalog_local_holes_still_work(tmp_path):
     db = Database(tmp_path / "librarian.db")
-    db.upsert_work(
+    mag_a = db.upsert_work(
         {"kind": "magazine", "title": "Linux Magazin", "series_name": "Linux Magazin", "series_index": "2026-08"}
     )
-    db.upsert_work(
+    mag_b = db.upsert_work(
         {"kind": "magazine", "title": "Linux Magazin", "series_name": "Linux Magazin", "series_index": "2026-10"}
     )
-    db.upsert_work({"kind": "comic", "title": "Saga #1", "series_name": "Saga", "series_index": "1"})
-    db.upsert_work({"kind": "comic", "title": "Saga #3", "series_name": "Saga", "series_index": "3"})
-    db.upsert_work(
+    comic_a = db.upsert_work({"kind": "comic", "title": "Saga #1", "series_name": "Saga", "series_index": "1"})
+    comic_b = db.upsert_work({"kind": "comic", "title": "Saga #3", "series_name": "Saga", "series_index": "3"})
+    book = db.upsert_work(
         {"kind": "book", "title": "Dune", "author": "Herbert", "series_name": "Dune", "series_index": "1"}
     )
+    db.add_file({"work_id": mag_a["id"], "path": "/m/2026-08.pdf", "filename": "2026-08.pdf", "kind": "magazine"})
+    db.add_file({"work_id": mag_b["id"], "path": "/m/2026-10.pdf", "filename": "2026-10.pdf", "kind": "magazine"})
+    db.add_file({"work_id": comic_a["id"], "path": "/c/Saga1.cbz", "filename": "Saga1.cbz", "kind": "comic"})
+    db.add_file({"work_id": comic_b["id"], "path": "/c/Saga3.cbz", "filename": "Saga3.cbz", "kind": "comic"})
+    db.add_file({"work_id": book["id"], "path": "/b/Dune.epub", "filename": "Dune.epub", "kind": "book"})
 
     def refuse_secrets(request: httpx.Request) -> httpx.Response:
         url = str(request.url)
@@ -336,8 +358,14 @@ def test_no_token_no_remote_catalog_local_holes_still_work(tmp_path):
 
 def test_comic_catalog_lists_issues_beyond_local_minmax(tmp_path):
     db = Database(tmp_path / "librarian.db")
-    db.upsert_work({"kind": "comic", "title": "Saga #1", "series_name": "Saga", "series_index": "1", "author": "Vaughan"})
-    db.upsert_work({"kind": "comic", "title": "Saga #2", "series_name": "Saga", "series_index": "2", "author": "Vaughan"})
+    one = db.upsert_work(
+        {"kind": "comic", "title": "Saga #1", "series_name": "Saga", "series_index": "1", "author": "Vaughan"}
+    )
+    two = db.upsert_work(
+        {"kind": "comic", "title": "Saga #2", "series_name": "Saga", "series_index": "2", "author": "Vaughan"}
+    )
+    db.add_file({"work_id": one["id"], "path": "/c/Saga1.cbz", "filename": "Saga1.cbz", "kind": "comic"})
+    db.add_file({"work_id": two["id"], "path": "/c/Saga2.cbz", "filename": "Saga2.cbz", "kind": "comic"})
     settings = Settings(comicvine_api_key="comicvine-test-key")
     rows = catalog_gaps(db, settings, transport=httpx.MockTransport(_catalog_handler))
     comic = next(row for row in rows if row["kind"] == "comic" and row["series_name"] == "Saga")
@@ -392,12 +420,14 @@ def test_hall_gaps_do_not_queue_sab(tmp_path, monkeypatch):
     clear_session_secret_cache()
     clear_rate_limits()
     db = Database(tmp_path / "librarian.db")
-    db.upsert_work(
+    mag_a = db.upsert_work(
         {"kind": "magazine", "title": "Linux Magazin", "series_name": "Linux Magazin", "series_index": "2026-08"}
     )
-    db.upsert_work(
+    mag_b = db.upsert_work(
         {"kind": "magazine", "title": "Linux Magazin", "series_name": "Linux Magazin", "series_index": "2026-10"}
     )
+    db.add_file({"work_id": mag_a["id"], "path": "/m/2026-08.pdf", "filename": "2026-08.pdf", "kind": "magazine"})
+    db.add_file({"work_id": mag_b["id"], "path": "/m/2026-10.pdf", "filename": "2026-10.pdf", "kind": "magazine"})
     sab_calls = []
 
     def forbid_addurl(self, *args, **kwargs):

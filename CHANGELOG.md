@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [0.4.16] — 2026-09-25
+
+### Highlights
+
+- **Major builds have a house protocol.** Phases and sprints ship as GitHub feature releases with parallel agent lanes, coverage that stays ≥70%, and Playwright plus interactive browser UX gates — so living-library work does not invent process mid-flight.
+- **Mocked Playwright smoke is runnable.** Hall, Review bagging empty copy, Settings nav, and health/shell land on a dedicated e2e port (8794) without live NZBFinder or SABnzbd.
+
+### Added
+
+- **Major-build protocol docs.** `docs/ops/MAJOR_BUILDS.md` plus AGENTS / TESTING pointers for codegraph-first navigation, exclusive lane ownership, sprint release cadence, and Automat host `./docker-run.sh` truth.
+- **Playwright scaffold.** Root `npm run test:e2e` (frontend delegates), `scripts/start-e2e-server.mjs`, chromium install note in `docs/TESTING.md`, baseline smoke specs.
+
 ## [0.4.15] — 2026-09-25
 
 ### Fixed

@@ -430,6 +430,14 @@ def test_goodreads_csv_matches_isbn13_and_creates_thin_favorite(tmp_path):
             "isbn": ISBN13,
         }
     )
+    db.add_file(
+        {
+            "work_id": existing["id"],
+            "path": "/b/LeftHand.epub",
+            "filename": "LeftHand.epub",
+            "kind": "book",
+        }
+    )
     csv_text = (
         "Book Id,Title,Author,ISBN,ISBN13,Exclusive Shelf,Original Publication Year\n"
         f'1,The Left Hand of Darkness,Ursula K. Le Guin,="{ISBN10}",="{ISBN13}",read,1969\n'
@@ -450,8 +458,9 @@ def test_goodreads_csv_matches_isbn13_and_creates_thin_favorite(tmp_path):
     assert dune["year"] == 1965
     assert db.files_for_work(dune["id"]) == []
     assert db.is_favorite(owner["id"], dune["id"]) is True
+    # Thin ISBN stubs stay favorited but off shelf rails until media lands.
     titles = [row["title"] for row in db.favorite_works(owner["id"])]
-    assert titles == ["Dune", "The Left Hand of Darkness"]
+    assert titles == ["The Left Hand of Darkness"]
 
 
 def test_mask_settings_hides_hardcover_token():
@@ -581,7 +590,13 @@ def test_goodreads_api_import(tmp_path, monkeypatch):
     assert resp.status_code == 200
     assert resp.json() == {"rows": 1, "matched": 0, "created": 1, "favorited": 1, "skipped": 0}
     hall = client.get("/api/hall")
-    assert [row["title"] for row in hall.json()["favorites"]] == ["Dune"]
+    # Thin Goodreads stubs are favorited but stay off Hall rails until media lands.
+    assert hall.json()["favorites"] == []
+    db = Database(tmp_path / "librarian.db")
+    dune = db.get_work_by_isbn("9780441172719")
+    assert dune is not None
+    me = client.get("/api/auth/me").json()
+    assert db.is_favorite(me["user"]["id"], dune["id"]) is True
 
 
 def test_enrich_library_pages_beyond_first_list_window(tmp_path, monkeypatch):
@@ -936,7 +951,7 @@ def test_fix_match_apply_api(tmp_path, monkeypatch):
     db = Database(tmp_path / "librarian.db")
     work = db.upsert_work(
         {
-            "kind": "audiobook",
+            "kind": "book",
             "title": "Born to Run",
             "author": "Bruce Springsteen",
             "year": 1975,

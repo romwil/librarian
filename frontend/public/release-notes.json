@@ -1,6 +1,44 @@
 {
-  "generated_at": "2026-09-25T00:55:33Z",
+  "generated_at": "2026-09-25T04:30:29Z",
   "releases": [
+    {
+      "version": "0.4.16",
+      "date": "2026-09-25",
+      "summary": "",
+      "highlights": [
+        "**Major builds have a house protocol.** Phases and sprints ship as GitHub feature releases with parallel agent lanes, coverage that stays ≥70%, and Playwright plus interactive browser UX gates — so living-library work does not invent process mid-flight.",
+        "**Mocked Playwright smoke is runnable.** Hall, Review bagging empty copy, Settings nav, and health/shell land on a dedicated e2e port (8794) without live NZBFinder or SABnzbd."
+      ],
+      "sections": [
+        {
+          "title": "Added",
+          "bullets": [
+            "**Major-build protocol docs.** `docs/ops/MAJOR_BUILDS.md` plus AGENTS / TESTING pointers for codegraph-first navigation, exclusive lane ownership, sprint release cadence, and Automat host `./docker-run.sh` truth.",
+            "**Playwright scaffold.** Root `npm run test:e2e` (frontend delegates), `scripts/start-e2e-server.mjs`, chromium install note in `docs/TESTING.md`, baseline smoke specs."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "0.4.15",
+      "date": "2026-09-25",
+      "summary": "",
+      "highlights": [],
+      "sections": [
+        {
+          "title": "Fixed",
+          "bullets": [
+            "**Review Apply PUID path.** Shelf `PermissionError` now names the locked path so operators can fix the right author tree (or bulk-chown `library/books`) instead of guessing."
+          ]
+        },
+        {
+          "title": "Added",
+          "bullets": [
+            "**Maintain shelf-lock tip.** Scan/enrich lede documents host `chown -R 99:100` for Calibre-migrated uid-1000 author folders; HELP Review table and AUTOMAT ops tip match."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.4.14",
       "date": "2026-09-24",

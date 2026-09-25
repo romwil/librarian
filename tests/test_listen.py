@@ -149,6 +149,8 @@ def test_hall_continue_includes_audiobook_progress(tmp_path, monkeypatch):
     db = Database(tmp_path / "librarian.db")
     audio = db.upsert_work({"kind": "audiobook", "title": "Dune", "author": "Herbert"})
     book = db.upsert_work({"kind": "book", "title": "Kindred", "author": "Butler"})
+    db.add_file({"work_id": audio["id"], "path": "/a/Dune.m4b", "filename": "Dune.m4b", "kind": "audiobook"})
+    db.add_file({"work_id": book["id"], "path": "/b/Kindred.epub", "filename": "Kindred.epub", "kind": "book"})
     client.post(
         f"/api/works/{audio['id']}/progress",
         json={"fraction": 0.33, "position": encode_listen_position(file_id="f1", seconds=40)},

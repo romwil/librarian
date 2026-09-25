@@ -21,6 +21,8 @@ def test_continue_rail_orders_unfinished(tmp_path, monkeypatch):
     db = Database(tmp_path / "librarian.db")
     dune = db.upsert_work({"kind": "book", "title": "Dune", "author": "Herbert"})
     kindred = db.upsert_work({"kind": "book", "title": "Kindred", "author": "Butler"})
+    db.add_file({"work_id": dune["id"], "path": "/b/Dune.epub", "filename": "Dune.epub", "kind": "book"})
+    db.add_file({"work_id": kindred["id"], "path": "/b/Kindred.epub", "filename": "Kindred.epub", "kind": "book"})
     hall = client.get("/api/hall")
     assert hall.json()["continue"] == []
     touch = client.post(f"/api/works/{dune['id']}/progress", json={})

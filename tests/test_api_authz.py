@@ -109,6 +109,7 @@ def test_login_then_hall_and_favorite(tmp_path, monkeypatch):
 
     db = Database(tmp_path / "librarian.db")
     work = db.upsert_work({"kind": "book", "title": "Dune", "author": "Herbert"})
+    db.add_file({"work_id": work["id"], "path": "/b/Dune.epub", "filename": "Dune.epub", "kind": "book"})
     fav = client.post(f"/api/works/{work['id']}/favorite")
     assert fav.status_code == 200
     assert fav.json()["favorite"] is True
