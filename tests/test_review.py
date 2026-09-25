@@ -34,7 +34,7 @@ def _wait_extra_files_reprocess_status(client, *, timeout=8.0):
     return last
 
 
-def test_review_list_diagnoses_unpack_stuck_and_soft_repairs(tmp_path, monkeypatch):
+def test_review_list_diagnoses_unpack_stuck_without_sqlite_write(tmp_path, monkeypatch):
     stuck = tmp_path / "usenet" / "complete" / "downloads" / "VA-Guardians.Mix"
     stuck.mkdir(parents=True)
     (stuck / "mix.rar").write_bytes(b"Rar!")
@@ -68,8 +68,62 @@ def test_review_list_diagnoses_unpack_stuck_and_soft_repairs(tmp_path, monkeypat
     assert row["actions"]["can_repair"] is True
     assert row["actions"]["can_retry"] is True
     assert "Guardians" in row["actions"]["find_query"]
+    # GET must not mutate SQLite — soft-repair belongs to the poller.
     refreshed = db.get_work(work["id"])
-    assert refreshed["review_reason"] == "unpack_stuck"
+    assert refreshed["review_reason"] == "no_payload"
+
+
+def test_soft_repair_review_reasons_promotes_unpack_stuck(tmp_path):
+    from librarian.db import Database
+    from librarian.organize import soft_repair_review_reasons
+
+    stuck = tmp_path / "usenet" / "complete" / "downloads" / "VA-Guardians.Mix"
+    stuck.mkdir(parents=True)
+    (stuck / "mix.rar").write_bytes(b"Rar!")
+    (stuck / "mix.par2").write_bytes(b"par2")
+    settings = Settings(
+        books_root=str(tmp_path / "books"),
+        complete_root=str(tmp_path / "usenet" / "complete"),
+    )
+    db = Database(tmp_path / "librarian.db")
+    work = db.upsert_work(
+        {
+            "kind": "music",
+            "title": "Guardians Mix",
+            "review_state": "needs_review",
+            "review_reason": "no_payload",
+            "folder_path": str(stuck),
+        }
+    )
+    assert soft_repair_review_reasons(db, settings) == 1
+    assert db.get_work(work["id"])["review_reason"] == "unpack_stuck"
+    assert soft_repair_review_reasons(db, settings) == 0
+
+
+def test_poller_tick_soft_repairs_unpack_stuck(tmp_path):
+    from librarian.db import Database
+    from librarian.poller import JobPoller
+
+    stuck = tmp_path / "usenet" / "complete" / "downloads" / "Stuck.Album"
+    stuck.mkdir(parents=True)
+    (stuck / "disc.rar").write_bytes(b"Rar!")
+    settings = Settings(
+        books_root=str(tmp_path / "books"),
+        complete_root=str(tmp_path / "usenet" / "complete"),
+    )
+    db = Database(tmp_path / "librarian.db")
+    work = db.upsert_work(
+        {
+            "kind": "music",
+            "title": "Stuck Album",
+            "review_state": "needs_review",
+            "review_reason": "no_payload",
+            "folder_path": str(stuck),
+        }
+    )
+    poller = JobPoller(db, lambda: settings, interval=999)
+    assert poller.tick() >= 1
+    assert db.get_work(work["id"])["review_reason"] == "unpack_stuck"
 
 
 def test_review_list_fills_folder_from_job_storage(tmp_path, monkeypatch):

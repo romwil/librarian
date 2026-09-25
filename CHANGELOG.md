@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [0.4.17] — 2026-09-25
+
+### Highlights
+
+- **Review list stays read-only.** Opening bagging no longer rewrites slips in SQLite; soft-repair for stuck archives runs in the background poller instead, so list polls cannot race Apply.
+- **Enrich status tells the truth after restart.** A dead enrich worker no longer leaves Settings stuck on “running” — same clear-on-stale pattern as ingest and scan.
+
+### Fixed
+
+- **GET `/api/review` SQLite soft-repair.** Response still overlays `unpack_stuck` for the UI; persistence moved to `soft_repair_review_reasons` on the job poller.
+- **GET `/api/settings/enrich/status` stale running.** Clears orphaned progress when the enrich thread is gone after a lamp restart.
+
 ## [0.4.16] — 2026-09-25
 
 ### Highlights

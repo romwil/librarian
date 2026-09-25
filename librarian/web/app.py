@@ -63,6 +63,7 @@ from librarian.enrich import (
 from librarian.enrich_progress import (
     EnrichProgressReporter,
     begin_enrich_run,
+    finish_enrich_run,
     is_enrich_running,
     read_enrich_progress,
 )
@@ -1490,10 +1491,9 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             work["folder_diagnosis"] = diagnosis
             problem = diagnosis.get("problem")
             stored = str(work.get("review_reason") or "")
-            # Soft-repair: archives left behind were often parked as no_payload.
+            # Response overlay only — SQLite soft-repair runs in the poller.
             if problem == "unpack_stuck" and stored in {"", "no_payload"}:
                 work["review_reason"] = "unpack_stuck"
-                db.upsert_work({**db.get_work(work["id"]), "review_reason": "unpack_stuck"})
             shelf = shelf_work_for_collision(db, work)
             work["shelf_work"] = shelf
             work["actions"] = review_slip_actions(work, diagnosis, llm_configured=llm_ok)
@@ -2211,7 +2211,18 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
     @app.get("/api/settings/enrich/status")
     def enrich_settings_status(request: Request):
         require_role(request.state.user, "owner")
-        return read_enrich_progress(root)
+        progress = read_enrich_progress(root)
+        if str(progress.get("status") or "") != "running":
+            return progress
+        live = enrich_thread.get("thread")
+        alive = live is not None and live.is_alive()
+        if alive:
+            return progress
+        # Rebuild / process restart left a stale "running" blob with no worker.
+        return finish_enrich_run(
+            root,
+            error="Enrich stopped — the lamp was restarted. Try Enrich again.",
+        )
 
     @app.post("/api/settings/suggest-cache")
     def suggest_cache_settings(request: Request, external: int = 0):

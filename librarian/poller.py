@@ -69,6 +69,12 @@ class JobPoller:
         except Exception:
             logger.exception("RSS poller tick failed")
         try:
+            from librarian.organize import soft_repair_review_reasons
+
+            count += soft_repair_review_reasons(self.db, settings)
+        except Exception:
+            logger.exception("Review soft-repair tick failed")
+        try:
             from librarian.audiobookshelf import match_audiobooks
 
             match_audiobooks(self.db, settings)

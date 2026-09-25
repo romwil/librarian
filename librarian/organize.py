@@ -929,6 +929,35 @@ def _peel_matched_extra_files(
     }
 
 
+def soft_repair_review_reasons(
+    db: Database,
+    settings: Settings,
+    *,
+    limit: int = 80,
+) -> int:
+    """Persist folder-diagnosis soft repairs off the GET /api/review path.
+
+    Archives left behind were often parked as ``no_payload``. Promote those slips
+    to ``unpack_stuck`` in SQLite so Repair/Retry filters stay honest without
+    mutating the catalog on every Review list poll.
+    """
+    repaired = 0
+    works = db.list_works(review_state="needs_review", limit=max(1, int(limit)))
+    for work in works:
+        stored = str(work.get("review_reason") or "")
+        if stored not in {"", REVIEW_NO_PAYLOAD}:
+            continue
+        folder_raw = str(work.get("folder_path") or "")
+        if not folder_raw:
+            continue
+        diagnosis = diagnose_review_folder(Path(folder_raw), settings.complete_root)
+        if diagnosis.get("problem") != REVIEW_UNPACK_STUCK:
+            continue
+        db.upsert_work({**work, "review_reason": REVIEW_UNPACK_STUCK})
+        repaired += 1
+    return repaired
+
+
 def repair_review(
     db: Database,
     settings: Settings,
