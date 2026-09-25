@@ -18,6 +18,8 @@ test("Hall is search-focused — no bestsellers, ingest, or celebration chrome",
   assert.equal(hallSrc.includes("celebration-banner"), false);
   assert.match(hallSrc, /hall-shelves-loading/);
   assert.match(hallSrc, /discoverHref/);
+  assert.match(hallSrc, /Where you left the lamp/);
+  assert.match(hallSrc, /Volumes waiting under the lamp/);
 });
 
 test("Maintain is owner-only and houses grooming entry points", () => {

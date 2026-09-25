@@ -10,6 +10,8 @@ export default function Rail({
   beyond = false,
   role = "reader",
   seeAllTo = "",
+  /** Continue / tonight presence — settle-in covers + lamp kicker chrome */
+  presence = false,
 }) {
   const head = seeAllTo ? (
     <Link to={seeAllTo} className="rail-title-link">
@@ -23,10 +25,17 @@ export default function Rail({
       See all
     </Link>
   ) : null;
+  const railClass = [
+    "rail",
+    beyond ? "beyond-rail" : "",
+    presence ? "is-continue-presence" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   if (!items?.length) {
     return empty ? (
-      <section className={`rail${beyond ? " beyond-rail" : ""}`}>
+      <section className={railClass} data-presence={presence ? "lamp" : undefined}>
         <header className="rail-head">
           <div>
             <h2>{head}</h2>
@@ -41,7 +50,7 @@ export default function Rail({
     ) : null;
   }
   return (
-    <section className={`rail${beyond ? " beyond-rail" : ""}`}>
+    <section className={railClass} data-presence={presence ? "lamp" : undefined}>
       <header className="rail-head">
         <div>
           <h2>{head}</h2>
@@ -50,14 +59,14 @@ export default function Rail({
         {seeAll}
       </header>
       <div className="rail-track">
-        {items.map((item) => (
-          <CoverCard
+        {items.map((item, index) => (
+          <div
             key={item.id || item.guid || item.title}
-            work={item}
-            onRequest={onRequest}
-            beyond={beyond}
-            role={role}
-          />
+            className={presence ? "cover-settle" : undefined}
+            style={presence ? { "--settle-i": String(Math.min(index, 8)) } : undefined}
+          >
+            <CoverCard work={item} onRequest={onRequest} beyond={beyond} role={role} />
+          </div>
         ))}
       </div>
     </section>

@@ -8,6 +8,8 @@
   --motion-settle: 320ms cubic-bezier(0.22, 1, 0.36, 1);
   /* Warm — lamp shimmer on loading skeletons */
   --motion-warm: 1.4s ease-in-out;
+  /* Breath — Tonight’s Shelf / lamp presence pulse (slow, calm) */
+  --motion-breath: 6.5s ease-in-out;
 }
 
 /* Alias legacy --motion to presence so existing rules keep working */
@@ -74,6 +76,70 @@
   animation: soft-enter var(--motion-settle) both;
 }
 
+/* 4. Shelf breath — Tonight’s Shelf lamp wash (living library) */
+@keyframes shelf-breath {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.04);
+  }
+}
+
+@keyframes cover-settle {
+  from {
+    opacity: 0;
+    transform: translateY(0.55rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.tonight-shelf-alive {
+  position: relative;
+  overflow: hidden;
+}
+
+.tonight-lamp-glow {
+  position: absolute;
+  inset: -18% 18% auto;
+  height: 55%;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse at 50% 0%,
+    color-mix(in srgb, var(--lamp, #f0b85a) 42%, transparent),
+    transparent 68%
+  );
+  opacity: 0.7;
+  animation: shelf-breath var(--motion-breath) infinite;
+}
+
+.cover-settle {
+  animation: cover-settle var(--motion-settle) both;
+  animation-delay: calc(var(--settle-i, 0) * 70ms);
+}
+
+.rail.is-continue-presence .rail-head h2 {
+  position: relative;
+}
+
+.rail.is-continue-presence .rail-head h2::before {
+  content: "";
+  display: inline-block;
+  width: 0.45rem;
+  height: 0.45rem;
+  margin-right: 0.45rem;
+  border-radius: 50%;
+  vertical-align: 0.15em;
+  background: color-mix(in srgb, var(--lamp, #f0b85a) 80%, var(--gilt, #c9954a));
+  box-shadow: 0 0 10px color-mix(in srgb, var(--lamp, #f0b85a) 55%, transparent);
+}
+
 .warm-load {
   margin-top: var(--space-4, 1rem);
   max-width: 28rem;
@@ -108,6 +174,7 @@
     --motion-presence: 1ms;
     --motion-settle: 1ms;
     --motion-warm: 1ms;
+    --motion-breath: 1ms;
     --motion: 1ms;
   }
 
@@ -130,10 +197,17 @@
   .part-bead.is-pulse,
   .plexamp-toast,
   .tonight-shelf,
+  .tonight-lamp-glow,
+  .cover-settle,
   .room.ambient-paper::before,
   .room.ambient-lamp::before {
     animation: none !important;
     transition: none !important;
+  }
+
+  .tonight-lamp-glow {
+    opacity: 0.55;
+    transform: none;
   }
 
   .hall-shelves-skeleton,

@@ -25,8 +25,11 @@ test("motion.css ships settle, warm, and presence tokens with reduced-motion", (
   assert.match(motionSrc, /--motion-settle/);
   assert.match(motionSrc, /--motion-warm/);
   assert.match(motionSrc, /--motion-presence/);
+  assert.match(motionSrc, /--motion-breath/);
   assert.match(motionSrc, /@keyframes page-settle/);
   assert.match(motionSrc, /@keyframes lamp-warm/);
+  assert.match(motionSrc, /@keyframes shelf-breath/);
+  assert.match(motionSrc, /@keyframes cover-settle/);
   assert.match(motionSrc, /@media \(prefers-reduced-motion:\s*reduce\)/);
   assert.match(motionSrc, /\.page-settle/);
 });

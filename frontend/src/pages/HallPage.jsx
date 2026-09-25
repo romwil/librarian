@@ -74,15 +74,17 @@ function HallShelves({ role, owner, configured }) {
       <TonightShelf tonight={hall?.tonight} role={role} />
       <Rail
         title="Continue listening"
-        kicker="Pick up an audiobook where you left off"
+        kicker="Where you left the lamp"
         items={hall?.continue_listening}
-        empty={hall ? "Start listening to leave a bookmark." : undefined}
+        empty={hall ? "Start listening to leave a bookmark under the lamp." : undefined}
+        presence
       />
       <Rail
         title="Continue"
-        kicker="In-progress reads"
+        kicker="Volumes waiting under the lamp"
         items={hall?.continue}
-        empty={hall ? "Open a volume to leave a bookmark." : undefined}
+        empty={hall ? "Open a volume to leave a bookmark under the lamp." : undefined}
+        presence
       />
       <Rail title="What’s New" kicker="Recently organized" items={hall?.whats_new} />
       <Rail title="Favorites" items={hall?.favorites} seeAllTo={browseHref({ shelf: "favorites" })} />

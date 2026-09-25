@@ -1,6 +1,27 @@
 {
-  "generated_at": "2026-09-25T05:47:35Z",
+  "generated_at": "2026-09-25T05:52:48Z",
   "releases": [
+    {
+      "version": "0.5.0",
+      "date": "2026-09-25",
+      "summary": "",
+      "highlights": [
+        "**The living library opens.** Tonight’s Shelf breathes under a soft lamp wash — covers settle in, and Continue rails remember where you left the lamp.",
+        "**Presence without surveillance.** “The room kept your place” greets you on the Hall; Continue kickers speak lamp, not KPI.",
+        "**Motion stays kind.** Shelf breath and cover settle-in respect `prefers-reduced-motion` — presence stays, motion drops."
+      ],
+      "sections": [
+        {
+          "title": "Changed",
+          "bullets": [
+            "**Tonight’s Shelf.** Alive chrome (`tonight-shelf-alive`, lamp glow, presence line); staggered cover settle-in on Continue / gap / surprise slots.",
+            "**Continue rails.** `presence` prop on Hall Continue + Continue listening — lamp kicker copy and settle-in covers.",
+            "**`motion.css`.** `--motion-breath`, `shelf-breath`, `cover-settle`; reduced-motion clears breath and settle.",
+            "**Playwright.** Hall Tonight’s Shelf mocked journey + reduced-motion (port 8794)."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.4.25",
       "date": "2026-09-25",
