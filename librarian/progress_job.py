@@ -260,14 +260,29 @@ class BackgroundJobSlot:
     def start_if_idle(
         self,
         *,
-        already_running: bool,
+        is_running: Callable[[], bool],
         begin: Callable[[], None],
         target: Callable[[], None],
         name: str,
     ) -> bool:
-        """Begin + start a daemon thread when idle. Return True if kicked off."""
+        """Begin + start a daemon thread when idle. Return True if kicked off.
+
+        ``is_running`` is evaluated under ``self.lock`` together with thread
+        creation so concurrent kickoffs cannot both begin. A live worker is
+        always refused (including when progress briefly reads idle). A progress
+        blob that still says running with no live thread (lamp restart orphan)
+        is reclaimed via ``begin``.
+        """
         with self.lock:
-            if already_running and self.alive():
+            # Evaluate progress under the same lock as thread creation so two
+            # concurrent POSTs cannot both see idle and both begin.
+            running = is_running()
+            live = self.alive()
+            # Historical gate: running and live. Also refuse when live alone so
+            # a False progress read cannot short-circuit past the thread check.
+            if running and live:
+                return False
+            if live:
                 return False
             begin()
             thread = threading.Thread(target=target, name=name, daemon=True)

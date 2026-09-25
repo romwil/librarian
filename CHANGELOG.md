@@ -9,6 +9,11 @@
 - **Dead chrome leaves the room.** Soft-deprecated NYT Books Settings copy, CelebrationBanner, unused wizard/celebration CSS, and Hall compact Add-to-library are gone — Bestsellers stay on BYO LLM.
 - **One vocabulary for Review reasons.** Canonical `review_reasons` constants drive SQLite filters and diagnosis; `missing_folder` stays distinct from `no_payload`; Clear extra-files queries by reason.
 - **Docs match Automat truth.** HELP covers Maintain, Indexers, and collection Clear; AGENTS / AUTOMAT / ROADMAP say host `./docker-run.sh` is the ship path — not a missing Hub `docker-release.sh`.
+- **Maintain/Review kickoff is race-safe.** Concurrent POSTs can no longer double-begin the same background job.
+
+### Fixed
+
+- **`BackgroundJobSlot.start_if_idle`.** Progress “already running” is evaluated under the slot lock with thread creation (callable `is_running`), and a live worker alone blocks a second begin.
 
 ### Removed
 

@@ -96,19 +96,21 @@ def test_stale_running_uses_heartbeat(tmp_path):
 def test_background_job_slot_start_if_idle():
     slot = BackgroundJobSlot()
     ran = {"count": 0}
+    running = {"value": False}
 
     def target() -> None:
         ran["count"] += 1
 
     first = slot.start_if_idle(
-        already_running=False,
-        begin=lambda: None,
+        is_running=lambda: running["value"],
+        begin=lambda: running.__setitem__("value", True),
         target=target,
         name="librarian-demo",
     )
     assert first is True
     slot.thread["thread"].join(timeout=2)
     assert ran["count"] == 1
+    running["value"] = False
 
     # Simulate a live worker holding the slot.
     hold = threading.Event()
@@ -118,14 +120,15 @@ def test_background_job_slot_start_if_idle():
 
     second_begin = {"called": False}
     live = slot.start_if_idle(
-        already_running=False,
-        begin=lambda: None,
+        is_running=lambda: running["value"],
+        begin=lambda: running.__setitem__("value", True),
         target=blocker,
         name="librarian-demo-live",
     )
     assert live is True
+    # Live worker alone must block even when progress reads idle.
     blocked = slot.start_if_idle(
-        already_running=True,
+        is_running=lambda: False,
         begin=lambda: second_begin.__setitem__("called", True),
         target=target,
         name="librarian-demo-blocked",
@@ -133,6 +136,67 @@ def test_background_job_slot_start_if_idle():
     assert blocked is False
     assert second_begin["called"] is False
     hold.set()
+    slot.thread["thread"].join(timeout=2)
+
+
+def test_background_job_slot_concurrent_starts_begin_once():
+    """Two kickoffs under the slot lock must not double-begin."""
+    slot = BackgroundJobSlot()
+    begins = {"count": 0}
+    running = {"value": False}
+    hold = threading.Event()
+    release_first = threading.Event()
+    both_entered = threading.Barrier(2)
+    results: list[bool] = []
+    results_lock = threading.Lock()
+
+    def begin() -> None:
+        begins["count"] += 1
+        running["value"] = True
+
+    def target() -> None:
+        release_first.set()
+        hold.wait(timeout=2)
+
+    def kick() -> None:
+        both_entered.wait(timeout=2)
+        kicked = slot.start_if_idle(
+            is_running=lambda: running["value"],
+            begin=begin,
+            target=target,
+            name="librarian-demo-race",
+        )
+        with results_lock:
+            results.append(kicked)
+
+    threads = [threading.Thread(target=kick), threading.Thread(target=kick)]
+    for thread in threads:
+        thread.start()
+    assert release_first.wait(timeout=2)
+    for thread in threads:
+        thread.join(timeout=2)
+        assert not thread.is_alive()
+    hold.set()
+    live = slot.thread.get("thread")
+    if live is not None:
+        live.join(timeout=2)
+
+    assert sorted(results) == [False, True]
+    assert begins["count"] == 1
+
+
+def test_background_job_slot_reclaims_orphan_running_blob():
+    slot = BackgroundJobSlot()
+    begins = {"count": 0}
+    # Progress says running but no live worker (lamp restart orphan).
+    kicked = slot.start_if_idle(
+        is_running=lambda: True,
+        begin=lambda: begins.__setitem__("count", begins["count"] + 1),
+        target=lambda: None,
+        name="librarian-demo-reclaim",
+    )
+    assert kicked is True
+    assert begins["count"] == 1
     slot.thread["thread"].join(timeout=2)
 
 

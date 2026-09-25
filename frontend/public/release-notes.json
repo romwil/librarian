@@ -8,9 +8,16 @@
       "highlights": [
         "**Dead chrome leaves the room.** Soft-deprecated NYT Books Settings copy, CelebrationBanner, unused wizard/celebration CSS, and Hall compact Add-to-library are gone \u2014 Bestsellers stay on BYO LLM.",
         "**One vocabulary for Review reasons.** Canonical `review_reasons` constants drive SQLite filters and diagnosis; `missing_folder` stays distinct from `no_payload`; Clear extra-files queries by reason.",
-        "**Docs match Automat truth.** HELP covers Maintain, Indexers, and collection Clear; host `./docker-run.sh` is the ship path \u2014 not a missing Hub `docker-release.sh`."
+        "**Docs match Automat truth.** HELP covers Maintain, Indexers, and collection Clear; host `./docker-run.sh` is the ship path \u2014 not a missing Hub `docker-release.sh`.",
+        "**Maintain/Review kickoff is race-safe.** Concurrent POSTs can no longer double-begin the same background job."
       ],
       "sections": [
+        {
+          "heading": "Fixed",
+          "items": [
+            "`BackgroundJobSlot.start_if_idle` evaluates progress under the slot lock with thread creation."
+          ]
+        },
         {
           "heading": "Removed",
           "items": [
