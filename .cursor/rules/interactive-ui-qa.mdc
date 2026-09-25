@@ -1,0 +1,20 @@
+---
+description: >-
+  When the user asks for browser/UI QA, absolute baseline, or delta regression
+  on Librarian, follow the interactive-ui-qa skill (Automat :8793 or local;
+  never Projectionist sibling ports).
+alwaysApply: false
+---
+
+# Interactive UI QA
+
+If the user asks for **browser QA**, **UI QA**, **absolute baseline**, or
+**delta / regression** against Librarian:
+
+1. Read and follow [`.cursor/skills/interactive-ui-qa/SKILL.md`](../skills/interactive-ui-qa/SKILL.md).
+2. Target Automat LAN **`http://10.10.1.202:8793`** or local **`http://127.0.0.1:8793`** — **never** `:8788`, `:8790`, `:8791`, `:8792`, or Projectionist e2e `:8799`.
+3. Mocked e2e fallback is **`:8794`** only.
+4. Prove visual triad, semantic locators, and adversarial spots from [ui-testing-architecture.mdc](ui-testing-architecture.mdc).
+5. Verdict **FAIL** if any `blocker` / `major` remains open.
+
+Do not invent exhaustive pathway discovery as a substitute for authored checks — extend the skill checklist when new primary surfaces ship.

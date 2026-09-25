@@ -1,0 +1,47 @@
+---
+description: >-
+  Automat LAN hosts, product/e2e ports, host docker-run deploy, and secrets —
+  never trust public DNS; never bind Librarian to sibling ports.
+alwaysApply: true
+---
+
+# Automat environments (maintainer LAN)
+
+Authoritative hosts for the Automat Unraid deployment. Full runbook:
+[docs/ops/AUTOMAT.md](../../docs/ops/AUTOMAT.md).
+
+## Source of truth (version / health / UI)
+
+| Role | URL | Notes |
+|------|-----|-------|
+| **Librarian** | `http://10.10.1.202:8793` | Version, `/api/health`, SPA — **product port** |
+| Projectionist prod | `:8788` | Sibling — **never** stop or bind Librarian here |
+| Smart Map | `:8790` | Sibling — **never** stop or bind here |
+| Lobby / QA Lobby | `:8791` / `:8792` | Projectionist theater — **never** bind Librarian |
+| **Not truth** | any `*.automat.vip` / ad-hoc tunnels | CDN/proxy lag; agents read stale versions here |
+
+- Product / Automat = **8793**. Mocked Playwright e2e = **8794** (see [e2e-ports.mdc](e2e-ports.mdc)).
+- `localhost:8793` on a laptop may be an **SSH tunnel to Automat** — not local `python -m librarian.web`.
+- Kit: `/mnt/user/appdata/librarian` (`config/` → `/config`, `/mnt/user/data` → `/data`).
+
+## Deploy (current truth)
+
+**Automat path now is host `./docker-run.sh` only.** There is no Hub pull-only `rollout.sh` in active use and no `docker-release.sh` for this kit yet. Hub `romwil/librarian` stays deferred. Do not invent Hub-first release scripts.
+
+```bash
+# After kit sync on Unraid:
+cd /mnt/user/appdata/librarian && ./docker-run.sh
+curl -s http://10.10.1.202:8793/api/health
+```
+
+## Secrets
+
+- NZBFinder / SAB / session tokens live in `.env` or `/config/settings.json` only — **never commit**.
+- The public `librarian-dev-session-secret` is **refused** by the app. Generate a real secret on the host (`openssl rand -base64 48`).
+- `LIBRARIAN_TRUST_PROXY_HEADERS` is opt-in (default off) — set only behind a real reverse proxy, never on a laptop tunnel.
+
+## UI verification
+
+When the user reports UI missing/broken — especially with a screenshot — verify with **cursor-ide-browser** against `http://10.10.1.202:8793` (or local `:8793`). Trust scrolled UI + screenshots; do not argue from bundle string greps.
+
+Interactive QA: [interactive-ui-qa skill](../skills/interactive-ui-qa/SKILL.md). Adversarial proofs: [ui-testing-architecture.mdc](ui-testing-architecture.mdc).

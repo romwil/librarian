@@ -5,6 +5,12 @@ also serves the pre-built React SPA from `frontend/dist`. There is **no separate
 to run — state is SQLite under `DATA_DIR` (WAL). SABnzbd / NZBFinder / LLM are optional integrations
 and are **not** required to boot or test the app. Household auth is **on from first boot**.
 
+### Cursor project rules
+Agent-facing way-of-working lives under [`.cursor/rules/`](.cursor/rules/) (Automat ports,
+Testing Triad, major builds, lexicon, codegraph). Prefer those short rules + the ops docs they
+point at — do not fork policy here. Interactive UI QA:
+[`.cursor/skills/interactive-ui-qa/SKILL.md`](.cursor/skills/interactive-ui-qa/SKILL.md).
+
 ### Environment
 - Python venv at `.venv` (`python3 -m venv .venv`; package installed editable with `.[web,dev]` extras).
 - Frontend deps in `frontend/`. Build the SPA (`frontend/dist`) before the backend can serve the UI.

@@ -1,0 +1,21 @@
+---
+description: Playwright/e2e must use dedicated port 8794 — never product 8793 or sibling Automat ports
+globs: playwright.config.*,**/e2e/**/*,scripts/*e2e*,docs/TESTING.md,frontend/package.json
+alwaysApply: false
+---
+
+# E2E ports (Librarian)
+
+| Port | Role |
+|------|------|
+| **8793** | Product / Automat / local `python -m librarian.web` |
+| **8794** | Mocked Playwright webServer (`npm run test:e2e`) |
+| **8788 / 8790 / 8791 / 8792** | Sibling apps — **never** bind or document Librarian here |
+| **8799** | Projectionist e2e default — **not** Librarian |
+
+## Required behavior
+
+- Default mocked e2e port is **8794** (`E2E_PORT` / Playwright config / `scripts/start-e2e-server.mjs`).
+- Do not change the default to 8793 (clobbers product) or to Projectionist/sibling ports.
+- Override with `E2E_PORT` / `E2E_BASE_URL` only when debugging — still avoid sibling ports.
+- Locator standard, triad, cadence: [ui-testing-architecture.mdc](ui-testing-architecture.mdc).

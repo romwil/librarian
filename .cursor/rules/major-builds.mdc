@@ -1,0 +1,27 @@
+---
+description: >-
+  Major-build protocol — phases/sprints as GitHub feature releases, parallel
+  lanes, coverage ≥70%, Testing Triad gates, kickoff loop. Use for multi-sprint
+  arcs, release cadence, or orchestrating parallel agents.
+alwaysApply: false
+---
+
+# Major builds protocol
+
+Canonical process: [docs/ops/MAJOR_BUILDS.md](../../docs/ops/MAJOR_BUILDS.md).
+Do not invent Hub-first docker-release for Automat — path is host `./docker-run.sh`
+([automat-environments.mdc](automat-environments.mdc)).
+
+## Non-negotiables
+
+1. **Codegraph first** — prefer [`.codegraph/`](../../.codegraph/) / `codegraph` CLI before blind `rg` ([codegraph-first.mdc](codegraph-first.mdc)).
+2. **Parallel lanes** — exclusive file ownership per lane; shared seams (`copy.js`, settings nav, `create_app`) are single-writer or sequenced.
+3. **Coverage every sprint** — backend ≥ **70%** (`LIBRARIAN_PBKDF2_ITERATIONS=1000 LIBRARIAN_SKIP_APP_BOOT=1 .venv/bin/python -m pytest tests/`); frontend Layer 1 green (`cd frontend && npm test`). New behavior ships with value-based tests. Never mock SQLite.
+4. **GitHub release cadence** — CHANGELOG `### Highlights` → bump `pyproject.toml` + `frontend/package.json` → push → Automat `./docker-run.sh` smoke on `:8793`. Feature names match sprint IDs.
+5. **UX gates** — Testing Triad + interactive browser per [ui-testing-architecture.mdc](ui-testing-architecture.mdc). Product **8793**, e2e **8794**. Never bind **8788 / 8790 / 8791 / 8792**.
+
+## Kickoff loop
+
+Refresh codegraph → start unblocked lanes → on green merge + coverage gate + cut release if sprint-complete → launch newly unblocked work → full-build QA only after the final sprint.
+
+Lexicon / voice for delight sprints: [library-lexicon.mdc](library-lexicon.mdc).

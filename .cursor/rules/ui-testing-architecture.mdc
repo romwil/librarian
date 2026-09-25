@@ -1,0 +1,54 @@
+---
+description: >-
+  UI & Testing Architecture — adversarial triad (Vitest target / Node interim,
+  Playwright, axe). Use when writing or reviewing frontend UI, e2e, or locators.
+  Prohibits mocked-state-toggle tests.
+globs: frontend/**/*,**/e2e/**/*,playwright.config.*,docs/TESTING.md,TESTING.md,.cursor/skills/interactive-ui-qa/**
+alwaysApply: false
+---
+
+# UI & Testing Architecture
+
+Canonical detail: [docs/ops/UI_TESTING_ARCHITECTURE.md](../../docs/ops/UI_TESTING_ARCHITECTURE.md).
+Major-build gates: [docs/ops/MAJOR_BUILDS.md](../../docs/ops/MAJOR_BUILDS.md).
+
+The SPA is the **outermost perimeter**. Prove **real DOM truth** — not testing arithmetic
+or mocked state toggles.
+
+```js
+// ❌ BAD — mock toggle / spy theater
+expect(setBusy).toHaveBeenCalled()
+
+// ✅ GOOD — unit: real function vs hostile input
+assert.equal(sanitizeTitle("<script>x</script>"), "x")
+
+// ✅ GOOD — Playwright: visible contract
+await expect(page.getByRole("button", { name: "Request" })).toBeDisabled()
+```
+
+Ports / hosts stay elsewhere — do not fork them here:
+
+- Product **8793**, e2e **8794**: [e2e-ports.mdc](e2e-ports.mdc), [automat-environments.mdc](automat-environments.mdc)
+- Interactive UI QA: [interactive-ui-qa skill](../skills/interactive-ui-qa/SKILL.md)
+
+## Testing triad
+
+| Layer | This repo | Proves |
+|-------|-----------|--------|
+| **1. Unit** | Target = **Vitest**. Interim = `cd frontend && npm test` (`node --test`). Same rigor either way. | Contracts, validation, malformed-payload fuzz |
+| **2. Playwright** | `npm run test:e2e` on **:8794** | Journeys, layout, multi-viewport, races |
+| **3. axe-core** | **Not wired yet** — required for major gauntlet / core-chrome once adopted | WCAG 2.1 AA, focus, Lights Up/Down |
+
+## Guardrails
+
+1. **Payload hostility** — XSS-like paste, oversized titles/lists, forged query params must not break the shell or leak owner chrome.
+2. **Races** — overlapping Hall → Find → Review; slow `/api`; double-submit. Recover to empty/error — no silent half-paint.
+3. **Layout / focus** — **New** e2e: semantic locators only (`getByRole`, `getByLabel`). Ban CSS class / id / DOM-path selectors. Visual triad: **empty**, **loading** (`aria-busy`), **overflow**. Overlays: Escape restores a safe landmark.
+
+Stay **defensive**. No exploit PoCs.
+
+## Cadence
+
+- **Patch / sprint UI:** Layer 1 on touched surfaces + targeted Playwright. axe when Hall shell, top bar, Settings, or auth gate changes (once wired).
+- **Major / full gauntlet:** full Layer 1 + Playwright matrix (desktop + reasonable mobile) + axe on `/`, login/setup, Hall, Review/Holds, Settings + unauthenticated secret-leak fuzz.
+- Gate: zero unit failures; `npm run build` succeeds; no unexplained Vite bundle growth; backend pytest **≥70%** when Python is touched.

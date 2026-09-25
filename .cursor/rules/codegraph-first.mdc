@@ -1,0 +1,25 @@
+---
+description: >-
+  Prefer local codegraph for symbol navigation and impact analysis on major
+  work before blind ripgrep sweeps. Use when exploring architecture, planning
+  refactors, or kicking off a major build.
+alwaysApply: false
+---
+
+# Codegraph first (local intelligence)
+
+Librarian keeps a gitignored [`.codegraph/`](../../.codegraph/) index. On major work
+(router splits, new packages, multi-file refactors, kickoff), **query the graph before
+inventing architecture from memory**.
+
+```bash
+codegraph sync          # incremental refresh
+codegraph index -f      # after large moves
+codegraph query '…'     # symbols / explore / callers / node
+```
+
+- Prefer `codegraph` CLI (`query` / `explore` / `callers` / `node`) over blind `rg` sweeps.
+- If MCP codegraph is inactive this session, still use the local index / CLI.
+- Do not commit `.codegraph/` — local only.
+
+Protocol context: [major-builds.mdc](major-builds.mdc) · [docs/ops/MAJOR_BUILDS.md](../../docs/ops/MAJOR_BUILDS.md).

@@ -1,0 +1,34 @@
+---
+description: >-
+  Library voice and lexicon direction — Holds desk, Library card, Shelving;
+  labels-first; no supermarket bagging in new copy. Use for UI copy, HELP,
+  CHANGELOG Highlights, and delight/lexicon sprints.
+alwaysApply: false
+---
+
+# Library lexicon (direction)
+
+North star: household **library** — Hall, shelves, card catalog, reading room, living lamp.
+Presence · atmosphere · recognition · ceremony · warm honesty.
+
+## Locked vocabulary (Sprint 4.1+)
+
+| Prefer | Avoid in **new** copy |
+|--------|------------------------|
+| **Holds desk** | Bagging area / bagging (supermarket) |
+| **Hold slip** | Generic “ticket” in member-facing chrome when Hold is meant |
+| **Library card** | Profile (as the member surface name) |
+| **Shelving** | Settings “Bagging” |
+| Hall / shelves / lamp / Find / Ask the house | KPI dashboards, badge piles, purple SaaS glow |
+
+- **Labels-first** — user-visible strings drive Playwright asserts and HELP glossary; routes may stay (`/review`) while labels move.
+- Hash migrate when ready: `#bagging` → `#shelving` with a legacy hash map — do not rename routes in a lexicon-only pass.
+- Single-writer on `frontend/src/copy.js` during lexicon sprints ([major-builds.mdc](major-builds.mdc)).
+
+## Anti-patterns
+
+- Supermarket “bagging,” gamification / streaks / badge piles
+- Motion that ignores `prefers-reduced-motion`
+- Theater / Plex / kiosk language copied from Projectionist
+
+Until the lexicon sprint lands, do not mass-rewrite strings mid-feature unless the user asks — but **never introduce new bagging/Profile-as-card copy** when adding surfaces.
