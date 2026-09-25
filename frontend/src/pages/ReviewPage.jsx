@@ -576,11 +576,11 @@ export default function ReviewPage() {
 
   return (
     <div className="admin-room">
-      <p className="kicker">Bagging area</p>
+      <p className="kicker">Holds desk</p>
       <h1>Review</h1>
       <p className="lede">
-        Slips are downloads organize could not finish filing. Happy-path ISBN books never appear here. Apply files a
-        ticket once the folder has readable media — Skip dismisses without shelving.
+        Hold slips are downloads organize could not finish filing. Happy-path ISBN books never appear here. Apply files a
+        hold slip once the folder has readable media — Skip dismisses without shelving.
       </p>
       {quiet ? (
         <details className="more-settings" data-testid="review-quiet-hours">
@@ -713,7 +713,7 @@ export default function ReviewPage() {
       ) : null}
       {loading ? (
         <section className="review-loading" data-testid="review-loading" aria-busy="true">
-          <p className="muted">Warming the lamp on the bagging area…</p>
+          <p className="muted">Warming the lamp on the Holds desk…</p>
           <div className="hall-shelves-skeleton" aria-hidden="true" />
         </section>
       ) : !works.length ? (

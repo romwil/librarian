@@ -122,7 +122,7 @@ export function reviewReasonCopy(reason, diagnosis = {}) {
   if (reason === "collision") {
     return "Collision — a file already exists at the library destination (duplicate path or identity). Librarian will not silent-overwrite.";
   }
-  return "Unexpected item in the bagging area. Confirm identity and the complete folder, then Apply or Skip.";
+  return "Unexpected item at the Holds desk. Confirm identity and the complete folder, then Apply or Skip.";
 }
 
 export function reviewSlipMeaning(reason, diagnosis = {}) {
@@ -130,7 +130,7 @@ export function reviewSlipMeaning(reason, diagnosis = {}) {
   if (reason === "extra_files" && (diagnosis?.collection_dump || titles >= 2)) {
     return (
       "Organize found many different books in one dump folder. That is normal for NYT / Usenet " +
-      "collections — Clear extra-files peels them apart into one ticket per title."
+      "collections — Clear extra-files peels them apart into one hold slip per title."
     );
   }
   return "A slip means organize could not finish filing this download — it needs you before it can land on a shelf.";
@@ -155,10 +155,10 @@ export function reviewNextStepsCopy(reason, diagnosis = {}) {
   if (reason === "extra_files") {
     const titles = Number(diagnosis?.distinct_title_count || 0);
     if (diagnosis?.collection_dump || titles >= 2) {
-      return "Click Clear extra-files once — Librarian expands each title onto its own ingest ticket. Keep Apply for true one-book ambiguity only.";
+      return "Click Clear extra-files once — Librarian expands each title onto its own hold slip. Keep Apply for true one-book ambiguity only.";
     }
   }
-  return "Confirm the fields and Complete folder, then Apply to file a ticket — or Skip to dismiss.";
+  return "Confirm the fields and Complete folder, then Apply to file a hold slip — or Skip to dismiss.";
 }
 
 /** Flags from GET /api/review → work.actions (backend review_slip_actions). */

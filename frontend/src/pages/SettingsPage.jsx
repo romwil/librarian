@@ -381,7 +381,7 @@ export default function SettingsPage() {
             ) : null}
 
             {activeSection === "shelves" ? <SetupFields step="shelves" settings={settings} onChange={patch} /> : null}
-            {activeSection === "bagging" ? <SetupFields step="bagging" settings={settings} onChange={patch} /> : null}
+            {activeSection === "shelving" ? <SetupFields step="shelving" settings={settings} onChange={patch} /> : null}
 
             {activeSection === "llm" ? (
               <section className="settings-panel" id="llm" data-testid="settings-panel-llm">

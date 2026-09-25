@@ -71,9 +71,9 @@ Queue cards for **Needs you** show a short reason and **Open Review** (deep-link
 
 **Finished** is reading progress (you finished the book). **Promote** is for incoming music only: move the album into the Plexamp library. Those two words are not job chips.
 
-## Review / Bagging area
+## Review / Holds desk
 
-A **slip** is a download (or Add-to-shelves dump) that identify/organize could not finish filing. Happy-path ISBN books do not stop here. Each slip shows what Librarian tried, what’s wrong, and what to do next.
+A **hold slip** (or just **slip**) is a download (or Add-to-shelves dump) that identify/organize could not finish filing. Happy-path ISBN books do not stop here. Each slip shows what Librarian tried, what’s wrong, and what to do next.
 
 | What’s wrong | What to do |
 | --- | --- |
@@ -86,7 +86,7 @@ A **slip** is a download (or Add-to-shelves dump) that identify/organize could n
 
 **About `…/complete/downloads/…`:** that path is normal when SAB’s complete root is `…/complete` and the job used a **downloads** category. It is not a doubled map by itself.
 
-**Apply** files a ticket once the folder has media Librarian can read. **Skip** dismisses the slip without shelving.
+**Apply** files a hold slip once the folder has media Librarian can read. **Skip** dismisses the slip without shelving.
 
 ## Maintain
 
@@ -97,13 +97,24 @@ Owners and ops keep the lamp healthy from **Maintain** (`/maintain`) — not Set
 | **Scan the shelves** | Walks Settings library roots into the catalog; never moves files |
 | **Enrich the shelves** | Fills thin book/audiobook metadata (Hardcover → Open Library); never invents an ISBN |
 | **Add to the shelves** | Ingest a dump already on disk under `/data` (same as Settings → Ingest) |
-| **Open Review** | Bagging slips that need identity / folder help |
+| **Open Review** | Hold slips that need identity / folder help |
 | **Clear extra-files** | Bulk reprocess `extra_files` slips — including flat multi-title **collection dumps** (Fiction folders with many `Title - Author.epub` stems). Prefer Clear over Apply 29 times |
 | **Purge duplicates / shells** | Dismiss safely redundant Review slips or empty catalog shells when offered |
 
 Long jobs share one **status dock** on Maintain (scan, enrich, shelving, Clear, Purge). Progress survives refresh under `/config`.
 
 If Review **Apply** hits a PUID-locked author folder (often after Calibre migrate as uid 1000), Maintain **Shelf health** shows a permission report and the host tip: `chown -R 99:100` on `library/books` to match the container PUID. Scan/enrich progress stays in the Maintain telemetry dock.
+
+## Motif glossary
+
+| Prefer | Meaning |
+| --- | --- |
+| **Holds desk** | Review (`/review`) — where hold slips wait |
+| **Hold slip** | One Review item needing identity / folder help (short **slip** is fine) |
+| **Library card** | Your personal chrome menu — theme, text size, inbox, library preferences |
+| **Shelving** | Settings panel for SAB complete root (`#shelving`; legacy `#bagging` still works) |
+| **Hall / shelves / lamp** | The reading room itself — presence, not KPI dashboards |
+| **Find beyond / Ask the house** | Looking outside the stacks; household voice stays warm and honest |
 
 ## Indexers
 

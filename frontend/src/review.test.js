@@ -390,7 +390,7 @@ describe("ReviewPage loading", () => {
   it("shows a warming state while review loads, not empty bag", () => {
     assert.match(reviewPageSrc, /\[loading, setLoading\] = useState\(true\)/);
     assert.match(reviewPageSrc, /data-testid="review-loading"/);
-    assert.match(reviewPageSrc, /Warming the lamp on the bagging area/);
+    assert.match(reviewPageSrc, /Warming the lamp on the Holds desk/);
     assert.match(reviewPageSrc, /loading \? \(/);
     assert.match(reviewPageSrc, /!works\.length/);
     assert.match(reviewPageSrc, /\.finally\(\(\) => setLoading\(false\)\)/);

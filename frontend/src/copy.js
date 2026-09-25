@@ -155,7 +155,7 @@ export function canPromoteIncomingMusic(work, role) {
 }
 
 export function emptyReviewCopy() {
-  return "The bagging area is empty. The lamp is quiet — slips only appear when organize needs you.";
+  return "The Holds desk is empty. The lamp is quiet — slips only appear when organize needs you.";
 }
 
 export function discoverLoadingCopy() {

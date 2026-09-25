@@ -9,7 +9,7 @@ test("SETTINGS_NAV lists flat sections without wizard Prev/Next", () => {
     "Downloader",
     "Indexers",
     "Shelves",
-    "Bagging",
+    "Shelving",
     "Language model",
     "Mail",
     "Notifications",
@@ -20,6 +20,8 @@ test("SETTINGS_NAV lists flat sections without wizard Prev/Next", () => {
   ]);
   assert.equal(SETTINGS_NAV.filter((item) => item.kind === "setup").length, 4);
   assert.ok(SETTINGS_NAV.find((item) => item.id === "indexers"));
+  assert.ok(SETTINGS_NAV.find((item) => item.id === "shelving"));
+  assert.equal(SETTINGS_NAV.some((item) => item.id === "bagging"), false);
   assert.ok(SETTINGS_NAV.find((item) => item.id === "mail"));
   assert.ok(SETTINGS_NAV.find((item) => item.id === "notifications"));
   assert.ok(SETTINGS_NAV.find((item) => item.id === "ingest"));
@@ -30,7 +32,7 @@ test("SETTINGS_NAV lists flat sections without wizard Prev/Next", () => {
   );
 });
 
-test("settingsNavFromHash maps legacy indexer and release-notes", () => {
+test("settingsNavFromHash maps legacy indexer, bagging, and release-notes", () => {
   assert.equal(settingsNavFromHash("#about")?.id, "about");
   assert.equal(settingsNavFromHash("#release-notes")?.id, "about");
   assert.equal(settingsNavFromHash("#whats-new")?.id, "about");
@@ -38,6 +40,8 @@ test("settingsNavFromHash maps legacy indexer and release-notes", () => {
   assert.equal(settingsNavFromHash("#indexers")?.id, "indexers");
   assert.equal(settingsNavFromHash("#indexer")?.id, "indexers");
   assert.equal(settingsNavFromHash("#rss")?.id, "indexers");
+  assert.equal(settingsNavFromHash("#shelving")?.id, "shelving");
+  assert.equal(settingsNavFromHash("#bagging")?.id, "shelving");
   assert.equal(settingsNavFromHash("#downloader")?.step, 0);
   assert.equal(settingsNavFromHash("#missing"), null);
 });
@@ -45,4 +49,5 @@ test("settingsNavFromHash maps legacy indexer and release-notes", () => {
 test("settingsNavHref builds section hashes", () => {
   assert.equal(settingsNavHref({ id: "ingest" }), "#ingest");
   assert.equal(settingsNavHref({ id: "indexers" }), "#indexers");
+  assert.equal(settingsNavHref({ id: "shelving" }), "#shelving");
 });

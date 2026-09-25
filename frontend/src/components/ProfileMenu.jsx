@@ -23,7 +23,7 @@ const AMBIENT_OPTIONS = [
 ];
 
 /**
- * Profile chip + anchored menu of personal prefs.
+ * Library card chip + anchored menu of personal prefs.
  * Sections: appearance → room → links → Logout last.
  */
 export default function ProfileMenu({
@@ -112,6 +112,7 @@ export default function ProfileMenu({
         type="button"
         className="profile-menu-trigger"
         data-testid="profile-menu-trigger"
+        aria-label="Library card"
         aria-expanded={open}
         aria-haspopup="menu"
         onClick={() => setOpen((value) => !value)}

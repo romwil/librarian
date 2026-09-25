@@ -7,7 +7,7 @@ export const SETTINGS_NAV = [
   { id: "downloader", label: "Downloader", kind: "setup", step: 0 },
   { id: "indexers", label: "Indexers", kind: "setup", step: 1 },
   { id: "shelves", label: "Shelves", kind: "setup", step: 2 },
-  { id: "bagging", label: "Bagging", kind: "setup", step: 3 },
+  { id: "shelving", label: "Shelving", kind: "setup", step: 3 },
   { id: "llm", label: "Language model", kind: "panel" },
   { id: "mail", label: "Mail", kind: "panel" },
   { id: "notifications", label: "Notifications", kind: "panel" },
@@ -26,6 +26,7 @@ const HASH_ALIASES = {
   quiet: "household",
   "quiet-hours": "household",
   rss: "indexers",
+  bagging: "shelving",
 };
 
 /** Resolve hash → nav item (supports #release-notes → About, #indexer → Indexers). */

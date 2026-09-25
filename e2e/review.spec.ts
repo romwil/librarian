@@ -1,17 +1,18 @@
 import { expect, test } from "@playwright/test";
-import { loginAsOwner } from "./fixtures/auth";
+import { dismissWhatsNewIfPresent, loginAsOwner } from "./fixtures/auth";
 
-test.describe("Review / bagging area", () => {
+test.describe("Review / Holds desk", () => {
   test.beforeEach(async ({ page }) => {
     await loginAsOwner(page);
   });
 
-  test("empty Review shows current bagging empty copy", async ({ page }) => {
+  test("empty Review shows Holds desk empty copy", async ({ page }) => {
     await page.goto("/review");
-    await expect(page.getByText("Bagging area").first()).toBeVisible();
+    await dismissWhatsNewIfPresent(page);
+    await expect(page.getByText("Holds desk").first()).toBeVisible();
     await expect(page.getByRole("heading", { name: "Review" })).toBeVisible();
-    // Assert today's empty copy (Phase 4 may rename Holds desk); semantic text, not testid.
-    await expect(page.getByText(/bagging area is empty|lamp is quiet/i)).toBeVisible({
+    // Lexicon: Holds desk empty copy; semantic text, not testid.
+    await expect(page.getByText(/Holds desk is empty|lamp is quiet/i)).toBeVisible({
       timeout: 30_000,
     });
   });

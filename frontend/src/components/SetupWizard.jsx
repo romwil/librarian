@@ -38,8 +38,8 @@ export const SETUP_STEPS = [
     ],
   },
   {
-    id: "bagging",
-    kicker: "Bagging",
+    id: "shelving",
+    kicker: "Shelving",
     title: "Complete root",
     lede: "If SAB finishes at /downloads, map that path so Review can see files.",
     fields: [["complete_root", "SAB complete root"]],

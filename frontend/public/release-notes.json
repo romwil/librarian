@@ -1,6 +1,26 @@
 {
-  "generated_at": "2026-09-25T05:36:07Z",
+  "generated_at": "2026-09-25T05:40:09Z",
   "releases": [
+    {
+      "version": "0.4.24",
+      "date": "2026-09-25",
+      "summary": "",
+      "highlights": [
+        "**Holds desk, not bagging.** Review speaks library — hold slips wait at the Holds desk; the supermarket “bagging area” leaves the chrome.",
+        "**Library card in the corner.** The personal menu is labeled Library card — theme, text size, inbox, and library preferences under one household name.",
+        "**Settings → Shelving.** Complete-root setup is Shelving (`#shelving`); legacy `#bagging` still deep-links."
+      ],
+      "sections": [
+        {
+          "title": "Changed",
+          "bullets": [
+            "**Copy / Review / HELP.** Empty, loading, and fallback Review strings; hold-slip wording; HELP Review section + motif glossary.",
+            "**Settings nav.** `bagging` → `shelving` with hash alias; Setup complete-root kicker matches.",
+            "**Playwright.** Review and Settings e2e assert Holds desk / Shelving (port 8794)."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.4.23",
       "date": "2026-09-25",
