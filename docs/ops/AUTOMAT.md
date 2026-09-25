@@ -149,13 +149,13 @@ Full operator steps (rebind Settings, Scan, archive old `books/`): [LIBRARY_MIGR
 
 On Automat, library folders should be writable by PUID/PGID (often 99:100).
 If titles were migrated as uid 1000 with mode 755, the lamp (99) cannot write
-`cover.jpg` beside the ebook — enrich now falls soft to `/config/covers/{id}/`
-and continues the batch. Optional operator fix (does not rewrite existing modes
-recursively unless you choose to):
+into author folders — Review **Apply** returns a PUID lock error (with the locked
+path), and enrich falls soft for `cover.jpg` to `/config/covers/{id}/`. Prefer a
+bulk host fix over one author at a time (Maintain surfaces the same tip):
 
 ```bash
 # Prefer matching PUID to the folder owner, or grant group write:
-# chown -R 99:100 /mnt/user/data/media/library/books   # only if intentional
+chown -R 99:100 /mnt/user/data/media/library/books   # intentional after Calibre migrate
 # chmod -R g+w /mnt/user/data/media/library/books      # milder alternative
 ```
 

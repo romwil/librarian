@@ -98,6 +98,14 @@ PERMISSION_APPLY_ERROR = (
     "Couldn't write into the library shelf — a folder is locked for the lamp "
     "(PUID ownership under the books root). Fix permissions, then Apply again."
 )
+
+
+def _permission_apply_error(error: BaseException) -> str:
+    """Surface the locked path when PermissionError carries a filename."""
+    path = getattr(error, "filename", None)
+    if path:
+        return f"{PERMISSION_APPLY_ERROR} Locked path: {path}"
+    return PERMISSION_APPLY_ERROR
 EXTRA_FILES_NO_MATCH_APPLY_ERROR = (
     "Could not match a file in this dump to the confirmed title/author/ISBN. "
     "Adjust the fields to match a filename here, or Skip."
@@ -786,7 +794,7 @@ def apply_review(
             move_source=True,
         )
     except PermissionError as error:
-        raise ValueError(PERMISSION_APPLY_ERROR) from error
+        raise ValueError(_permission_apply_error(error)) from error
     if result.get("skipped_duplicate"):
         # Shelf already holds the same bytes (possibly under Calibre filenames).
         # Remove this Review slip; keep the shelved catalog row.
@@ -883,7 +891,7 @@ def _peel_matched_extra_files(
                 move_source=True,
             )
         except PermissionError as error:
-            raise ValueError(PERMISSION_APPLY_ERROR) from error
+            raise ValueError(_permission_apply_error(error)) from error
     except Exception:
         # Best-effort restore so the dump stays intact for a retry.
         for path in moved:

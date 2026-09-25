@@ -948,5 +948,9 @@ def test_review_apply_permission_error_is_400(tmp_path, monkeypatch):
         json={"title": "Locked", "author": "Author", "kind": "book", "folder": str(folder)},
     )
     assert resp.status_code == 400
-    assert "library shelf" in resp.json()["detail"]
-    assert "PUID" in resp.json()["detail"]
+    detail = resp.json()["detail"]
+    assert "library shelf" in detail
+    assert "PUID" in detail
+    assert "Locked path:" in detail
+    assert "Author" in detail
+    assert "Locked" in detail

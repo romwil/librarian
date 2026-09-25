@@ -568,7 +568,13 @@ export default function MaintainPage() {
       <section className="maintain-section" data-testid="maintain-grooming">
         <p className="kicker">Shelves</p>
         <h2>Scan and enrich</h2>
-        <p className="lede">Rescan library roots and fill thin metadata. Paths and tokens live in Settings.</p>
+        <p className="lede">
+          Rescan library roots and fill thin metadata. Paths and tokens live in Settings. If Review Apply says a
+          folder is locked for the lamp, author trees under the books root were migrated as the wrong PUID (often
+          uid 1000 with mode 755) — on the host,{" "}
+          <code>chown -R 99:100 /mnt/user/data/media/library/books</code> (match the container PUID/PGID) then Apply
+          again. Do not chmod 777.
+        </p>
         <div className="cta-row">
           <button
             type="button"

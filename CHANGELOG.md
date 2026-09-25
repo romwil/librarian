@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.4.15] — 2026-09-25
+
+### Fixed
+
+- **Review Apply PUID path.** Shelf `PermissionError` now names the locked path so operators can fix the right author tree (or bulk-chown `library/books`) instead of guessing.
+
+### Added
+
+- **Maintain shelf-lock tip.** Scan/enrich lede documents host `chown -R 99:100` for Calibre-migrated uid-1000 author folders; HELP Review table and AUTOMAT ops tip match.
+
 ## [0.4.14] — 2026-09-24
 
 ### Fixed
