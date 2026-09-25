@@ -4138,6 +4138,129 @@ button.cover {
   font-size: var(--text-sm);
 }
 
+/* Inbox + notification prefs */
+.inbox-badge-btn {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  text-decoration: none;
+}
+.inbox-badge-btn.is-active,
+.inbox-badge-btn:hover,
+.inbox-badge-btn:focus-visible {
+  background: var(--paper-deep, var(--surface-2, rgba(0, 0, 0, 0.06)));
+}
+.inbox-badge-glyph {
+  font-size: 1rem;
+  line-height: 1;
+}
+.inbox-unread-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+.inbox-page-head {
+  margin-bottom: var(--space-4);
+}
+.inbox-page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+.inbox-empty {
+  padding: var(--space-5) 0;
+}
+.inbox-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+.inbox-card {
+  padding: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--paper, var(--surface));
+}
+.inbox-card-eyebrow {
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-xs, 0.75rem);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.inbox-card-lead {
+  display: block;
+  margin: 0 0 var(--space-2);
+  font-family: var(--font-display);
+  font-size: var(--text-lg, 1.15rem);
+  color: inherit;
+  text-decoration: none;
+}
+.inbox-card-note {
+  margin: 0 0 var(--space-3);
+  color: var(--muted);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.notification-kind-list {
+  list-style: none;
+  margin: var(--space-4) 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+.notification-kind-row {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+.notification-kind-enable {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+}
+.notification-kind-enable strong {
+  display: block;
+}
+.notification-kind-enable .muted {
+  display: block;
+  font-size: var(--text-sm);
+}
+.notification-kind-channels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+}
+.notification-kind-timing select {
+  max-width: 14rem;
+}
+.notifications-prefs-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .plexamp-toast,
   .tonight-shelf,

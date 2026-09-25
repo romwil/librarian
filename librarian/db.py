@@ -212,6 +212,38 @@ CREATE TABLE IF NOT EXISTS celebrations_seen (
     seen_at REAL NOT NULL,
     PRIMARY KEY (user_id, celebration_key)
 );
+CREATE TABLE IF NOT EXISTS user_notifications (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    title TEXT NOT NULL,
+    body TEXT,
+    payload_json TEXT,
+    from_user_id TEXT,
+    related_id TEXT,
+    created_at REAL NOT NULL,
+    seen_at REAL
+);
+CREATE INDEX IF NOT EXISTS idx_user_notifications_user
+    ON user_notifications(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_notifications_unread
+    ON user_notifications(user_id, seen_at);
+CREATE INDEX IF NOT EXISTS idx_user_notifications_related
+    ON user_notifications(user_id, kind, related_id);
+CREATE TABLE IF NOT EXISTS notification_digest_queue (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    title TEXT NOT NULL,
+    body TEXT,
+    payload_json TEXT,
+    related_id TEXT,
+    period TEXT NOT NULL,
+    created_at REAL NOT NULL,
+    sent_at REAL
+);
+CREATE INDEX IF NOT EXISTS idx_notification_digest_pending
+    ON notification_digest_queue(period, sent_at, user_id);
 """
 
 
@@ -1957,6 +1989,275 @@ class Database:
                 )
         self.run_write(_write, label='set_user_prefs')
         return self.get_user_prefs(user_id)
+
+    # --- notifications inbox / digest queue -----------------------------------
+
+    def create_notification(
+        self,
+        *,
+        notification_id: str,
+        user_id: str,
+        kind: str,
+        title: str,
+        body: Optional[str] = None,
+        payload: Optional[Dict[str, Any]] = None,
+        from_user_id: Optional[str] = None,
+        related_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        from librarian.notifications.kinds import NOTIFICATION_KIND_SET
+
+        cleaned_kind = str(kind or "").strip().lower()
+        if cleaned_kind not in NOTIFICATION_KIND_SET:
+            raise ValueError(f"Unsupported notification kind: {kind}")
+        now = time.time()
+        payload_json = _dumps(payload or {})
+
+        def _write() -> Any:
+            with self._connect() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO user_notifications (
+                        id, user_id, kind, title, body, payload_json,
+                        from_user_id, related_id, created_at, seen_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+                    """,
+                    (
+                        notification_id,
+                        user_id,
+                        cleaned_kind,
+                        str(title or "").strip() or "Notification",
+                        (str(body).strip() if body else None) or None,
+                        payload_json,
+                        from_user_id,
+                        related_id,
+                        now,
+                    ),
+                )
+
+        self.run_write(_write, label="create_notification")
+        rows = self.list_notifications_for_user(user_id, limit=1)
+        for row in rows:
+            if row.get("id") == notification_id:
+                return row
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM user_notifications WHERE id = ?",
+                (notification_id,),
+            ).fetchone()
+        assert row is not None
+        return self._row_to_notification(row)
+
+    def list_notifications_for_user(
+        self,
+        user_id: str,
+        *,
+        unread_only: bool = False,
+        kinds: Optional[Sequence[str]] = None,
+        limit: int = 20,
+    ) -> List[Dict[str, Any]]:
+        from librarian.notifications.kinds import NOTIFICATION_KIND_SET
+
+        query = """
+            SELECT n.*,
+                   fu.display_name AS from_display_name
+            FROM user_notifications n
+            LEFT JOIN users fu ON fu.id = n.from_user_id
+            WHERE n.user_id = ?
+        """
+        params: List[Any] = [user_id]
+        if unread_only:
+            query += " AND n.seen_at IS NULL"
+        cleaned_kinds = [
+            str(k).strip().lower()
+            for k in (kinds or [])
+            if str(k).strip().lower() in NOTIFICATION_KIND_SET
+        ]
+        if cleaned_kinds:
+            placeholders = ",".join("?" for _ in cleaned_kinds)
+            query += f" AND n.kind IN ({placeholders})"
+            params.extend(cleaned_kinds)
+        query += " ORDER BY n.created_at DESC LIMIT ?"
+        params.append(int(limit))
+        with self._connect() as conn:
+            rows = conn.execute(query, tuple(params)).fetchall()
+        return [self._row_to_notification(row) for row in rows]
+
+    def count_unread_notifications(self, user_id: str) -> int:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT COUNT(*) AS cnt FROM user_notifications
+                WHERE user_id = ? AND seen_at IS NULL
+                """,
+                (user_id,),
+            ).fetchone()
+        return int(row["cnt"] if row else 0)
+
+    def mark_notifications_seen(
+        self,
+        user_id: str,
+        *,
+        notification_ids: Optional[Sequence[str]] = None,
+        all_unread: bool = False,
+    ) -> int:
+        now = time.time()
+
+        def _write() -> int:
+            with self._connect() as conn:
+                if all_unread:
+                    cursor = conn.execute(
+                        """
+                        UPDATE user_notifications
+                        SET seen_at = ?
+                        WHERE user_id = ? AND seen_at IS NULL
+                        """,
+                        (now, user_id),
+                    )
+                    return int(cursor.rowcount or 0)
+                ids = [str(i).strip() for i in (notification_ids or []) if str(i).strip()]
+                if not ids:
+                    return 0
+                placeholders = ",".join("?" for _ in ids)
+                cursor = conn.execute(
+                    f"""
+                    UPDATE user_notifications
+                    SET seen_at = ?
+                    WHERE user_id = ? AND seen_at IS NULL AND id IN ({placeholders})
+                    """,
+                    (now, user_id, *ids),
+                )
+                return int(cursor.rowcount or 0)
+
+        return int(self.run_write(_write, label="mark_notifications_seen") or 0)
+
+    def enqueue_notification_digest(
+        self,
+        *,
+        digest_id: str,
+        user_id: str,
+        kind: str,
+        title: str,
+        body: Optional[str] = None,
+        payload: Optional[Dict[str, Any]] = None,
+        related_id: Optional[str] = None,
+        period: str = "daily",
+    ) -> Dict[str, Any]:
+        now = time.time()
+        payload_json = _dumps(payload or {})
+
+        def _write() -> Any:
+            with self._connect() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO notification_digest_queue (
+                        id, user_id, kind, title, body, payload_json,
+                        related_id, period, created_at, sent_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+                    """,
+                    (
+                        digest_id,
+                        user_id,
+                        str(kind or "").strip().lower(),
+                        str(title or "").strip() or "Notification",
+                        (str(body).strip() if body else None) or None,
+                        payload_json,
+                        related_id,
+                        str(period or "daily").strip().lower(),
+                        now,
+                    ),
+                )
+
+        self.run_write(_write, label="enqueue_notification_digest")
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM notification_digest_queue WHERE id = ?",
+                (digest_id,),
+            ).fetchone()
+        assert row is not None
+        return self._row_to_digest(row)
+
+    def list_pending_notification_digests(self, *, period: str) -> List[Dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM notification_digest_queue
+                WHERE period = ? AND sent_at IS NULL
+                ORDER BY created_at ASC
+                """,
+                (str(period or "").strip().lower(),),
+            ).fetchall()
+        return [self._row_to_digest(row) for row in rows]
+
+    def mark_notification_digests_sent(self, digest_ids: Sequence[str]) -> int:
+        ids = [str(i).strip() for i in digest_ids if str(i).strip()]
+        if not ids:
+            return 0
+        now = time.time()
+
+        def _write() -> int:
+            with self._connect() as conn:
+                placeholders = ",".join("?" for _ in ids)
+                cursor = conn.execute(
+                    f"""
+                    UPDATE notification_digest_queue
+                    SET sent_at = ?
+                    WHERE sent_at IS NULL AND id IN ({placeholders})
+                    """,
+                    (now, *ids),
+                )
+                return int(cursor.rowcount or 0)
+
+        return int(self.run_write(_write, label="mark_notification_digests_sent") or 0)
+
+    @staticmethod
+    def _row_to_notification(row: sqlite3.Row) -> Dict[str, Any]:
+        keys = set(row.keys()) if hasattr(row, "keys") else set()
+        payload: Dict[str, Any] = {}
+        raw_payload = row["payload_json"] if "payload_json" in keys else None
+        if raw_payload:
+            parsed = _loads(raw_payload, default={})
+            if isinstance(parsed, dict):
+                payload = parsed
+        return {
+            "id": str(row["id"]),
+            "user_id": str(row["user_id"]),
+            "kind": str(row["kind"]),
+            "title": str(row["title"]),
+            "body": str(row["body"]) if row["body"] is not None else None,
+            "payload": payload,
+            "from_user_id": str(row["from_user_id"]) if row["from_user_id"] is not None else None,
+            "related_id": str(row["related_id"]) if row["related_id"] is not None else None,
+            "created_at": float(row["created_at"]),
+            "seen_at": float(row["seen_at"]) if row["seen_at"] is not None else None,
+            "from_display_name": (
+                str(row["from_display_name"])
+                if "from_display_name" in keys and row["from_display_name"] is not None
+                else None
+            ),
+            "message": str(row["body"]) if row["body"] is not None else None,
+        }
+
+    @staticmethod
+    def _row_to_digest(row: sqlite3.Row) -> Dict[str, Any]:
+        keys = set(row.keys()) if hasattr(row, "keys") else set()
+        payload: Dict[str, Any] = {}
+        raw_payload = row["payload_json"] if "payload_json" in keys else None
+        if raw_payload:
+            parsed = _loads(raw_payload, default={})
+            if isinstance(parsed, dict):
+                payload = parsed
+        return {
+            "id": str(row["id"]),
+            "user_id": str(row["user_id"]),
+            "kind": str(row["kind"]),
+            "title": str(row["title"]),
+            "body": str(row["body"]) if row["body"] is not None else None,
+            "payload": payload,
+            "related_id": str(row["related_id"]) if row["related_id"] is not None else None,
+            "period": str(row["period"]),
+            "created_at": float(row["created_at"]),
+            "sent_at": float(row["sent_at"]) if row["sent_at"] is not None else None,
+        }
 
     def list_whispers(self, work_id: str, *, limit: int = 40) -> List[Dict[str, Any]]:
         with self._connect() as conn:

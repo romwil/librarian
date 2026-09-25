@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+## [0.4.22] — 2026-09-25
+
+### Highlights
+
+- **The desk has an inbox.** A top-bar badge and `/inbox` hold calm notices — arrivals, Needs you, quiet hours, shelf health, and household whispers — without a KPI strip.
+- **You choose what lands.** Profile and Settings → Notifications let every member pick kinds, in-app and/or email, and realtime vs daily/weekly digest timing.
+- **Email stays opt-in.** Mail only leaves when the owner configured transport and you turned email on for that kind with an address.
+
+### Added
+
+- **`librarian/notifications/`.** Kind catalog, per-kind prefs, `deliver_notification` fan-out, daily/weekly email digest queue + flush.
+- **`user_notifications` + `notification_digest_queue` SQLite tables.** Inbox rows and deferred email digests.
+- **API.** `GET/POST /api/notifications`, `GET/PUT /api/notifications/prefs`, owner `POST /api/notifications/test` and digest flush.
+- **SPA.** Inbox page, top-bar badge, Notifications prefs panel (Settings + `/notifications`), Profile links.
+- Starting kinds: asked confirm, arrived, Needs you, quiet hours wake, newsletter (prefs seam), someone finished, shelf health.
+
+### Changed
+
+- `GET /api/auth/me` includes `inbox_unread`; `GET /api/features` exposes notification channel offerings.
+
 ## [0.4.21] — 2026-09-25
 
 ### Highlights

@@ -10,6 +10,7 @@ import { SETTINGS_NAV, settingsNavFromHash, settingsNavHref } from "../lib/setti
 import LlmSettingsPanel from "../components/LlmSettingsPanel.jsx";
 import AppearancePrefsPanel from "../components/AppearancePrefsPanel.jsx";
 import MailSettingsPanel from "../components/MailSettingsPanel.jsx";
+import NotificationsPrefsPanel from "../components/NotificationsPrefsPanel.jsx";
 
 const MORE_FIELDS = [
   ["audiobook_target", "Audiobook target"],
@@ -392,6 +393,10 @@ export default function SettingsPage() {
 
             {activeSection === "mail" ? (
               <MailSettingsPanel settings={settings} onChange={setSettings} />
+            ) : null}
+
+            {activeSection === "notifications" ? (
+              <NotificationsPrefsPanel showOwnerTest />
             ) : null}
 
             {activeSection === "integrations" ? (

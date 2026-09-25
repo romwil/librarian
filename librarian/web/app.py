@@ -29,6 +29,7 @@ from librarian.web.routers import (
     register_catalog_routes,
     register_ingest_routes,
     register_maintain_routes,
+    register_notification_routes,
     register_review_routes,
     register_settings_routes,
 )
@@ -118,6 +119,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
     register_ingest_routes(app, deps)
     register_maintain_routes(app, deps)
     register_settings_routes(app, deps)
+    register_notification_routes(app, deps)
 
     @app.get("/release-notes.json")
     def release_notes():

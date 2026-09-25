@@ -9,6 +9,7 @@ export default function App() {
   const [user, setUser] = useState(undefined);
   const [features, setFeatures] = useState(null);
   const [reviewCount, setReviewCount] = useState(0);
+  const [inboxUnread, setInboxUnread] = useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -26,6 +27,7 @@ export default function App() {
         if (alive) {
           setUser(data.user);
           setReviewCount(data.review_count || 0);
+          setInboxUnread(data.inbox_unread || 0);
         }
       })
       .catch((error) => {
@@ -44,9 +46,14 @@ export default function App() {
   }
 
   return (
-    <AppChrome user={user} features={features} reviewCount={reviewCount}>
+    <AppChrome
+      user={user}
+      features={features}
+      reviewCount={reviewCount}
+      inboxUnread={inboxUnread}
+    >
       <WhatsNewGate />
-      <Outlet context={{ user, features, setUser, reviewCount }} />
+      <Outlet context={{ user, features, setUser, reviewCount, inboxUnread }} />
     </AppChrome>
   );
 }

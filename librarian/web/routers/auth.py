@@ -38,6 +38,9 @@ def register_auth_routes(app: FastAPI, deps: WebDeps) -> None:
     @app.get("/api/features")
     def features() -> Dict[str, Any]:
         cfg = settings()
+        from librarian.mail import mail_configured
+        from librarian.notifications import notification_channel_offerings
+
         return {
             "household_name": cfg.household_name,
             "owner_ready": has_real_owner(db),
@@ -45,6 +48,10 @@ def register_auth_routes(app: FastAPI, deps: WebDeps) -> None:
             "auth_methods": ["local"],
             "version": __version__,
             "show_extra_categories": bool(cfg.show_extra_categories),
+            "notifications": {
+                "channels": notification_channel_offerings(cfg),
+                "mail_configured": mail_configured(cfg),
+            },
         }
 
     @app.post("/api/auth/local/login")
@@ -77,7 +84,11 @@ def register_auth_routes(app: FastAPI, deps: WebDeps) -> None:
         user = getattr(request.state, "user", None) or current_user(request)
         require_role(user, "owner", "op", "reader")
         assert user is not None
-        payload = {"user": public_user(user), "review_count": 0}
+        payload = {
+            "user": public_user(user),
+            "review_count": 0,
+            "inbox_unread": db.count_unread_notifications(user["id"]),
+        }
         if user["role"] in ("owner", "op"):
             payload["review_count"] = len(db.list_works(review_state="needs_review", limit=80))
         return payload

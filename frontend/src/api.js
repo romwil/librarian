@@ -186,6 +186,17 @@ export const api = {
   ingestStatus: () => request("/ingest/status"),
   prefs: () => request("/prefs"),
   savePrefs: (body) => request("/prefs", { method: "PUT", body: JSON.stringify(body) }),
+  notifications: (params) => {
+    const qs = params instanceof URLSearchParams ? params.toString() : "";
+    return request(`/notifications${qs ? `?${qs}` : ""}`);
+  },
+  markNotificationsSeen: (body) =>
+    request("/notifications/seen", { method: "POST", body: JSON.stringify(body || {}) }),
+  notificationPrefs: () => request("/notifications/prefs"),
+  saveNotificationPrefs: (body) =>
+    request("/notifications/prefs", { method: "PUT", body: JSON.stringify(body || {}) }),
+  testNotification: (body) =>
+    request("/notifications/test", { method: "POST", body: JSON.stringify(body || {}) }),
   whispers: (id) => request(`/works/${id}/whispers`),
   addWhisper: (id, body) => request(`/works/${id}/whispers`, { method: "POST", body: JSON.stringify({ body }) }),
   finishEta: ({ missingCount, kind = "", totalBytes = null, multipart = false } = {}) =>

@@ -10,6 +10,7 @@ export const SETTINGS_NAV = [
   { id: "bagging", label: "Bagging", kind: "setup", step: 3 },
   { id: "llm", label: "Language model", kind: "panel" },
   { id: "mail", label: "Mail", kind: "panel" },
+  { id: "notifications", label: "Notifications", kind: "panel" },
   { id: "integrations", label: "Integrations", kind: "panel" },
   { id: "household", label: "Household", kind: "panel" },
   { id: "ingest", label: "Watch folder", kind: "panel" },

@@ -195,8 +195,25 @@ export default function ProfileMenu({
             </div>
           </div>
 
-          {showHouseholdLinks ? (
-            <div className="profile-menu-section profile-menu-links">
+          <div className="profile-menu-section profile-menu-links">
+            <Link
+              to="/inbox"
+              className="profile-menu-link"
+              role="menuitem"
+              onClick={() => setOpen(false)}
+            >
+              Inbox
+            </Link>
+            <Link
+              to="/notifications"
+              className="profile-menu-link"
+              role="menuitem"
+              onClick={() => setOpen(false)}
+            >
+              Notifications
+            </Link>
+            {showHouseholdLinks ? (
+              <>
               {owner ? (
                 <Link
                   to="/maintain"
@@ -237,8 +254,9 @@ export default function ProfileMenu({
                   Queue
                 </Link>
               ) : null}
-            </div>
-          ) : null}
+              </>
+            ) : null}
+          </div>
 
           <button
             type="button"

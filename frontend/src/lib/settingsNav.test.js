@@ -12,6 +12,7 @@ test("SETTINGS_NAV lists flat sections without wizard Prev/Next", () => {
     "Bagging",
     "Language model",
     "Mail",
+    "Notifications",
     "Integrations",
     "Household",
     "Watch folder",
@@ -20,6 +21,7 @@ test("SETTINGS_NAV lists flat sections without wizard Prev/Next", () => {
   assert.equal(SETTINGS_NAV.filter((item) => item.kind === "setup").length, 4);
   assert.ok(SETTINGS_NAV.find((item) => item.id === "indexers"));
   assert.ok(SETTINGS_NAV.find((item) => item.id === "mail"));
+  assert.ok(SETTINGS_NAV.find((item) => item.id === "notifications"));
   assert.ok(SETTINGS_NAV.find((item) => item.id === "ingest"));
   assert.ok(SETTINGS_NAV.find((item) => item.id === "about"));
   assert.equal(

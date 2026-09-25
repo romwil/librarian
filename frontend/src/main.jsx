@@ -14,6 +14,8 @@ import FindPage from "./pages/FindPage.jsx";
 import SearchPage from "./pages/SearchPage.jsx";
 import MaintainPage from "./pages/MaintainPage.jsx";
 import SettingsPage from "./pages/SettingsPage.jsx";
+import InboxPage from "./pages/InboxPage.jsx";
+import NotificationsPage from "./pages/NotificationsPage.jsx";
 import WorkPage from "./pages/WorkPage.jsx";
 import "./styles.css";
 
@@ -35,6 +37,8 @@ createRoot(document.getElementById("root")).render(
             <Route path="people" element={<PeoplePage />} />
             <Route path="maintain" element={<MaintainPage />} />
             <Route path="settings" element={<SettingsPage />} />
+            <Route path="inbox" element={<InboxPage />} />
+            <Route path="notifications" element={<NotificationsPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

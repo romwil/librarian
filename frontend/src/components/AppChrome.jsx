@@ -3,6 +3,7 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { api } from "../api.js";
 import LampMark from "./LampMark.jsx";
 import ProfileMenu from "./ProfileMenu.jsx";
+import InboxBadgeButton from "./InboxBadgeButton.jsx";
 import {
   applyUiFontStep,
   applyUiTheme,
@@ -16,7 +17,7 @@ import {
   themePreferenceLabel,
 } from "../lib/uiPrefs.js";
 
-export default function AppChrome({ user, features, reviewCount = 0, children }) {
+export default function AppChrome({ user, features, reviewCount = 0, inboxUnread = 0, children }) {
   const navigate = useNavigate();
   const op = user.role === "owner" || user.role === "op";
   const owner = user.role === "owner";
@@ -191,6 +192,7 @@ export default function AppChrome({ user, features, reviewCount = 0, children })
               <span className="bag-glyph" aria-hidden="true" />
             </NavLink>
           ) : null}
+          <InboxBadgeButton unreadCount={inboxUnread} />
           <ProfileMenu
             user={user}
             owner={owner}
