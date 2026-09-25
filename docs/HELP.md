@@ -113,7 +113,7 @@ If Review **Apply** hits a PUID-locked author folder (often after Calibre migrat
 | **Hold slip** | One Review item needing identity / folder help (short **slip** is fine) |
 | **Library card** | Your personal chrome menu — theme, text size, inbox, library preferences |
 | **Shelving** | Settings panel for SAB complete root (`#shelving`; legacy `#bagging` still works) |
-| **Hall / shelves / lamp** | The reading room itself — presence, not KPI dashboards |
+| **Hall / shelves / lamp** | The reading room itself — presence, not KPI dashboards. Dawn/dusk wash and a quiet welcome-back when Continue waits are lamp rituals, not settings. |
 | **Find beyond / Ask the house** | Looking outside the stacks; household voice stays warm and honest |
 
 ## Indexers

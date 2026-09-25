@@ -32,6 +32,11 @@ test("motion.css ships settle, warm, and presence tokens with reduced-motion", (
   assert.match(motionSrc, /@keyframes cover-settle/);
   assert.match(motionSrc, /@media \(prefers-reduced-motion:\s*reduce\)/);
   assert.match(motionSrc, /\.page-settle/);
+  assert.match(motionSrc, /--motion-ritual/);
+  assert.match(motionSrc, /@keyframes peek-ritual/);
+  assert.match(motionSrc, /@keyframes finish-glow/);
+  assert.match(motionSrc, /\.hall-page\.hall-lamp-ritual/);
+  assert.match(motionSrc, /\.hall-welcome-back/);
 });
 
 test("WarmLoad is the shared warm skeleton", () => {

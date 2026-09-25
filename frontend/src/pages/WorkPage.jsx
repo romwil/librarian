@@ -10,6 +10,7 @@ import { findHref } from "../find.js";
 import { companionAudiobookView } from "../audiobookCompanion.js";
 import { isIncompleteOwnedPartSet, ownedPartSetStatusLine, partSetFindFields } from "../findParts.js";
 import { useAlbumPlayer } from "../hooks/useAlbumPlayer.js";
+import { finishRitualCopy } from "../lib/lampRituals.js";
 import { canListenInApp, isAudioFile } from "../listen.js";
 import { canOpenInlineMedia, canReadInApp, readerCtaLabel, workDownloadUrl } from "../reader.js";
 import Rail from "../components/Rail.jsx";
@@ -41,6 +42,7 @@ export default function WorkPage() {
   const [whisperBody, setWhisperBody] = useState("");
   const [whisperNote, setWhisperNote] = useState("");
   const [plexamp, setPlexamp] = useState(null);
+  const [finishRitual, setFinishRitual] = useState(false);
   const album = useAlbumPlayer({
     workId: id,
     files: data?.files || [],
@@ -166,6 +168,16 @@ export default function WorkPage() {
   const readLabel = readerCtaLabel(work) || "Read";
   const canCatalog = user?.role === "owner" || user?.role === "op";
   const canEnrichKind = work.kind === "book" || work.kind === "audiobook";
+
+  async function markFinished() {
+    try {
+      await api.progress(work.id, { finished: true });
+      setFinishRitual(true);
+      window.setTimeout(() => setFinishRitual(false), 1800);
+    } catch (err) {
+      setError(humanError(err));
+    }
+  }
 
   function beginEdit() {
     setFixing(false);
@@ -441,7 +453,12 @@ export default function WorkPage() {
               </label>
             ) : null}
             {work.kind !== "music" ? (
-              <button type="button" className="cta ghost compact" onClick={() => api.progress(work.id, { finished: true })}>
+              <button
+                type="button"
+                className={`cta ghost compact${finishRitual ? " finish-ritual-active" : ""}`}
+                onClick={markFinished}
+                data-testid="work-finished"
+              >
                 Finished
               </button>
             ) : null}
@@ -469,6 +486,11 @@ export default function WorkPage() {
               Back to The Hall
             </Link>
           </div>
+          {finishRitual ? (
+            <p className="finish-ritual-note" data-testid="finish-ritual-note" role="status">
+              {finishRitualCopy()}
+            </p>
+          ) : null}
           {canListen && !playerLink?.href && playerNote ? (
             <p className="muted" data-testid="work-player-note">
               {playerNote}

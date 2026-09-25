@@ -10,6 +10,8 @@
   --motion-warm: 1.4s ease-in-out;
   /* Breath — Tonight’s Shelf / lamp presence pulse (slow, calm) */
   --motion-breath: 6.5s ease-in-out;
+  /* Ritual — peek open / finish ceremony (inherits settle curve) */
+  --motion-ritual: var(--motion-settle);
 }
 
 /* Alias legacy --motion to presence so existing rules keep working */
@@ -140,6 +142,115 @@
   box-shadow: 0 0 10px color-mix(in srgb, var(--lamp, #f0b85a) 55%, transparent);
 }
 
+/* 5. Lamp rituals — dawn/dusk Hall wash + welcome-back + peek/finish */
+
+.hall-page.hall-lamp-ritual {
+  position: relative;
+}
+
+.hall-page.hall-lamp-ritual::before {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: -0.5rem -1rem auto;
+  height: 16rem;
+  z-index: 0;
+  opacity: 0.85;
+  transition: opacity var(--motion-presence);
+}
+
+.hall-page.hall-lamp-ritual > * {
+  position: relative;
+  z-index: 1;
+}
+
+.hall-page[data-lamp-period="dawn"]::before {
+  background: radial-gradient(
+    ellipse 70% 80% at 28% 0%,
+    color-mix(in srgb, #f4c98a 34%, transparent),
+    color-mix(in srgb, #e8dcc4 10%, transparent) 45%,
+    transparent 72%
+  );
+}
+
+.hall-page[data-lamp-period="day"]::before {
+  background: radial-gradient(
+    ellipse 60% 70% at 40% 0%,
+    color-mix(in srgb, var(--gilt, #c9954a) 14%, transparent),
+    transparent 65%
+  );
+  opacity: 0.55;
+}
+
+.hall-page[data-lamp-period="dusk"]::before {
+  background: radial-gradient(
+    ellipse 75% 85% at 72% 0%,
+    color-mix(in srgb, #c9954a 36%, transparent),
+    color-mix(in srgb, #6b3a4a 14%, transparent) 48%,
+    transparent 74%
+  );
+}
+
+.hall-page[data-lamp-period="night"]::before {
+  background: radial-gradient(
+    ellipse 55% 70% at 50% 0%,
+    color-mix(in srgb, var(--lamp, #f0b85a) 28%, transparent),
+    transparent 68%
+  );
+}
+
+.hall-welcome-back {
+  margin: 0 0 var(--space-3, 0.75rem);
+  max-width: 36rem;
+  font-family: var(--font-display, Literata, Georgia, serif);
+  font-size: 1.05rem;
+  line-height: 1.45;
+  color: color-mix(in srgb, var(--lamp, #f0b85a) 55%, var(--muted, #b5a48a));
+  animation: soft-enter var(--motion-settle) both;
+}
+
+@keyframes peek-ritual {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(0.65rem);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+    box-shadow:
+      0 24px 64px rgba(0, 0, 0, 0.55),
+      0 0 28px color-mix(in srgb, var(--lamp, #f0b85a) 22%, transparent);
+  }
+}
+
+.peek.peek-ritual {
+  animation: peek-ritual var(--motion-ritual) forwards;
+}
+
+@keyframes finish-glow {
+  0% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+  45% {
+    box-shadow: 0 0 16px color-mix(in srgb, var(--lamp, #f0b85a) 48%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+.cta.finish-ritual-active {
+  animation: finish-glow var(--motion-ritual) both;
+}
+
+.finish-ritual-note {
+  margin: 0.5rem 0 0;
+  font-size: 0.95rem;
+  color: color-mix(in srgb, var(--lamp, #f0b85a) 60%, var(--muted, #b5a48a));
+  animation: soft-enter var(--motion-settle) both;
+}
+
 .warm-load {
   margin-top: var(--space-4, 1rem);
   max-width: 28rem;
@@ -175,6 +286,7 @@
     --motion-settle: 1ms;
     --motion-warm: 1ms;
     --motion-breath: 1ms;
+    --motion-ritual: 1ms;
     --motion: 1ms;
   }
 
@@ -191,6 +303,7 @@
   .dust,
   .page-turn,
   .peek,
+  .peek.peek-ritual,
   .part-chase.is-shimmer,
   .bag.is-pulse,
   .bag.is-pulse[data-count]::after,
@@ -199,6 +312,10 @@
   .tonight-shelf,
   .tonight-lamp-glow,
   .cover-settle,
+  .hall-welcome-back,
+  .finish-ritual-note,
+  .cta.finish-ritual-active,
+  .hall-page.hall-lamp-ritual::before,
   .room.ambient-paper::before,
   .room.ambient-lamp::before {
     animation: none !important;
@@ -208,6 +325,10 @@
   .tonight-lamp-glow {
     opacity: 0.55;
     transform: none;
+  }
+
+  .hall-page.hall-lamp-ritual::before {
+    opacity: 0.45;
   }
 
   .hall-shelves-skeleton,

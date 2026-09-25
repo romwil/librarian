@@ -44,3 +44,15 @@ test("Tonight’s Shelf surface uses lamp atmosphere in styles", () => {
   assert.match(stylesSrc, /\.tonight-presence/);
   assert.match(stylesSrc, /var\(--lamp\)/);
 });
+
+test("Hall ships lamp rituals chrome (dawn/dusk + welcome-back)", () => {
+  assert.match(hallSrc, /hall-lamp-ritual/);
+  assert.match(hallSrc, /data-lamp-period/);
+  assert.match(hallSrc, /hall-welcome-back/);
+  assert.match(hallSrc, /welcomeBackCopy/);
+  assert.match(hallSrc, /hallLampPeriod/);
+  assert.match(motionSrc, /data-lamp-period="dawn"/);
+  assert.match(motionSrc, /data-lamp-period="dusk"/);
+  assert.match(motionSrc, /peek-ritual/);
+  assert.match(motionSrc, /finish-ritual/);
+});

@@ -6,6 +6,7 @@ Plan: [librarian_automat_rss](file:///Users/willrompala/.cursor/plans/librarian_
 
 ## Shipped
 
+- **2026-09-25** — Sprint **5.3** `lamp-rituals` → **0.5.2**: dawn/dusk Hall wash, welcome-back when Continue waits, peek/finish micro-motion.
 - **2026-09-25** `5cf3347` — Sprint **5.2** `smart-holds-desk` → **0.5.1**: Holds desk groups hold slips by review reason with one recommended motion (sorting returns).
 - **2026-09-25** — Sprint **2.1** `web-routers-shelf-health` → **0.4.20**: `create_app` composition root + routers (auth/catalog/review/ingest/maintain/settings); Maintain Shelf health permission report + chown tip; identify/organize/ingest cycle carve; Hub still deferred.
 - **2026-09-15** — Automat media contract (`docs/automat-media-contract.md`): shared `/data/media` roots with Smart Map; music `{Artist}/{Album}/` keeps the original filename unless a trustworthy track tag exists (`NN - Title.ext`). Audiobooks never `music_root`.

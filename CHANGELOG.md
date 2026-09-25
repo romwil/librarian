@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+## [0.5.2] — 2026-09-25
+
+### Highlights
+
+- **Lamp rituals.** The Hall washes with dawn and dusk; when Continue waits, a quiet welcome-back greets you under the lamp.
+- **Ceremony for small acts.** Peek opens with a soft ritual settle; Finished glows once — “The lamp remembers.”
+- **Motion stays kind.** Rituals inherit settle tokens and respect `prefers-reduced-motion` — presence stays, motion drops.
+
+### Added
+
+- **`lampRituals.js`.** Local-hour Hall period (dawn/day/dusk/night), welcome-back copy, finish ceremony line.
+- **Hall.** `data-lamp-period` wash + welcome-back when Continue / Continue listening has volumes.
+- **Peek / Finished.** `peek-ritual` open motion; Work page finish glow + status line.
+- **Playwright.** Hall lamp rituals journey (port 8794).
+
+### Changed
+
+- **`motion.css`.** `--motion-ritual`, dawn/dusk/night washes, peek-ritual / finish-glow; reduced-motion clears them.
+
 ## [0.5.1] — 2026-09-25
 
 ### Highlights

@@ -172,7 +172,7 @@ export default function WorkPeek({ work, onClose, onRequest }) {
     <>
       <button type="button" className="scrim" aria-label="Close peek" onClick={onClose} />
       <aside
-        className={`peek${washUrl ? " has-wash" : ""}`}
+        className={`peek peek-ritual${washUrl ? " has-wash" : ""}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="peek-title"

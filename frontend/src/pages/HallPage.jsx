@@ -6,14 +6,23 @@ import Rail from "../components/Rail.jsx";
 import TonightShelf from "../components/TonightShelf.jsx";
 import { DISCOVER_CTA, emptyHallCopy, humanError, setupComplete } from "../copy.js";
 import { discoverHref } from "../find.js";
+import { hallLampPeriod, hallLampPeriodLabel, welcomeBackCopy } from "../lib/lampRituals.js";
 
 /** Deferred shelves — hero paints first; this block loads with a clear warming state. */
-function HallShelves({ role, owner, configured }) {
+function HallShelves({ role, owner, configured, lampPeriod }) {
   const [hall, setHall] = useState(null);
   const [phase, setPhase] = useState("loading");
   const [loadError, setLoadError] = useState("");
   const empty = emptyHallCopy({ owner, configured });
   const counts = hall?.kind_counts || {};
+  const welcome =
+    phase === "ready"
+      ? welcomeBackCopy({
+          continueCount: (hall?.continue || []).length,
+          listeningCount: (hall?.continue_listening || []).length,
+          period: lampPeriod,
+        })
+      : "";
 
   useEffect(() => {
     let cancelled = false;
@@ -56,6 +65,11 @@ function HallShelves({ role, owner, configured }) {
 
   return (
     <div className="hall-shelves" data-testid="hall-shelves">
+      {welcome ? (
+        <p className="hall-welcome-back" data-testid="hall-welcome-back">
+          {welcome}
+        </p>
+      ) : null}
       {loadError ? <p className="alert hall-alert">{loadError}</p> : null}
       {hall?.empty ? (
         <section className="empty-cta hall-empty" data-testid="hall-empty">
@@ -132,6 +146,7 @@ export default function HallPage() {
   const { user } = useOutletContext();
   const [configured, setConfigured] = useState(false);
   const [q, setQ] = useState("");
+  const [lampPeriod] = useState(() => hallLampPeriod());
   const owner = user?.role === "owner";
 
   useEffect(() => {
@@ -156,7 +171,12 @@ export default function HallPage() {
   }
 
   return (
-    <div className="hall hall-page page-settle" data-testid="hall">
+    <div
+      className="hall hall-page page-settle hall-lamp-ritual"
+      data-testid="hall"
+      data-lamp-period={lampPeriod}
+    >
+      <span className="sr-only">{hallLampPeriodLabel(lampPeriod)}</span>
       <section className="hero-search-block">
         <p className="kicker">The Hall</p>
         <h1>What are you looking for?</h1>
@@ -182,7 +202,7 @@ export default function HallPage() {
           {" · beyond the shelves without a search"}
         </p>
       </section>
-      <HallShelves role={user?.role} owner={owner} configured={configured} />
+      <HallShelves role={user?.role} owner={owner} configured={configured} lampPeriod={lampPeriod} />
     </div>
   );
 }

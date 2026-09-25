@@ -111,4 +111,18 @@ test.describe("Hall", () => {
     await expect(page.getByRole("heading", { name: "Pick up where you left the lamp" })).toBeVisible();
     await expect(page.getByRole("button", { name: /Surprise Volume/ })).toBeVisible();
   });
+
+  test("lamp rituals — period presence and welcome-back", async ({ page }) => {
+    await mockTonightHall(page);
+    await page.goto("/");
+    await dismissWhatsNewIfPresent(page);
+
+    await expect(
+      page.getByText(/Dawn in the Hall|Day in the Hall|Dusk in the Hall|Night in the Hall/),
+    ).toBeAttached();
+    await expect(page.getByText(/Welcome back —/)).toBeVisible({ timeout: 30_000 });
+    // Tonight’s Shelf must not regress under rituals.
+    await expect(page.getByRole("region", { name: "Tonight’s shelf" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Continue", exact: true })).toBeVisible();
+  });
 });
