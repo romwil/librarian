@@ -8,11 +8,13 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from librarian.notifications import (
+    deliver_editions,
     deliver_notification,
     flush_email_digests,
     merge_notification_prefs,
     notification_channel_offerings,
     public_notification_prefs,
+    resolve_push_user_ids,
 )
 from librarian.web.deps import WebDeps
 from librarian.web.route_imports import *  # noqa: F403
@@ -32,6 +34,14 @@ class NotificationTestPayload(BaseModel):
     kind: str = "arrived"
     title: str = "Test notice from the library"
     body: Optional[str] = "If you see this in your inbox, notifications are working."
+
+
+class NewsletterPushPayload(BaseModel):
+    """Owner early push / self-test for library newsletter editions."""
+
+    scope: str = "self"  # self | users | all
+    user_ids: Optional[List[str]] = None
+    force: bool = True  # skip cadence wait (still requires opt-in)
 
 
 def register_notification_routes(app: FastAPI, deps: WebDeps) -> None:
@@ -145,3 +155,34 @@ def register_notification_routes(app: FastAPI, deps: WebDeps) -> None:
         """Owner flush of queued daily/weekly digest emails (scheduler seam)."""
         require_role(request.state.user, "owner")
         return flush_email_digests(db, settings(), period=period)
+
+    @app.post("/api/newsletters/push")
+    def push_newsletter(payload: NewsletterPushPayload, request: Request) -> Dict[str, Any]:
+        """Owner: push personalized editions early (opt-in still required; never force-email)."""
+        user = request.state.user
+        require_role(user, "owner")
+        scope = str(payload.scope or "self").strip().lower()
+        if scope not in {"self", "me", "users", "selected", "all", "opted_in"}:
+            raise HTTPException(status_code=400, detail="scope must be self, users, or all")
+        if scope in {"users", "selected"} and not (payload.user_ids or []):
+            raise HTTPException(status_code=400, detail="Select at least one member")
+        targets = resolve_push_user_ids(
+            db,
+            scope=scope,
+            actor_id=str(user["id"]),
+            user_ids=payload.user_ids,
+        )
+        result = deliver_editions(
+            db,
+            settings(),
+            user_ids=targets,
+            force=bool(payload.force),
+        )
+        return {"ok": True, **result}
+
+    @app.post("/api/newsletters/run")
+    def run_due_newsletters(request: Request) -> Dict[str, Any]:
+        """Owner: deliver editions that are due by cadence (scheduler seam)."""
+        require_role(request.state.user, "owner")
+        result = deliver_editions(db, settings(), force=False)
+        return {"ok": True, **result}

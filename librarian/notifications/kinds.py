@@ -23,8 +23,11 @@ NOTIFICATION_KIND_SET = frozenset(NOTIFICATION_KINDS)
 CHANNELS: Tuple[str, ...] = ("inbox", "email")
 CHANNEL_SET = frozenset(CHANNELS)
 
-TIMINGS: Tuple[str, ...] = ("realtime", "daily", "weekly")
+TIMINGS: Tuple[str, ...] = ("realtime", "daily", "weekly", "monthly")
 TIMING_SET = frozenset(TIMINGS)
+# Newsletter cadence is weekly | monthly only (edition is the scheduled unit).
+NEWSLETTER_TIMINGS: Tuple[str, ...] = ("weekly", "monthly")
+NEWSLETTER_TIMING_SET = frozenset(NEWSLETTER_TIMINGS)
 
 # Catalog for Settings → Notifications (order matches NOTIFICATION_KINDS).
 KIND_CATALOG: List[Dict[str, Any]] = [
@@ -55,7 +58,7 @@ KIND_CATALOG: List[Dict[str, Any]] = [
     {
         "id": "newsletter",
         "label": "Library newsletter",
-        "help": "Weekly or monthly letter about recent arrivals (edition lands in a later release).",
+        "help": "A personalized letter about recent arrivals, shaped by what you read, request, and keep close. Weekly or monthly; email only when you opt in and Mail is configured.",
         "default": {"enabled": False, "channels": ["inbox", "email"], "timing": "weekly"},
     },
     {
@@ -92,9 +95,19 @@ def normalize_timing(raw: Any, *, default: str = "realtime") -> str:
         cleaned = "daily"
     if cleaned in {"weekly_digest", "week"}:
         cleaned = "weekly"
+    if cleaned in {"monthly_digest", "month"}:
+        cleaned = "monthly"
     if cleaned not in TIMING_SET:
         return default if default in TIMING_SET else "realtime"
     return cleaned
+
+
+def normalize_newsletter_timing(raw: Any, *, default: str = "weekly") -> str:
+    """Newsletter cadence: weekly | monthly only."""
+    cleaned = normalize_timing(raw, default=default)
+    if cleaned in NEWSLETTER_TIMING_SET:
+        return cleaned
+    return default if default in NEWSLETTER_TIMING_SET else "weekly"
 
 
 def normalize_channels(raw: Any, *, default: List[str] | None = None) -> List[str]:
@@ -123,17 +136,28 @@ def normalize_kind_pref(kind: str, raw: Any = None) -> Dict[str, Any]:
     """Merge one kind pref with catalog defaults."""
     cleaned = normalize_kind(kind)
     base = dict(KIND_DEFAULTS[cleaned])
+    timing_default = str(base["timing"])
     if not isinstance(raw, dict):
+        timing = (
+            normalize_newsletter_timing(timing_default)
+            if cleaned == "newsletter"
+            else normalize_timing(timing_default)
+        )
         return {
             "enabled": bool(base["enabled"]),
             "channels": list(base["channels"]),
-            "timing": str(base["timing"]),
+            "timing": timing,
         }
     enabled = raw.get("enabled")
     if enabled is None:
         enabled = base["enabled"]
+    timing_raw = raw.get("timing")
+    if cleaned == "newsletter":
+        timing = normalize_newsletter_timing(timing_raw, default=timing_default)
+    else:
+        timing = normalize_timing(timing_raw, default=timing_default)
     return {
         "enabled": bool(enabled),
         "channels": normalize_channels(raw.get("channels"), default=list(base["channels"])),
-        "timing": normalize_timing(raw.get("timing"), default=str(base["timing"])),
+        "timing": timing,
     }

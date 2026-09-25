@@ -98,3 +98,22 @@ def merge_notification_prefs(
         nested["notifications"] = current
 
     return nested
+
+
+def get_newsletter_last_edition_at(user_prefs: Dict[str, Any]) -> Optional[float]:
+    """Unix timestamp of the member's last delivered newsletter edition, if any."""
+    nested = _nested_from_row(user_prefs)
+    raw = nested.get("newsletter_last_edition_at")
+    if raw is None or raw == "":
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def stamp_newsletter_last_edition(nested_prefs: Dict[str, Any], *, when: float) -> Dict[str, Any]:
+    """Return a copy of nested prefs with newsletter_last_edition_at set."""
+    out = dict(nested_prefs or {})
+    out["newsletter_last_edition_at"] = float(when)
+    return out

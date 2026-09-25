@@ -197,6 +197,9 @@ export const api = {
     request("/notifications/prefs", { method: "PUT", body: JSON.stringify(body || {}) }),
   testNotification: (body) =>
     request("/notifications/test", { method: "POST", body: JSON.stringify(body || {}) }),
+  pushNewsletter: (body) =>
+    request("/newsletters/push", { method: "POST", body: JSON.stringify(body || { scope: "self", force: true }) }),
+  runNewsletters: () => request("/newsletters/run", { method: "POST", body: "{}" }),
   whispers: (id) => request(`/works/${id}/whispers`),
   addWhisper: (id, body) => request(`/works/${id}/whispers`, { method: "POST", body: JSON.stringify({ body }) }),
   finishEta: ({ missingCount, kind = "", totalBytes = null, multipart = false } = {}) =>

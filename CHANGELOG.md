@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+## [0.4.23] — 2026-09-25
+
+### Highlights
+
+- **A letter from the library.** Opt into a weekly or monthly newsletter — recent arrivals, introduced in a voice shaped by what you Continue, Favorite, and Request.
+- **You choose the path.** Editions land in the inbox and/or email only when you opt in; email never leaves without Mail configured and your channel choice.
+- **Owner can send early.** From Profile → Notifications, push a personalized edition to yourself or everyone opted in — cadence still waits on the scheduled path.
+
+### Added
+
+- **`librarian/notifications/newsletters.py`.** Personalized edition builder (taste intro + recent additions), cadence due checks, `deliver_editions` fan-out.
+- **API.** `POST /api/newsletters/push` (owner early/self-test), `POST /api/newsletters/run` (due-by-cadence seam).
+- **Prefs.** Newsletter kind cadence is weekly | monthly; `newsletter_last_edition_at` stamped after a real delivery.
+- **SPA.** Newsletter cadence controls on Notifications prefs; owner “Send library letter now” panel.
+
+### Changed
+
+- Notification timings include `monthly`; newsletter editions email immediately when the email channel is opted in (they are the scheduled unit, not digest-queue filler).
+- Library newsletter catalog help text describes the live edition.
+
 ## [0.4.22] — 2026-09-25
 
 ### Highlights

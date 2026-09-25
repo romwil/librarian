@@ -962,6 +962,49 @@ class Database:
             rows = conn.execute(sql, args).fetchall()
         return [_row_dict(row) or {} for row in rows]
 
+    def list_works_added_since(
+        self,
+        since_ts: float,
+        *,
+        limit: int = 12,
+        require_files: bool = True,
+    ) -> List[Dict[str, Any]]:
+        """Works whose created_at is at or after since_ts (newest first)."""
+        clauses = ["created_at >= ?"]
+        args: List[Any] = [float(since_ts)]
+        if require_files:
+            clauses.append(self._HAS_FILES_SQL.format(alias="works"))
+        args.append(max(1, int(limit)))
+        sql = (
+            f"SELECT * FROM works WHERE {' AND '.join(clauses)} "
+            "ORDER BY created_at DESC LIMIT ?"
+        )
+        with self._connect() as conn:
+            rows = conn.execute(sql, args).fetchall()
+        return [_row_dict(row) or {} for row in rows]
+
+    def list_completed_jobs_for_user(
+        self,
+        user_id: str,
+        *,
+        limit: int = 12,
+    ) -> List[Dict[str, Any]]:
+        """Recent completed download jobs requested by this member (taste signal)."""
+        uid = str(user_id or "").strip()
+        if not uid:
+            return []
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM jobs
+                WHERE requested_by = ? AND status = 'completed'
+                ORDER BY updated_at DESC
+                LIMIT ?
+                """,
+                (uid, max(1, int(limit))),
+            ).fetchall()
+        return [_row_dict(row) or {} for row in rows]
+
     def count_works(
         self,
         *,

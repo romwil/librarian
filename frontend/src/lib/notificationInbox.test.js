@@ -5,7 +5,10 @@ import {
   inboxCardCopy,
   inboxHeadline,
   inboxItemHref,
+  newsletterConfirmMessage,
+  newsletterResultMessage,
   normalizeChannels,
+  normalizeNewsletterTiming,
   normalizeTiming,
 } from "./notificationInbox.js";
 
@@ -35,9 +38,18 @@ test("inboxCardCopy and href for Review and Maintain", () => {
 
 test("normalizeTiming and channels reject junk", () => {
   assert.equal(normalizeTiming("WEEKLY"), "weekly");
+  assert.equal(normalizeTiming("monthly"), "monthly");
   assert.equal(normalizeTiming("nope"), "realtime");
   assert.deepEqual(normalizeChannels(["email", "inbox", "pager"]), ["email", "inbox"]);
   assert.deepEqual(normalizeChannels([]), ["inbox"]);
+});
+
+test("newsletter cadence and result copy", () => {
+  assert.equal(normalizeNewsletterTiming("MONTHLY"), "monthly");
+  assert.equal(normalizeNewsletterTiming("realtime"), "weekly");
+  assert.match(newsletterConfirmMessage("self"), /library letter/i);
+  assert.match(newsletterResultMessage({ delivered: 1, emailed: 1, skipped_opt_out: 2 }), /1 inbox/);
+  assert.equal(inboxItemHref({ kind: "newsletter" }), "/inbox");
 });
 
 test("hostile title does not break card copy", () => {

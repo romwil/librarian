@@ -2,7 +2,12 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
 import { humanError } from "../copy.js";
-import { normalizeChannels, normalizeTiming } from "../lib/notificationInbox.js";
+import {
+  NEWSLETTER_TIMINGS,
+  normalizeChannels,
+  normalizeNewsletterTiming,
+  normalizeTiming,
+} from "../lib/notificationInbox.js";
 
 const TIMING_OPTIONS = [
   { value: "realtime", label: "Realtime" },
@@ -44,13 +49,17 @@ export default function NotificationsPrefsPanel({ showOwnerTest = false } = {}) 
   function patchKind(id, partial) {
     setKinds((prev) => {
       const current = prev[id] || { enabled: true, channels: ["inbox"], timing: "realtime" };
+      const nextTiming =
+        id === "newsletter"
+          ? normalizeNewsletterTiming(partial.timing ?? current.timing)
+          : normalizeTiming(partial.timing ?? current.timing);
       return {
         ...prev,
         [id]: {
           ...current,
           ...partial,
           channels: normalizeChannels(partial.channels ?? current.channels),
-          timing: normalizeTiming(partial.timing ?? current.timing),
+          timing: nextTiming,
         },
       };
     });
@@ -128,7 +137,8 @@ export default function NotificationsPrefsPanel({ showOwnerTest = false } = {}) 
       <h2>What the house tells you</h2>
       <p className="lede">
         Choose which notices you want, whether they land in the in-app inbox and/or email, and whether email should wait
-        for a daily or weekly digest. Email only leaves the house when Mail is configured and you opt in.
+        for a daily or weekly digest. The library newsletter uses its own weekly or monthly cadence. Email only leaves
+        the house when Mail is configured and you opt in.
       </p>
 
       <p className="muted">
@@ -154,6 +164,11 @@ export default function NotificationsPrefsPanel({ showOwnerTest = false } = {}) 
           {catalog.map((row) => {
             const pref = kinds[row.id] || row.default || { enabled: true, channels: ["inbox"], timing: "realtime" };
             const channelSet = new Set(normalizeChannels(pref.channels));
+            const isNewsletter = row.id === "newsletter";
+            const timingValue = isNewsletter
+              ? normalizeNewsletterTiming(pref.timing)
+              : normalizeTiming(pref.timing);
+            const timingOptions = isNewsletter ? NEWSLETTER_TIMINGS : TIMING_OPTIONS;
             return (
               <li key={row.id} className="notification-kind-row" data-testid={`notification-kind-${row.id}`}>
                 <label className="notification-kind-enable">
@@ -189,14 +204,14 @@ export default function NotificationsPrefsPanel({ showOwnerTest = false } = {}) 
                   </label>
                 </div>
                 <label className="notification-kind-timing">
-                  <span className="sr-only">Timing for {row.label}</span>
+                  <span className="sr-only">{isNewsletter ? `Cadence for ${row.label}` : `Timing for ${row.label}`}</span>
                   <select
-                    value={normalizeTiming(pref.timing)}
+                    value={timingValue}
                     disabled={!pref.enabled}
-                    aria-label={`Timing for ${row.label}`}
+                    aria-label={isNewsletter ? `Cadence for ${row.label}` : `Timing for ${row.label}`}
                     onChange={(event) => patchKind(row.id, { timing: event.target.value })}
                   >
-                    {TIMING_OPTIONS.map((option) => (
+                    {timingOptions.map((option) => (
                       <option key={option.value} value={option.value}>
                         {option.label}
                       </option>

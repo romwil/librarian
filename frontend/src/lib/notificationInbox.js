@@ -27,6 +27,16 @@ export const KIND_LABELS = {
   shelf_health: "Shelf health",
 };
 
+export const NEWSLETTER_TIMINGS = [
+  { value: "weekly", label: "Weekly" },
+  { value: "monthly", label: "Monthly" },
+];
+
+export const NEWSLETTER_SCOPES = [
+  { value: "self", label: "Just me" },
+  { value: "all", label: "Everyone opted in" },
+];
+
 export function formatUnreadBadge(count) {
   const n = Number(count) || 0;
   if (n <= 0) return "";
@@ -65,6 +75,7 @@ export function inboxItemHref(item) {
   if (payload.path && String(payload.path).startsWith("/")) return String(payload.path);
   if (kind === "needs_you" || kind === "asked_confirm") return "/review";
   if (kind === "shelf_health") return "/maintain";
+  if (kind === "newsletter") return "/inbox";
   if (kind === "arrived" && payload.work_id) return `/works/${encodeURIComponent(payload.work_id)}`;
   if (kind === "someone_finished" && payload.work_id) return `/works/${encodeURIComponent(payload.work_id)}`;
   return null;
@@ -72,8 +83,14 @@ export function inboxItemHref(item) {
 
 export function normalizeTiming(value) {
   const raw = String(value || "realtime").trim().toLowerCase();
-  if (raw === "daily" || raw === "weekly") return raw;
+  if (raw === "daily" || raw === "weekly" || raw === "monthly") return raw;
   return "realtime";
+}
+
+export function normalizeNewsletterTiming(value) {
+  const raw = String(value || "weekly").trim().toLowerCase();
+  if (raw === "monthly") return "monthly";
+  return "weekly";
 }
 
 export function normalizeChannels(value) {
@@ -84,4 +101,31 @@ export function normalizeChannels(value) {
     if ((id === "inbox" || id === "email") && !out.includes(id)) out.push(id);
   }
   return out.length ? out : ["inbox"];
+}
+
+/**
+ * @param {"self"|"all"} scope
+ * @returns {string}
+ */
+export function newsletterConfirmMessage(scope) {
+  if (scope === "self") {
+    return "Send your library letter now? You need Library newsletter opted in — email only leaves if you turned that channel on.";
+  }
+  return "Send the library letter to everyone who opted in? Channel prefs (inbox / email) still apply — never force-email.";
+}
+
+/**
+ * @param {{ delivered?: number, emailed?: number, skipped_opt_out?: number, skipped_not_due?: number }} result
+ * @returns {string}
+ */
+export function newsletterResultMessage(result = {}) {
+  const delivered = Number(result.delivered) || 0;
+  const emailed = Number(result.emailed) || 0;
+  const skipped = Number(result.skipped_opt_out) || 0;
+  const notDue = Number(result.skipped_not_due) || 0;
+  const parts = [`Delivered to ${delivered} inbox${delivered === 1 ? "" : "es"}`];
+  if (emailed > 0) parts.push(`${emailed} emailed`);
+  if (skipped > 0) parts.push(`${skipped} skipped (not opted in)`);
+  if (notDue > 0) parts.push(`${notDue} not due yet`);
+  return `${parts.join(" · ")}.`;
 }

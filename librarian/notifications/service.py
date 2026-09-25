@@ -131,7 +131,14 @@ def deliver_notification(
     if wants_email and mail_configured(settings):
         to_email = resolve_notification_email(user_prefs, user)
         if to_email:
-            if timing == "realtime" or force_email:
+            # Newsletter editions are the scheduled unit (weekly/monthly) — send now.
+            # Other kinds with daily/weekly timing park in the digest queue.
+            send_now = (
+                timing == "realtime"
+                or force_email
+                or cleaned_kind == "newsletter"
+            )
+            if send_now:
                 try:
                     send_mail(
                         settings,
