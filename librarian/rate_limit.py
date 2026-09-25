@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import threading
 import time
 from collections import defaultdict, deque
@@ -24,6 +25,13 @@ def client_ip(request: Request) -> str:
     if request.client and request.client.host:
         return request.client.host
     return "unknown"
+
+
+def auth_local_login_limit() -> int:
+    """Login attempts per window. E2E suite may relax via env (throwaway DATA_DIR only)."""
+    if os.environ.get("LIBRARIAN_E2E_RELAX_RATE_LIMITS") == "1":
+        return 500
+    return 10
 
 
 def enforce_rate_limit(

@@ -144,7 +144,7 @@ from librarian.purge_shells_progress import (
     is_purge_shells_stale,
     read_purge_shells_progress,
 )
-from librarian.rate_limit import enforce_rate_limit
+from librarian.rate_limit import auth_local_login_limit, enforce_rate_limit
 from librarian.review_reasons import (
     REVIEW_COMICVINE_AMBIGUOUS,
     REVIEW_COMICVINE_UNMATCHED,
@@ -360,6 +360,7 @@ __all__ = [
     'is_purge_shells_stale',
     'read_purge_shells_progress',
     'enforce_rate_limit',
+    'auth_local_login_limit',
     'REVIEW_COMICVINE_AMBIGUOUS',
     'REVIEW_COMICVINE_UNMATCHED',
     'REVIEW_EXTRA',

@@ -56,6 +56,8 @@ const env = {
   LIBRARIAN_OWNER_PASSWORD: process.env.LIBRARIAN_OWNER_PASSWORD || "e2e-password-ok",
   LIBRARIAN_SESSION_SECRET:
     process.env.LIBRARIAN_SESSION_SECRET || "e2e-session-secret-value-not-dev",
+  // Full Playwright suite logs in once per test; relax 10/60s so later specs are not 429'd.
+  LIBRARIAN_E2E_RELAX_RATE_LIMITS: process.env.LIBRARIAN_E2E_RELAX_RATE_LIMITS || "1",
 };
 
 console.log(`Starting Librarian E2E server on :${PORT} (DATA_DIR=${DATA_DIR})`);

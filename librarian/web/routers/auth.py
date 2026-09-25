@@ -56,7 +56,12 @@ def register_auth_routes(app: FastAPI, deps: WebDeps) -> None:
 
     @app.post("/api/auth/local/login")
     def login(payload: LoginPayload, request: Request):
-        enforce_rate_limit(request, bucket="auth_local_login", limit=10, window_seconds=60)
+        enforce_rate_limit(
+            request,
+            bucket="auth_local_login",
+            limit=auth_local_login_limit(),
+            window_seconds=60,
+        )
         if not has_real_owner(db):
             raise HTTPException(status_code=503, detail="Owner has not been seeded")
         user = db.get_user_by_display_name(payload.username)
