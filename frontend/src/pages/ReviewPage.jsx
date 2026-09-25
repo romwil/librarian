@@ -1,11 +1,13 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api.js";
 import { busyLabel, doneLabel, ticketStatusNote } from "../actionBusy.js";
 import { FieldLabel } from "../components/FieldHelp.jsx";
+import JobProgress from "../components/JobProgress.jsx";
 import { FIELD_HELP, emptyReviewCopy, humanError } from "../copy.js";
 import { requestBodyFromHit } from "../find.js";
 import SearchTraceDisclosure from "../components/SearchTraceDisclosure.jsx";
+import { useProgressJob } from "../hooks/useProgressJob.js";
 import {
   applyBodyFromDraft,
   applySuggestionToDraft,
@@ -46,11 +48,7 @@ export default function ReviewPage() {
   const [busy, setBusy] = useState({});
   const [actionNotes, setActionNotes] = useState({});
   const [bulkNote, setBulkNote] = useState("");
-  const [extraFilesProgress, setExtraFilesProgress] = useState(null);
-  const [extraFilesClearing, setExtraFilesClearing] = useState(false);
   const [extraFilesBacklog, setExtraFilesBacklog] = useState(0);
-  const [purgeProgress, setPurgeProgress] = useState(null);
-  const [purgeRunning, setPurgeRunning] = useState(false);
   const [progressClock, setProgressClock] = useState(() => Date.now());
   const [reviewBacklog, setReviewBacklog] = useState(0);
   const [error, setError] = useState("");
@@ -60,11 +58,10 @@ export default function ReviewPage() {
   const [quietNote, setQuietNote] = useState("");
   const [suggestNotes, setSuggestNotes] = useState({});
   const focusRef = useRef(null);
-  const extraFilesPollRef = useRef(0);
-  const purgePollRef = useRef(0);
   const autoRegrabTried = useRef(new Set());
   const autoMatchTried = useRef(new Set());
   const autoSuggestTried = useRef(new Set());
+  const reloadRef = useRef(() => {});
 
   function reload() {
     api
@@ -98,6 +95,7 @@ export default function ReviewPage() {
       .catch((err) => setError(humanError(err)))
       .finally(() => setLoading(false));
   }
+  reloadRef.current = reload;
 
   useEffect(reload, []);
 
@@ -108,124 +106,64 @@ export default function ReviewPage() {
       .catch(() => setQuiet(null));
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    api
-      .reviewReprocessExtraFilesStatus()
-      .then((status) => {
-        if (cancelled) return;
-        setExtraFilesProgress(status);
-        if (status?.extra_files_remaining != null) {
-          setExtraFilesBacklog(Number(status.extra_files_remaining) || 0);
-        }
-        if (extraFilesReprocessIsRunning(status)) {
-          setExtraFilesClearing(true);
-          setBulkNote(extraFilesReprocessProgressSummary(status) || "Clearing extra-files…");
-        } else if (status?.status === "completed" || status?.status === "failed") {
-          const summary = extraFilesReprocessProgressSummary(status);
-          if (summary) setBulkNote(summary);
-        }
-      })
-      .catch(() => {});
-    api
-      .reviewPurgeDuplicatesStatus()
-      .then((status) => {
-        if (cancelled) return;
-        setPurgeProgress(status);
-        if (status?.needs_review_remaining != null) {
-          setReviewBacklog(Number(status.needs_review_remaining) || 0);
-        }
-        if (purgeDuplicatesIsRunning(status)) {
-          setPurgeRunning(true);
-          setBulkNote(purgeDuplicatesProgressSummary(status) || "Purging duplicates…");
-        } else if (status?.status === "completed" || status?.status === "failed") {
-          const summary = purgeDuplicatesProgressSummary(status);
-          if (summary) setBulkNote(summary);
-        }
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const fetchExtraStatus = useCallback(() => api.reviewReprocessExtraFilesStatus(), []);
+  const fetchPurgeStatus = useCallback(() => api.reviewPurgeDuplicatesStatus(), []);
 
-  useEffect(() => {
-    if (!extraFilesClearing) return undefined;
-    let cancelled = false;
-
-    async function poll() {
-      try {
-        const status = await api.reviewReprocessExtraFilesStatus();
-        if (cancelled) return;
-        setExtraFilesProgress(status);
-        if (status?.extra_files_remaining != null) {
-          setExtraFilesBacklog(Number(status.extra_files_remaining) || 0);
-        }
-        const summary = extraFilesReprocessProgressSummary(status);
-        if (summary) setBulkNote(summary);
-        if (extraFilesReprocessIsRunning(status)) {
-          extraFilesPollRef.current = window.setTimeout(poll, 700);
-          return;
-        }
-        setExtraFilesClearing(false);
-        if (status?.status === "failed") {
-          setBulkNote(status.error || "Clear extra-files failed.");
-        } else if (status?.status === "completed") {
-          setBulkNote(summary || "Finished clearing extra-files slips.");
-          reload();
-        }
-      } catch (err) {
-        if (cancelled) return;
-        setExtraFilesClearing(false);
-        setBulkNote(humanError(err));
+  const {
+    status: extraFilesProgress,
+    setStatus: setExtraFilesProgress,
+    running: extraFilesClearing,
+    setRunning: setExtraFilesClearing,
+  } = useProgressJob({
+    fetchStatus: fetchExtraStatus,
+    isRunning: extraFilesReprocessIsRunning,
+    pollIdle: true,
+    onUpdate: (status) => {
+      if (status?.extra_files_remaining != null) {
+        setExtraFilesBacklog(Number(status.extra_files_remaining) || 0);
       }
-    }
-
-    extraFilesPollRef.current = window.setTimeout(poll, 400);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(extraFilesPollRef.current);
-    };
-  }, [extraFilesClearing]);
-
-  useEffect(() => {
-    if (!purgeRunning) return undefined;
-    let cancelled = false;
-
-    async function poll() {
-      try {
-        const status = await api.reviewPurgeDuplicatesStatus();
-        if (cancelled) return;
-        setPurgeProgress(status);
-        if (status?.needs_review_remaining != null) {
-          setReviewBacklog(Number(status.needs_review_remaining) || 0);
-        }
-        const summary = purgeDuplicatesProgressSummary(status);
-        if (summary) setBulkNote(summary);
-        if (purgeDuplicatesIsRunning(status)) {
-          purgePollRef.current = window.setTimeout(poll, 700);
-          return;
-        }
-        setPurgeRunning(false);
-        if (status?.status === "failed") {
-          setBulkNote(status.error || "Purge duplicates failed.");
-        } else if (status?.status === "completed") {
-          setBulkNote(summary || "Finished purging duplicates.");
-          reload();
-        }
-      } catch (err) {
-        if (cancelled) return;
-        setPurgeRunning(false);
-        setBulkNote(humanError(err));
+      const summary = extraFilesReprocessProgressSummary(status);
+      if (summary && (extraFilesReprocessIsRunning(status) || status?.status === "completed" || status?.status === "failed")) {
+        setBulkNote(summary);
       }
-    }
+    },
+    onSettled: (status) => {
+      if (status?.status === "failed") {
+        setBulkNote(status.error || "Clear extra-files failed.");
+      } else if (status?.status === "completed") {
+        setBulkNote(extraFilesReprocessProgressSummary(status) || "Finished clearing extra-files slips.");
+        reloadRef.current();
+      }
+    },
+  });
 
-    purgePollRef.current = window.setTimeout(poll, 400);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(purgePollRef.current);
-    };
-  }, [purgeRunning]);
+  const {
+    status: purgeProgress,
+    setStatus: setPurgeProgress,
+    running: purgeRunning,
+    setRunning: setPurgeRunning,
+  } = useProgressJob({
+    fetchStatus: fetchPurgeStatus,
+    isRunning: purgeDuplicatesIsRunning,
+    pollIdle: true,
+    onUpdate: (status) => {
+      if (status?.needs_review_remaining != null) {
+        setReviewBacklog(Number(status.needs_review_remaining) || 0);
+      }
+      const summary = purgeDuplicatesProgressSummary(status);
+      if (summary && (purgeDuplicatesIsRunning(status) || status?.status === "completed" || status?.status === "failed")) {
+        setBulkNote(summary);
+      }
+    },
+    onSettled: (status) => {
+      if (status?.status === "failed") {
+        setBulkNote(status.error || "Purge duplicates failed.");
+      } else if (status?.status === "completed") {
+        setBulkNote(purgeDuplicatesProgressSummary(status) || "Finished purging duplicates.");
+        reloadRef.current();
+      }
+    },
+  });
 
   useEffect(() => {
     if (!focusId || !works.length) return;
@@ -733,89 +671,45 @@ export default function ReviewPage() {
         </div>
       ) : null}
       {showExtraFilesProgress ? (
-        <section
+        <JobProgress
           className="ingest-progress review-extra-files-progress"
-          data-testid="review-extra-files-progress"
-          aria-live="polite"
-        >
-          <p className="kicker">Clear extra-files progress</p>
-          <p className="muted">
-            {extraFilesProgress.phase || "clearing"}
-            {extraFilesProgress.total
-              ? ` · ${extraFilesProgress.done || 0} of ${extraFilesProgress.total}`
-              : extraFilesProgress.done
-                ? ` · ${extraFilesProgress.done} done`
-                : ""}
-            {extraFilesPercent != null ? ` · ${extraFilesPercent}%` : ""}
-            {extraFilesProgress.shelved ? ` · shelved ${extraFilesProgress.shelved}` : ""}
-            {extraFilesProgress.split ? ` · split ${extraFilesProgress.split}` : ""}
-            {extraFilesProgress.applied ? ` · applied ${extraFilesProgress.applied}` : ""}
-            {extraFilesProgress.failed ? ` · failed ${extraFilesProgress.failed}` : ""}
-          </p>
-          {extraFilesPercent != null ? (
-            <div
-              className="ingest-progress-meter"
-              role="progressbar"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={extraFilesPercent}
-              aria-label="Clear extra-files progress"
-            >
-              <span className="ingest-progress-meter-fill" style={{ width: `${extraFilesPercent}%` }} />
-            </div>
-          ) : null}
-          {extraFilesProgress.current_title ? (
-            <p className="lede ingest-progress-title">{extraFilesProgress.current_title}</p>
-          ) : null}
-          {extraFilesStatusLine ? (
-            <p className="muted" role="status">
-              {extraFilesStatusLine}
-            </p>
-          ) : null}
-        </section>
+          testId="review-extra-files-progress"
+          kicker="Clear extra-files progress"
+          phaseLabel={extraFilesProgress.phase || "clearing"}
+          done={extraFilesProgress.done || 0}
+          total={extraFilesProgress.total || 0}
+          percent={extraFilesPercent}
+          title={extraFilesProgress.current_title || ""}
+          stats={[
+            extraFilesProgress.shelved ? `shelved ${extraFilesProgress.shelved}` : "",
+            extraFilesProgress.split ? `split ${extraFilesProgress.split}` : "",
+            extraFilesProgress.applied ? `applied ${extraFilesProgress.applied}` : "",
+            extraFilesProgress.failed ? `failed ${extraFilesProgress.failed}` : "",
+          ]}
+          statusLine={extraFilesStatusLine}
+          meterLabel="Clear extra-files progress"
+        />
       ) : null}
       {showPurgeProgress ? (
-        <section
+        <JobProgress
           className="ingest-progress review-extra-files-progress"
-          data-testid="review-purge-duplicates-progress"
-          aria-live="polite"
-        >
-          <p className="kicker">Purge duplicates progress</p>
-          <p className="muted">
-            {purgeProgress.phase || "purging"}
-            {purgeProgress.total
-              ? ` · ${purgeProgress.done || 0} of ${purgeProgress.total}`
-              : purgeProgress.done
-                ? ` · ${purgeProgress.done} done`
-                : ""}
-            {purgePercent != null ? ` · ${purgePercent}%` : ""}
-            {purgeProgress.purged ? ` · purged ${purgeProgress.purged}` : ""}
-            {purgeProgress.shelf_twins ? ` · shelf ${purgeProgress.shelf_twins}` : ""}
-            {purgeProgress.slip_twins ? ` · slip ${purgeProgress.slip_twins}` : ""}
-            {purgeProgress.kept ? ` · kept ${purgeProgress.kept}` : ""}
-            {purgeProgress.failed ? ` · failed ${purgeProgress.failed}` : ""}
-          </p>
-          {purgePercent != null ? (
-            <div
-              className="ingest-progress-meter"
-              role="progressbar"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={purgePercent}
-              aria-label="Purge duplicates progress"
-            >
-              <span className="ingest-progress-meter-fill" style={{ width: `${purgePercent}%` }} />
-            </div>
-          ) : null}
-          {purgeProgress.current_title ? (
-            <p className="lede ingest-progress-title">{purgeProgress.current_title}</p>
-          ) : null}
-          {purgeStatusLine ? (
-            <p className="muted" role="status">
-              {purgeStatusLine}
-            </p>
-          ) : null}
-        </section>
+          testId="review-purge-duplicates-progress"
+          kicker="Purge duplicates progress"
+          phaseLabel={purgeProgress.phase || "purging"}
+          done={purgeProgress.done || 0}
+          total={purgeProgress.total || 0}
+          percent={purgePercent}
+          title={purgeProgress.current_title || ""}
+          stats={[
+            purgeProgress.purged ? `purged ${purgeProgress.purged}` : "",
+            purgeProgress.shelf_twins ? `shelf ${purgeProgress.shelf_twins}` : "",
+            purgeProgress.slip_twins ? `slip ${purgeProgress.slip_twins}` : "",
+            purgeProgress.kept ? `kept ${purgeProgress.kept}` : "",
+            purgeProgress.failed ? `failed ${purgeProgress.failed}` : "",
+          ]}
+          statusLine={purgeStatusLine}
+          meterLabel="Purge duplicates progress"
+        />
       ) : null}
       {loading ? (
         <section className="review-loading" data-testid="review-loading" aria-busy="true">

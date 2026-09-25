@@ -162,7 +162,9 @@ export default function AddToLibrary({ compact = false, embedded = false } = {})
   );
 
   const showProgress =
-    progress && (busy || progress.status === "completed" || progress.status === "failed");
+    !embedded &&
+    progress &&
+    (busy || progress.status === "completed" || progress.status === "failed");
   const percent = showProgress ? ingestProgressPercent(progress) : null;
   const tallies = showProgress ? ingestProgressTallies(progress) : null;
   const tallyLines = showProgress ? ingestTallyLines(progress) : [];

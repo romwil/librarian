@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.4.18] — 2026-09-25
+
+### Highlights
+
+- **One progress kit for every long job.** Scan, enrich, shelving, Clear, and Purge share `progress_job` plumbing — less drift when a new Maintain/Review job lands.
+- **Maintain shows status in one dock.** Telemetry lives in MaintainStatusDock; the embedded Add-to-library panel no longer duplicates shelving meters.
+- **Review Clear/Purge reuse the same progress UI.** Shared `JobProgress` + `useProgressJob` keep Clear and Purge meters consistent with the Maintain dock.
+
+### Changed
+
+- **`librarian/progress_job.py`.** Shared JSON progress blob + `BackgroundJobSlot` for create_app kickoffs; thin wrappers remain the public API for each job kind.
+- **MaintainStatusDock / Review progress.** Render through `JobProgress`; poll through `useProgressJob`.
+
 ## [0.4.17] — 2026-09-25
 
 ### Highlights

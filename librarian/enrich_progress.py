@@ -2,23 +2,14 @@
 
 from __future__ import annotations
 
-import json
-import threading
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional
+from typing import Any, Dict, Mapping, Optional
 
-MAX_LOG_LINES = 40
+from librarian.progress_job import ProgressJob
 
-_lock = threading.Lock()
-
-
-def _utc_now() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-
-
-def default_progress() -> Dict[str, Any]:
-    return {
+_JOB = ProgressJob(
+    filename="enrich_progress.json",
+    defaults=lambda: {
         "status": "idle",
         "phase": "",
         "current_title": "",
@@ -33,75 +24,32 @@ def default_progress() -> Dict[str, Any]:
         "started_at": "",
         "finished_at": "",
         "result": None,
-    }
+    },
+)
+
+
+def default_progress() -> Dict[str, Any]:
+    return _JOB.default_progress()
 
 
 def progress_path(data_dir: Path) -> Path:
-    return Path(data_dir) / "enrich_progress.json"
-
-
-def _read_unlocked(data_dir: Path) -> Dict[str, Any]:
-    """Read progress JSON. Caller must hold ``_lock``."""
-    path = progress_path(data_dir)
-    if not path.is_file():
-        return default_progress()
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return default_progress()
-    if not isinstance(raw, dict):
-        return default_progress()
-    base = default_progress()
-    base.update(raw)
-    logs = base.get("logs") or []
-    if not isinstance(logs, list):
-        logs = []
-    base["logs"] = [str(line) for line in logs][-MAX_LOG_LINES:]
-    return base
-
-
-def _write_unlocked(data_dir: Path, payload: Mapping[str, Any]) -> Dict[str, Any]:
-    """Write progress JSON. Caller must hold ``_lock``."""
-    path = progress_path(data_dir)
-    merged = default_progress()
-    merged.update(dict(payload))
-    logs = merged.get("logs") or []
-    if not isinstance(logs, list):
-        logs = []
-    merged["logs"] = [str(line) for line in logs][-MAX_LOG_LINES:]
-    path.parent.mkdir(parents=True, exist_ok=True)
-    text = json.dumps(merged, indent=2, sort_keys=True)
-    path.write_text(text + "\n", encoding="utf-8")
-    return merged
+    return _JOB.progress_path(data_dir)
 
 
 def read_enrich_progress(data_dir: Path) -> Dict[str, Any]:
-    with _lock:
-        return _read_unlocked(data_dir)
+    return _JOB.read(data_dir)
 
 
 def write_enrich_progress(data_dir: Path, payload: Mapping[str, Any]) -> Dict[str, Any]:
-    with _lock:
-        return _write_unlocked(data_dir, payload)
+    return _JOB.write(data_dir, payload)
 
 
 def patch_enrich_progress(data_dir: Path, **fields: Any) -> Dict[str, Any]:
-    with _lock:
-        current = _read_unlocked(data_dir)
-        current.update(fields)
-        return _write_unlocked(data_dir, current)
+    return _JOB.patch(data_dir, **fields)
 
 
 def append_enrich_log(data_dir: Path, line: str) -> Dict[str, Any]:
-    text = str(line or "").strip()
-    if not text:
-        return read_enrich_progress(data_dir)
-    with _lock:
-        current = _read_unlocked(data_dir)
-        logs: List[str] = list(current.get("logs") or [])
-        logs.append(text)
-        current["logs"] = logs[-MAX_LOG_LINES:]
-        return _write_unlocked(data_dir, current)
+    return _JOB.append_log(data_dir, line)
 
 
 def begin_enrich_run(
@@ -111,18 +59,13 @@ def begin_enrich_run(
     total: int = 0,
     phase: str = "starting",
 ) -> Dict[str, Any]:
-    payload = default_progress()
-    payload.update(
-        {
-            "status": "running",
-            "phase": phase,
-            "source": source,
-            "total": max(0, int(total)),
-            "started_at": _utc_now(),
-            "logs": [f"Started enrich ({source})."],
-        }
+    return _JOB.begin(
+        data_dir,
+        start_log=f"Started enrich ({source}).",
+        total=total,
+        phase=phase,
+        source=source,
     )
-    return write_enrich_progress(data_dir, payload)
 
 
 def finish_enrich_run(
@@ -131,39 +74,24 @@ def finish_enrich_run(
     result: Optional[Mapping[str, Any]] = None,
     error: str = "",
 ) -> Dict[str, Any]:
-    with _lock:
-        current = _read_unlocked(data_dir)
-        if error:
-            current["status"] = "failed"
-            current["phase"] = "failed"
-            current["error"] = str(error)
-            logs = list(current.get("logs") or [])
-            logs.append(f"Failed: {error}")
-            current["logs"] = logs[-MAX_LOG_LINES:]
-        else:
-            current["status"] = "completed"
-            current["phase"] = "done"
-            current["error"] = ""
-            current["current_title"] = ""
-            summary = dict(result or {})
-            current["result"] = summary
-            if "updated" in summary:
-                current["updated"] = int(summary.get("updated") or 0)
-            if "skipped" in summary:
-                current["skipped"] = int(summary.get("skipped") or 0)
-            if "scanned" in summary:
-                current["done"] = int(summary.get("scanned") or current.get("done") or 0)
-            logs = list(current.get("logs") or [])
-            updated = int(summary.get("updated") or current.get("updated") or 0)
-            scanned = int(summary.get("scanned") or current.get("done") or 0)
-            logs.append(f"Finished — enriched {updated} of {scanned}.")
-            current["logs"] = logs[-MAX_LOG_LINES:]
-        current["finished_at"] = _utc_now()
-        return _write_unlocked(data_dir, current)
+    def _finish_log(current: Dict[str, Any], summary: Mapping[str, Any]) -> str:
+        if "scanned" in summary:
+            current["done"] = int(summary.get("scanned") or current.get("done") or 0)
+        updated = int(summary.get("updated") or current.get("updated") or 0)
+        scanned = int(summary.get("scanned") or current.get("done") or 0)
+        return f"Finished — enriched {updated} of {scanned}."
 
+    return _JOB.finish(
+        data_dir,
+        result=result,
+        error=error,
+        result_keys=("updated", "skipped"),
+        clear_fields=("current_title",),
+        finish_log=None if error else _finish_log,
+    )
 
 def is_enrich_running(data_dir: Path) -> bool:
-    return str(read_enrich_progress(data_dir).get("status") or "") == "running"
+    return _JOB.is_running(data_dir)
 
 
 class EnrichProgressReporter:

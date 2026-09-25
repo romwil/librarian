@@ -19,8 +19,8 @@ export async function dismissWhatsNewIfPresent(page: Page) {
 export async function loginAsOwner(page: Page) {
   await page.goto("/login");
   await expect(page.getByRole("heading", { name: "The Reading Room" })).toBeVisible();
-  await page.getByLabel("Name").fill(E2E_OWNER.username);
-  await page.getByLabel("Password").fill(E2E_OWNER.password);
+  await page.getByRole("textbox", { name: "Name" }).fill(E2E_OWNER.username);
+  await page.getByRole("textbox", { name: "Password" }).fill(E2E_OWNER.password);
   await page.getByRole("button", { name: "Enter" }).click();
   await expect(page.getByRole("heading", { name: "What are you looking for?" })).toBeVisible({
     timeout: 30_000,

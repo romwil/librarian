@@ -2,62 +2,17 @@
 
 from __future__ import annotations
 
-import json
-import threading
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional
+from typing import Any, Dict, Mapping, Optional
 
-MAX_LOG_LINES = 40
-# Fingerprinting thousands of slips can take a while; heartbeat while scanning.
+from librarian.progress_job import ProgressJob, heartbeat_age_seconds, parse_utc_timestamp, utc_now
+
 HEARTBEAT_STALE_S = 300.0
 
-_lock = threading.Lock()
-
-
-def _utc_now() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-
-
-def parse_utc_timestamp(value: Any) -> Optional[datetime]:
-    text = str(value or "").strip()
-    if not text:
-        return None
-    if text.endswith("Z"):
-        text = text[:-1] + "+00:00"
-    try:
-        parsed = datetime.fromisoformat(text)
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
-
-
-def heartbeat_age_seconds(payload: Mapping[str, Any], *, now: Optional[datetime] = None) -> Optional[float]:
-    stamp = parse_utc_timestamp(payload.get("heartbeat_at")) or parse_utc_timestamp(payload.get("started_at"))
-    if stamp is None:
-        return None
-    current = now or datetime.now(timezone.utc)
-    return max(0.0, (current - stamp).total_seconds())
-
-
-def is_purge_shells_stale(
-    payload: Mapping[str, Any],
-    *,
-    stale_after_s: float = HEARTBEAT_STALE_S,
-    now: Optional[datetime] = None,
-) -> bool:
-    if str(payload.get("status") or "") != "running":
-        return False
-    age = heartbeat_age_seconds(payload, now=now)
-    if age is None:
-        return False
-    return age >= max(1.0, float(stale_after_s))
-
-
-def default_progress() -> Dict[str, Any]:
-    return {
+_JOB = ProgressJob(
+    filename="purge_shells_progress.json",
+    defaults=lambda: {
         "status": "idle",
         "phase": "",
         "current_title": "",
@@ -72,77 +27,34 @@ def default_progress() -> Dict[str, Any]:
         "heartbeat_at": "",
         "finished_at": "",
         "result": None,
-    }
+    },
+    heartbeat=True,
+    heartbeat_stale_s=HEARTBEAT_STALE_S,
+)
+
+
+def default_progress() -> Dict[str, Any]:
+    return _JOB.default_progress()
 
 
 def progress_path(data_dir: Path) -> Path:
-    return Path(data_dir) / "purge_shells_progress.json"
-
-
-def _read_unlocked(data_dir: Path) -> Dict[str, Any]:
-    path = progress_path(data_dir)
-    if not path.is_file():
-        return default_progress()
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return default_progress()
-    if not isinstance(raw, dict):
-        return default_progress()
-    base = default_progress()
-    base.update(raw)
-    logs = base.get("logs") or []
-    if not isinstance(logs, list):
-        logs = []
-    base["logs"] = [str(line) for line in logs][-MAX_LOG_LINES:]
-    return base
-
-
-def _write_unlocked(data_dir: Path, payload: Mapping[str, Any]) -> Dict[str, Any]:
-    path = progress_path(data_dir)
-    merged = default_progress()
-    merged.update(dict(payload))
-    logs = merged.get("logs") or []
-    if not isinstance(logs, list):
-        logs = []
-    merged["logs"] = [str(line) for line in logs][-MAX_LOG_LINES:]
-    if str(merged.get("status") or "") == "running" and not str(merged.get("heartbeat_at") or "").strip():
-        merged["heartbeat_at"] = _utc_now()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    text = json.dumps(merged, indent=2, sort_keys=True)
-    path.write_text(text + "\n", encoding="utf-8")
-    return merged
+    return _JOB.progress_path(data_dir)
 
 
 def read_purge_shells_progress(data_dir: Path) -> Dict[str, Any]:
-    with _lock:
-        return _read_unlocked(data_dir)
+    return _JOB.read(data_dir)
 
 
 def write_purge_shells_progress(data_dir: Path, payload: Mapping[str, Any]) -> Dict[str, Any]:
-    with _lock:
-        return _write_unlocked(data_dir, payload)
+    return _JOB.write(data_dir, payload)
 
 
 def patch_purge_shells_progress(data_dir: Path, **fields: Any) -> Dict[str, Any]:
-    with _lock:
-        current = _read_unlocked(data_dir)
-        current.update(fields)
-        if str(current.get("status") or "") == "running" and "heartbeat_at" not in fields:
-            current["heartbeat_at"] = _utc_now()
-        return _write_unlocked(data_dir, current)
+    return _JOB.patch(data_dir, **fields)
 
 
 def append_purge_shells_log(data_dir: Path, line: str) -> Dict[str, Any]:
-    text = str(line or "").strip()
-    if not text:
-        return read_purge_shells_progress(data_dir)
-    with _lock:
-        current = _read_unlocked(data_dir)
-        logs: List[str] = list(current.get("logs") or [])
-        logs.append(text)
-        current["logs"] = logs[-MAX_LOG_LINES:]
-        return _write_unlocked(data_dir, current)
+    return _JOB.append_log(data_dir, line)
 
 
 def begin_purge_shells_run(
@@ -151,19 +63,12 @@ def begin_purge_shells_run(
     total: int = 0,
     phase: str = "starting",
 ) -> Dict[str, Any]:
-    started = _utc_now()
-    payload = default_progress()
-    payload.update(
-        {
-            "status": "running",
-            "phase": phase,
-            "total": max(0, int(total)),
-            "started_at": started,
-            "heartbeat_at": started,
-            "logs": ["Started purging catalog shells with no media on disk."],
-        }
+    return _JOB.begin(
+        data_dir,
+        start_log="Started purging catalog shells with no media on disk.",
+        total=total,
+        phase=phase,
     )
-    return write_purge_shells_progress(data_dir, payload)
 
 
 def finish_purge_shells_run(
@@ -172,43 +77,37 @@ def finish_purge_shells_run(
     result: Optional[Mapping[str, Any]] = None,
     error: str = "",
 ) -> Dict[str, Any]:
-    with _lock:
-        current = _read_unlocked(data_dir)
-        if error:
-            current["status"] = "failed"
-            current["phase"] = "failed"
-            current["error"] = str(error)
-            logs = list(current.get("logs") or [])
-            logs.append(f"Failed: {error}")
-            current["logs"] = logs[-MAX_LOG_LINES:]
-        else:
-            current["status"] = "completed"
-            current["phase"] = "done"
-            current["error"] = ""
-            current["current_title"] = ""
-            summary = dict(result or {})
-            current["result"] = summary
-            for key in ("purged", "kept", "failed", "done", "total"):
-                if key in summary:
-                    current[key] = int(summary.get(key) or 0)
-            if "considered" in summary and "total" not in summary:
-                current["total"] = int(summary.get("considered") or current.get("total") or 0)
-            logs = list(current.get("logs") or [])
-            purged = int(summary.get("purged") or current.get("purged") or 0)
-            kept = int(summary.get("kept") or current.get("kept") or 0)
-            failed = int(summary.get("failed") or current.get("failed") or 0)
-            done = int(summary.get("done") or current.get("done") or 0)
-            parts = [f"purged {purged}", f"kept {kept}"]
-            if failed:
-                parts.append(f"failed {failed}")
-            logs.append(f"Finished — {', '.join(parts)} ({done} looked at).")
-            current["logs"] = logs[-MAX_LOG_LINES:]
-        current["finished_at"] = _utc_now()
-        return _write_unlocked(data_dir, current)
+    def _finish_log(current: Mapping[str, Any], summary: Mapping[str, Any]) -> str:
+        purged = int(summary.get("purged") or current.get("purged") or 0)
+        kept = int(summary.get("kept") or current.get("kept") or 0)
+        failed = int(summary.get("failed") or current.get("failed") or 0)
+        done = int(summary.get("done") or current.get("done") or 0)
+        parts = [f"purged {purged}", f"kept {kept}"]
+        if failed:
+            parts.append(f"failed {failed}")
+        return f"Finished — {', '.join(parts)} ({done} looked at)."
+
+    return _JOB.finish(
+        data_dir,
+        result=result,
+        error=error,
+        result_keys=("purged", "kept", "failed", "done", "total"),
+        considered_as_total=True,
+        finish_log=None if error else _finish_log,
+    )
 
 
 def is_purge_shells_running(data_dir: Path) -> bool:
-    return str(read_purge_shells_progress(data_dir).get("status") or "") == "running"
+    return _JOB.is_running(data_dir)
+
+
+def is_purge_shells_stale(
+    payload: Mapping[str, Any],
+    *,
+    stale_after_s: float = HEARTBEAT_STALE_S,
+    now: Optional[datetime] = None,
+) -> bool:
+    return _JOB.is_stale(payload, stale_after_s=stale_after_s, now=now)
 
 
 class PurgeShellsProgressReporter:
@@ -235,7 +134,7 @@ class PurgeShellsProgressReporter:
         failed: Optional[int] = None,
         log: str = "",
     ) -> None:
-        fields: Dict[str, Any] = {"heartbeat_at": _utc_now()}
+        fields: Dict[str, Any] = {"heartbeat_at": utc_now()}
         if phase:
             fields["phase"] = phase
         if current_title is not None:
@@ -259,3 +158,21 @@ class PurgeShellsProgressReporter:
 
     def fail(self, error: str) -> None:
         finish_purge_shells_run(self.data_dir, error=error)
+
+
+__all__ = [
+    "HEARTBEAT_STALE_S",
+    "PurgeShellsProgressReporter",
+    "append_purge_shells_log",
+    "begin_purge_shells_run",
+    "default_progress",
+    "finish_purge_shells_run",
+    "heartbeat_age_seconds",
+    "is_purge_shells_running",
+    "is_purge_shells_stale",
+    "parse_utc_timestamp",
+    "patch_purge_shells_progress",
+    "progress_path",
+    "read_purge_shells_progress",
+    "write_purge_shells_progress",
+]

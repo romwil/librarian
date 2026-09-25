@@ -405,14 +405,16 @@ describe("ReviewPage loading", () => {
   it("binds each progress panel to its own summary, not shared bulkNote", () => {
     assert.match(reviewPageSrc, /extraFilesStatusLine = showExtraFilesProgress/);
     assert.match(reviewPageSrc, /purgeStatusLine = showPurgeProgress/);
-    assert.match(reviewPageSrc, /\{extraFilesStatusLine \?/);
-    assert.match(reviewPageSrc, /\{purgeStatusLine \?/);
+    assert.match(reviewPageSrc, /JobProgress/);
+    assert.match(reviewPageSrc, /useProgressJob/);
+    assert.match(reviewPageSrc, /statusLine=\{extraFilesStatusLine\}/);
+    assert.match(reviewPageSrc, /statusLine=\{purgeStatusLine\}/);
     assert.match(reviewPageSrc, /reviewProgressDwellRemainingMs/);
     const purgePanel = reviewPageSrc.slice(
-      reviewPageSrc.indexOf('data-testid="review-purge-duplicates-progress"'),
+      reviewPageSrc.indexOf('testId="review-purge-duplicates-progress"'),
       reviewPageSrc.indexOf('data-testid="review-loading"'),
     );
-    assert.match(purgePanel, /\{purgeStatusLine\}/);
+    assert.match(purgePanel, /statusLine=\{purgeStatusLine\}/);
     assert.doesNotMatch(purgePanel, /\{bulkNote\}/);
   });
 });

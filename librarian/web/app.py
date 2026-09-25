@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import os
-import threading
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -135,6 +134,7 @@ from librarian.organize import (
 )
 from librarian.parts import build_part_set
 from librarian.poller import JobPoller
+from librarian.progress_job import BackgroundJobSlot
 from librarian.purge_duplicates import purge_duplicate_reviews
 from librarian.purge_duplicates_progress import (
     PurgeDuplicatesProgressReporter,
@@ -459,20 +459,13 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
     )
     app.state.data_dir = root
     app.state.db = db
-    enrich_lock = threading.Lock()
-    enrich_thread: Dict[str, Optional[threading.Thread]] = {"thread": None}
-    scan_lock = threading.Lock()
-    scan_thread: Dict[str, Optional[threading.Thread]] = {"thread": None}
-    ingest_lock = threading.Lock()
-    ingest_thread: Dict[str, Optional[threading.Thread]] = {"thread": None}
-    extra_files_reprocess_lock = threading.Lock()
-    extra_files_reprocess_thread: Dict[str, Optional[threading.Thread]] = {"thread": None}
-    purge_duplicates_lock = threading.Lock()
-    purge_duplicates_thread: Dict[str, Optional[threading.Thread]] = {"thread": None}
-    purge_shells_lock = threading.Lock()
-    purge_shells_thread: Dict[str, Optional[threading.Thread]] = {"thread": None}
-    split_mixed_kinds_lock = threading.Lock()
-    split_mixed_kinds_thread: Dict[str, Optional[threading.Thread]] = {"thread": None}
+    enrich_job = BackgroundJobSlot()
+    scan_job = BackgroundJobSlot()
+    ingest_job = BackgroundJobSlot()
+    extra_files_reprocess_job = BackgroundJobSlot()
+    purge_duplicates_job = BackgroundJobSlot()
+    purge_shells_job = BackgroundJobSlot()
+    split_mixed_kinds_job = BackgroundJobSlot()
 
     def settings():
         return load_merged_settings(root)
@@ -1524,43 +1517,32 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         user = request.state.user
         requested_by = str(user.get("id") or user.get("display_name") or "owner")
         run_limit = max(0, int(limit or 0))
-        with extra_files_reprocess_lock:
-            live = extra_files_reprocess_thread.get("thread")
-            alive = live is not None and live.is_alive()
-            if is_extra_files_reprocess_running(root) and alive:
-                payload = read_extra_files_reprocess_progress(root)
-                payload["extra_files_remaining"] = db.count_works(
-                    review_state="needs_review", review_reason="extra_files"
+
+        def run_reprocess() -> None:
+            reporter = ExtraFilesReprocessProgressReporter(root)
+            try:
+                reprocess_extra_files_reviews(
+                    db,
+                    settings(),
+                    requested_by=requested_by,
+                    limit=run_limit,
+                    progress=reporter,
                 )
-                return {**payload, "kicked_off": False}
-            begin_extra_files_reprocess_run(root, total=0, phase="starting")
+            except Exception as error:
+                logger.exception("Clear extra-files slips failed")
+                reporter.fail(str(error) or "Clear extra-files failed")
 
-            def run_reprocess() -> None:
-                reporter = ExtraFilesReprocessProgressReporter(root)
-                try:
-                    reprocess_extra_files_reviews(
-                        db,
-                        settings(),
-                        requested_by=requested_by,
-                        limit=run_limit,
-                        progress=reporter,
-                    )
-                except Exception as error:
-                    logger.exception("Clear extra-files slips failed")
-                    reporter.fail(str(error) or "Clear extra-files failed")
-
-            thread = threading.Thread(
-                target=run_reprocess,
-                name="librarian-extra-files-reprocess",
-                daemon=True,
-            )
-            extra_files_reprocess_thread["thread"] = thread
-            thread.start()
+        kicked = extra_files_reprocess_job.start_if_idle(
+            already_running=is_extra_files_reprocess_running(root),
+            begin=lambda: begin_extra_files_reprocess_run(root, total=0, phase="starting"),
+            target=run_reprocess,
+            name="librarian-extra-files-reprocess",
+        )
         payload = read_extra_files_reprocess_progress(root)
         payload["extra_files_remaining"] = db.count_works(
             review_state="needs_review", review_reason="extra_files"
         )
-        return {**payload, "kicked_off": True}
+        return {**payload, "kicked_off": kicked}
 
     @app.get("/api/review/reprocess-extra-files/status")
     def review_reprocess_extra_files_status(request: Request):
@@ -1572,8 +1554,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
                 review_state="needs_review", review_reason="extra_files"
             )
             return progress
-        live = extra_files_reprocess_thread.get("thread")
-        alive = live is not None and live.is_alive()
+        alive = extra_files_reprocess_job.alive()
         if alive and not is_extra_files_reprocess_stale(progress):
             progress["extra_files_remaining"] = db.count_works(
                 review_state="needs_review", review_reason="extra_files"
@@ -1597,38 +1578,29 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         """Owner bulk: dismiss safely redundant Review slips (poll status)."""
         require_role(request.state.user, "owner", "op")
         run_limit = max(0, int(limit or 0))
-        with purge_duplicates_lock:
-            live = purge_duplicates_thread.get("thread")
-            alive = live is not None and live.is_alive()
-            if is_purge_duplicates_running(root) and alive:
-                payload = read_purge_duplicates_progress(root)
-                payload["needs_review_remaining"] = db.count_works(review_state="needs_review")
-                return {**payload, "kicked_off": False}
-            begin_purge_duplicates_run(root, total=0, phase="starting")
 
-            def run_purge() -> None:
-                reporter = PurgeDuplicatesProgressReporter(root)
-                try:
-                    purge_duplicate_reviews(
-                        db,
-                        settings(),
-                        limit=run_limit,
-                        progress=reporter,
-                    )
-                except Exception as error:
-                    logger.exception("Purge duplicates failed")
-                    reporter.fail(str(error) or "Purge duplicates failed")
+        def run_purge() -> None:
+            reporter = PurgeDuplicatesProgressReporter(root)
+            try:
+                purge_duplicate_reviews(
+                    db,
+                    settings(),
+                    limit=run_limit,
+                    progress=reporter,
+                )
+            except Exception as error:
+                logger.exception("Purge duplicates failed")
+                reporter.fail(str(error) or "Purge duplicates failed")
 
-            thread = threading.Thread(
-                target=run_purge,
-                name="librarian-purge-duplicates",
-                daemon=True,
-            )
-            purge_duplicates_thread["thread"] = thread
-            thread.start()
+        kicked = purge_duplicates_job.start_if_idle(
+            already_running=is_purge_duplicates_running(root),
+            begin=lambda: begin_purge_duplicates_run(root, total=0, phase="starting"),
+            target=run_purge,
+            name="librarian-purge-duplicates",
+        )
         payload = read_purge_duplicates_progress(root)
         payload["needs_review_remaining"] = db.count_works(review_state="needs_review")
-        return {**payload, "kicked_off": True}
+        return {**payload, "kicked_off": kicked}
 
     @app.get("/api/review/purge-duplicates/status")
     def review_purge_duplicates_status(request: Request):
@@ -1638,8 +1610,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         if str(progress.get("status") or "") != "running":
             progress["needs_review_remaining"] = db.count_works(review_state="needs_review")
             return progress
-        live = purge_duplicates_thread.get("thread")
-        alive = live is not None and live.is_alive()
+        alive = purge_duplicates_job.alive()
         if alive and not is_purge_duplicates_stale(progress):
             progress["needs_review_remaining"] = db.count_works(review_state="needs_review")
             return progress
@@ -1659,38 +1630,29 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         """Owner bulk: delete catalog shells with no media on disk (poll status)."""
         require_role(request.state.user, "owner", "op")
         run_limit = max(0, int(limit or 0))
-        with purge_shells_lock:
-            live = purge_shells_thread.get("thread")
-            alive = live is not None and live.is_alive()
-            if is_purge_shells_running(root) and alive:
-                payload = read_purge_shells_progress(root)
-                payload["shells_remaining"] = db.count_shell_works()
-                return {**payload, "kicked_off": False}
-            begin_purge_shells_run(root, total=0, phase="starting")
 
-            def run_purge() -> None:
-                reporter = PurgeShellsProgressReporter(root)
-                try:
-                    purge_shell_works(
-                        db,
-                        settings(),
-                        limit=run_limit,
-                        progress=reporter,
-                    )
-                except Exception as error:
-                    logger.exception("Purge shells failed")
-                    reporter.fail(str(error) or "Purge shells failed")
+        def run_purge() -> None:
+            reporter = PurgeShellsProgressReporter(root)
+            try:
+                purge_shell_works(
+                    db,
+                    settings(),
+                    limit=run_limit,
+                    progress=reporter,
+                )
+            except Exception as error:
+                logger.exception("Purge shells failed")
+                reporter.fail(str(error) or "Purge shells failed")
 
-            thread = threading.Thread(
-                target=run_purge,
-                name="librarian-purge-shells",
-                daemon=True,
-            )
-            purge_shells_thread["thread"] = thread
-            thread.start()
+        kicked = purge_shells_job.start_if_idle(
+            already_running=is_purge_shells_running(root),
+            begin=lambda: begin_purge_shells_run(root, total=0, phase="starting"),
+            target=run_purge,
+            name="librarian-purge-shells",
+        )
         payload = read_purge_shells_progress(root)
         payload["shells_remaining"] = db.count_shell_works()
-        return {**payload, "kicked_off": True}
+        return {**payload, "kicked_off": kicked}
 
     @app.get("/api/maintain/purge-shells/status")
     def maintain_purge_shells_status(request: Request):
@@ -1700,8 +1662,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         if str(progress.get("status") or "") != "running":
             progress["shells_remaining"] = db.count_shell_works()
             return progress
-        live = purge_shells_thread.get("thread")
-        alive = live is not None and live.is_alive()
+        alive = purge_shells_job.alive()
         if alive and not is_purge_shells_stale(progress):
             progress["shells_remaining"] = db.count_shell_works()
             return progress
@@ -1718,38 +1679,29 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         """Owner bulk: split works that blend comic archives with ebook encodings."""
         require_role(request.state.user, "owner", "op")
         run_limit = max(0, int(limit or 0))
-        with split_mixed_kinds_lock:
-            live = split_mixed_kinds_thread.get("thread")
-            alive = live is not None and live.is_alive()
-            if is_split_mixed_kinds_running(root) and alive:
-                payload = read_split_mixed_kinds_progress(root)
-                payload["mixed_remaining"] = count_mixed_kind_works(db)
-                return {**payload, "kicked_off": False}
-            begin_split_mixed_kinds_run(root, total=0, phase="starting")
 
-            def run_split() -> None:
-                reporter = SplitMixedKindsProgressReporter(root)
-                try:
-                    split_mixed_kind_works(
-                        db,
-                        settings(),
-                        limit=run_limit,
-                        progress=reporter,
-                    )
-                except Exception as error:
-                    logger.exception("Split mixed kinds failed")
-                    reporter.fail(str(error) or "Split mixed kinds failed")
+        def run_split() -> None:
+            reporter = SplitMixedKindsProgressReporter(root)
+            try:
+                split_mixed_kind_works(
+                    db,
+                    settings(),
+                    limit=run_limit,
+                    progress=reporter,
+                )
+            except Exception as error:
+                logger.exception("Split mixed kinds failed")
+                reporter.fail(str(error) or "Split mixed kinds failed")
 
-            thread = threading.Thread(
-                target=run_split,
-                name="librarian-split-mixed-kinds",
-                daemon=True,
-            )
-            split_mixed_kinds_thread["thread"] = thread
-            thread.start()
+        kicked = split_mixed_kinds_job.start_if_idle(
+            already_running=is_split_mixed_kinds_running(root),
+            begin=lambda: begin_split_mixed_kinds_run(root, total=0, phase="starting"),
+            target=run_split,
+            name="librarian-split-mixed-kinds",
+        )
         payload = read_split_mixed_kinds_progress(root)
         payload["mixed_remaining"] = count_mixed_kind_works(db)
-        return {**payload, "kicked_off": True}
+        return {**payload, "kicked_off": kicked}
 
     @app.get("/api/maintain/split-mixed-kinds/status")
     def maintain_split_mixed_kinds_status(request: Request):
@@ -1759,8 +1711,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         if str(progress.get("status") or "") != "running":
             progress["mixed_remaining"] = count_mixed_kind_works(db)
             return progress
-        live = split_mixed_kinds_thread.get("thread")
-        alive = live is not None and live.is_alive()
+        alive = split_mixed_kinds_job.alive()
         if alive and not is_split_mixed_kinds_stale(progress):
             progress["mixed_remaining"] = count_mixed_kind_works(db)
             return progress
@@ -2080,27 +2031,23 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
     @app.post("/api/settings/scan")
     def scan_settings(request: Request):
         require_role(request.state.user, "owner")
-        with scan_lock:
-            live = scan_thread.get("thread")
-            alive = live is not None and live.is_alive()
-            if is_scan_running(root) and alive:
-                payload = read_scan_progress(root)
-                return {**payload, "kicked_off": False}
-            begin_scan_run(root, source="manual", total=0, phase="starting")
 
-            def run_scan() -> None:
-                reporter = ScanProgressReporter(root, source="manual")
-                try:
-                    scan_library(db, settings(), progress=reporter)
-                except Exception as error:
-                    logger.exception("Scan shelves failed")
-                    reporter.fail(str(error) or "Scan failed")
+        def run_scan() -> None:
+            reporter = ScanProgressReporter(root, source="manual")
+            try:
+                scan_library(db, settings(), progress=reporter)
+            except Exception as error:
+                logger.exception("Scan shelves failed")
+                reporter.fail(str(error) or "Scan failed")
 
-            thread = threading.Thread(target=run_scan, name="librarian-scan", daemon=True)
-            scan_thread["thread"] = thread
-            thread.start()
+        kicked = scan_job.start_if_idle(
+            already_running=is_scan_running(root),
+            begin=lambda: begin_scan_run(root, source="manual", total=0, phase="starting"),
+            target=run_scan,
+            name="librarian-scan",
+        )
         payload = read_scan_progress(root)
-        return {**payload, "kicked_off": True}
+        return {**payload, "kicked_off": kicked}
 
     @app.get("/api/settings/scan/status")
     def scan_settings_status(request: Request):
@@ -2108,9 +2055,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         progress = read_scan_progress(root)
         if str(progress.get("status") or "") != "running":
             return progress
-        live = scan_thread.get("thread")
-        alive = live is not None and live.is_alive()
-        if alive:
+        if scan_job.alive():
             return progress
         return finish_scan_run(
             root,
@@ -2137,35 +2082,31 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             raise HTTPException(status_code=400, detail=refusal)
         user_id = request.state.user["id"]
         source_path = str(target)
-        with ingest_lock:
-            live = ingest_thread.get("thread")
-            alive = live is not None and live.is_alive()
-            if is_ingest_running(root) and alive:
-                progress = read_ingest_progress(root)
-                return {**progress, "kicked_off": False}
-            # Expand recursively in the worker so the meter denominator is real.
-            begin_ingest_run(root, source_path=source_path, total=0, phase="scanning")
 
-            def run_ingest() -> None:
-                reporter = IngestProgressReporter(root, source_path=source_path)
-                try:
-                    run_ingest_paths(
-                        db,
-                        settings(),
-                        paths=[target],
-                        requested_by=user_id,
-                        source="ingest",
-                        progress=reporter,
-                    )
-                except Exception as error:
-                    logger.exception("Add to the shelves failed")
-                    reporter.fail(str(error) or "Ingest failed")
+        def run_ingest() -> None:
+            reporter = IngestProgressReporter(root, source_path=source_path)
+            try:
+                run_ingest_paths(
+                    db,
+                    settings(),
+                    paths=[target],
+                    requested_by=user_id,
+                    source="ingest",
+                    progress=reporter,
+                )
+            except Exception as error:
+                logger.exception("Add to the shelves failed")
+                reporter.fail(str(error) or "Ingest failed")
 
-            thread = threading.Thread(target=run_ingest, name="librarian-ingest", daemon=True)
-            ingest_thread["thread"] = thread
-            thread.start()
+        # Expand recursively in the worker so the meter denominator is real.
+        kicked = ingest_job.start_if_idle(
+            already_running=is_ingest_running(root),
+            begin=lambda: begin_ingest_run(root, source_path=source_path, total=0, phase="scanning"),
+            target=run_ingest,
+            name="librarian-ingest",
+        )
         progress = read_ingest_progress(root)
-        return {**progress, "kicked_off": True}
+        return {**progress, "kicked_off": kicked}
 
     @app.get("/api/ingest/status")
     def ingest_status(request: Request):
@@ -2173,9 +2114,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         progress = read_ingest_progress(root)
         if str(progress.get("status") or "") != "running":
             return progress
-        live = ingest_thread.get("thread")
-        alive = live is not None and live.is_alive()
-        if alive:
+        if ingest_job.alive():
             return progress
         # Rebuild / process restart left a stale "running" blob with no worker.
         return finish_ingest_run(
@@ -2186,27 +2125,23 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
     @app.post("/api/settings/enrich")
     def enrich_settings(request: Request):
         require_role(request.state.user, "owner")
-        with enrich_lock:
-            live = enrich_thread.get("thread")
-            alive = live is not None and live.is_alive()
-            if is_enrich_running(root) and alive:
-                payload = read_enrich_progress(root)
-                return {**payload, "kicked_off": False}
-            begin_enrich_run(root, source="manual", total=0, phase="starting")
 
-            def run_enrich() -> None:
-                reporter = EnrichProgressReporter(root, source="manual")
-                try:
-                    enrich_library(db, settings(), data_dir=root, progress=reporter)
-                except Exception as error:
-                    logger.exception("Enrich shelves failed")
-                    reporter.fail(friendly_enrich_error(error) or "Enrich failed")
+        def run_enrich() -> None:
+            reporter = EnrichProgressReporter(root, source="manual")
+            try:
+                enrich_library(db, settings(), data_dir=root, progress=reporter)
+            except Exception as error:
+                logger.exception("Enrich shelves failed")
+                reporter.fail(friendly_enrich_error(error) or "Enrich failed")
 
-            thread = threading.Thread(target=run_enrich, name="librarian-enrich", daemon=True)
-            enrich_thread["thread"] = thread
-            thread.start()
+        kicked = enrich_job.start_if_idle(
+            already_running=is_enrich_running(root),
+            begin=lambda: begin_enrich_run(root, source="manual", total=0, phase="starting"),
+            target=run_enrich,
+            name="librarian-enrich",
+        )
         payload = read_enrich_progress(root)
-        return {**payload, "kicked_off": True}
+        return {**payload, "kicked_off": kicked}
 
     @app.get("/api/settings/enrich/status")
     def enrich_settings_status(request: Request):
@@ -2214,9 +2149,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         progress = read_enrich_progress(root)
         if str(progress.get("status") or "") != "running":
             return progress
-        live = enrich_thread.get("thread")
-        alive = live is not None and live.is_alive()
-        if alive:
+        if enrich_job.alive():
             return progress
         # Rebuild / process restart left a stale "running" blob with no worker.
         return finish_enrich_run(
