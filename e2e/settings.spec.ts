@@ -16,4 +16,13 @@ test.describe("Settings nav", () => {
     await expect(page.getByText("Your appearance")).toBeVisible();
     await expect(page.getByRole("slider", { name: "Text size" })).toBeVisible();
   });
+
+  test("Settings Mail section is reachable from nav", async ({ page }) => {
+    await page.goto("/settings");
+    await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible({ timeout: 30_000 });
+    await page.getByRole("button", { name: "Mail" }).click();
+    await expect(page.getByRole("heading", { name: "Outbound email" })).toBeVisible();
+    await expect(page.getByLabel("Provider")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Send test email" })).toBeVisible();
+  });
 });

@@ -114,6 +114,7 @@ export const api = {
   confirmGap: (item) => request("/gaps/confirm", { method: "POST", body: JSON.stringify(item) }),
   settings: () => request("/settings"),
   saveSettings: (body) => request("/settings", { method: "PUT", body: JSON.stringify(body) }),
+  testMail: (body = {}) => request("/settings/mail/test", { method: "POST", body: JSON.stringify(body) }),
   people: () => request("/people"),
   promote: (id) => request(`/music/${id}/promote`, { method: "POST" }),
   pingIndexer: () => request("/indexers/ping", { method: "POST" }),

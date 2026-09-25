@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+## [0.4.21] — 2026-09-25
+
+### Highlights
+
+- **Mail leaves the house when you ask it to.** Owner Settings now has SMTP or Resend install — host, from address, API key — so household notices can travel once notifications land.
+- **Secrets stay put.** Leave password or Resend key blank on save and Librarian keeps what you already stored (Projectionist-style retain-on-empty). Keys live in settings.json / env only.
+- **Send a test before you trust it.** Settings → Mail includes a one-shot test send so you know the transport works before anyone opts in.
+
+### Added
+
+- **`librarian/mail/`.** SMTP + Resend transport (`send_mail`, `mail_configured`) for outbound email.
+- **`settings.mail` nested block.** Provider, from, SMTP/Resend fields; masked on GET; retain-on-empty on PUT.
+- **`POST /api/settings/mail/test`.** Owner test send with explicit `to_email`.
+- **Settings → Mail panel.** Owner UI for transport + template + test send (`#mail`).
+
+### Changed
+
+- Settings nav lists Mail between Language model and Integrations.
+- `settings.example.json` documents the mail block (empty secrets).
+
 ## [0.4.20] — 2026-09-25
 
 ### Highlights

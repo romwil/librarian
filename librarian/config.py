@@ -71,7 +71,30 @@ SECRET_FIELDS = (
     "sonarr_api_key",
 )
 
+MAIL_SECRET_FIELDS = (
+    "smtp_password",
+    "resend_api_key",
+)
+
+# Flat env → nested mail field (seed first boot / Docker; settings.json wins when set).
+MAIL_ENV_TO_FIELD = {
+    "MAIL_ENABLED": "enabled",
+    "MAIL_PROVIDER": "provider",
+    "MAIL_FROM_EMAIL": "from_email",
+    "MAIL_FROM_NAME": "from_name",
+    "MAIL_SMTP_HOST": "smtp_host",
+    "MAIL_SMTP_PORT": "smtp_port",
+    "MAIL_SMTP_USERNAME": "smtp_username",
+    "MAIL_SMTP_PASSWORD": "smtp_password",
+    "MAIL_SMTP_USE_TLS": "smtp_use_tls",
+    "MAIL_RESEND_API_KEY": "resend_api_key",
+    "MAIL_SUBJECT_PREFIX": "subject_prefix",
+    "MAIL_FOOTER_TEXT": "footer_text",
+    "MAIL_LOGO_URL": "logo_url",
+}
+
 AUDIOBOOK_TARGETS = ("plex", "audiobookshelf", "librarian_only")
+MAIL_PROVIDERS = ("off", "smtp", "resend")
 
 
 def _as_bool(value: Any) -> bool:
@@ -108,6 +131,50 @@ def load_dotenv(path: Optional[Path] = None) -> Optional[Path]:
             os.environ[key] = value
         return candidate
     return None
+
+
+@dataclass
+class MailSettings:
+    """Owner-configured outbound mail (SMTP and/or Resend)."""
+
+    enabled: bool = False
+    # off | smtp | resend
+    provider: str = "off"
+    from_email: str = ""
+    from_name: str = "Librarian"
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_use_tls: bool = True
+    resend_api_key: str = ""
+    subject_prefix: str = "[Librarian]"
+    footer_text: str = ""
+    logo_url: str = ""
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any] | None) -> "MailSettings":
+        if not isinstance(data, Mapping):
+            return cls()
+        known = {item.name for item in fields(cls)}
+        filtered: Dict[str, Any] = {}
+        for key in known:
+            if key not in data:
+                continue
+            value = data[key]
+            if key in {"enabled", "smtp_use_tls"}:
+                filtered[key] = _as_bool(value)
+            elif key == "smtp_port":
+                try:
+                    filtered[key] = int(value) if value is not None and value != "" else 587
+                except (TypeError, ValueError):
+                    filtered[key] = 587
+            else:
+                filtered[key] = value
+        mail = cls(**filtered)
+        provider = str(mail.provider or "off").strip().lower()
+        mail.provider = provider if provider in MAIL_PROVIDERS else "off"
+        return mail
 
 
 @dataclass
@@ -152,11 +219,22 @@ class Settings:
     quiet_hours_enabled: bool = False
     quiet_hours_start: str = "22:00"
     quiet_hours_end: str = "07:00"
+    mail: MailSettings = field(default_factory=MailSettings)
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> "Settings":
         known = {item.name for item in fields(cls)}
-        filtered = {key: data[key] for key in known if key in data}
+        filtered: Dict[str, Any] = {}
+        for key in known:
+            if key not in data:
+                continue
+            value = data[key]
+            if key == "mail":
+                filtered[key] = (
+                    value if isinstance(value, MailSettings) else MailSettings.from_mapping(value)
+                )
+            else:
+                filtered[key] = value
         if "watch_enabled" in filtered:
             filtered["watch_enabled"] = _as_bool(filtered["watch_enabled"])
         if "show_extra_categories" in filtered:
@@ -206,6 +284,35 @@ def _json_blocks_env(stored: Mapping[str, Any], field_name: str) -> bool:
     return True
 
 
+def _mail_json_blocks_env(stored_mail: Mapping[str, Any], field_name: str) -> bool:
+    """Env must not clobber a mail field already saved in settings.json."""
+    if field_name not in stored_mail:
+        return False
+    if field_name in MAIL_SECRET_FIELDS:
+        return bool(str(stored_mail.get(field_name) or "").strip())
+    return True
+
+
+def _seed_mail_from_env(merged_mail: Dict[str, Any], stored: Mapping[str, Any]) -> Dict[str, Any]:
+    stored_mail = stored.get("mail") if isinstance(stored.get("mail"), Mapping) else {}
+    for env_name, field_name in MAIL_ENV_TO_FIELD.items():
+        if env_name not in os.environ:
+            continue
+        if _mail_json_blocks_env(stored_mail, field_name):
+            continue
+        raw = os.environ[env_name]
+        if field_name in {"enabled", "smtp_use_tls"}:
+            merged_mail[field_name] = _as_bool(raw)
+        elif field_name == "smtp_port":
+            try:
+                merged_mail[field_name] = int(raw)
+            except (TypeError, ValueError):
+                continue
+        else:
+            merged_mail[field_name] = raw
+    return merged_mail
+
+
 def load_merged_settings(data_dir: Path) -> Settings:
     """Load settings.json, then fill missing fields from the environment."""
     load_dotenv()
@@ -225,6 +332,8 @@ def load_merged_settings(data_dir: Path) -> Settings:
         merged["music_write_tags"] = _as_bool(merged["music_write_tags"])
     if "quiet_hours_enabled" in merged:
         merged["quiet_hours_enabled"] = _as_bool(merged["quiet_hours_enabled"])
+    mail_blob = merged.get("mail") if isinstance(merged.get("mail"), dict) else asdict(MailSettings())
+    merged["mail"] = _seed_mail_from_env(dict(mail_blob), stored)
     from librarian.llm_providers import normalize_provider, seed_llm_profiles_from_env
 
     if "llm_provider" in merged:
@@ -261,6 +370,17 @@ def merge_secret_fields(incoming: Mapping[str, Any], existing: Settings) -> Dict
         if key not in merged:
             continue
         if key in SECRET_FIELDS and not str(value or "").strip():
+            continue
+        if key == "mail":
+            mail_merged = dict(merged.get("mail") or asdict(MailSettings()))
+            incoming_mail = value if isinstance(value, Mapping) else {}
+            for mail_key, mail_value in incoming_mail.items():
+                if mail_key not in mail_merged:
+                    continue
+                if mail_key in MAIL_SECRET_FIELDS and not str(mail_value or "").strip():
+                    continue
+                mail_merged[mail_key] = mail_value
+            merged["mail"] = mail_merged
             continue
         if key == "extra_indexers":
             from librarian.indexers.hosts import merge_extra_indexers
@@ -317,6 +437,17 @@ def mask_settings(settings: Settings) -> Dict[str, Any]:
     for name in SECRET_FIELDS:
         payload[f"{name}_set"] = bool(str(payload.get(name) or "").strip())
         payload[name] = ""
+    mail_payload = dict(payload.get("mail") or asdict(MailSettings()))
+    for name in MAIL_SECRET_FIELDS:
+        mail_payload[f"{name}_set"] = bool(str(mail_payload.get(name) or "").strip())
+        mail_payload[name] = ""
+    provider = str(mail_payload.get("provider") or "off").strip().lower()
+    mail_payload["configured"] = bool(
+        mail_payload.get("enabled")
+        and provider in {"smtp", "resend"}
+        and str(mail_payload.get("from_email") or "").strip()
+    )
+    payload["mail"] = mail_payload
     payload["extra_indexers"] = mask_extra_indexers(settings.extra_indexers)
     sources = getattr(settings, "_llm_key_sources", None) or {}
     profiles = mask_profiles(settings.llm_profiles or {})

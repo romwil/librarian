@@ -28,5 +28,20 @@
   "sonarr_url": "",
   "sonarr_api_key": "",
   "sab_movie_category": "movies",
-  "sab_tv_category": "tv"
+  "sab_tv_category": "tv",
+  "mail": {
+    "enabled": false,
+    "provider": "off",
+    "from_email": "",
+    "from_name": "Librarian",
+    "smtp_host": "",
+    "smtp_port": 587,
+    "smtp_username": "",
+    "smtp_password": "",
+    "smtp_use_tls": true,
+    "resend_api_key": "",
+    "subject_prefix": "[Librarian]",
+    "footer_text": "",
+    "logo_url": ""
+  }
 }

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class LoginPayload(BaseModel):
@@ -76,6 +76,26 @@ class RssFeedPayload(BaseModel):
     enabled: Optional[bool] = None
 
 
+class MailPayload(BaseModel):
+    enabled: Optional[bool] = None
+    provider: Optional[str] = None
+    from_email: Optional[str] = None
+    from_name: Optional[str] = None
+    smtp_host: Optional[str] = None
+    smtp_port: Optional[int] = None
+    smtp_username: Optional[str] = None
+    smtp_password: Optional[str] = None
+    smtp_use_tls: Optional[bool] = None
+    resend_api_key: Optional[str] = None
+    subject_prefix: Optional[str] = None
+    footer_text: Optional[str] = None
+    logo_url: Optional[str] = None
+
+
+class MailTestPayload(BaseModel):
+    to_email: Optional[str] = Field(default=None, max_length=320)
+
+
 class SettingsPayload(BaseModel):
     sabnzbd_url: Optional[str] = None
     sabnzbd_api_key: Optional[str] = None
@@ -116,6 +136,7 @@ class SettingsPayload(BaseModel):
     quiet_hours_enabled: Optional[bool] = None
     quiet_hours_start: Optional[str] = None
     quiet_hours_end: Optional[str] = None
+    mail: Optional[MailPayload] = None
 
 
 class IngestPayload(BaseModel):

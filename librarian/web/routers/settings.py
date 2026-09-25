@@ -50,6 +50,11 @@ def register_settings_routes(app: FastAPI, deps: WebDeps) -> None:
                 row if isinstance(row, dict) else dict(row)
                 for row in incoming["extra_indexers"]
             ]
+        if "mail" in incoming and isinstance(incoming["mail"], dict):
+            # Drop unset nested keys so retain-on-empty only sees explicit blanks.
+            incoming["mail"] = {
+                key: value for key, value in incoming["mail"].items() if value is not None
+            }
         merged = merge_secret_fields(incoming, settings())
         from librarian.config import Settings
 
@@ -60,6 +65,43 @@ def register_settings_routes(app: FastAPI, deps: WebDeps) -> None:
         save_settings(root, saved)
         sync_nzbfinder(db, saved)
         return {"settings": mask_settings(saved), "abs_match": abs_match_counts(db)}
+
+    @app.post("/api/settings/mail/test")
+    def test_mail_send(payload: MailTestPayload, request: Request):
+        """Send a test email using the configured SMTP or Resend transport."""
+        require_role(request.state.user, "owner")
+        from librarian.mail import MailSendError, mail_configured, send_mail
+
+        cfg = settings()
+        if not mail_configured(cfg):
+            raise HTTPException(
+                status_code=400,
+                detail="Configure and enable SMTP or Resend under Settings → Mail first.",
+            )
+        to_email = str(payload.to_email or "").strip()
+        if not to_email or "@" not in to_email:
+            raise HTTPException(
+                status_code=400,
+                detail="Provide a to_email address for the test send.",
+            )
+        try:
+            result = send_mail(
+                cfg,
+                to_email=to_email,
+                subject="Librarian mail test",
+                body_text=(
+                    "This is a test message from Librarian.\n\n"
+                    "If you received it, your mail settings are working."
+                ),
+            )
+        except MailSendError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        return {
+            "ok": True,
+            "provider": result.provider,
+            "message_id": result.message_id,
+            "to_email": to_email,
+        }
 
     @app.get("/api/settings/quiet-hours")
     def get_quiet_hours(request: Request):

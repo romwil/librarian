@@ -9,6 +9,7 @@ import { FIELD_HELP, WATCH_FOLDER_LEDE, humanError, setupComplete, setupStepComp
 import { SETTINGS_NAV, settingsNavFromHash, settingsNavHref } from "../lib/settingsNav.js";
 import LlmSettingsPanel from "../components/LlmSettingsPanel.jsx";
 import AppearancePrefsPanel from "../components/AppearancePrefsPanel.jsx";
+import MailSettingsPanel from "../components/MailSettingsPanel.jsx";
 
 const MORE_FIELDS = [
   ["audiobook_target", "Audiobook target"],
@@ -387,6 +388,10 @@ export default function SettingsPage() {
                 <h2>OpenAI, Anthropic, or Gemini</h2>
                 <LlmSettingsPanel settings={settings} onChange={setSettings} />
               </section>
+            ) : null}
+
+            {activeSection === "mail" ? (
+              <MailSettingsPanel settings={settings} onChange={setSettings} />
             ) : null}
 
             {activeSection === "integrations" ? (
