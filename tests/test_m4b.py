@@ -7,8 +7,8 @@ from pathlib import Path
 
 from librarian.m4b import (
     build_m4b,
-    chapters_from_boundaries,
     chapters_from_audnexus,
+    chapters_from_boundaries,
     needs_m4b_remux,
     validate_m4b,
 )

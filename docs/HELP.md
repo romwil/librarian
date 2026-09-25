@@ -103,7 +103,7 @@ Owners and ops keep the lamp healthy from **Maintain** (`/maintain`) — not Set
 
 Long jobs share one **status dock** on Maintain (scan, enrich, shelving, Clear, Purge). Progress survives refresh under `/config`.
 
-If Review **Apply** hits a PUID-locked author folder (often after Calibre migrate as uid 1000), Maintain repeats the host tip: `chown -R 99:100` on `library/books` to match the container PUID.
+If Review **Apply** hits a PUID-locked author folder (often after Calibre migrate as uid 1000), Maintain **Shelf health** shows a permission report and the host tip: `chown -R 99:100` on `library/books` to match the container PUID. Scan/enrich progress stays in the Maintain telemetry dock.
 
 ## Indexers
 

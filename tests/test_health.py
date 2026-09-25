@@ -19,7 +19,7 @@ def test_health_status_ok(tmp_path):
 def test_health_build_from_file(tmp_path, monkeypatch):
     stamp = tmp_path / ".build-info"
     stamp.write_text("0.4.4 built test rev abc\n", encoding="utf-8")
-    monkeypatch.setattr("librarian.web.app._REPO_ROOT", tmp_path)
+    monkeypatch.setattr("librarian.web.build_info._REPO_ROOT", tmp_path)
     client = TestClient(create_app(tmp_path))
     body = client.get("/api/health").json()
     assert body["build"] == "0.4.4 built test rev abc"

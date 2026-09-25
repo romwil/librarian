@@ -2875,6 +2875,24 @@ button.cover {
   gap: var(--space-3);
   margin-top: var(--space-2);
 }
+.shelf-health-report {
+  display: grid;
+  gap: var(--space-2);
+}
+.shelf-health-roots {
+  margin: 0;
+  padding-left: 1.25rem;
+  display: grid;
+  gap: 0.25rem;
+}
+.shelf-health-roots li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+}
+.shelf-health-chown {
+  margin: 0;
+}
 
 /* Hall deferred shelves */
 .hall-shelves-loading {

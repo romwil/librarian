@@ -8,9 +8,9 @@ Living product/build checklist. Flip boxes when a slice ships. Append the story 
 | --- | --- |
 | **Date** | 2026-09-25 |
 | **Branch** | `main` |
-| **Last SHA** | `eef4b57` (0.4.18 unified progress) → sprint **1.3** ships **0.4.19** on this commit |
+| **Last SHA** | sprint **2.1** ships **0.4.20** on this commit |
 | **Green** | pytest coverage floor **70%**; frontend `npm test`; Playwright e2e on **8794**. LAN truth `http://10.10.1.202:8793`. |
-| **Next** | Sprint **2.1** `web-routers-shelf-health` → **0.4.20**. Automat path remains host `./docker-run.sh` (Hub deferred). |
+| **Next** | Sprint **3.1** `mail-transport` → **0.4.21**. Automat path remains host `./docker-run.sh` (Hub deferred). |
 
 ## Living library major build
 
@@ -20,8 +20,9 @@ Protocol: [ops/MAJOR_BUILDS.md](ops/MAJOR_BUILDS.md). Phase 1 engine-room sprint
 | --- | --- | --- | --- |
 | 1.1 | `review-get-readonly` | 0.4.17 | shipped |
 | 1.2 | `unified-progress` | 0.4.18 | shipped |
-| 1.3 | `dead-weight-docs-truth` | 0.4.19 | this release |
-| 2.1 | `web-routers-shelf-health` | 0.4.20 | next |
+| 1.3 | `dead-weight-docs-truth` | 0.4.19 | shipped |
+| 2.1 | `web-routers-shelf-health` | 0.4.20 | this release |
+| 3.1 | `mail-transport` | 0.4.21 | next |
 
 ## North star
 

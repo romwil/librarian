@@ -40,10 +40,10 @@ def test_search_and_discover_never_call_sab(client, monkeypatch):
     monkeypatch.setattr("librarian.sabnzbd.SABClient.addurl", forbid_addurl)
     monkeypatch.setattr("librarian.sabnzbd.SABClient.addfile", forbid_addfile)
     monkeypatch.setattr(
-        "librarian.web.app.search_and_rank",
+        "librarian.web.routers.catalog.search_and_rank",
         lambda *args, **kwargs: {"results": [], "error": None},
     )
-    monkeypatch.setattr("librarian.web.app.discover_beyond", lambda *args, **kwargs: ([], [], None))
+    monkeypatch.setattr("librarian.web.routers.catalog.discover_beyond", lambda *args, **kwargs: ([], [], None))
 
     _login(client)
     search = client.get("/api/search", params={"q": "NFL", "beyond": 1, "kind": "book"})

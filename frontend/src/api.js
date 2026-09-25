@@ -107,6 +107,7 @@ export const api = {
       method: "POST",
     }),
   maintainSplitMixedKindsStatus: () => request("/maintain/split-mixed-kinds/status"),
+  maintainShelfHealth: () => request("/maintain/shelf-health"),
   queue: () => request("/queue"),
   confirmJob: (id) => request(`/queue/${id}/confirm`, { method: "POST" }),
   gaps: () => request("/gaps"),

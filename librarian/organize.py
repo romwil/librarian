@@ -27,6 +27,7 @@ from librarian.identify import (
     dest_layout,
     diagnose_review_folder,
     identify_completed,
+    identify_evidence,
     inspect_complete_folder,
     list_payload_files,
     looks_like_dump_title,
@@ -34,6 +35,7 @@ from librarian.identify import (
     resolve_storage_path,
     usable_folder,
 )
+from librarian.ingest import enqueue_ingest, list_ingest_targets
 from librarian.kinds import KIND_AUDIOBOOK, KIND_BOOK, KIND_COMIC, KIND_MAGAZINE, KIND_MUSIC
 from librarian.llm import (
     LLM_FAIL_COPY,
@@ -314,9 +316,7 @@ def suggest_review_identity(
         source="review",
     )
     evidence_folder = resolved if usable_folder(resolved) else Path(str(work.get("title") or "unknown"))
-    from librarian.identify import _identify_evidence
-
-    evidence = _identify_evidence(evidence_folder, payload, files, identity)
+    evidence = identify_evidence(evidence_folder, payload, files, identity)
     try:
         parsed = llm.identify(evidence)
     except LLMError:
@@ -1065,8 +1065,6 @@ def expand_extra_files_folder(
     Used by Clear extra-files, auto-organize of collection folders, and Apply peel
     leftovers. Returns None when the folder is a single volume (caller may Apply).
     """
-    from librarian.ingest import enqueue_ingest, list_ingest_targets
-
     targets = list_ingest_targets(folder)
     split_targets = [path for path in targets if not _same_path(path, folder)]
     if not (len(targets) > 1 or split_targets):

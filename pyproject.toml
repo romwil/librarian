@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "librarian"
-version = "0.4.19"
+version = "0.4.20"
 description = "Household reading-room library for books, magazines, comics, audiobooks, and music on Automat."
 readme = "README.md"
 license = { text = "MIT" }
@@ -80,6 +80,9 @@ ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["F401", "F811", "F841", "E402"]
+# Route registrars star-import shared symbols (behavior-identical extract from create_app).
+"librarian/web/routers/**" = ["F401", "F403", "F405", "F841"]
+"librarian/web/route_imports.py" = ["F401"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["librarian"]

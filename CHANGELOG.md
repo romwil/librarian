@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+## [0.4.20] — 2026-09-25
+
+### Highlights
+
+- **Web API lives in routers.** `create_app` stays the composition root; auth, catalog, review, ingest, maintain, and settings each own their routes — easier to grow without a 2k-line `app.py`.
+- **Maintain Shelf health.** Scan/enrich sit under a named Shelf health section with a live permission report and copy-paste `chown` tip; the telemetry dock still covers grooming jobs.
+- **Identify ↔ organize ↔ ingest boundaries.** `identify_evidence` is public; ingest no longer imports organize at module load — no more lazy organize↔ingest cycle.
+
+### Added
+
+- **`GET /api/maintain/shelf-health`.** Owner permission report for configured library roots plus PUID ownership guidance.
+- **`librarian/web/routers/`.** Domain route registrars wired from `create_app`.
+- **`librarian/shelf_health.py`.** Writability probe + chown tip shared by Maintain.
+
+### Changed
+
+- **`librarian/web/app.py`.** Slim composition root (middleware, deps, SPA) — handlers moved to routers.
+- **ingest → organize.** `organize_identified` is imported inside `progress_ingest_job` so organize can depend on ingest expand helpers without a cycle.
+- HELP / ROADMAP note Shelf health; Hub publish remains deferred (host `./docker-run.sh`).
+
 ## [0.4.19] — 2026-09-25
 
 ### Highlights

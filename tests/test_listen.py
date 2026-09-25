@@ -115,7 +115,7 @@ def test_work_detail_listen_payload_and_chapters_api(tmp_path, monkeypatch):
             {"index": 1, "title": "Chapter One", "start": 60.0},
         ]
 
-    monkeypatch.setattr("librarian.web.app.extract_chapters", fake_chapters)
+    monkeypatch.setattr("librarian.web.routers.catalog.extract_chapters", fake_chapters)
     work = db.upsert_work(
         {
             "kind": "audiobook",

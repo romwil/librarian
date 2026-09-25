@@ -27,7 +27,6 @@ from librarian.identify import (
     inspect_complete_folder,
     list_payload_files,
 )
-from librarian.organize import organize_identified
 
 logger = logging.getLogger(__name__)
 
@@ -713,6 +712,7 @@ def progress_ingest_job(db: Database, settings: Settings, job_id: str) -> Dict[s
     # Archives-only dumps: organize runs par2+unar and parks Review when stuck.
     # Only a truly missing path is a hard fail (handled above when folder.exists is false).
     try:
+        from librarian.organize import organize_identified
         organized = organize_identified(db, settings, folder=folder, move_source=True)
     except OSError as error:
         # Permission / IO errors must leave Review — never stay identifying or the

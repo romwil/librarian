@@ -1170,7 +1170,7 @@ def identify_completed(
     needs_author = identity.kind in (KIND_BOOK, KIND_AUDIOBOOK) and not identity.author
     needs_llm = identity.confidence != "high" or looks_like_dump_title(identity.title) or needs_author
     if needs_llm and llm_client is not None:
-        evidence = _identify_evidence(folder, indexer_item, files, identity)
+        evidence = identify_evidence(folder, indexer_item, files, identity)
         try:
             from librarian.llm import merge_llm_identity
 
@@ -1824,7 +1824,7 @@ def _apply_post_llm_review(identity: Identity, folder: Path) -> List[Path]:
     return files
 
 
-def _identify_evidence(
+def identify_evidence(
     folder: Path,
     indexer_item: Optional[Dict[str, Any]],
     files: Sequence[Path],

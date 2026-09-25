@@ -569,7 +569,7 @@ def test_progress_ingest_job_parks_review_on_permission_error(tmp_path, monkeypa
     def boom(*_args, **_kwargs):
         raise PermissionError(13, "Permission denied", str(settings.books_root))
 
-    monkeypatch.setattr("librarian.ingest.organize_identified", boom)
+    monkeypatch.setattr("librarian.organize.organize_identified", boom)
     updated = progress_ingest_job(db, settings, job["id"])
     assert updated["status"] == "review"
     assert "Could not shelve" in (updated.get("error") or "")

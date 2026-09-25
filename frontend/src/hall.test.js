@@ -28,6 +28,8 @@ test("Maintain is owner-only and houses grooming entry points", () => {
   assert.match(maintainSrc, /maintain-scan/);
   assert.match(maintainSrc, /maintain-clear-extra-files/);
   assert.match(maintainSrc, /MaintainStatusDock/);
+  assert.match(maintainSrc, /maintain-shelf-health/);
+  assert.match(maintainSrc, /Shelf health/);
 });
 
 test("main routes include /maintain", () => {

@@ -9,7 +9,8 @@ from unittest import mock
 from fastapi.testclient import TestClient
 
 from librarian._version import __version__
-from librarian.web.app import FRONTEND_DIST, create_app
+from librarian.web.app import create_app
+from librarian.web.build_info import FRONTEND_DIST
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _PUBLIC_NOTES = _REPO_ROOT / "frontend" / "public" / "release-notes.json"
@@ -52,7 +53,7 @@ def test_release_notes_top_version_matches_package():
 def test_release_notes_json_404_when_missing(tmp_path):
     empty_dist = tmp_path / "empty-frontend" / "dist"
     empty_dist.mkdir(parents=True)
-    with mock.patch("librarian.web.app.FRONTEND_DIST", empty_dist):
+    with mock.patch("librarian.web.build_info.FRONTEND_DIST", empty_dist):
         client = TestClient(create_app(tmp_path / "data"))
         response = client.get("/release-notes.json")
         assert response.status_code == 404
@@ -80,7 +81,7 @@ def test_release_notes_prefers_newer_of_dist_and_public(tmp_path):
     os.utime(dist_file, (now - 100, now - 100))
     os.utime(public_file, (now, now))
 
-    with mock.patch("librarian.web.app.FRONTEND_DIST", dist):
+    with mock.patch("librarian.web.build_info.FRONTEND_DIST", dist):
         client = TestClient(create_app(tmp_path / "data"))
         response = client.get("/release-notes.json")
         assert response.status_code == 200

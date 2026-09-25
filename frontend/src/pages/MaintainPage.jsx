@@ -72,6 +72,8 @@ export default function MaintainPage() {
   const enrichPollRef = useRef(0);
   const [suggestNote, setSuggestNote] = useState("");
   const [suggesting, setSuggesting] = useState(false);
+  const [shelfHealth, setShelfHealth] = useState(null);
+  const [shelfHealthError, setShelfHealthError] = useState("");
   const [goodreads, setGoodreads] = useState("");
   const [importing, setImporting] = useState(false);
   const [csvFile, setCsvFile] = useState(null);
@@ -165,6 +167,17 @@ export default function MaintainPage() {
         }
       })
       .catch(() => {});
+    api
+      .maintainShelfHealth()
+      .then((data) => {
+        if (cancelled) return;
+        setShelfHealth(data);
+        setShelfHealthError("");
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setShelfHealthError(humanError(err));
+      });
     return () => {
       cancelled = true;
     };
@@ -565,16 +578,48 @@ export default function MaintainPage() {
         ) : null}
       </section>
 
-      <section className="maintain-section" data-testid="maintain-grooming">
+      <section className="maintain-section" data-testid="maintain-shelf-health">
         <p className="kicker">Shelves</p>
-        <h2>Scan and enrich</h2>
+        <h2>Shelf health</h2>
         <p className="lede">
-          Rescan library roots and fill thin metadata. Paths and tokens live in Settings. If Review Apply says a
-          folder is locked for the lamp, author trees under the books root were migrated as the wrong PUID (often
-          uid 1000 with mode 755) — on the host,{" "}
-          <code>chown -R 99:100 /mnt/user/data/media/library/books</code> (match the container PUID/PGID) then Apply
-          again. Do not chmod 777.
+          Rescan library roots and fill thin metadata. Job progress stays in the telemetry dock above. Paths and
+          tokens live in Settings.
         </p>
+        {shelfHealth ? (
+          <div className="shelf-health-report" data-testid="maintain-shelf-health-report">
+            <p className="muted">
+              {shelfHealth.ok
+                ? "Library roots look writable for the lamp."
+                : `${shelfHealth.locked_count} root${shelfHealth.locked_count === 1 ? "" : "s"} locked for the lamp.`}
+            </p>
+            <ul className="shelf-health-roots">
+              {(shelfHealth.roots || []).map((root) => (
+                <li key={root.field} data-testid={`shelf-health-root-${root.field}`}>
+                  <span>{root.label}</span>
+                  <span className="muted">
+                    {root.writable ? "writable" : root.detail || "not writable"}
+                    {root.path ? ` · ${root.path}` : ""}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <p className="lede shelf-health-chown" data-testid="maintain-shelf-health-chown">
+              {shelfHealth.chown_tip || (
+                <>
+                  If Review Apply says a folder is locked for the lamp, on the host run{" "}
+                  <code>chown -R 99:100 /mnt/user/data/media/library/books</code> (match the container PUID/PGID),
+                  then Apply again. Do not chmod 777.
+                </>
+              )}
+            </p>
+            {shelfHealth.chown_command ? (
+              <p className="muted">
+                Copy-paste: <code data-testid="maintain-shelf-health-chown-cmd">{shelfHealth.chown_command}</code>
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+        {shelfHealthError ? <p className="alert">{shelfHealthError}</p> : null}
         <div className="cta-row">
           <button
             type="button"

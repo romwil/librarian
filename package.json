@@ -1,7 +1,7 @@
 {
   "name": "librarian",
   "private": true,
-  "version": "0.4.19",
+  "version": "0.4.20",
   "scripts": {
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui"

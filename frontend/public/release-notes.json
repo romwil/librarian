@@ -1,37 +1,65 @@
 {
-  "generated_at": "2026-09-25",
+  "generated_at": "2026-09-25T05:08:12Z",
   "releases": [
+    {
+      "version": "0.4.20",
+      "date": "2026-09-25",
+      "summary": "",
+      "highlights": [
+        "**Web API lives in routers.** `create_app` stays the composition root; auth, catalog, review, ingest, maintain, and settings each own their routes — easier to grow without a 2k-line `app.py`.",
+        "**Maintain Shelf health.** Scan/enrich sit under a named Shelf health section with a live permission report and copy-paste `chown` tip; the telemetry dock still covers grooming jobs.",
+        "**Identify ↔ organize ↔ ingest boundaries.** `identify_evidence` is public; ingest no longer imports organize at module load — no more lazy organize↔ingest cycle."
+      ],
+      "sections": [
+        {
+          "title": "Added",
+          "bullets": [
+            "**`GET /api/maintain/shelf-health`.** Owner permission report for configured library roots plus PUID ownership guidance.",
+            "**`librarian/web/routers/`.** Domain route registrars wired from `create_app`.",
+            "**`librarian/shelf_health.py`.** Writability probe + chown tip shared by Maintain."
+          ]
+        },
+        {
+          "title": "Changed",
+          "bullets": [
+            "**`librarian/web/app.py`.** Slim composition root (middleware, deps, SPA) — handlers moved to routers.",
+            "**ingest → organize.** `organize_identified` is imported inside `progress_ingest_job` so organize can depend on ingest expand helpers without a cycle.",
+            "HELP / ROADMAP note Shelf health; Hub publish remains deferred (host `./docker-run.sh`)."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.4.19",
       "date": "2026-09-25",
-      "summary": "Dead-weight cleanup, unified Review reasons, and Automat docs truth.",
+      "summary": "",
       "highlights": [
-        "**Dead chrome leaves the room.** Soft-deprecated NYT Books Settings copy, CelebrationBanner, unused wizard/celebration CSS, and Hall compact Add-to-library are gone \u2014 Bestsellers stay on BYO LLM.",
+        "**Dead chrome leaves the room.** Soft-deprecated NYT Books Settings copy, CelebrationBanner, unused wizard/celebration CSS, and Hall compact Add-to-library are gone — Bestsellers stay on BYO LLM.",
         "**One vocabulary for Review reasons.** Canonical `review_reasons` constants drive SQLite filters and diagnosis; `missing_folder` stays distinct from `no_payload`; Clear extra-files queries by reason.",
-        "**Docs match Automat truth.** HELP covers Maintain, Indexers, and collection Clear; host `./docker-run.sh` is the ship path \u2014 not a missing Hub `docker-release.sh`.",
+        "**Docs match Automat truth.** HELP covers Maintain, Indexers, and collection Clear; AGENTS / AUTOMAT / ROADMAP say host `./docker-run.sh` is the ship path — not a missing Hub `docker-release.sh`.",
         "**Maintain/Review kickoff is race-safe.** Concurrent POSTs can no longer double-begin the same background job."
       ],
       "sections": [
         {
-          "heading": "Fixed",
-          "items": [
-            "`BackgroundJobSlot.start_if_idle` evaluates progress under the slot lock with thread creation."
+          "title": "Fixed",
+          "bullets": [
+            "**`BackgroundJobSlot.start_if_idle`.** Progress “already running” is evaluated under the slot lock with thread creation (callable `is_running`), and a live worker alone blocks a second begin."
           ]
         },
         {
-          "heading": "Removed",
-          "items": [
-            "CelebrationBanner + FE celebrationSeen client; SetupWizard default export; AddToLibrary compact / hall-ingest; wizard / enrich-progress / celebration CSS dead weight.",
-            "Settings NYT Books API key field; FE nytList / nytListNames clients (LLM lists remain)."
+          "title": "Removed",
+          "bullets": [
+            "CelebrationBanner + FE `celebrationSeen` client; SetupWizard default export; AddToLibrary `compact` / `hall-ingest` path; wizard / enrich-progress / celebration CSS dead weight.",
+            "Settings NYT Books API key field and FIELD_HELP; FE `nytList` / `nytListNames` clients (LLM lists remain)."
           ]
         },
         {
-          "heading": "Changed",
-          "items": [
-            "`librarian/review_reasons.py` as the single source for Review reason codes.",
-            "`Database.list_works(..., review_reason=)` so Clear extra-files filters in SQL.",
-            "Identify keeps `missing_folder` distinct from `no_payload`.",
-            "HELP / ROADMAP / AGENTS / AUTOMAT host-build docs truth."
+          "title": "Changed",
+          "bullets": [
+            "**`librarian/review_reasons.py`.** Single source for Review reason codes; identify / audnexus / delight / app import from there.",
+            "**`Database.list_works(..., review_reason=)`.** Clear extra-files and counts filter in SQL instead of page-and-filter.",
+            "**Identify missing folders.** Gone paths keep `missing_folder` instead of collapsing to `no_payload`.",
+            "HELP / ROADMAP / AGENTS / AUTOMAT / DOCKER / SECURITY Automat + Maintain / Indexers / Clear truth."
           ]
         }
       ]
@@ -41,7 +69,7 @@
       "date": "2026-09-25",
       "summary": "",
       "highlights": [
-        "**One progress kit for every long job.** Scan, enrich, shelving, Clear, and Purge share `progress_job` plumbing \u2014 less drift when a new Maintain/Review job lands.",
+        "**One progress kit for every long job.** Scan, enrich, shelving, Clear, and Purge share `progress_job` plumbing — less drift when a new Maintain/Review job lands.",
         "**Maintain shows status in one dock.** Telemetry lives in MaintainStatusDock; the embedded Add-to-library panel no longer duplicates shelving meters.",
         "**Review Clear/Purge reuse the same progress UI.** Shared `JobProgress` + `useProgressJob` keep Clear and Purge meters consistent with the Maintain dock."
       ],
@@ -61,7 +89,7 @@
       "summary": "",
       "highlights": [
         "**Review list stays read-only.** Opening bagging no longer rewrites slips in SQLite; soft-repair for stuck archives runs in the background poller instead, so list polls cannot race Apply.",
-        "**Enrich status tells the truth after restart.** A dead enrich worker no longer leaves Settings stuck on \u201crunning\u201d \u2014 same clear-on-stale pattern as ingest and scan."
+        "**Enrich status tells the truth after restart.** A dead enrich worker no longer leaves Settings stuck on “running” — same clear-on-stale pattern as ingest and scan."
       ],
       "sections": [
         {
@@ -78,7 +106,7 @@
       "date": "2026-09-25",
       "summary": "",
       "highlights": [
-        "**Major builds have a house protocol.** Phases and sprints ship as GitHub feature releases with parallel agent lanes, coverage that stays \u226570%, and Playwright plus interactive browser UX gates \u2014 so living-library work does not invent process mid-flight.",
+        "**Major builds have a house protocol.** Phases and sprints ship as GitHub feature releases with parallel agent lanes, coverage that stays ≥70%, and Playwright plus interactive browser UX gates — so living-library work does not invent process mid-flight.",
         "**Mocked Playwright smoke is runnable.** Hall, Review bagging empty copy, Settings nav, and health/shell land on a dedicated e2e port (8794) without live NZBFinder or SABnzbd."
       ],
       "sections": [
@@ -120,7 +148,7 @@
         {
           "title": "Fixed",
           "bullets": [
-            "**Review progress bleed.** Clear extra-files and Purge duplicates each bind their own status summary \u2014 a running Clear job no longer overwrites the Purge panel\u2019s bottom line. Completed meters dismiss after a short dwell instead of sticking around and mirroring another job."
+            "**Review progress bleed.** Clear extra-files and Purge duplicates each bind their own status summary — a running Clear job no longer overwrites the Purge panel’s bottom line. Completed meters dismiss after a short dwell instead of sticking around and mirroring another job."
           ]
         }
       ]
@@ -134,7 +162,7 @@
         {
           "title": "Fixed",
           "bullets": [
-            "**Collection dumps vs \u201cextra files.\u201d** Flat NYT / Usenet Fiction folders (many distinct ebook stems) auto-expand into per-title ingest instead of parking one confusing `extra_files` Review slip. Apply peel shelves the confirmed title and expands the rest the same way \u2014 no leftover slip that forces Apply 29 times. Clear extra-files still repairs residual collection slips in one click.",
+            "**Collection dumps vs “extra files.”** Flat NYT / Usenet Fiction folders (many distinct ebook stems) auto-expand into per-title ingest instead of parking one confusing `extra_files` Review slip. Apply peel shelves the confirmed title and expands the rest the same way — no leftover slip that forces Apply 29 times. Clear extra-files still repairs residual collection slips in one click.",
             "**Review copy for collections.** Household language distinguishes multi-title collection dumps from true same-title ambiguity; Clear extra-files is the call to action."
           ]
         }
@@ -150,8 +178,8 @@
           "title": "Fixed",
           "bullets": [
             "**Review Apply on multi-title dumps.** Flat NYT / Usenet Fiction folders (many `Title - Author.epub` siblings) no longer 500 on Apply. Apply peels the confirmed title onto the shelf and leaves a leftover `extra_files` slip for the rest; Clear-extra / ingest expand one target per stem. Shelf `PermissionError` (PUID-locked author folders) returns readable 400 guidance instead of a bare Internal Server Error.",
-            "**Alert contrast.** `.alert` uses theme text on a soft danger wash (readable in lights-up and lights-down) \u2014 never pale-on-pink.",
-            "**Empty-body 500 copy.** `humanError` no longer masks a bare \u201cInternal Server Error\u201d behind the generic stacks line; filing slips get explicit log guidance, and Apply permission detail stays visible."
+            "**Alert contrast.** `.alert` uses theme text on a soft danger wash (readable in lights-up and lights-down) — never pale-on-pink.",
+            "**Empty-body 500 copy.** `humanError` no longer masks a bare “Internal Server Error” behind the generic stacks line; filing slips get explicit log guidance, and Apply permission detail stays visible."
           ]
         }
       ]
@@ -172,7 +200,7 @@
         {
           "title": "Added",
           "bullets": [
-            "**Maintain Split comic/book blends.** Owner bulk repair finds shelved works whose file rows mix comic archives with ebook encodings, moves the ebooks under `books_root`, and leaves the comic on its own work \u2014 media is never deleted."
+            "**Maintain Split comic/book blends.** Owner bulk repair finds shelved works whose file rows mix comic archives with ebook encodings, moves the ebooks under `books_root`, and leaves the comic on its own work — media is never deleted."
           ]
         }
       ]
@@ -186,7 +214,7 @@
         {
           "title": "Fixed",
           "bullets": [
-            "**Shelf shells off browse.** Hall, Stacks, kind counts, and local search only show volumes with registered media files \u2014 dismissed Review slips and dump-title ghosts no longer appear \u201con the shelves.\u201d",
+            "**Shelf shells off browse.** Hall, Stacks, kind counts, and local search only show volumes with registered media files — dismissed Review slips and dump-title ghosts no longer appear “on the shelves.”",
             "**Maintain page width.** Maintain sections use the full admin-room width (same as Settings/Review) instead of a 42rem phone column that wrapped path fields and ledes oddly."
           ]
         },
@@ -222,8 +250,8 @@
         {
           "title": "Fixed",
           "bullets": [
-            "**Review Apply on Calibre duplicates.** When the shelf already holds the same media bytes under Calibre filenames (`Title - Author.epub`) but `dest_layout` would write `Title.epub`, Apply no longer 400s as a hard collision \u2014 it treats the slip as an ignored duplicate and dismisses it.",
-            "**Review error copy.** Collision / Apply guidance is no longer masked as \u201cSomething went wrong in the stacks\u201d when the API message is slightly over the generic length cap.",
+            "**Review Apply on Calibre duplicates.** When the shelf already holds the same media bytes under Calibre filenames (`Title - Author.epub`) but `dest_layout` would write `Title.epub`, Apply no longer 400s as a hard collision — it treats the slip as an ignored duplicate and dismisses it.",
+            "**Review error copy.** Collision / Apply guidance is no longer masked as “Something went wrong in the stacks” when the API message is slightly over the generic length cap.",
             "**Review loading state.** Bagging-area skeleton while `/api/review` loads so empty copy does not flash first."
           ]
         }
@@ -234,8 +262,8 @@
       "date": "2026-09-22",
       "summary": "",
       "highlights": [
-        "**Add-to-shelves knows the tree before it starts.** Deep folders get a recursive pre-scan so the progress meter denominator matches real volume count, with live \u201cfound N volumes / M files\u201d while scanning.",
-        "**Seen / added / ignored duplicates.** Completion (and the Maintain dock) report household tallies \u2014 including binary-identical copies skipped early or when the shelf already holds the same bytes."
+        "**Add-to-shelves knows the tree before it starts.** Deep folders get a recursive pre-scan so the progress meter denominator matches real volume count, with live “found N volumes / M files” while scanning.",
+        "**Seen / added / ignored duplicates.** Completion (and the Maintain dock) report household tallies — including binary-identical copies skipped early or when the shelf already holds the same bytes."
       ],
       "sections": [
         {
@@ -259,7 +287,7 @@
       "date": "2026-09-22",
       "summary": "",
       "highlights": [
-        "**Hall is search again.** Hero and search paint first; Tonight\u2019s Shelf and rails lazy-load with a clear warming state. Bestsellers, add-on-disk, and celebration notes left the Hall.",
+        "**Hall is search again.** Hero and search paint first; Tonight’s Shelf and rails lazy-load with a clear warming state. Bestsellers, add-on-disk, and celebration notes left the Hall.",
         "**Owner Maintain.** Curated lists, ingest, Review/Clear extra-files, scan/enrich, and Goodreads live on `/maintain` with a telemetry status dock. Credentials stay in Settings.",
         "**Settings you can find.** Sticky section list replaces Next/Previous wizard chrome. Indexers (NZBFinder + additional Newznab hosts + RSS) are a first-class section."
       ],
@@ -267,15 +295,15 @@
         {
           "title": "Added",
           "bullets": [
-            "**Maintain page (owner).** `/maintain` \u2014 bestsellers entry, Add to the shelves, Review link, Clear extra-files, scan/enrich/suggestions, Goodreads CSV, and a status dock for scan/enrich/ingest/clear jobs (same progress pattern as Review/Settings).",
+            "**Maintain page (owner).** `/maintain` — bestsellers entry, Add to the shelves, Review link, Clear extra-files, scan/enrich/suggestions, Goodreads CSV, and a status dock for scan/enrich/ingest/clear jobs (same progress pattern as Review/Settings).",
             "**Hall deferred shelves.** Search hero renders immediately; bottom rails fetch after paint with `hall-shelves-loading` warming copy.",
-            "**Settings Indexers section.** NZBFinder, Add indexer / edit / remove for `extra_indexers`, RSS subscribe panel, and category extras \u2014 no longer buried under collapsed \u201cExtra Newznab hosts\u201d."
+            "**Settings Indexers section.** NZBFinder, Add indexer / edit / remove for `extra_indexers`, RSS subscribe panel, and category extras — no longer buried under collapsed “Extra Newznab hosts”."
           ]
         },
         {
           "title": "Changed",
           "bullets": [
-            "**Settings IA.** Persistent section nav (Appearance \u00b7 Downloader \u00b7 Indexers \u00b7 Shelves \u00b7 Bagging \u00b7 Language model \u00b7 Integrations \u00b7 Household \u00b7 Watch folder \u00b7 About). Setup Prev/Next removed; deep-links keep working (`#indexer` \u2192 Indexers, `#release-notes` \u2192 About).",
+            "**Settings IA.** Persistent section nav (Appearance · Downloader · Indexers · Shelves · Bagging · Language model · Integrations · Household · Watch folder · About). Setup Prev/Next removed; deep-links keep working (`#indexer` → Indexers, `#release-notes` → About).",
             "**Hall / Search chrome.** Hall keeps Discover as a muted link only; grooming and curated-list CTAs moved to Maintain.",
             "**Settings Ingest.** Watch folder credentials remain; add-on-disk points to Maintain."
           ]
@@ -283,7 +311,7 @@
         {
           "title": "Removed",
           "bullets": [
-            "**Hall celebration banner** (e.g. \u201cNth Author this year\u201d + Quiet) \u2014 no longer shown on the public Hall surface."
+            "**Hall celebration banner** (e.g. “Nth Author this year” + Quiet) — no longer shown on the public Hall surface."
           ]
         }
       ]
@@ -300,7 +328,7 @@
         {
           "title": "Added",
           "bullets": [
-            "**Kind shelf totals.** Stacks, Hall kind rails, and Search kind chips show household counts for the active media type (e.g. \u201c1,234 books on the shelves\u201d, \u201c56 audiobooks\u201d) from browse/hall totals \u2014 no extra clutter.",
+            "**Kind shelf totals.** Stacks, Hall kind rails, and Search kind chips show household counts for the active media type (e.g. “1,234 books on the shelves”, “56 audiobooks”) from browse/hall totals — no extra clutter.",
             "**Review Clear extra-files progress.** Bulk clear runs in the background with a live meter (shelved / split / applied / failed); the Clear CTA stays visible for backlog past the page window and mid-run jobs.",
             "**Ingest progress meter.** Shelving progress sits above the path list with a percent meter and safer legacy-job detection."
           ]
@@ -326,7 +354,7 @@
         {
           "title": "Added",
           "bullets": [
-            "**Settings sections: Ingest + About.** Jump nav is Downloader \u00b7 Indexer \u00b7 Shelves \u00b7 Bagging \u00b7 Ingest \u00b7 About. Add to the shelves and Watch folder live under Ingest; version, build stamp, and What\u2019s New / release notes live under About. Hall keeps its compact add control. Deep-links: `/settings#ingest`, `/settings#about`, `/settings#release-notes`."
+            "**Settings sections: Ingest + About.** Jump nav is Downloader · Indexer · Shelves · Bagging · Ingest · About. Add to the shelves and Watch folder live under Ingest; version, build stamp, and What’s New / release notes live under About. Hall keeps its compact add control. Deep-links: `/settings#ingest`, `/settings#about`, `/settings#release-notes`."
           ]
         },
         {
@@ -346,7 +374,7 @@
         {
           "title": "Added",
           "bullets": [
-            "**Profile menu + personal appearance.** Click the name/role chip for theme (Lights Up / Lights Down / Match system), a six-step text-size slider (default + five larger), room wash (off / paper / lamp), owner links, and Logout at the bottom. Prefs persist via `api.prefs` + localStorage; Settings \u201cYour appearance\u201d shares the same store. Quiet hours stay household-only."
+            "**Profile menu + personal appearance.** Click the name/role chip for theme (Lights Up / Lights Down / Match system), a six-step text-size slider (default + five larger), room wash (off / paper / lamp), owner links, and Logout at the bottom. Prefs persist via `api.prefs` + localStorage; Settings “Your appearance” shares the same store. Quiet hours stay household-only."
           ]
         }
       ]
@@ -367,9 +395,9 @@
           "title": "Fixed",
           "bullets": [
             "**Enrich abort on locked shelf folders.** Writing `cover.jpg` into a root-owned library folder (`PermissionError` / Errno 13) no longer fails the whole enrich batch. Cover writes fall soft to `/config/covers/{id}/` when the shelf is not writable, progress shows household copy instead of raw Errno 13, and the trickle continues.",
-            "**Ingest Internal Server Error on comic convert.** `BadZipFile` during loose-image \u2192 CBZ no longer 500s the Add request; convert fails soft and identify continues.",
+            "**Ingest Internal Server Error on comic convert.** `BadZipFile` during loose-image → CBZ no longer 500s the Add request; convert fails soft and identify continues.",
             "**SAB complete organize left dumps behind.** Confident shelve from SAB now moves (same as manual ingest / watch); Review and collisions still keep the staging folder.",
-            "**Stale \u201cAdding\u2026\u201d after a rebuild.** A `running` progress blob with no live worker clears to a household \u201clamp was restarted\u201d message."
+            "**Stale “Adding…” after a rebuild.** A `running` progress blob with no live worker clears to a household “lamp was restarted” message."
           ]
         }
       ]
@@ -383,7 +411,7 @@
         {
           "title": "Fixed",
           "bullets": [
-            "**Bestsellers \u201cLLM HTTP 400\u201d on Gemini.** An OpenAI-shaped `LLM_API_KEY` (or leftover active key) is no longer stamped onto the Gemini profile \u2014 Google returns HTTP 400 \u201cAPI key not valid\u201d for `sk-\u2026` keys. Provider error bodies now surface as household copy (bad key / bad model) instead of bare `LLM HTTP 400`.",
+            "**Bestsellers “LLM HTTP 400” on Gemini.** An OpenAI-shaped `LLM_API_KEY` (or leftover active key) is no longer stamped onto the Gemini profile — Google returns HTTP 400 “API key not valid” for `sk-…` keys. Provider error bodies now surface as household copy (bad key / bad model) instead of bare `LLM HTTP 400`.",
             "**`docker-run.sh` forwards Gemini/Anthropic/OpenAI env aliases** (`GEMINI_API_KEY`, `GOOGLE_API_KEY`, `LLM_PROVIDER`, etc.) so kit `.env` keys actually reach the container."
           ]
         }
@@ -394,8 +422,8 @@
       "date": "2026-09-19",
       "summary": "",
       "highlights": [
-        "**Audiobook scene \u2192 Audnexus \u2192 M4B shelf.** Dump names scrub to author/title/narrator/series/ASIN; Audnexus scores matches into organize or Review; multipart audio remuxes to a single tagged `{Title}.m4b` under the series-aware shelf layout.",
-        "**Comics scene \u2192 ComicVine \u2192 clean CBZ.** Scene scrub + volume-year disambiguation; ComicInfo.xml in the archive; publisher/series shelf paths with fail-soft Komga scan + Open in Komga.",
+        "**Audiobook scene → Audnexus → M4B shelf.** Dump names scrub to author/title/narrator/series/ASIN; Audnexus scores matches into organize or Review; multipart audio remuxes to a single tagged `{Title}.m4b` under the series-aware shelf layout.",
+        "**Comics scene → ComicVine → clean CBZ.** Scene scrub + volume-year disambiguation; ComicInfo.xml in the archive; publisher/series shelf paths with fail-soft Komga scan + Open in Komga.",
         "**Audiobookshelf scan + listen progress.** After shelving, Librarian asks ABS to scan; Listen pulls/pushes progress for matched titles without wiping a better local bookmark."
       ],
       "sections": [
@@ -428,7 +456,7 @@
       "date": "2026-09-19",
       "summary": "",
       "highlights": [
-        "**Edit metadata and Fix match on title pages.** Owners and ops can correct wrong enrich blurbs (like Open Library\u2019s Springsteen+Morpurgo *Born to Run* corruption), pick an alternate catalog match, or undo enrich.",
+        "**Edit metadata and Fix match on title pages.** Owners and ops can correct wrong enrich blurbs (like Open Library’s Springsteen+Morpurgo *Born to Run* corruption), pick an alternate catalog match, or undo enrich.",
         "**Multi-provider BYO LLM.** Settings supports OpenAI, Anthropic, and Gemini profiles; Find uses LLM best-match with remembered alternates, disclosures, and clearer 429 handling.",
         "**Bestsellers and chase polish.** Cover cards and request-missing chase/auto-request flows; Enrich/Review actions show busy feedback."
       ],
@@ -445,7 +473,7 @@
         {
           "title": "Fixed",
           "bullets": [
-            "Enrich no longer blindly takes Open Library\u2019s first search hit when the author list includes unrelated co-authors.",
+            "Enrich no longer blindly takes Open Library’s first search hit when the author list includes unrelated co-authors.",
             "Pytest isolates maintainer `.env` LLM keys so enrich/review tests stay offline."
           ]
         }
@@ -456,17 +484,17 @@
       "date": "2026-09-18",
       "summary": "",
       "highlights": [
-        "**Listen to audiobooks in the Reading Room.** Phase 2b ships an in-app player (chapters, progress) with deep-links when Plex/ABS is configured \u2014 peeks and work pages say Listen, not a raw Read.",
+        "**Listen to audiobooks in the Reading Room.** Phase 2b ships an in-app player (chapters, progress) with deep-links when Plex/ABS is configured — peeks and work pages say Listen, not a raw Read.",
         "**Bestsellers from your BYO LLM.** Curated list presets match the household shelves, then chase missing titles as books and audiobooks (confirm before SAB). Optional NYT Books API remains a soft-deprecated fallback.",
-        "**Stuck unpacks can recover.** Archive-only / empty SAB dumps go through organize (par2+unar) and land a Review slip instead of failing with no work \u2014 so audiobook RAR recoveries stay visible in Queue/Review.",
+        "**Stuck unpacks can recover.** Archive-only / empty SAB dumps go through organize (par2+unar) and land a Review slip instead of failing with no work — so audiobook RAR recoveries stay visible in Queue/Review.",
         "**Finish-set ETA and smart re-grab deepen.** Size-aware approximate ETAs when samples are thin; re-grab ranks by series/base, part markers, size, and host with clearer diffs.",
-        "**Community UX polish.** Clear Read CTAs, peeks that open the full work page, and book\u2192audiobook companion Listen when the matching title is already shelved."
+        "**Community UX polish.** Clear Read CTAs, peeks that open the full work page, and book→audiobook companion Listen when the matching title is already shelved."
       ],
       "sections": [
         {
           "title": "Added",
           "bullets": [
-            "In-app audiobook Listen (`librarian/listen.py`, `AudiobookPlayer`) + chapter API; book\u2192audiobook companion CTAs.",
+            "In-app audiobook Listen (`librarian/listen.py`, `AudiobookPlayer`) + chapter API; book→audiobook companion CTAs.",
             "LLM curated lists (`librarian/lists.py`) + chase (book and audiobook); Bestsellers panel on Find; optional NYT Books client as fallback.",
             "`NYT_BOOKS_API_KEY` env wiring in `docker-run.sh` / Automat playbook."
           ]
@@ -474,7 +502,7 @@
         {
           "title": "Changed",
           "bullets": [
-            "Finish-set ETA returns approximate size-scaled minutes when median samples are scarce; labels use `\u2248` vs `~`.",
+            "Finish-set ETA returns approximate size-scaled minutes when median samples are scarce; labels use `≈` vs `~`.",
             "Review re-grab candidate ranking and human diffs (same series, part markers, % size, host).",
             "Phase 2b Listen marked done on the living roadmap."
           ]
@@ -482,7 +510,7 @@
         {
           "title": "Fixed",
           "bullets": [
-            "`poll_job` no longer marks `unpack_stuck` failed with no `work_id` \u2014 organize/Review recovery stays available for audiobook archives."
+            "`poll_job` no longer marks `unpack_stuck` failed with no `work_id` — organize/Review recovery stays available for audiobook archives."
           ]
         }
       ]
@@ -496,7 +524,7 @@
         {
           "title": "Fixed",
           "bullets": [
-            "**Discover/Find cover titles no longer ellipsis-truncate.** Cloth card primary titles wrap fully (cards grow with the title); cover-art frames stay fixed. Same principle as Smart Map Browse \u2014 titles you can actually read."
+            "**Discover/Find cover titles no longer ellipsis-truncate.** Cloth card primary titles wrap fully (cards grow with the title); cover-art frames stay fixed. Same principle as Smart Map Browse — titles you can actually read."
           ]
         }
       ]
@@ -506,13 +534,13 @@
       "date": "2026-09-17",
       "summary": "",
       "highlights": [
-        "**What\u2019s New greets you on first visit.** Missing `last_seen` (new browser / cleared storage) opens the modal for the current version; dismiss sets last-seen. Upgrades still greet when runtime is newer."
+        "**What’s New greets you on first visit.** Missing `last_seen` (new browser / cleared storage) opens the modal for the current version; dismiss sets last-seen. Upgrades still greet when runtime is newer."
       ],
       "sections": [
         {
           "title": "Fixed",
           "bullets": [
-            "Stop silently seeding `librarian.last_seen_version` on first visit so What\u2019s New never appears."
+            "Stop silently seeding `librarian.last_seen_version` on first visit so What’s New never appears."
           ]
         }
       ]
@@ -522,7 +550,7 @@
       "date": "2026-09-17",
       "summary": "",
       "highlights": [
-        "**Cover cards lead with the real title.** Publisher-heavy NZB names (TOKYOPOP, IMAGE COMICS, and friends) no longer crowd out the series on Discover and Find \u2014 primary labels show the distinctive title; the raw dump stays on hover/peek."
+        "**Cover cards lead with the real title.** Publisher-heavy NZB names (TOKYOPOP, IMAGE COMICS, and friends) no longer crowd out the series on Discover and Find — primary labels show the distinctive title; the raw dump stays on hover/peek."
       ],
       "sections": [
         {
@@ -538,29 +566,29 @@
       "date": "2026-09-17",
       "summary": "",
       "highlights": [
-        "**What\u2019s New greets you after an upgrade.** Runtime version vs last-seen opens a short modal; Settings keeps the full release-notes history (generated from this CHANGELOG).",
+        "**What’s New greets you after an upgrade.** Runtime version vs last-seen opens a short modal; Settings keeps the full release-notes history (generated from this CHANGELOG).",
         "**Multipart sets know their holes.** Catalog `part_set` tracks owned vs total; Find groups Part N/M / CDn sets, chases missing NZBs when listed, and stays honest when gaps are unlisted.",
-        "**Tonight\u2019s shelf and quiet delight.** Continue + a quick gap + a Discover surprise; cover stories, series ribbons, celebrations, Plexamp handoff (music only), whispers, quiet hours for Review, finish-set ETA, and ambient prefs.",
+        "**Tonight’s shelf and quiet delight.** Continue + a quick gap + a Discover surprise; cover stories, series ribbons, celebrations, Plexamp handoff (music only), whispers, quiet hours for Review, finish-set ETA, and ambient prefs.",
         "**Advanced Search and Find fields suggest while you type.** Author, title, series, artist, album, and year pull from the household catalog first (optional on-disk cache under `/config/suggest-cache`). Freeform typing still works; owners can refresh the seed from Settings.",
-        "**Volumes already on disk can be filed.** Owners and ops Add a `/data` folder or file \u2014 confident identify moves and renames; anything unexpected waits in Review. A Watch folder does the same for drops. Scan still only catalogs; it does not move files.",
-        "**Find asks the indexer the way Newznab expects.** Kind chips swap the form: books/magazines send title, author, and ISBN; comics search series and issue in `7030`; music uses artist and album (never a book ISBN); audiobooks stay on `3030`. Request stores what you sought, what you picked, and the metadata the indexer actually returned \u2014 not SABnzbd\u2019s dump name.",
-        "**The downloader tells the truth.** Completed SAB jobs use the real complete folder (mapped through SAB complete root), failed unpacks say Failed with a reason, and the catalog title stays the title you asked for \u2014 not the Usenet dump name.",
+        "**Volumes already on disk can be filed.** Owners and ops Add a `/data` folder or file — confident identify moves and renames; anything unexpected waits in Review. A Watch folder does the same for drops. Scan still only catalogs; it does not move files.",
+        "**Find asks the indexer the way Newznab expects.** Kind chips swap the form: books/magazines send title, author, and ISBN; comics search series and issue in `7030`; music uses artist and album (never a book ISBN); audiobooks stay on `3030`. Request stores what you sought, what you picked, and the metadata the indexer actually returned — not SABnzbd’s dump name.",
+        "**The downloader tells the truth.** Completed SAB jobs use the real complete folder (mapped through SAB complete root), failed unpacks say Failed with a reason, and the catalog title stays the title you asked for — not the Usenet dump name.",
         "**Thin books get a real catalog.** Owner Enrich pulls description, series, year, and cover from Hardcover (token in Settings) then Open Library. The LLM still never invents an ISBN.",
-        "**Find can peruse what\u2019s trending.** Empty Find is Discover: real indexer category feeds from capabilities (not a second Hall, not auto-SAB). Show categories (off by default) adds Movies/TV/XXX \u2014 those go to the downloader / *arr, never The Hall.",
-        "**Hall Gaps know the rest of the run.** Missing series volumes, comic issues, and album tracks come from Hardcover / Open Library, Comic Vine, and MusicBrainz. Clicking a hole opens Find \u2014 SAB never fires from a shelf browse.",
+        "**Find can peruse what’s trending.** Empty Find is Discover: real indexer category feeds from capabilities (not a second Hall, not auto-SAB). Show categories (off by default) adds Movies/TV/XXX — those go to the downloader / *arr, never The Hall.",
+        "**Hall Gaps know the rest of the run.** Missing series volumes, comic issues, and album tracks come from Hardcover / Open Library, Comic Vine, and MusicBrainz. Clicking a hole opens Find — SAB never fires from a shelf browse.",
         "**Goodreads shelves land on Favorites.** Upload a CSV export; rows match by ISBN. Missing books become thin works that need Find.",
         "**The Hall remembers where you left off.** Opening a volume plants a Continue bookmark; Finished clears it. Covers are real `cover.jpg` when we can fetch them.",
-        "**Identify can convert and ask the house LLM.** CBR\u2192CBZ via `unar`, PDF-only books via `ebook-convert` when present, BYO LLM never invents an ISBN. SAB jobs poll in the running process, not only when you open Queue.",
-        "**Automat-ready kit.** Maintainer playbook at `docs/ops/AUTOMAT.md`, `/config` + `/data` mounts that survive recreate, and a Hub `rollout.sh` stub for later. LAN truth is `http://10.10.1.202:8793` \u2014 not a public VIP.",
+        "**Identify can convert and ask the house LLM.** CBR→CBZ via `unar`, PDF-only books via `ebook-convert` when present, BYO LLM never invents an ISBN. SAB jobs poll in the running process, not only when you open Queue.",
+        "**Automat-ready kit.** Maintainer playbook at `docs/ops/AUTOMAT.md`, `/config` + `/data` mounts that survive recreate, and a Hub `rollout.sh` stub for later. LAN truth is `http://10.10.1.202:8793` — not a public VIP.",
         "**Safe behind your reverse proxy.** `LIBRARIAN_TRUST_PROXY_HEADERS` is off unless you opt in. Spoofed `X-Forwarded-*` cannot mark cookies Secure, cannot rotate the login throttle, and cannot pretend the hop is HTTPS. Login and invite routes are rate-limited."
       ],
       "sections": [
         {
           "title": "Added",
           "bullets": [
-            "What\u2019s New upgrade modal (`WhatsNewGate`) + Settings release-notes panel; `scripts/generate-release-notes.sh` \u2192 `frontend/public/release-notes.json`.",
-            "Catalog multipart `part_set` (owned / total / style / base) with Hall/Work \u201cFind missing parts\u201d, Review regrab hints, and Find PartSet chase (honest when NZBs are unlisted).",
-            "Part E delight: Tonight\u2019s shelf, cover stories, series ribbons, celebration banners, Plexamp toast (music Promote), whispers, quiet hours, finish-set ETA, ambient prefs, finish-set labels.",
+            "What’s New upgrade modal (`WhatsNewGate`) + Settings release-notes panel; `scripts/generate-release-notes.sh` → `frontend/public/release-notes.json`.",
+            "Catalog multipart `part_set` (owned / total / style / base) with Hall/Work “Find missing parts”, Review regrab hints, and Find PartSet chase (honest when NZBs are unlisted).",
+            "Part E delight: Tonight’s shelf, cover stories, series ribbons, celebration banners, Plexamp toast (music Promote), whispers, quiet hours, finish-set ETA, ambient prefs, finish-set labels.",
             "Typeahead suggestions for Search/Find advanced fields (`GET /api/suggest`) plus owner **Refresh suggestions from shelves** (`POST /api/settings/suggest-cache`). Catalog-first; optional bounded MusicBrainz seed.",
             "Owner/op **Add to the shelves** (`GET /api/fs`, `POST /api/ingest`) and **Watch folder** (`watch_root` / `watch_enabled`). Identify/organize when confident; Review when not. Scan does not move files.",
             "Kind-morphing Find fields + NZBFinder v2 `books` ISBN param; job payload `sought` / `selected` / `retrieved`.",
@@ -569,7 +597,7 @@
             "Catalog gaps: Hardcover then Open Library series volumes; Comic Vine issue lists (`comicvine_api_key`, masked); MusicBrainz track lists (User-Agent + polite rate limit). Magazines stay local `YYYY-MM`. Hall Gaps open Find; confirm stays off the shelf.",
             "Extra Newznab v2 hosts in Settings; Find merges/dedupes by guid and keeps NZBFinder hits if another host 502s.",
             "Find **Discover** (`GET /api/discover`): capabilities category feeds, latest-in-cat via v2 search or `/rss?t=`. Show categories (owner; `show_extra_categories`) can include Movies/TV/XXX. Movie/TV Request queues SAB then tells Radarr/Sonarr to expect; XXX is SAB default folder only.",
-            "RSS subscriptions (owner/op on Find or Settings): poll in-process; new items become **Asked** jobs for confirm \u2014 not silent SAB.",
+            "RSS subscriptions (owner/op on Find or Settings): poll in-process; new items become **Asked** jobs for confirm — not silent SAB.",
             "Optional Audiobookshelf URL + token (masked; env `AUDIOBOOKSHELF_API_TOKEN`). Match by ISBN then author+title; quiet **On the player** chip. Does not replace `audiobook_target` default Plex.",
             "Owner **Import Goodreads CSV** onto Favorites, matched by ISBN-10 or ISBN-13. No Goodreads OAuth.",
             "`hardcover_api_token` in settings.json (masked on GET; env `HARDCOVER_API_TOKEN` seeds first boot).",
@@ -577,7 +605,7 @@
             "`docs/ops/AUTOMAT.md` runbook (kit path, first-boot env, rsync, deploy).",
             "Proxy-header fail-closed (`librarian/proxy.py`) + per-IP rate limits on login / invite validate / redeem.",
             "`PUID`/`PGID` 99/100 on Unraid, `extra_hosts` for `downloader.sl` when the host can resolve it, `rollout.sh` Hub pull stub.",
-            "Continue rail + per-user progress; cover fetch (indexer / Open Library ISBN / CBZ page 1); CBR\u2192CBZ (`unar` in the image); on-demand `ebook-convert` cache under `/config/conversions`.",
+            "Continue rail + per-user progress; cover fetch (indexer / Open Library ISBN / CBZ page 1); CBR→CBZ (`unar` in the image); on-demand `ebook-convert` cache under `/config/conversions`.",
             "BYO LLM identify (structured JSON; invented ISBN dropped); background SAB poller; `indexers` table + owner **Ping NZBFinder**.",
             "Local audiobook part holes and music track-number holes."
           ]
@@ -591,7 +619,7 @@
       "highlights": [
         "**The Hall, not a grabber.** FastAPI + Vite Reading Room on port **8793**, with owner / op / reader roles and invite-only join.",
         "**Stacks that know their kinds.** Books (EPUB), magazines, comics (CBZ + ComicInfo), audiobooks (Plex target by default), incoming music with Promote.",
-        "**Honest gaps.** Local magazine `YYYY-MM` holes and comic issue-number holes \u2014 confirm before SAB.",
+        "**Honest gaps.** Local magazine `YYYY-MM` holes and comic issue-number holes — confirm before SAB.",
         "**Automat kit.** `/config` + `/data`, `docker-run.sh` on-host build, settings.json wins, no collision with 8788 / 8790 / 8791 / 8792."
       ],
       "sections": [

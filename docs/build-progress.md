@@ -6,6 +6,7 @@ Plan: [librarian_automat_rss](file:///Users/willrompala/.cursor/plans/librarian_
 
 ## Shipped
 
+- **2026-09-25** — Sprint **2.1** `web-routers-shelf-health` → **0.4.20**: `create_app` composition root + routers (auth/catalog/review/ingest/maintain/settings); Maintain Shelf health permission report + chown tip; identify/organize/ingest cycle carve; Hub still deferred.
 - **2026-09-15** — Automat media contract (`docs/automat-media-contract.md`): shared `/data/media` roots with Smart Map; music `{Artist}/{Album}/` keeps the original filename unless a trustworthy track tag exists (`NN - Title.ext`). Audiobooks never `music_root`.
 - **2026-09-14** `d79591b` — First tree: FastAPI + Vite kit on **8793**, SQLite WAL, settings.json wins, AGENTS/CHANGELOG/DOCKER/TESTING/SECURITY/HELP/design spec. `.gitignore` blocks `smart.map` / `projectionist` copies. `.env.example` has empty SAB/NZBFinder placeholders only.
 - **2026-09-14** — Auth: owner/op/reader, `seed_env_owner`, HMAC invites (hash at rest, fail-closed parse, one-tx redeem), exhaustive public handshake, session secret refuse-default.
