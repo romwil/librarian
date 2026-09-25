@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.4.14] — 2026-09-24
+
+### Fixed
+
+- **Review progress bleed.** Clear extra-files and Purge duplicates each bind their own status summary — a running Clear job no longer overwrites the Purge panel’s bottom line. Completed meters dismiss after a short dwell instead of sticking around and mirroring another job.
+
 ## [0.4.13] — 2026-09-24
 
 ### Fixed

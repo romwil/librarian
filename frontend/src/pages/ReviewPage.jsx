@@ -27,6 +27,7 @@ import {
   reviewDiagnosisCopy,
   reviewExtraFilesProgressVisible,
   reviewFindHref,
+  reviewProgressDwellRemainingMs,
   reviewPurgeProgressVisible,
   reviewReasonCopy,
   extraFilesWorks,
@@ -50,6 +51,7 @@ export default function ReviewPage() {
   const [extraFilesBacklog, setExtraFilesBacklog] = useState(0);
   const [purgeProgress, setPurgeProgress] = useState(null);
   const [purgeRunning, setPurgeRunning] = useState(false);
+  const [progressClock, setProgressClock] = useState(() => Date.now());
   const [reviewBacklog, setReviewBacklog] = useState(0);
   const [error, setError] = useState("");
   const [regrabs, setRegrabs] = useState({});
@@ -229,6 +231,19 @@ export default function ReviewPage() {
     if (!focusId || !works.length) return;
     focusRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [focusId, works]);
+
+  // Re-render when a completed Clear/Purge meter should drop off after its dwell.
+  useEffect(() => {
+    const now = Date.now();
+    const remaining = [
+      reviewProgressDwellRemainingMs(extraFilesProgress, { now }),
+      reviewProgressDwellRemainingMs(purgeProgress, { now }),
+    ].filter((ms) => ms != null && ms > 0);
+    if (!remaining.length) return undefined;
+    const wait = Math.min(...remaining) + 50;
+    const timer = window.setTimeout(() => setProgressClock(Date.now()), wait);
+    return () => window.clearTimeout(timer);
+  }, [extraFilesProgress, purgeProgress, progressClock]);
 
   async function saveQuiet(patch) {
     setQuietNote("");
@@ -585,19 +600,26 @@ export default function ReviewPage() {
 
   const unpackCount = unpackStuckWorks(works).length;
   const extraFilesCount = extraFilesWorks(works).length;
-  const showExtraFilesProgress = reviewExtraFilesProgressVisible(extraFilesProgress, extraFilesClearing);
-  const showPurgeProgress = reviewPurgeProgressVisible(purgeProgress, purgeRunning);
+  const progressNow = progressClock;
+  const showExtraFilesProgress = reviewExtraFilesProgressVisible(extraFilesProgress, extraFilesClearing, {
+    now: progressNow,
+  });
+  const showPurgeProgress = reviewPurgeProgressVisible(purgeProgress, purgeRunning, {
+    now: progressNow,
+  });
   const showBulkClear = reviewBulkClearVisible({
     visibleCount: extraFilesCount,
     backlogCount: extraFilesBacklog,
     clearing: extraFilesClearing,
     progress: extraFilesProgress,
+    now: progressNow,
   });
   const showBulkPurge = reviewBulkPurgeVisible({
     visibleCount: works.length,
     backlogCount: reviewBacklog,
     purging: purgeRunning,
     progress: purgeProgress,
+    now: progressNow,
   });
   const showBulkRow = reviewBulkRowVisible({
     unpackCount,
@@ -609,6 +631,10 @@ export default function ReviewPage() {
     ? extraFilesReprocessProgressPercent(extraFilesProgress)
     : null;
   const purgePercent = showPurgeProgress ? purgeDuplicatesProgressPercent(purgeProgress) : null;
+  const extraFilesStatusLine = showExtraFilesProgress
+    ? extraFilesReprocessProgressSummary(extraFilesProgress)
+    : "";
+  const purgeStatusLine = showPurgeProgress ? purgeDuplicatesProgressSummary(purgeProgress) : "";
 
   return (
     <div className="admin-room">
@@ -741,9 +767,9 @@ export default function ReviewPage() {
           {extraFilesProgress.current_title ? (
             <p className="lede ingest-progress-title">{extraFilesProgress.current_title}</p>
           ) : null}
-          {bulkNote ? (
+          {extraFilesStatusLine ? (
             <p className="muted" role="status">
-              {bulkNote}
+              {extraFilesStatusLine}
             </p>
           ) : null}
         </section>
@@ -784,9 +810,9 @@ export default function ReviewPage() {
           {purgeProgress.current_title ? (
             <p className="lede ingest-progress-title">{purgeProgress.current_title}</p>
           ) : null}
-          {bulkNote ? (
+          {purgeStatusLine ? (
             <p className="muted" role="status">
-              {bulkNote}
+              {purgeStatusLine}
             </p>
           ) : null}
         </section>

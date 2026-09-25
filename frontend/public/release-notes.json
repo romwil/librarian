@@ -1,6 +1,20 @@
 {
-  "generated_at": "2026-09-25T00:39:32Z",
+  "generated_at": "2026-09-25T00:55:33Z",
   "releases": [
+    {
+      "version": "0.4.14",
+      "date": "2026-09-24",
+      "summary": "",
+      "highlights": [],
+      "sections": [
+        {
+          "title": "Fixed",
+          "bullets": [
+            "**Review progress bleed.** Clear extra-files and Purge duplicates each bind their own status summary — a running Clear job no longer overwrites the Purge panel’s bottom line. Completed meters dismiss after a short dwell instead of sticking around and mirroring another job."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.4.13",
       "date": "2026-09-24",

@@ -23,8 +23,11 @@ import {
   reviewDiagnosisCopy,
   reviewExtraFilesProgressVisible,
   reviewFindHref,
+  reviewProgressDwellRemainingMs,
   reviewPurgeProgressVisible,
   reviewReasonCopy,
+  reviewTerminalProgressStillVisible,
+  REVIEW_PROGRESS_DWELL_MS,
   unpackStuckWorks,
   extraFilesWorks,
   extraFilesReprocessIsRunning,
@@ -243,6 +246,52 @@ describe("review recovery actions", () => {
     assert.equal(reviewExtraFilesProgressVisible(null, true), true);
   });
 
+  it("hides completed Clear/Purge meters after dwell so status lines cannot bleed", () => {
+    const now = Date.parse("2026-09-24T20:00:00Z");
+    const recent = {
+      status: "completed",
+      finished_at: "2026-09-24T19:59:55Z",
+      result: { purged: 4, kept: 10 },
+    };
+    const stale = {
+      status: "completed",
+      finished_at: "2026-09-24T19:00:00Z",
+      result: { purged: 4, kept: 10 },
+    };
+    assert.equal(reviewTerminalProgressStillVisible(recent, { now }), true);
+    assert.equal(reviewTerminalProgressStillVisible(stale, { now }), false);
+    assert.equal(reviewTerminalProgressStillVisible({ status: "completed" }, { now }), false);
+    assert.equal(reviewPurgeProgressVisible(recent, false, { now }), true);
+    assert.equal(reviewPurgeProgressVisible(stale, false, { now }), false);
+    assert.equal(reviewExtraFilesProgressVisible(stale, false, { now }), false);
+    assert.equal(
+      reviewProgressDwellRemainingMs(recent, { now }),
+      REVIEW_PROGRESS_DWELL_MS - 5000,
+    );
+    assert.equal(reviewProgressDwellRemainingMs(stale, { now }), null);
+
+    const clearRunning = {
+      status: "running",
+      done: 24,
+      total: 405,
+      current_title: "Bark M for Murder",
+    };
+    const purgeDone = {
+      status: "completed",
+      finished_at: "2026-09-24T19:59:58Z",
+      purged: 4,
+      kept: 1826,
+      result: { purged: 4, shelf_twins: 4, kept: 1826 },
+    };
+    const clearLine = extraFilesReprocessProgressSummary(clearRunning);
+    const purgeLine = purgeDuplicatesProgressSummary(purgeDone);
+    assert.match(clearLine, /Clearing extra-files · 24 of 405/);
+    assert.match(purgeLine, /Duplicates: purged 4/);
+    assert.notEqual(clearLine, purgeLine);
+    assert.equal(reviewExtraFilesProgressVisible(clearRunning, true, { now }), true);
+    assert.equal(reviewPurgeProgressVisible(purgeDone, false, { now }), true);
+  });
+
   it("keeps Purge duplicates visible for backlog or mid-run progress", () => {
     assert.equal(
       reviewBulkPurgeVisible({
@@ -351,5 +400,19 @@ describe("ReviewPage loading", () => {
     assert.match(reviewPageSrc, /data-testid="review-bulk-purge-duplicates"/);
     assert.match(reviewPageSrc, /Purge duplicates/);
     assert.match(reviewPageSrc, /bulkPurgeDuplicates/);
+  });
+
+  it("binds each progress panel to its own summary, not shared bulkNote", () => {
+    assert.match(reviewPageSrc, /extraFilesStatusLine = showExtraFilesProgress/);
+    assert.match(reviewPageSrc, /purgeStatusLine = showPurgeProgress/);
+    assert.match(reviewPageSrc, /\{extraFilesStatusLine \?/);
+    assert.match(reviewPageSrc, /\{purgeStatusLine \?/);
+    assert.match(reviewPageSrc, /reviewProgressDwellRemainingMs/);
+    const purgePanel = reviewPageSrc.slice(
+      reviewPageSrc.indexOf('data-testid="review-purge-duplicates-progress"'),
+      reviewPageSrc.indexOf('data-testid="review-loading"'),
+    );
+    assert.match(purgePanel, /\{purgeStatusLine\}/);
+    assert.doesNotMatch(purgePanel, /\{bulkNote\}/);
   });
 });

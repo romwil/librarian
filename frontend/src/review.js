@@ -279,6 +279,9 @@ export function queueReviewReasonCopy(reason) {
   return "Waiting in Review — the house isn’t sure how to shelve this.";
 }
 
+/** How long a completed/failed Review job meter stays on screen (ms). */
+export const REVIEW_PROGRESS_DWELL_MS = 8000;
+
 export function extraFilesReprocessIsRunning(status) {
   return String(status?.status || "") === "running";
 }
@@ -289,10 +292,48 @@ export function extraFilesReprocessIsActive(status) {
   return state === "running" || state === "completed" || state === "failed";
 }
 
+/** Epoch ms from a progress blob's ``finished_at``, or null when missing/invalid. */
+export function reviewProgressFinishedAtMs(progress) {
+  const raw = String(progress?.finished_at || "").trim();
+  if (!raw) return null;
+  const ms = Date.parse(raw);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+/**
+ * Terminal Clear/Purge panels stay briefly after finish, then hide so a later job
+ * cannot share the same sticky meter (and never mirror another job's status line).
+ */
+export function reviewTerminalProgressStillVisible(
+  progress,
+  { now = Date.now(), dwellMs = REVIEW_PROGRESS_DWELL_MS } = {},
+) {
+  const state = String(progress?.status || "");
+  if (state !== "completed" && state !== "failed") return false;
+  const finished = reviewProgressFinishedAtMs(progress);
+  if (finished == null) return false;
+  return now - finished < Math.max(0, Number(dwellMs) || 0);
+}
+
+/** Ms until a terminal progress panel should hide; null when not showing / no timer. */
+export function reviewProgressDwellRemainingMs(
+  progress,
+  { now = Date.now(), dwellMs = REVIEW_PROGRESS_DWELL_MS } = {},
+) {
+  if (!reviewTerminalProgressStillVisible(progress, { now, dwellMs })) return null;
+  const finished = reviewProgressFinishedAtMs(progress);
+  if (finished == null) return null;
+  return Math.max(0, Math.max(0, Number(dwellMs) || 0) - (now - finished));
+}
+
 /** Show the Clear extra-files progress meter (including mid-run after refresh). */
-export function reviewExtraFilesProgressVisible(progress, clearing = false) {
+export function reviewExtraFilesProgressVisible(
+  progress,
+  clearing = false,
+  { now = Date.now(), dwellMs = REVIEW_PROGRESS_DWELL_MS } = {},
+) {
   if (clearing || extraFilesReprocessIsRunning(progress)) return true;
-  return extraFilesReprocessIsActive(progress);
+  return reviewTerminalProgressStillVisible(progress, { now, dwellMs });
 }
 
 /**
@@ -304,11 +345,13 @@ export function reviewBulkClearVisible({
   backlogCount = 0,
   clearing = false,
   progress = null,
+  now = Date.now(),
+  dwellMs = REVIEW_PROGRESS_DWELL_MS,
 } = {}) {
   if (Number(visibleCount) > 0) return true;
   if (Number(backlogCount) > 0) return true;
   if (clearing || extraFilesReprocessIsRunning(progress)) return true;
-  if (extraFilesReprocessIsActive(progress)) return true;
+  if (reviewTerminalProgressStillVisible(progress, { now, dwellMs })) return true;
   return false;
 }
 
@@ -382,9 +425,13 @@ export function purgeDuplicatesIsActive(status) {
   return state === "running" || state === "completed" || state === "failed";
 }
 
-export function reviewPurgeProgressVisible(progress, purging = false) {
+export function reviewPurgeProgressVisible(
+  progress,
+  purging = false,
+  { now = Date.now(), dwellMs = REVIEW_PROGRESS_DWELL_MS } = {},
+) {
   if (purging || purgeDuplicatesIsRunning(progress)) return true;
-  return purgeDuplicatesIsActive(progress);
+  return reviewTerminalProgressStillVisible(progress, { now, dwellMs });
 }
 
 /** Keep Purge duplicates visible for any Review backlog or an active/recent job. */
@@ -393,11 +440,13 @@ export function reviewBulkPurgeVisible({
   backlogCount = 0,
   purging = false,
   progress = null,
+  now = Date.now(),
+  dwellMs = REVIEW_PROGRESS_DWELL_MS,
 } = {}) {
   if (Number(visibleCount) > 0) return true;
   if (Number(backlogCount) > 0) return true;
   if (purging || purgeDuplicatesIsRunning(progress)) return true;
-  if (purgeDuplicatesIsActive(progress)) return true;
+  if (reviewTerminalProgressStillVisible(progress, { now, dwellMs })) return true;
   return false;
 }
 
