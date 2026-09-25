@@ -1,6 +1,32 @@
 {
-  "generated_at": "2026-09-25T05:52:48Z",
+  "generated_at": "2026-09-25T05:58:21Z",
   "releases": [
+    {
+      "version": "0.5.1",
+      "date": "2026-09-25",
+      "summary": "",
+      "highlights": [
+        "**Smart Holds desk.** Hold slips sort into piles by why they paused — Extra files, Unpack stuck, Collision — so Review feels like sorting returns, not a ticket queue.",
+        "**One recommended motion.** Each pile and slip names a primary next step (Repair, Clear extra-files, Skip…) with the filled CTA matching that motion.",
+        "**Library voice stays.** Holds desk / hold slips chrome; Apply still files once the folder is ready."
+      ],
+      "sections": [
+        {
+          "title": "Added",
+          "bullets": [
+            "**`review_recommended_motion`** on `GET /api/review` → `work.actions.recommended_motion`.",
+            "**FE grouping** (`groupHoldSlipsByReason`) and recommended-motion CTA helpers in `review.js`.",
+            "**Playwright** Holds desk grouped populated journey (port 8794)."
+          ]
+        },
+        {
+          "title": "Changed",
+          "bullets": [
+            "**Review page.** Heading **Sorting returns**; groups with soft-enter; primary vs outline CTAs from recommended motion."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.5.0",
       "date": "2026-09-25",

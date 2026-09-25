@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-09-25
+
+### Highlights
+
+- **Smart Holds desk.** Hold slips sort into piles by why they paused — Extra files, Unpack stuck, Collision — so Review feels like sorting returns, not a ticket queue.
+- **One recommended motion.** Each pile and slip names a primary next step (Repair, Clear extra-files, Skip…) with the filled CTA matching that motion.
+- **Library voice stays.** Holds desk / hold slips chrome; Apply still files once the folder is ready.
+
+### Added
+
+- **`review_recommended_motion`** on `GET /api/review` → `work.actions.recommended_motion`.
+- **FE grouping** (`groupHoldSlipsByReason`) and recommended-motion CTA helpers in `review.js`.
+- **Playwright** Holds desk grouped populated journey (port 8794).
+
+### Changed
+
+- **Review page.** Heading **Sorting returns**; groups with soft-enter; primary vs outline CTAs from recommended motion.
+
 ## [0.5.0] — 2026-09-25
 
 ### Highlights
