@@ -8,10 +8,11 @@ test.describe("Hall", () => {
 
   test("loads The Hall with shelves region", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByTestId("hall")).toBeVisible();
     await expect(page.getByText("The Hall").first()).toBeVisible();
-    // Fresh e2e DATA_DIR: shelves region ready with empty CTA nested inside.
-    await expect(page.getByTestId("hall-shelves")).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByTestId("hall-empty")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "What are you looking for?" })).toBeVisible();
+    // Fresh e2e DATA_DIR: empty Hall CTA (Visual State Triad — Empty/Unlit).
+    await expect(
+      page.getByRole("heading", { name: /Open the stacks|The shelves are still bare/ }),
+    ).toBeVisible({ timeout: 30_000 });
   });
 });

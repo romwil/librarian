@@ -8,10 +8,10 @@ export const E2E_OWNER = {
 
 /** Dismiss What’s New if it appears after first login for this runtime version. */
 export async function dismissWhatsNewIfPresent(page: Page) {
-  const modal = page.getByTestId("whats-new-modal");
-  if (await modal.isVisible().catch(() => false)) {
-    await page.getByTestId("whats-new-got-it").click();
-    await expect(modal).toHaveCount(0);
+  const dialog = page.getByRole("dialog");
+  if (await dialog.isVisible().catch(() => false)) {
+    await dialog.getByRole("button", { name: "Got it" }).click();
+    await expect(dialog).toHaveCount(0);
   }
 }
 
@@ -19,9 +19,11 @@ export async function dismissWhatsNewIfPresent(page: Page) {
 export async function loginAsOwner(page: Page) {
   await page.goto("/login");
   await expect(page.getByRole("heading", { name: "The Reading Room" })).toBeVisible();
-  await page.locator("#login-name").fill(E2E_OWNER.username);
-  await page.locator("#login-pass").fill(E2E_OWNER.password);
+  await page.getByLabel("Name").fill(E2E_OWNER.username);
+  await page.getByLabel("Password").fill(E2E_OWNER.password);
   await page.getByRole("button", { name: "Enter" }).click();
-  await expect(page.getByTestId("hall")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "What are you looking for?" })).toBeVisible({
+    timeout: 30_000,
+  });
   await dismissWhatsNewIfPresent(page);
 }

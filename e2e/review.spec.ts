@@ -9,9 +9,10 @@ test.describe("Review / bagging area", () => {
   test("empty Review shows current bagging empty copy", async ({ page }) => {
     await page.goto("/review");
     await expect(page.getByText("Bagging area").first()).toBeVisible();
-    // Assert today's copy (Phase 4 will rename Holds desk); prefer testid over brittle full string.
-    const empty = page.getByTestId("review-empty");
-    await expect(empty).toBeVisible({ timeout: 30_000 });
-    await expect(empty).toContainText(/bagging area is empty|lamp is quiet/i);
+    await expect(page.getByRole("heading", { name: "Review" })).toBeVisible();
+    // Assert today's empty copy (Phase 4 may rename Holds desk); semantic text, not testid.
+    await expect(page.getByText(/bagging area is empty|lamp is quiet/i)).toBeVisible({
+      timeout: 30_000,
+    });
   });
 });

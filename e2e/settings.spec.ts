@@ -8,11 +8,12 @@ test.describe("Settings nav", () => {
 
   test("Settings page exposes section nav and Appearance panel", async ({ page }) => {
     await page.goto("/settings");
-    await expect(page.getByTestId("settings-page")).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByTestId("settings-section-nav")).toBeVisible();
-    await expect(page.getByTestId("settings-nav-appearance")).toBeVisible();
-    await expect(page.getByTestId("settings-nav-bagging")).toBeVisible();
-    await page.getByTestId("settings-nav-appearance").click();
-    await expect(page.getByTestId("settings-panel-appearance")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("navigation", { name: "Settings sections" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Appearance" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Bagging" })).toBeVisible();
+    await page.getByRole("button", { name: "Appearance" }).click();
+    await expect(page.getByText("Your appearance")).toBeVisible();
+    await expect(page.getByRole("slider", { name: "Text size" })).toBeVisible();
   });
 });

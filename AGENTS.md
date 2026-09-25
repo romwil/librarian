@@ -21,17 +21,22 @@ Backend has **no hot reload**; restart after Python changes. After frontend edit
 ### Lint / test
 - **Backend:** `LIBRARIAN_PBKDF2_ITERATIONS=1000 LIBRARIAN_SKIP_APP_BOOT=1 .venv/bin/python -m pytest tests/`
   Coverage is auto-enabled via `pyproject.toml` (`--cov-fail-under=70`). Every sprint keeps this floor green.
-- **Frontend unit:** `cd frontend && npm test`
+- **Frontend unit:** `cd frontend && npm test` (Node `node --test` interim; **target Layer 1 = Vitest**).
 - **Playwright e2e (mocked):** `npm run test:e2e` — dedicated port **8794** (not 8793 / 8788 / 8790 / 8791 / 8792).
   Install once: `npm install && npx playwright install chromium`. See [docs/TESTING.md](docs/TESTING.md).
+  Semantic locators only (`getByRole` / `getByLabel`).
+- **axe-core:** not wired yet — required for major gauntlet / core-chrome changes once adopted.
 - **Ruff:** `.venv/bin/ruff check librarian tests`
 - **Mypy (scoped):** `.venv/bin/python -m mypy`
 - Value-based tests only — see [TESTING.md](TESTING.md). Mock NZBFinder / SAB / LLM HTTP. Never mock SQLite.
+- **Must follow** front-end Testing Triad + adversarial stance:
+  [docs/ops/UI_TESTING_ARCHITECTURE.md](docs/ops/UI_TESTING_ARCHITECTURE.md).
 
 ### Major builds
 Multi-sprint arcs follow [docs/ops/MAJOR_BUILDS.md](docs/ops/MAJOR_BUILDS.md): phases/sprints as GitHub
 feature releases, parallel agent lanes with exclusive file ownership, coverage ≥70% every sprint,
-Playwright + interactive browser UX gates, and the kickoff loop. Automat path is host `./docker-run.sh`.
+Testing Triad + interactive browser UX gates (see [docs/ops/UI_TESTING_ARCHITECTURE.md](docs/ops/UI_TESTING_ARCHITECTURE.md)),
+and the kickoff loop. Automat path is host `./docker-run.sh`.
 
 ### Local intelligence (codegraph)
 Prefer [`.codegraph/`](.codegraph/) (`codegraph` CLI: `query` / `explore` / `callers` / `node`) for

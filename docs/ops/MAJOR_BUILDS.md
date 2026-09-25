@@ -32,6 +32,9 @@ codegraph index -f
 - New behavior ships **with** value-based tests — see [TESTING.md](../../TESTING.md). Not a cleanup pass later.
 - Coverage must not drop relative to the prior release on touched packages; if a refactor shrinks lines, replace with tests on the new surface.
 - Mock NZBFinder / SAB / LLM HTTP only; **never mock SQLite**.
+- Front-end ships follow the **Testing Triad** and release-tier cadence in
+  [UI_TESTING_ARCHITECTURE.md](UI_TESTING_ARCHITECTURE.md) (target: Vitest + Playwright + axe-core;
+  interim Layer 1 = Node `npm test` until the Vitest migration sprint).
 
 ## 4. GitHub release cadence
 
@@ -46,13 +49,24 @@ Release **feature names** match sprint IDs (PR title / CHANGELOG / What’s New)
 
 **Never bind or document Librarian on 8788, 8790, 8791, or 8792.** Product port is **8793**.
 
-## 5. UX verification (Playwright + interactive browser)
+## 5. UX verification (Testing Triad + interactive browser)
+
+Canonical rules: [UI_TESTING_ARCHITECTURE.md](UI_TESTING_ARCHITECTURE.md) — adversarial perimeter,
+semantic locators, Visual State Triad, and **cadence by release tier** (minor/patch vs major/full gauntlet).
+
+**Sprint / patch UI gate:** Layer 1 on touched surfaces + targeted Playwright; axe when core chrome
+(Hall shell, top bar, Settings, auth gate) changes. **Major / full-build closeout:** full Layer 1,
+Playwright viewport matrix (desktop 1080p/4K-class + reasonable mobile), axe WCAG 2.1 AA on `/`,
+login/setup, Hall, Review/Holds, Settings, plus unauthenticated client-side fuzz for secret leakage.
+Gate language: zero unit failures; lint as applicable; build succeeds; no unexplained SPA bundle
+size regressions.
 
 ### Playwright (mocked e2e)
 
 - Dedicated port **8794** — not product **8793**, not Automat 8788 / 8790 / 8791 / 8792, and not Projectionist’s e2e default 8799.
 - No live NZBFinder / SABnzbd required; ephemeral `DATA_DIR` + seeded owner.
-- Assert lexicon strings, Hall empty states, Review/Holds empty/load, Settings nav, warm-load copy, reduced-motion smoke as those surfaces land.
+- **Semantic locators only** (`getByRole`, `getByLabel`) — no CSS class/id/path selectors.
+- Assert lexicon strings, Hall empty/loading/overflow, Review/Holds empty/load, Settings nav, warm-load copy, reduced-motion smoke as those surfaces land.
 
 ```bash
 # once per machine
@@ -71,7 +85,9 @@ After Automat deploy or local build, walk delight/alive criteria on the real SPA
 
 ### Full-build closeout
 
-After the final sprint of a major build: full pytest + frontend unit + Playwright suite + interactive Hall → Find → Review/Holds → Maintain → Library card pass on Automat LAN (`http://10.10.1.202:8793`).
+After the final sprint of a major build: full pytest + frontend unit (Layer 1) + Playwright matrix +
+axe on primary entry points (when wired) + interactive Hall → Find → Review/Holds → Maintain →
+Library card pass on Automat LAN (`http://10.10.1.202:8793`).
 
 ## 6. Kickoff loop (orchestrator)
 
@@ -84,7 +100,9 @@ After the final sprint of a major build: full pytest + frontend unit + Playwrigh
 ## Sprint gate checklist
 
 - [ ] Backend: `LIBRARIAN_PBKDF2_ITERATIONS=1000 LIBRARIAN_SKIP_APP_BOOT=1 .venv/bin/python -m pytest tests/` (≥70% coverage)
-- [ ] Frontend unit: `cd frontend && npm test`
-- [ ] Playwright: `npm run test:e2e` (when the sprint touches UI or as baseline smoke)
+- [ ] Frontend unit (Layer 1): `cd frontend && npm test` — Vitest when migrated; see [UI_TESTING_ARCHITECTURE.md](UI_TESTING_ARCHITECTURE.md)
+- [ ] Playwright: `npm run test:e2e` on **:8794** — targeted for patch UI; full matrix for major closeout
+- [ ] axe WCAG 2.1 AA when core chrome touched or on major gauntlet (once axe-core is wired)
+- [ ] `cd frontend && npm run build` succeeds; no unexplained Vite bundle-size regression
 - [ ] CHANGELOG `### Highlights` + version bump
 - [ ] Automat `./docker-run.sh` smoke on `:8793` when shipping to the household host
