@@ -1029,7 +1029,12 @@ class Database:
         kind IN ('book', 'audiobook')
         AND review_state != 'needs_review'
         AND (
-            description IS NULL OR description = ''
+            author IS NULL OR trim(author) = ''
+            OR lower(trim(author)) IN (
+                'unknown author', 'unknown authors', 'author unknown',
+                'anonymous', 'n/a', 'none', 'null'
+            )
+            OR description IS NULL OR description = ''
             OR genre IS NULL OR genre = ''
             OR year IS NULL
             OR cover_path IS NULL OR cover_path = ''

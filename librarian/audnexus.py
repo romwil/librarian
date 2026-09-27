@@ -426,9 +426,13 @@ def match_audiobook_tokens(
     limit: int = 8,
 ) -> Dict[str, Any]:
     """Score Audnexus candidates for normalized tokens."""
+    from librarian.enrich import lookup_author
+
+    # Identify/migrate write "Unknown Author"; Audible treats it as a real filter.
+    author = lookup_author(tokens)
     candidates = client.search(
         title=_text(tokens.get("title")),
-        author=_text(tokens.get("author")),
+        author=author,
         asin=_text(tokens.get("asin")),
         narrator=_text(tokens.get("narrator")),
         series_name=_text(tokens.get("series_name")),

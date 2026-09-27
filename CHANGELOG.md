@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.5.3] — 2026-09-27
+
+### Fixed
+
+- **Enrich fills Unknown Author.** Identify/migrate placeholders (`Unknown Author`) are no longer sent to Hardcover / Open Library / Audnexus as a real author filter (OL returned zero hits for titles that match title-only). Enrich now writes author when the catalog still has that placeholder, treats missing author as thin for backlog/trickle, and the Work page suggests Fix match when providers still leave a thin volume.
+
 ## [0.5.2] — 2026-09-25
 
 ### Highlights

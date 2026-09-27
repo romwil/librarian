@@ -561,7 +561,9 @@ export default function WorkPage() {
                     setEnrichNote(
                       result.updated
                         ? `Filled from ${result.source || "Open Library"}${key}${conf}`
-                        : "Already as complete as Hardcover and Open Library allow",
+                        : result.thin
+                          ? "Providers had nothing new — try Fix match, or Edit the author"
+                          : "Already as complete as Hardcover and Open Library allow",
                     );
                   } catch (err) {
                     setEnrichNote(humanError(err));

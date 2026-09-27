@@ -36,6 +36,33 @@ COVER_PERMISSION_COPY = (
     "On Automat, library folders should be writable by PUID/PGID (often 99:100)."
 )
 
+# Shelf / identify fallback written when no creator was known — not a real author.
+_UNKNOWN_AUTHOR_MARKERS = frozenset(
+    {
+        "unknown author",
+        "unknown authors",
+        "author unknown",
+        "anonymous",
+        "n/a",
+        "none",
+        "null",
+    }
+)
+
+
+def author_missing(author: Any) -> bool:
+    """True when catalog author is empty or a known identify/migrate placeholder."""
+    text = str(author or "").strip()
+    if not text:
+        return True
+    return text.casefold() in _UNKNOWN_AUTHOR_MARKERS
+
+
+def lookup_author(work: Mapping[str, Any]) -> str:
+    """Author safe to send to Hardcover / Open Library / Audnexus (never a placeholder)."""
+    author = str(work.get("author") or "").strip()
+    return "" if author_missing(author) else author
+
 
 def friendly_enrich_error(error: BaseException, *, title: str = "") -> str:
     """Household copy for enrich failures (never raw Errno 13)."""
@@ -177,6 +204,7 @@ class Enrichment:
     def empty(self) -> bool:
         return not any(
             (
+                self.author,
                 self.description,
                 self.genre,
                 self.series_name,
@@ -236,6 +264,7 @@ def is_thin(work: Mapping[str, Any]) -> bool:
     cover_ok = bool(cover) and Path(cover).is_file()
     return not all(
         (
+            not author_missing(work.get("author")),
             str(work.get("description") or "").strip(),
             work.get("year") not in (None, ""),
             cover_ok,
@@ -258,7 +287,9 @@ def lookup_enrichment(
     """Hardcover first when a token is saved; Open Library then Wikipedia fill holes."""
     isbn = extract_isbn(str(work.get("isbn") or ""))
     title = str(work.get("title") or "").strip()
-    author = str(work.get("author") or "").strip()
+    # Placeholder "Unknown Author" must not be sent — OL/Audible treat it as a filter
+    # and return zero hits for otherwise matchable titles.
+    author = lookup_author(work)
     own = client is None
     http = client or _http_client(transport=transport)
     merged = Enrichment()
@@ -346,6 +377,8 @@ def lookup_enrichment(
 
 
 def _still_needs(found: Enrichment, work: Mapping[str, Any]) -> bool:
+    if author_missing(work.get("author")) and not found.author:
+        return True
     if not str(work.get("description") or "").strip() and not found.description:
         return True
     if work.get("year") in (None, "") and found.year is None:
@@ -361,7 +394,7 @@ def _still_needs(found: Enrichment, work: Mapping[str, Any]) -> bool:
 
 
 def _fill_empty(base: Enrichment, incoming: Enrichment) -> Enrichment:
-    if incoming.empty() and not incoming.title:
+    if incoming.empty() and not incoming.title and not incoming.author:
         return base
     source = incoming.source or base.source
     if base.source and incoming.source and incoming.source != base.source:
@@ -412,6 +445,9 @@ def apply_enrichment(
     """
     updated = dict(work)
     changed = False
+    if found.author and (replace or author_missing(updated.get("author"))):
+        updated["author"] = found.author
+        changed = True
     if found.description and (replace or not str(updated.get("description") or "").strip()):
         updated["description"] = found.description
         if found.synopsis_source:
@@ -856,7 +892,7 @@ def list_match_candidates(
 
         return list_audnexus_candidates(work, settings=settings, transport=transport, limit=limit)
     title = str(work.get("title") or "").strip()
-    author = str(work.get("author") or "").strip()
+    author = lookup_author(work)
     year = work.get("year") if isinstance(work.get("year"), int) else None
     own = client is None
     http = client or _http_client(transport=transport)
@@ -1122,6 +1158,7 @@ def apply_openlibrary_match(
 
 def _catalog_changed(before: Mapping[str, Any], after: Mapping[str, Any]) -> bool:
     keys = (
+        "author",
         "description",
         "genre",
         "series_name",

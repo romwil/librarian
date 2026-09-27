@@ -11,11 +11,14 @@ from librarian.enrich import (
     Enrichment,
     _still_needs,
     apply_enrichment,
+    author_missing,
     enrich_backlog_batch,
     enrich_library,
     enrich_work,
     friendly_enrich_error,
     is_thin,
+    lookup_author,
+    lookup_enrichment,
 )
 from librarian.goodreads import import_goodreads_csv, parse_csv_isbn, parse_goodreads_rows
 from librarian.identify import isbn10_to_isbn13, isbn13_to_isbn10, isbn_match_keys
@@ -231,6 +234,101 @@ def test_still_needs_when_series_name_missing_from_work_and_enrichment():
         series_name="",
     )
     assert _still_needs(found, work) is True
+
+
+def test_author_missing_treats_identify_placeholder():
+    assert author_missing("") is True
+    assert author_missing(None) is True
+    assert author_missing("Unknown Author") is True
+    assert author_missing("  unknown author  ") is True
+    assert author_missing("Thomas A. Bogar") is False
+    assert lookup_author({"author": "Unknown Author"}) == ""
+    assert lookup_author({"author": "Thomas A. Bogar"}) == "Thomas A. Bogar"
+
+
+def test_is_thin_when_author_is_unknown_placeholder(tmp_path):
+    cover = tmp_path / "cover.jpg"
+    cover.write_bytes(JPEG)
+    work = {
+        "kind": "audiobook",
+        "author": "Unknown Author",
+        "description": BLURB,
+        "year": 2013,
+        "genre": "History",
+        "cover_path": str(cover),
+    }
+    assert is_thin(work) is True
+    work["author"] = "Thomas A. Bogar"
+    assert is_thin(work) is False
+
+
+def test_apply_enrichment_fills_unknown_author(tmp_path):
+    db = Database(tmp_path / "librarian.db")
+    work = db.upsert_work(
+        {
+            "kind": "audiobook",
+            "title": "Backstage at the Lincoln Assassination",
+            "author": "Unknown Author",
+            "year": 2013,
+            "description": BLURB,
+            "genre": "History",
+        }
+    )
+    found = Enrichment(author="Thomas A. Bogar", source="openlibrary")
+    updated = apply_enrichment(db, work, found, data_dir=tmp_path)
+    assert updated["author"] == "Thomas A. Bogar"
+
+
+def test_lookup_skips_unknown_author_filter_for_openlibrary(tmp_path):
+    """OL title+author=Unknown Author returns zero docs; enrich must search title-only."""
+    seen: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if "openlibrary.org/search.json" in url:
+            seen["search"] = url
+            if "author=" in url:
+                return httpx.Response(200, json={"docs": []})
+            return httpx.Response(
+                200,
+                json={
+                    "docs": [
+                        {
+                            "key": "/works/OL21092682W",
+                            "title": "Backstage at the Lincoln Assassination",
+                            "author_name": ["Thomas A. Bogar"],
+                            "first_publish_year": 2013,
+                            "cover_i": 12345,
+                        }
+                    ]
+                },
+            )
+        if "openlibrary.org/works/" in url:
+            return httpx.Response(
+                200,
+                json={
+                    "key": "/works/OL21092682W",
+                    "title": "Backstage at the Lincoln Assassination",
+                    "description": BLURB,
+                    "subjects": ["History"],
+                },
+            )
+        return httpx.Response(404)
+
+    work = {
+        "kind": "audiobook",
+        "title": "Backstage at the Lincoln Assassination",
+        "author": "Unknown Author",
+        "year": 2013,
+    }
+    found = lookup_enrichment(
+        work,
+        Settings(),
+        transport=httpx.MockTransport(handler),
+    )
+    assert "author=" not in seen.get("search", "")
+    assert found.author == "Thomas A. Bogar"
+    assert found.source == "openlibrary"
 
 
 def test_hardcover_isbn_fills_thin_work_and_keeps_isbn(tmp_path):
