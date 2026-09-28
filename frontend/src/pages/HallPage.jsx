@@ -3,6 +3,7 @@ import { Link, useNavigate, useOutletContext } from "react-router-dom";
 import { api } from "../api.js";
 import { browseHref, kindShelfTotalLine } from "../browse.js";
 import Rail from "../components/Rail.jsx";
+import SeriesCatchUp from "../components/SeriesCatchUp.jsx";
 import TonightShelf from "../components/TonightShelf.jsx";
 import { DISCOVER_CTA, emptyHallCopy, humanError, setupComplete } from "../copy.js";
 import { discoverHref } from "../find.js";
@@ -86,6 +87,7 @@ function HallShelves({ role, owner, configured, lampPeriod }) {
         </section>
       ) : null}
       <TonightShelf tonight={hall?.tonight} role={role} />
+      <SeriesCatchUp catchUp={hall?.series_catch_up} role={role} />
       <Rail
         title="Continue listening"
         kicker="Where you left the lamp"

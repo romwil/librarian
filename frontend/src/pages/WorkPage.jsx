@@ -6,11 +6,12 @@ import { browseHref } from "../browse.js";
 import { coverWashStyle, coverWashUrl, isInboundJob } from "../cover.js";
 import { canPromoteIncomingMusic, humanError, peekMediaNote } from "../copy.js";
 import { looksLikeHtml, sanitizeDescriptionHtml } from "../description.js";
-import { findHref } from "../find.js";
+import { findHref, gapFindFields } from "../find.js";
 import { companionAudiobookView } from "../audiobookCompanion.js";
 import { isIncompleteOwnedPartSet, ownedPartSetStatusLine, partSetFindFields } from "../findParts.js";
 import { useAlbumPlayer } from "../hooks/useAlbumPlayer.js";
 import { finishRitualCopy } from "../lib/lampRituals.js";
+import { catchUpCtaLabel, catchUpInvitation, missingRibbonBeads } from "../lib/seriesCatchUp.js";
 import { canListenInApp, isAudioFile } from "../listen.js";
 import { canOpenInlineMedia, canReadInApp, readerCtaLabel, workDownloadUrl } from "../reader.js";
 import Rail from "../components/Rail.jsx";
@@ -168,6 +169,23 @@ export default function WorkPage() {
   const readLabel = readerCtaLabel(work) || "Read";
   const canCatalog = user?.role === "owner" || user?.role === "op";
   const canEnrichKind = work.kind === "book" || work.kind === "audiobook";
+  const ribbonHoles = missingRibbonBeads(data.series_ribbon);
+  const catchUpCopy = catchUpInvitation({
+    seriesName: work.series_name,
+    kind: work.kind,
+    missingCount: ribbonHoles.length,
+  });
+  const catchUpHref = ribbonHoles.length
+    ? findHref(
+        gapFindFields({
+          gap: true,
+          kind: work.kind || "",
+          series_name: work.series_name || "",
+          missing_index: ribbonHoles[0].value,
+          author: work.author || "",
+        }),
+      )
+    : "";
 
   async function markFinished() {
     try {
@@ -523,6 +541,16 @@ export default function WorkPage() {
                 />
               ))}
             </div>
+            {catchUpCopy ? (
+              <p className="series-catch-up-invite" data-testid="series-catch-up-invite">
+                <span>{catchUpCopy}</span>
+                {catchUpHref ? (
+                  <Link className="cta outline compact" to={catchUpHref}>
+                    {catchUpCtaLabel(user?.role)}
+                  </Link>
+                ) : null}
+              </p>
+            ) : null}
           </section>
         ) : null}
         {canCatalog && canEnrichKind ? (

@@ -6,7 +6,13 @@ import re
 from datetime import datetime, time, timezone
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
-from librarian.kinds import KIND_AUDIOBOOK, KIND_COMIC, KIND_MUSIC
+from librarian.kinds import (
+    KIND_AUDIOBOOK,
+    KIND_BOOK,
+    KIND_COMIC,
+    KIND_MAGAZINE,
+    KIND_MUSIC,
+)
 
 AMBIENT_CHOICES = ("off", "paper", "lamp")
 WHISPER_MAX_LEN = 280
@@ -84,6 +90,154 @@ def tonight_shelf(
         "surprise": disc,
         "empty": not cont and not gap and not disc,
     }
+
+
+SERIES_CATCH_UP_LIMIT = 3
+SERIES_CATCH_UP_MAX_MISSING = 6
+
+# Household nouns for a hole in a run — the shelf name, never "items".
+_CATCH_UP_KIND_NOUNS = {
+    KIND_COMIC: ("issue", "issues"),
+    KIND_MAGAZINE: ("issue", "issues"),
+    KIND_MUSIC: ("track", "tracks"),
+    KIND_AUDIOBOOK: ("part", "parts"),
+    KIND_BOOK: ("volume", "volumes"),
+}
+_CATCH_UP_GAP_TYPE_NOUNS = {
+    "multipart": ("part", "parts"),
+    "audiobook_parts": ("part", "parts"),
+    "music_tracks": ("track", "tracks"),
+    "music_album": ("album", "albums"),
+    "comic_issue": ("issue", "issues"),
+    "series_volume": ("volume", "volumes"),
+}
+_CATCH_UP_COUNT_WORDS = {1: "One", 2: "Two", 3: "Three"}
+_CATCH_UP_MONTH = re.compile(r"^\d{4}-(?:0[1-9]|1[0-2])$")
+
+
+def catch_up_noun(kind: object, gap_type: object = "", *, plural: bool = False) -> str:
+    pair = (
+        _CATCH_UP_GAP_TYPE_NOUNS.get(str(gap_type or ""))
+        or _CATCH_UP_KIND_NOUNS.get(str(kind or ""))
+        or ("volume", "volumes")
+    )
+    return pair[1] if plural else pair[0]
+
+
+def catch_up_invitation(
+    *,
+    series_name: object,
+    kind: object,
+    gap_type: object = "",
+    missing_count: int,
+) -> str:
+    """Invitation, not a scoreboard: 'Two issues from a whole Saga.'"""
+    count = max(0, int(missing_count or 0))
+    if count < 1:
+        return ""
+    noun = catch_up_noun(kind, gap_type, plural=count != 1)
+    lead = _CATCH_UP_COUNT_WORDS.get(count, "A few")
+    name = str(series_name or "").strip()
+    return f"{lead} {noun} from a whole {name}." if name else f"{lead} {noun} from a whole run."
+
+
+def _index_like(value: object) -> bool:
+    """Real series positions only — file-derived rails carry filenames, not beads."""
+    text = str(value or "").strip()
+    if not text:
+        return False
+    return _numish(text) or bool(_CATCH_UP_MONTH.match(text))
+
+
+def series_catch_up(
+    cards: Sequence[Mapping[str, Any]] = (),
+    *,
+    limit: int = SERIES_CATCH_UP_LIMIT,
+    max_missing: int = SERIES_CATCH_UP_MAX_MISSING,
+) -> Dict[str, Any]:
+    """Hall invitation: runs a hole or two from whole, fewest missing first.
+
+    Fed from local gap cards so every role can be invited — no catalog fan-out.
+    """
+    groups: Dict[tuple, Dict[str, Any]] = {}
+    order: List[tuple] = []
+    for raw in cards or []:
+        card = dict(raw)
+        kind = str(card.get("kind") or "").strip()
+        series = str(card.get("series_name") or "").strip()
+        if not kind or not series:
+            continue
+        gap_type = str(card.get("gap_type") or "")
+        key = (kind, series.lower(), gap_type)
+        bucket = groups.get(key)
+        if bucket is None:
+            bucket = {
+                "kind": kind,
+                "series_name": series,
+                "gap_type": gap_type,
+                "author": "",
+                "owned": [str(v) for v in (card.get("owned_indexes") or [])],
+                "missing": [],
+                "cards": [],
+            }
+            groups[key] = bucket
+            order.append(key)
+        if not bucket["author"]:
+            bucket["author"] = str(card.get("author") or "").strip()
+        holes = card.get("series_missing") or []
+        if not holes and card.get("missing_index"):
+            holes = [card["missing_index"]]
+        for hole in holes:
+            text = str(hole or "").strip()
+            if text and text not in bucket["missing"]:
+                bucket["missing"].append(text)
+        bucket["cards"].append(card)
+
+    def hole_sort(value: str) -> tuple:
+        return (not _numish(value), _num_key(value), value)
+
+    rows: List[Dict[str, Any]] = []
+    for key in order:
+        bucket = groups[key]
+        missing = sorted(bucket["missing"], key=hole_sort)
+        count = len(missing)
+        if count < 1 or count > max(1, int(max_missing)):
+            continue
+        owned = [value for value in bucket["owned"] if _index_like(value)]
+        first_hole = missing[0]
+        next_gap = next(
+            (c for c in bucket["cards"] if str(c.get("missing_index") or "") == first_hole),
+            bucket["cards"][0],
+        )
+        rows.append(
+            {
+                "id": f"catchup:{bucket['kind']}:{bucket['series_name']}:{bucket['gap_type']}",
+                "kind": bucket["kind"],
+                "series_name": bucket["series_name"],
+                "gap_type": bucket["gap_type"],
+                "author": bucket["author"],
+                "missing": missing,
+                "missing_count": count,
+                "owned_count": len(bucket["owned"]),
+                "next_gap": dict(next_gap),
+                "invitation": catch_up_invitation(
+                    series_name=bucket["series_name"],
+                    kind=bucket["kind"],
+                    gap_type=bucket["gap_type"],
+                    missing_count=count,
+                ),
+                "ribbon": series_ribbon(owned_indexes=owned, missing_indexes=missing, cap=18),
+            }
+        )
+    rows.sort(
+        key=lambda row: (
+            int(row["missing_count"]),
+            -int(row["owned_count"]),
+            str(row["series_name"]).lower(),
+        )
+    )
+    picked = rows[: max(0, int(limit))]
+    return {"series": picked, "empty": not picked}
 
 
 def series_ribbon(

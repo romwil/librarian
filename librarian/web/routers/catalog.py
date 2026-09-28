@@ -26,6 +26,7 @@ from librarian.delight import (
     normalize_ui_theme,
     plexamp_handoff,
     sanitize_whisper,
+    series_catch_up,
     series_ribbon,
     tonight_shelf,
 )
@@ -38,7 +39,7 @@ from librarian.enrich import (
     list_match_candidates,
     update_work_metadata,
 )
-from librarian.gaps import catalog_gaps, gap_cards, gaps_for_series
+from librarian.gaps import catalog_gaps, gap_cards, gaps_for_series, local_gaps
 from librarian.indexers.discover import discover_beyond, resolve_feed_limit
 from librarian.indexers.rank import search_and_rank
 from librarian.indexers.scrub import (
@@ -138,6 +139,8 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
         gaps = []
         if user["role"] in ("owner", "op"):
             gaps = gap_cards(catalog_gaps(db, settings()))
+        # Catch-up is local-only so readers get invited too (catalog fan-out stays owner/op).
+        catch_up = series_catch_up(gap_cards(local_gaps(db)))
         continue_rows = db.continue_works(user["id"], limit=18)
         continue_split = split_continue_rails(continue_rows)
         surprise = None
@@ -163,6 +166,7 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
             "favorites": public_works(favorites),
             "areas": {key: public_works(value) for key, value in areas.items()},
             "gaps": gaps,
+            "series_catch_up": catch_up,
             "continue": continue_split["reading"],
             "continue_listening": continue_split["listening"],
             "tonight": tonight,

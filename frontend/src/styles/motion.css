@@ -126,6 +126,30 @@
   animation-delay: calc(var(--settle-i, 0) * 70ms);
 }
 
+/* Series catch-up — same lamp breath as Tonight’s Shelf, quieter wash */
+.series-catch-up-alive {
+  position: relative;
+  overflow: hidden;
+}
+
+.series-catch-up-glow {
+  position: absolute;
+  inset: auto -12% -22% 12%;
+  height: 48%;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse at 50% 100%,
+    color-mix(in srgb, var(--lamp, #f0b85a) 28%, transparent),
+    transparent 70%
+  );
+  opacity: 0.6;
+  animation: shelf-breath var(--motion-breath) infinite;
+}
+
+.series-catch-up-invite {
+  animation: soft-enter var(--motion-settle) both;
+}
+
 .rail.is-continue-presence .rail-head h2 {
   position: relative;
 }
@@ -311,6 +335,9 @@
   .plexamp-toast,
   .tonight-shelf,
   .tonight-lamp-glow,
+  .series-catch-up,
+  .series-catch-up-glow,
+  .series-catch-up-invite,
   .cover-settle,
   .hall-welcome-back,
   .finish-ritual-note,
@@ -324,6 +351,11 @@
 
   .tonight-lamp-glow {
     opacity: 0.55;
+    transform: none;
+  }
+
+  .series-catch-up-glow {
+    opacity: 0.45;
     transform: none;
   }
 
