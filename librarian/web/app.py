@@ -143,10 +143,19 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
 
         @app.get("/{full_path:path}")
         def spa(full_path: str):
-            candidate = FRONTEND_DIST / full_path
-            if full_path and candidate.is_file():
-                return FileResponse(candidate)
-            index = FRONTEND_DIST / "index.html"
+            # Unauthenticated static zone — confine every candidate under FRONTEND_DIST
+            # (P3-CRIT-01). Path.is_file() follows `..`; resolve + relative_to jails it.
+            root = FRONTEND_DIST.resolve()
+            if full_path:
+                candidate = (root / full_path).resolve()
+                try:
+                    candidate.relative_to(root)
+                except ValueError:
+                    candidate = None
+                else:
+                    if candidate.is_file():
+                        return FileResponse(candidate)
+            index = root / "index.html"
             if index.is_file():
                 return FileResponse(index)
             return JSONResponse({"detail": "SPA is not built"}, status_code=404)
