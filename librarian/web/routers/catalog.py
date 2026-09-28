@@ -42,6 +42,7 @@ from librarian.enrich import (
     update_work_metadata,
 )
 from librarian.gaps import catalog_gaps, gap_cards, gaps_for_series, local_gaps
+from librarian.gaps_gifts import gift_cards, gift_presence
 from librarian.indexers.discover import discover_beyond, resolve_feed_limit
 from librarian.indexers.rank import search_and_rank
 from librarian.indexers.scrub import (
@@ -81,6 +82,7 @@ from librarian.parts import build_part_set
 from librarian.rate_limit import enforce_rate_limit
 from librarian.rss import poll_rss_feeds
 from librarian.sabnzbd import SABError
+from librarian.search_forgive import search_with_forgiveness
 from librarian.serve import (
     annotate_work_files,
     can_read_work,
@@ -147,8 +149,14 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
             ),
         }
         gaps = []
+        # Local holes as gifts for every role; catalog fan-out stays owner/op.
+        local_gift = gift_cards(gap_cards(local_gaps(db)))
         if user["role"] in ("owner", "op"):
-            gaps = gap_cards(catalog_gaps(db, settings()))
+            catalog = gift_cards(gap_cards(catalog_gaps(db, settings())))
+            # Prefer catalog cards when present; otherwise local gifts.
+            gaps = catalog or local_gift
+        else:
+            gaps = local_gift
         # Catch-up is local-only so readers get invited too (catalog fan-out stays owner/op).
         catch_up = series_catch_up(gap_cards(local_gaps(db)))
         continue_rows = db.continue_works(user["id"], limit=18)
@@ -190,6 +198,7 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
             "named_shelves_presence": shelf_presence(named_shelves),
             "areas": {key: public_works(value) for key, value in areas.items()},
             "gaps": gaps,
+            "gaps_presence": gift_presence(gaps),
             "series_catch_up": catch_up,
             "continue": continue_split["reading"],
             "continue_listening": continue_split["listening"],
@@ -218,7 +227,10 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
         user = request.state.user
         local_kind = kind if kind in ALL_KINDS else None
         local_q = q.strip()
-        local = public_works(db.search_works(local_q, limit=24, kind=local_kind) if local_q else [])
+        forgiven = {"local": [], "did_you_mean": [], "forgave": False}
+        if local_q:
+            forgiven = search_with_forgiveness(db, local_q, limit=24, kind=local_kind)
+        local = public_works(forgiven.get("local") or [])
         indexer = []
         beyond_error = None
         sought = {
@@ -270,6 +282,8 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
         return {
             "q": q,
             "local": local,
+            "did_you_mean": list(forgiven.get("did_you_mean") or []),
+            "forgave": bool(forgiven.get("forgave")),
             "beyond": public_indexer_hits(indexer),
             "beyond_error": beyond_error,
             "pick": public_indexer_hit(pick) if isinstance(pick, dict) else pick,

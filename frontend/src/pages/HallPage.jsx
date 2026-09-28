@@ -8,6 +8,7 @@ import SeriesCatchUp from "../components/SeriesCatchUp.jsx";
 import TonightShelf from "../components/TonightShelf.jsx";
 import { DISCOVER_CTA, emptyHallCopy, humanError, setupComplete } from "../copy.js";
 import { discoverHref } from "../find.js";
+import { gapsGiftKicker, gapsGiftTitle } from "../lib/gapsAsGifts.js";
 import { hallLampPeriod, hallLampPeriodLabel, welcomeBackCopy } from "../lib/lampRituals.js";
 
 /** Deferred shelves — hero paints first; this block loads with a clear warming state. */
@@ -142,9 +143,10 @@ function HallShelves({ role, owner, configured, lampPeriod }) {
         seeAllTo={browseHref({ kind: "music" })}
       />
       <Rail
-        title="Gaps"
-        kicker="Find this hole beyond the shelves"
+        title={gapsGiftTitle()}
+        kicker={gapsGiftKicker(hall)}
         items={(hall?.gaps || []).map((item) => ({ ...item, gap: true }))}
+        empty={hall ? "The runs on these shelves feel whole tonight." : undefined}
       />
     </div>
   );

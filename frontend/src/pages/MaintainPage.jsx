@@ -9,6 +9,7 @@ import {
   scanProgressSummary,
 } from "../actionBusy.js";
 import AddToLibrary from "../components/AddToLibrary.jsx";
+import CalibreRenormalize from "../components/CalibreRenormalize.jsx";
 import MaintainStatusDock from "../components/MaintainStatusDock.jsx";
 import MorningBrief from "../components/MorningBrief.jsx";
 import IndexerScorecard from "../components/IndexerScorecard.jsx";
@@ -105,6 +106,10 @@ export default function MaintainPage() {
   const [groomingUndoLoading, setGroomingUndoLoading] = useState(true);
   const [groomingUndoBusy, setGroomingUndoBusy] = useState(false);
   const [groomingUndoNote, setGroomingUndoNote] = useState("");
+  const [calibrePreview, setCalibrePreview] = useState(null);
+  const [calibreLoading, setCalibreLoading] = useState(false);
+  const [calibreBusy, setCalibreBusy] = useState(false);
+  const [calibreNote, setCalibreNote] = useState("");
 
   useEffect(() => {
     if (user?.role !== "owner") return undefined;
@@ -558,6 +563,34 @@ export default function MaintainPage() {
     }
   }
 
+  async function lookCalibreDump() {
+    setCalibreLoading(true);
+    setCalibreNote("");
+    try {
+      const data = await api.maintainCalibreRenormalize();
+      setCalibrePreview(data);
+    } catch (err) {
+      setCalibrePreview(null);
+      setCalibreNote(humanError(err));
+    } finally {
+      setCalibreLoading(false);
+    }
+  }
+
+  async function applyCalibreDump() {
+    setCalibreBusy(true);
+    setCalibreNote("");
+    try {
+      const data = await api.maintainCalibreRenormalizeApply();
+      setCalibrePreview(data);
+      setCalibreNote(data?.presence || "The dump is on the shelves.");
+    } catch (err) {
+      setCalibreNote(humanError(err));
+    } finally {
+      setCalibreBusy(false);
+    }
+  }
+
   return (
     <div className="admin-room maintain-page page-settle" data-testid="maintain-page">
       <p className="kicker">Owner</p>
@@ -603,6 +636,14 @@ export default function MaintainPage() {
         <p className="kicker">Already on disk</p>
         <h2>Add a volume</h2>
         <AddToLibrary embedded />
+        <CalibreRenormalize
+          preview={calibrePreview}
+          loading={calibreLoading}
+          busy={calibreBusy}
+          onLook={lookCalibreDump}
+          onApply={applyCalibreDump}
+        />
+        {calibreNote ? <p className="muted">{calibreNote}</p> : null}
       </section>
 
       <section className="maintain-section" id="maintain-review" data-testid="maintain-review">

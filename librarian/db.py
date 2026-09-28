@@ -1310,8 +1310,15 @@ class Database:
         match = _fts_query(query)
         if not match:
             return []
+        return self.search_works_raw(match, limit=limit, kind=kind)
+
+    def search_works_raw(self, match: str, *, limit: int = 24, kind: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Run a prepared FTS MATCH string (exact or prefix-forgiving)."""
+        needle = str(match or "").strip()
+        if not needle:
+            return []
         kind_sql = ""
-        args: List[Any] = [match]
+        args: List[Any] = [needle]
         if kind:
             kind_sql = " AND w.kind = ?"
             args.append(kind)

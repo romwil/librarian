@@ -9,6 +9,7 @@ from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 
 from librarian.audiobookshelf import match_audiobooks
 from librarian.auth import require_role
+from librarian.calibre_renormalize import assemble_calibre_renormalize
 from librarian.config import save_settings
 from librarian.enrich import enrich_library, friendly_enrich_error
 from librarian.enrich_progress import (
@@ -183,6 +184,17 @@ def register_maintain_routes(app: FastAPI, deps: WebDeps) -> None:
         require_role(current_user(request), "owner", "op")
         return restore_grooming_batch(db, root)
 
+    @app.get("/api/maintain/calibre-renormalize")
+    def maintain_calibre_renormalize_preview(request: Request):
+        """Look first: dry-run Calibre dump → books_root map."""
+        require_role(current_user(request), "owner")
+        return assemble_calibre_renormalize(settings(), apply=False)
+
+    @app.post("/api/maintain/calibre-renormalize")
+    def maintain_calibre_renormalize_apply(request: Request):
+        """One graceful ritual: copy Calibre dump into books_root (never move)."""
+        require_role(current_user(request), "owner")
+        return assemble_calibre_renormalize(settings(), apply=True, limit=None)
 
     @app.post("/api/maintain/purge-shells")
     def maintain_purge_shells(request: Request, limit: int = 0):

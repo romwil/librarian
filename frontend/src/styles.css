@@ -3131,6 +3131,50 @@ button.cover {
 .grooming-undo-actions {
   margin: var(--space-3) 0 0;
 }
+.calibre-renormalize {
+  position: relative;
+  margin: var(--space-4) 0 0;
+  padding: var(--space-4);
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--brass, #c9954a) 18%, var(--border-subtle));
+  background: color-mix(in srgb, var(--paper, #f4ead6) 40%, var(--surface));
+}
+.calibre-renormalize.is-quiet {
+  border-style: dashed;
+  opacity: 0.92;
+}
+.calibre-renormalize-glow {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.3;
+  background: radial-gradient(circle at 10% 0%, color-mix(in srgb, var(--lamp, #f0b85a) 16%, transparent), transparent 45%);
+}
+.calibre-renormalize-alive .calibre-renormalize-glow {
+  animation: named-shelves-breathe 6s ease-in-out infinite;
+}
+.calibre-renormalize-title {
+  margin: 0 0 var(--space-2);
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  position: relative;
+  z-index: 1;
+}
+.calibre-renormalize-presence {
+  margin: 0 0 var(--space-3);
+  position: relative;
+  z-index: 1;
+}
+.calibre-renormalize-actions {
+  position: relative;
+  z-index: 1;
+}
+.search-forgive {
+  margin: var(--space-3) 0;
+  padding: var(--space-3);
+  border-radius: 10px;
+  border: 1px dashed color-mix(in srgb, var(--brass, #c9954a) 28%, var(--border-subtle));
+}
 .named-shelves {
   position: relative;
   margin: var(--space-5) 0 var(--space-4);
@@ -4864,6 +4908,7 @@ button.cover {
   .morning-brief,
   .ingest-preview-map,
   .named-shelves-alive .named-shelves-glow,
+  .calibre-renormalize-alive .calibre-renormalize-glow,
   .room.ambient-paper::before,
   .room.ambient-lamp::before {
     animation: none !important;

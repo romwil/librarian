@@ -229,8 +229,9 @@ def test_hall_invites_every_role_to_catch_up(tmp_path, monkeypatch):
     reader_hall = client.get("/api/hall")
     assert reader_hall.status_code == 200
     reader_body = reader_hall.json()
-    # Readers still get no catalog gaps rail, but they do get the invitation.
-    assert reader_body["gaps"] == []
+    # Gaps as gifts: readers see local holes as invitations (not catalog fan-out admin debt).
+    assert any(card.get("missing_index") == "3" and card.get("gift") for card in reader_body["gaps"])
+    assert "gift" in (reader_body.get("gaps_presence") or "").lower() or reader_body.get("gaps_presence")
     reader_catch_up = reader_body["series_catch_up"]
     assert reader_catch_up["empty"] is False
     saga = reader_catch_up["series"][0]

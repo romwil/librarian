@@ -14,6 +14,7 @@ import {
   findHref,
   pruneFieldsForKind,
 } from "../find.js";
+import { didYouMeanList, didYouMeanPresence, searchForgave } from "../lib/searchForgive.js";
 
 function fieldsFromState(draft, kind, advanced) {
   return pruneFieldsForKind(kind, {
@@ -73,7 +74,11 @@ export default function SearchPage() {
       .search(composed, { beyond: false, kind: fields.kind })
       .then((data) => {
         if (!alive) return;
-        setResult({ local: data.local || [] });
+        setResult({
+          local: data.local || [],
+          did_you_mean: data.did_you_mean || [],
+          forgave: Boolean(data.forgave),
+        });
         setPhase("done");
       })
       .catch((err) => {
@@ -102,6 +107,14 @@ export default function SearchPage() {
     }
   }
 
+  function onDidYouMean(title) {
+    setDraft(title);
+    const next = fieldsFromState(title, kind, advanced);
+    setKind(next.kind);
+    setAdvanced(next);
+    setParams(Object.fromEntries(buildFindSearchParams(next)));
+  }
+
   const status = searchStatusLine({
     q: composed,
     kind: composed ? fields.kind : kind,
@@ -114,6 +127,8 @@ export default function SearchPage() {
   const showFindCta = Boolean(composed) && phase !== "idle" && phase !== "local";
   const showDiscoverDoor = !composed;
   const ctaFields = fieldsFromState(draft.trim() || fields.q, kind, advanced);
+  const suggestions = didYouMeanList(result);
+  const forgiveNote = didYouMeanPresence(suggestions);
 
   return (
     <div className="search-page page-settle">
@@ -137,11 +152,29 @@ export default function SearchPage() {
       ) : null}
       <p className="search-status" aria-live="polite" data-testid="search-status">
         {status}
+        {searchForgave(result) ? " · the lamp forgave a typo" : ""}
       </p>
       {error ? (
         <p className="callout" role="status" data-testid="search-error">
           {error}
         </p>
+      ) : null}
+      {suggestions.length ? (
+        <div className="search-forgive" data-testid="search-did-you-mean">
+          <p className="kicker">{forgiveNote}</p>
+          <div className="cta-row">
+            {suggestions.map((title) => (
+              <button
+                key={title}
+                type="button"
+                className="cta outline compact"
+                onClick={() => onDidYouMean(title)}
+              >
+                {title}
+              </button>
+            ))}
+          </div>
+        </div>
       ) : null}
       {showDiscoverDoor ? (
         <p className="find-cta-block">

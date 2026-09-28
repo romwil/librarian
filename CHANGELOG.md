@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [0.5.14] — 2026-09-27
+
+### Highlights
+
+- **One-button Calibre re-normalize.** Maintain Look first maps a Calibre dump, then shelves as copy in one graceful ritual — not five grooming buttons. Why this feels alive: tending a dump feels like ceremony, not a scavenger hunt.
+- **Gaps as gifts.** Hall holes invite the next chapter of a run for the whole house — never admin debt. Why this feels alive: missing issues feel like invitation.
+- **Search that forgives.** Local shelves tolerate typos and offer a quiet “did you mean,” still without leaving home. Why this feels alive: the stacks meet you halfway.
+
+### Added
+
+- **`GET/POST /api/maintain/calibre-renormalize`** + `librarian.calibre_renormalize` (dry-run then copy).
+- **Gap gift framing** (`librarian.gaps_gifts`) on Hall Gaps as gifts rail.
+- **Forgiving search** (`librarian.search_forgive`) with `did_you_mean` on `/api/search`.
+
 ## [0.5.13] — 2026-09-27
 
 ### Highlights
