@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import re
-import time
-import uuid
 from typing import Any, Dict, List, Optional
 
 # Favorites stays the reserved personal rail — named shelves never collide.

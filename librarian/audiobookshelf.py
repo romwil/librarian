@@ -438,7 +438,11 @@ def pull_abs_listen_progress(
     client: Optional[AudiobookshelfClient] = None,
 ) -> Optional[Dict[str, Any]]:
     """Pull ABS progress into Librarian when opening Listen. Fail-soft."""
-    from librarian.listen import decode_listen_position, prefer_lamp_bookmark, should_write_listen_progress
+    from librarian.listen import (
+        decode_listen_position,
+        prefer_lamp_bookmark,
+        should_write_listen_progress,
+    )
 
     if _text(work.get("kind")) != KIND_AUDIOBOOK:
         return None
