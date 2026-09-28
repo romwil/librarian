@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.5.4] — 2026-09-27
+
+### Highlights
+
+- **Clearing notification email sticks.** Empty or null email prefs remove the address from storage so mail stops going to a stale inbox.
+
+### Fixed
+
+- **`set_user_prefs` honors explicit clears.** `merge_notification_prefs` already dropped a cleared `notification_email`, but `Database.set_user_prefs` re-merged with `.update()` and kept the old key. Incoming `None` values now delete that preference key (covers `""` and `null` from PUT `/api/notifications/prefs`).
+
 ## [0.5.3] — 2026-09-27
 
 ### Fixed

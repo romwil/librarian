@@ -2020,7 +2020,11 @@ class Database:
         next_ambient = ambient if ambient is not None else current.get("ambient") or "off"
         next_prefs = dict(current.get("prefs") or {})
         if prefs is not None:
+            # Shallow merge; None values are explicit clears (update alone cannot delete keys).
             next_prefs.update(prefs)
+            for key, value in prefs.items():
+                if value is None:
+                    next_prefs.pop(key, None)
         now = time.time()
         def _write() -> Any:
             with self._connect() as conn:

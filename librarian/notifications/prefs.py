@@ -78,7 +78,8 @@ def merge_notification_prefs(
 
     if notification_email is not ...:
         if notification_email is None or str(notification_email).strip() == "":
-            nested.pop("notification_email", None)
+            # None = explicit clear for Database.set_user_prefs (update cannot drop keys).
+            nested["notification_email"] = None
         else:
             cleaned = str(notification_email).strip()
             if "@" not in cleaned:

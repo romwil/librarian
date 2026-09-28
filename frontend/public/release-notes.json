@@ -1,6 +1,22 @@
 {
-  "generated_at": "2026-09-27T20:58:10Z",
+  "generated_at": "2026-09-28T01:03:27Z",
   "releases": [
+    {
+      "version": "0.5.4",
+      "date": "2026-09-27",
+      "summary": "",
+      "highlights": [
+        "**Clearing notification email sticks.** Empty or null email prefs remove the address from storage so mail stops going to a stale inbox."
+      ],
+      "sections": [
+        {
+          "title": "Fixed",
+          "bullets": [
+            "**`set_user_prefs` honors explicit clears.** `merge_notification_prefs` already dropped a cleared `notification_email`, but `Database.set_user_prefs` re-merged with `.update()` and kept the old key. Incoming `None` values now delete that preference key (covers `\"\"` and `null` from PUT `/api/notifications/prefs`)."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.5.3",
       "date": "2026-09-27",

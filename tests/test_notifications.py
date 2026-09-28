@@ -59,6 +59,98 @@ def test_default_prefs_and_merge(tmp_path):
     assert user_wants_channel(saved, kind="needs_you", channel="email") is False
 
 
+def test_clear_notification_email_removes_key_from_db(tmp_path):
+    """Clearing with '' or null must drop notification_email from persisted prefs."""
+    from librarian.db import Database
+    from librarian.notifications.prefs import resolve_notification_email
+
+    db = Database(tmp_path / "librarian.db")
+    user = db.create_local_user(
+        user_id="u-clear-email",
+        display_name="clearer",
+        role="reader",
+        password_hash="x",
+    )
+    db.set_user_prefs(
+        user["id"],
+        prefs=merge_notification_prefs(
+            db.get_user_prefs(user["id"]),
+            notification_email="keep@example.com",
+        ),
+    )
+    assert db.get_user_prefs(user["id"])["prefs"]["notification_email"] == "keep@example.com"
+
+    cleared_empty = merge_notification_prefs(
+        db.get_user_prefs(user["id"]),
+        notification_email="",
+    )
+    assert cleared_empty.get("notification_email") is None
+    after_empty = db.set_user_prefs(user["id"], prefs=cleared_empty)
+    assert "notification_email" not in after_empty["prefs"]
+    assert resolve_notification_email(after_empty) is None
+
+    db.set_user_prefs(
+        user["id"],
+        prefs=merge_notification_prefs(
+            db.get_user_prefs(user["id"]),
+            notification_email="again@example.com",
+        ),
+    )
+    cleared_null = merge_notification_prefs(
+        db.get_user_prefs(user["id"]),
+        notification_email=None,
+    )
+    assert cleared_null.get("notification_email") is None
+    after_null = db.set_user_prefs(user["id"], prefs=cleared_null)
+    assert "notification_email" not in after_null["prefs"]
+    assert resolve_notification_email(after_null) is None
+
+
+def test_api_clear_notification_email_empty_and_null(tmp_path, monkeypatch):
+    """PUT /api/notifications/prefs with '' or null removes the stored address."""
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    save_settings(
+        tmp_path,
+        Settings(
+            mail=MailSettings(
+                enabled=True,
+                provider="resend",
+                from_email="hall@example.com",
+                resend_api_key="re_live",
+            )
+        ),
+    )
+    from librarian.db import Database
+    from librarian.web.app import create_app
+
+    client = TestClient(create_app())
+    assert (
+        client.post("/api/auth/local/login", json={"username": "owner", "password": "password123"}).status_code
+        == 200
+    )
+    db = Database(tmp_path / "librarian.db")
+    owner = next(u for u in db.list_users() if u.get("role") == "owner")
+
+    put = client.put(
+        "/api/notifications/prefs",
+        json={"notification_email": "owner@example.com"},
+    )
+    assert put.status_code == 200, put.text
+    assert put.json()["notification_email"] == "owner@example.com"
+    assert db.get_user_prefs(owner["id"])["prefs"]["notification_email"] == "owner@example.com"
+
+    clear_empty = client.put("/api/notifications/prefs", json={"notification_email": ""})
+    assert clear_empty.status_code == 200, clear_empty.text
+    assert clear_empty.json()["notification_email"] == ""
+    assert "notification_email" not in db.get_user_prefs(owner["id"])["prefs"]
+
+    client.put("/api/notifications/prefs", json={"notification_email": "owner@example.com"})
+    clear_null = client.put("/api/notifications/prefs", json={"notification_email": None})
+    assert clear_null.status_code == 200, clear_null.text
+    assert clear_null.json()["notification_email"] == ""
+    assert "notification_email" not in db.get_user_prefs(owner["id"])["prefs"]
+
+
 def test_deliver_inbox_and_email_opt_in(tmp_path, monkeypatch):
     from librarian.db import Database
 
