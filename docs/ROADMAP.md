@@ -1,32 +1,159 @@
 # Librarian roadmap
 
-Living product/build checklist. Flip boxes when a slice ships. Append the story to [build-progress.md](build-progress.md). Design north star: [2026-09-14 librarian design](superpowers/specs/2026-09-14-librarian-design.md).
+Living product/build source of truth: what’s shipped, what’s next, and the longer horizon.
+Flip boxes when a slice ships. Append the story to [build-progress.md](build-progress.md).
+Design north star: [2026-09-14 librarian design](superpowers/specs/2026-09-14-librarian-design.md).
+Major-build cadence: [ops/MAJOR_BUILDS.md](ops/MAJOR_BUILDS.md).
+Active staged plan (agent pickup): `~/.cursor/plans/librarian_unified_recommend_dd19f677.plan.md`.
 
-## Build status
+---
+
+## 1. Status / current version
 
 | | |
 | --- | --- |
-| **Date** | 2026-09-25 |
+| **Date** | 2026-09-27 |
 | **Branch** | `main` |
-| **Last SHA** | sprint **2.1** ships **0.4.20** on this commit |
+| **Version** | **0.5.4** |
+| **Arc** | Living-library Phases **0–5** complete through **0.5.2**; patches **0.5.3** (enrich Unknown Author) and **0.5.4** (clear notification email). |
 | **Green** | pytest coverage floor **70%**; frontend `npm test`; Playwright e2e on **8794**. LAN truth `http://10.10.1.202:8793`. |
-| **Next** | Sprint **3.1** `mail-transport` → **0.4.21**. Automat path remains host `./docker-run.sh` (Hub deferred). |
+| **Next** | Remediation series **R1** `security-perimeter` → **0.5.5**, then R2 → R3 → D1 (see §3). |
+| **Automat** | Host `./docker-run.sh` only. Hub `romwil/librarian` deferred. Never bind **8788 / 8790 / 8791 / 8792**. |
 
-## Living library major build
+---
 
-Protocol: [ops/MAJOR_BUILDS.md](ops/MAJOR_BUILDS.md). Phase 1 engine-room sprints:
+## 2. Shipped
 
-| Sprint | Feature | Version | Status |
+### Living-library major build (Phases 0–5)
+
+| Phase | Sprint | Feature | Version | Status |
+| --- | --- | --- | --- | --- |
+| 0 | — | `major-build-protocol` | 0.4.16 | done |
+| 1 | 1.1 | `review-get-readonly` | 0.4.17 | done |
+| 1 | 1.2 | `unified-progress` | 0.4.18 | done |
+| 1 | 1.3 | `dead-weight-docs-truth` | 0.4.19 | done |
+| 2 | 2.1 | `web-routers-shelf-health` | 0.4.20 | done |
+| 3 | 3.1 | `mail-transport` | 0.4.21 | done |
+| 3 | 3.2 | `notifications-inbox` | 0.4.22 | done |
+| 3 | 3.3 | `newsletters-edition` | 0.4.23 | done |
+| 4 | 4.1 | `library-lexicon` | 0.4.24 | done |
+| 4 | 4.2 | `ux-alive-pass` | 0.4.25 | done |
+| 5 | 5.1 | `tonights-shelf-alive` | **0.5.0** | done |
+| 5 | 5.2 | `smart-holds-desk` | 0.5.1 | done |
+| 5 | 5.3 | `lamp-rituals` | 0.5.2 | done |
+
+Full-build QA closed with 0.5.2. Patches: **0.5.3** enrich author placeholder; **0.5.4** notification email clear sticks.
+
+### Library-first kit (pre-arc, still true)
+
+Auth (owner/op/reader, invite HMAC, session refuse-default), NZBFinder v2 + SAB, identify/organize/Review, catalog FTS + scan/enrich/Hardcover/OL, gaps + Find confirm, Reading Room SPA (Hall / Search / Find / Discover / peek / reader), Automat kit on `:8793`. Details: [CHANGELOG.md](../CHANGELOG.md), [build-progress.md](build-progress.md).
+
+---
+
+## 3. Next staged sprints (active build)
+
+Remediation first (2026-09-25 review Critical/High), then Top-10 delight. Each sprint = one GitHub feature release. Parallel lanes + exclusive file ownership per [MAJOR_BUILDS](ops/MAJOR_BUILDS.md). Do **not** bump version here until the sprint ships.
+
+| Sprint | Feature | Version | Focus |
 | --- | --- | --- | --- |
-| 1.1 | `review-get-readonly` | 0.4.17 | shipped |
-| 1.2 | `unified-progress` | 0.4.18 | shipped |
-| 1.3 | `dead-weight-docs-truth` | 0.4.19 | shipped |
-| 2.1 | `web-routers-shelf-health` | 0.4.20 | this release |
-| 3.1 | `mail-transport` | 0.4.21 | next |
+| **R1** | `security-perimeter` | **0.5.5** | SPA path jail (P3-CRIT-01); scrub indexer tokens / raw on Find-beyond + queue (P3-CRIT-02); cover/download + organize preview `/data` jails (P3-HIGH-01/02); cover URL SSRF allowlist (P3-HIGH-03) |
+| **R2** | `queue-and-dock-calm` | **0.5.6** | `GET /api/queue` readonly — no mutating poller (P2-CRIT-01); Maintain dock idle-poll calm / multiplex + hidden-tab pause (P2-HIGH-02); auth-gate SQLite connect calm (P2-HIGH-01) |
+| **R3** | `api-boundary` | **0.5.7** | Allowlist `public_work` + admin serializer (P1-HIGH-02 / P4-HIGH-01); kill star-import `route_imports` hub (P1-HIGH-01); optional thin `catalog` split |
+| **D1** | `morning-brief` + `series-catch-up` | **0.5.8** | First post-arc Top-10 pair: owner morning Maintain desk + reader series invitation |
+
+After D1: continue Phase D sequenced Top-10 (one owner + one reader per minor when possible). See unified plan.
+
+---
+
+## 4. Top-10 delight backlog
+
+Score and ship at most **one owner + one reader** delight per minor unless tiny. Every delight PR: reduced-motion path, lights-up + lights-down, one-line “why this feels alive” in CHANGELOG.
+
+### Owner
+
+| # | Item | Status |
+| --- | --- | --- |
+| 1 | **Morning shelf brief** — Maintain as morning desk; “tend these three,” not a KPI strip | next (D1) |
+| 2 | **Smart Review inbox** → Smart Holds desk | **landed** 0.5.1 |
+| 3 | **Ingest preview** — quiet map before the lamp shelves a dump | open |
+| 4 | **Shelf health score** — living pulse + one tend action | open |
+| 5 | **Indexer scorecard** — hosts as lanterns; mute a sick host | open |
+| 6 | **Quiet hours that wake up** | polish (mail/notify shipped 0.4.21–0.4.22) |
+| 7 | **Ask-the-house digest** | polish (newsletters 0.4.23) |
+| 8 | **Safe undo for grooming** | open |
+| 9 | **Deploy What’s New that never lies** | open |
+| 10 | **One-button re-normalize Calibre dump** | open |
+
+### Reader / household
+
+| # | Item | Status |
+| --- | --- | --- |
+| 1 | **Tonight’s Shelf that feels alive** | **landed** 0.5.0 |
+| 2 | **Series catch-up** — missing issues as invitation | next (D1) |
+| 3 | **Beautiful Finished** (+ optional household whisper) | partial (finish ceremony in 0.5.2; whisper open) |
+| 4 | **Reading room calm** | open |
+| 5 | **Listen that remembers** | open |
+| 6 | **Peek that teaches** | open |
+| 7 | **Named household shelves** | open |
+| 8 | **Gaps as gifts** | open |
+| 9 | **Search that forgives** | open |
+| 10 | **Lamp rituals** | **landed** 0.5.2 |
+
+Personalized recs and HTML scrape of indexer Discover remain **skipped on purpose**.
+
+---
+
+## 5. Review debt (2026-09-25)
+
+Full write-up: [reviews/review-2026-09-25.md](reviews/review-2026-09-25.md). Ship Critical before more feature growth; land High before more delight surface leans on leaky shapes.
+
+### Critical
+
+| ID | Issue | Target sprint |
+| --- | --- | --- |
+| [P3-CRIT-01](reviews/review-2026-09-25.md#p3-crit-01--unauthenticated-spa-path-traversal) | Unauthenticated SPA catch-all path traversal | R1 |
+| [P3-CRIT-02](reviews/review-2026-09-25.md#p3-crit-02--indexer-tokens--raw-newznab-blobs-on-find-beyond-responses) | Indexer tokens / raw Newznab blobs on Find-beyond (+ queue) | R1 |
+| [P2-CRIT-01](reviews/review-2026-09-25.md#p2-crit-01--get-apiqueue-performs-mutating-poller-work) | `GET /api/queue` performs mutating poller work | R2 |
+
+### High
+
+| ID | Issue | Target sprint |
+| --- | --- | --- |
+| [P3-HIGH-01](reviews/review-2026-09-25.md#p3-high-01--cover-and-download-paths-served-without-data-jail) | Cover/download paths without `/data` jail | R1 |
+| [P3-HIGH-02](reviews/review-2026-09-25.md#p3-high-02--organizepreview-accepts-unconstrained-filesystem-paths) | `organize/preview` unconstrained paths | R1 |
+| [P3-HIGH-03](reviews/review-2026-09-25.md#p3-high-03--ownerop-cover_url-is-server-side-ssrf) | Owner/op `cover_url` SSRF | R1 |
+| [P1-HIGH-01](reviews/review-2026-09-25.md#p1-high-01--router-split-still-coupled-through-star-import-bag) | Star-import `route_imports` hub | R3 |
+| [P1-HIGH-02](reviews/review-2026-09-25.md#p1-high-02--public_work-bleeds-storage-engine-fields-into-the-api) | `public_work` bleeds storage fields | R3 |
+| [P4-HIGH-01](reviews/review-2026-09-25.md#p4-high-01--filesystem-paths-disclosed-to-every-household-role) | Filesystem paths disclosed to every role | R3 |
+| [P2-HIGH-01](reviews/review-2026-09-25.md#p2-high-01--per-request-sqlite-connect-storm-in-auth-gate--api) | Per-request SQLite connect storm in auth gate | R2 |
+| [P2-HIGH-02](reviews/review-2026-09-25.md#p2-high-02--maintain-dock-keeps-four-idle-progress-polls-forever) | Maintain dock four forever idle polls | R2 |
+
+Medium findings stay in the review doc; pick up opportunistically inside R\* lanes when they touch the same files.
+
+---
+
+## 6. Later / blue sky
+
+- [ ] Hub `romwil/librarian` published (+ real pull-only rollout; not Automat path now)
+- [ ] Full MusicBrainz / Open Library dumps for typeahead (v1 is catalog + optional bounded MB from owned artists)
+- [ ] OIDC / Plex sign-in (not v1)
+- [ ] Shared Python package with Smart Map: **contract first**; thin shared lib only if mutagen + filename agreement proves high reuse
+- [ ] Shared JSON+NZB **grab/traffic service** (fourth Automat container) — only if two apps emit the same envelope
+- [ ] Blue sky: OPDS 2, highlights, TTS, barcode Review, offline PWA, kid shelf
+
+### Out of product / locked out
+
+Hub as the only ship path (today), NZBGet, Calibre plugins / USB sync / content-server skin, Movies/TV/XXX as Hall library kinds (extras are Find/SAB/arr only), Goodreads live OAuth (CSV shipped).
+
+---
 
 ## North star
 
 A household **library for readers**. The Library is the product: scan `/data`, enrich, read, then grow catalog gaps. Search is local shelves only. Find is not a nav tab — it is the post-search door (**Find beyond the shelves**) plus **Discover** when Find is empty. Books, magazines, and comics (CBZ, Newznab `7030`) share first-tier rank. Audiobooks and music are first-tier listening — music Promotes to Plexamp; audiobooks never do. Extra categories (movies / TV / XXX) are optional Find plumbing to SAB / *arr (`show_extra_categories`, default **off**). They never become Hall works.
+
+**Alive criteria** (every delight ship): presence · gilt/cream/paper · recognition without surveillance · ceremony for Finish/shelve/Request/open · honest Needs you with warmth.
+
+**Anti-patterns:** KPI dashboards, badge piles, purple SaaS glow, motion that ignores `prefers-reduced-motion`, supermarket “bagging.”
 
 ## Locked decisions
 
@@ -38,168 +165,15 @@ A household **library for readers**. The Library is the product: scan `/data`, e
 - Comics: `7030`, canonical **CBZ**, `{Series}/{Issue-or-Year}/` + ComicInfo + cover.
 - Gaps: owned vs expected, honest missing cards. **Confirm lives on Find** so SAB never fires from a shelf browse. Fail closed.
 - Search = local FTS only (Hall hero + `/search`). Peek / Open / Favorite. No Beyond on Search.
-- Find = post-search **Find beyond the shelves** → `/find` with `q`/kind (and kind-appropriate fields) prefilled, then Beyond. Find is not a nav tab.
-- Empty Find is **Discover**: trending indexer category feeds from capabilities (v2 search or `/rss?t=`). Not a second Hall. Not auto-SAB. No HTML scrape.
-- `show_extra_categories` default **off**. When on, Discover/Find may offer Movies / TV / XXX if the indexer lists them. Never Hall kinds.
-- Household job words (Find / Queue): **Asked / On the way / Arrived / Needs you / Failed**. **Finished** is reading progress. **Promote** is incoming music → `music_root`.
+- Find = post-search **Find beyond the shelves** → `/find` with `q`/kind prefilled, then Beyond. Find is not a nav tab.
+- Empty Find is **Discover**: trending indexer category feeds from capabilities. Not a second Hall. Not auto-SAB. No HTML scrape.
+- `show_extra_categories` default **off**. Never Hall kinds.
+- Household job words: **Asked / On the way / Arrived / Needs you / Failed**. **Finished** is reading progress. **Promote** is incoming music → `music_root`.
+- Lexicon: **Holds desk** · Hold slip · **Library card** · **Shelving** (legacy `#bagging` maps). Routes stay `/review`.
 - Auto-organize only when identify is confident. Unexpected → Review. Scan never moves files; ingest/watch may.
 - BYO LLM may assist later. LLM never invents an ISBN.
-- Automat media contract: [automat-media-contract.md](automat-media-contract.md). Shared `/data/media/music` is `{Artist}/{Album}/` with original filenames unless a trustworthy track tag exists (`NN - Title.ext`). Audiobooks never `music_root`. **No shared Python package** until mutagen + filename agreement proves high reuse.
-- No fourth Automat **grab/traffic** container unless two apps actually emit the same JSON+NZB envelope. Until then each app keeps its own indexer / SAB / arr client.
-- Port **8793**. Never 8788 / 8790 / 8791 / 8792.
+- Automat media contract: [automat-media-contract.md](automat-media-contract.md). **No shared Python package** until mutagen + filename agreement proves high reuse.
+- No fourth Automat **grab/traffic** container unless two apps emit the same JSON+NZB envelope.
+- Port **8793**. Never 8788 / 8790 / 8791 / 8792. Playwright e2e **8794**.
 - Auth on from first boot. Roles owner / op / reader. Docker-seed owner. Invite-only join (HMAC).
-
-## v1 checklist
-
-### Kit
-
-- [x] Python 3.12 package `librarian/` + FastAPI `GET /api/health`
-- [x] Port **8793**
-- [x] `pyproject.toml` with ruff, scoped mypy, pytest-cov fail-under **70%**
-- [x] Vite React SPA in `frontend/` served from `frontend/dist` when built
-- [x] SQLite WAL on `/config` (`DATA_DIR`); settings.json wins
-- [x] `AGENTS.md`, `.gitignore` (incl. `smart.map` / `projectionist` copies), `.env.example` placeholders
-- [x] README / CHANGELOG / DOCKER / TESTING / SECURITY / HELP / design spec
-- [x] Dockerfile, `docker-compose.yml`, `docker-run.sh`, `settings.example.json`
-- [x] pytest + ruff + scoped mypy green (`270 passed`, 78% coverage on this pass)
-- [x] `frontend/package-lock.json` + production `npm run build`
-- [x] Private GitHub `romwil/librarian` + first push
-
-### Auth
-
-- [x] Roles owner / op / reader
-- [x] `seed_env_owner` (weak password refuse; same-user rotate; never clobber a different owner)
-- [x] HMAC invite `invite_id.raw.hmac`; SHA-256 hash at rest; fail-closed parse; one-tx redeem
-- [x] Public handshake allowlist (no `/api/auth/*` wildcard)
-- [x] Session cookie `librarian_session`; refuse public `LIBRARIAN_SESSION_SECRET` default
-- [x] Reader 401/403 on Settings / invite-create / People
-- [x] Op cannot invite `op`/`owner` (module + HTTP)
-
-### NZBFinder
-
-- [x] v2 JSON client: capabilities, search, books, details, download URL
-- [x] User-Agent `Librarian/…` + `api_token` (also `apikey` alias)
-- [x] Token-stripped search fixture
-- [x] NZBFinder v2 fixtures in `tests/fixtures/nzbfinder/` (capabilities / books / magazine / details; no tokens)
-- [x] Exact `newznab_cat_to_kind` in `librarian/indexers/kind_map.py` (33 value cases)
-- [x] TV/movies/XXX categories refused at Hall identify (extras are Find-only behind the owner flag)
-- [x] Live capabilities ping (opt-in, not CI)
-- [x] Extra Newznab v2 hosts; merge/dedupe by guid
-- [x] RSS subscriptions → Asked slips (confirm before SAB). TV/movies/XXX refused for RSS of Librarian kinds; extra-category Request is a different path
-
-### SABnzbd
-
-- [x] Client for `http://downloader.sl`: addurl / queue / history
-- [x] `nzo_id` status machine: queued → downloading → extracting → organized | review | failed
-- [x] Reader Request → `asked` slip (no SAB) until op/owner confirms
-- [x] Background poller loop in the running process
-- [x] Honest complete-path remap (`complete_root`); fail/unpack reasons
-- [x] Job payload sought / selected / retrieved. Catalog title is what was asked, not the SAB dump name
-
-### Identify / organize
-
-- [x] Newznab cat → kind (7030 comic, 7010 mag, 70xx book, 3030 audiobook, 3010/3040/3999 music; 2/5/6xxx refuse at identify)
-- [x] Usenet parse: magazine `No.10.2026` → `2026-10`; comic `Series.2024.001`
-- [x] Layouts from the plan (EPUB / CBZ / incoming music / audiobook `{Author}/{Title}/`)
-- [x] `metadata.opf` + `ComicInfo.xml`
-- [x] Review reasons; collision / PDF-only book / CBR / no payload
-- [x] Music Promote incoming → `music_root`
-- [x] `audiobook_target` default `plex`
-- [x] Cover fetch (indexer URL, Open Library ISBN, CBZ page 1)
-- [x] CBR/PDF → CBZ convert (`unar` in image; `pdftoppm` when present; else Review)
-- [x] `ebook-convert` / on-demand formats (cache under `/config/conversions`; 422 if missing)
-- [x] BYO LLM identify (structured JSON; never invent ISBN)
-- [x] Identify: tags, album vs single track, Automat media contract `{Artist}/{Album}/` original filename unless trustworthy `NN - Title.ext`; audiobooks never `music_root`
-- [x] Add to the shelves + Watch folder (move when confident; Review when not). Scan still does not move files.
-
-### Catalog
-
-- [x] SQLite WAL: users, invites, works, files, jobs, shelves, Favorites
-- [x] `review_state`, `music_state`, series fields
-- [x] FTS5 local search (Hall hero + `/search`; no Beyond on Search)
-- [x] Scan Settings `/data` roots into works+files (idempotent; scan does not move files; collisions → Review; owner “Scan the shelves”)
-- [x] Dedicated `indexers` table (NZBFinder row synced from settings)
-- [x] Continue bookmarks; Finished is reading progress, not a job word
-- [x] Work/peek honesty: Incoming / Review chips, media note when no file, hide Finished on music
-- [x] Enrich: Hardcover GraphQL then Open Library (description/series/year/cover); LLM never invents ISBN
-- [x] Goodreads CSV import onto Favorites by ISBN-10/13; unmatched ISBN → thin work; no OAuth
-
-### Gaps
-
-- [x] Local magazine `YYYY-MM` holes
-- [x] Local comic issue-number holes
-- [x] Confirm-before-queue API (`POST /api/gaps/confirm`)
-- [x] Book series gaps (Hardcover then Open Library); confirm only in Find
-- [x] Audiobook parts (local completeness)
-- [x] Audiobook series (Hardcover then Open Library)
-- [x] Music track-number holes (local)
-- [x] MusicBrainz discography / release tracks
-- [x] Comic Vine issue lists (`comicvine_api_key`); Hall Gaps open Find
-- [x] Magazines stay local `YYYY-MM` (no remote calendar)
-
-### UX (Reading Room)
-
-- [x] Reading Room tokens landed (brass `#c9954a`, Literata + Source Sans 3; spec in `docs/ux/reading-room.md`)
-- [x] Animated foyer login + `/join?token=` (lamp dust, spines, unfinished page-turn; reduced-motion still)
-- [x] The Hall landing + hero search (“What are you looking for?”)
-- [x] Search = local shelves only; **Find beyond the shelves** opens `/find?q=&kind=` (plus kind-appropriate fields) and runs Beyond; Find is not a nav tab
-- [x] Kind-morphing Find fields (books/mags: title/author/ISBN; comics: series/issue `7030`; music: artist/album; audiobooks `3030`)
-- [x] Household job chips: Asked / On the way / Arrived / Needs you / Failed (SAB raw stays on Queue detail only)
-- [x] Discover: empty Find shows trending indexer category feeds from capabilities. Not a second Hall, not auto-SAB. No HTML scrape
-- [x] Show extra categories (owner; `show_extra_categories`, default **off**): Movies/TV/XXX if the indexer lists them. Never Hall works. Movies: SAB category (default `movies`) then Radarr add (search off) + DownloadedMoviesScan. TV: SAB `tv` then Sonarr series add + DownloadedEpisodesScan. XXX: SAB default folder only, no arr. No arr token: still queue SAB, chip Needs you
-- [x] Peek overlay `min(44rem, 100vw - 1.5rem)` with visible 148×222 cover; cover click does not navigate
-- [x] Role-aware chrome (Review is an op/owner bag badge)
-- [x] Work hero (blurred wash + chips + Favorite/Promote)
-- [x] Living Request chips after Find peek Request
-- [x] In-browser reader: foliate-js EPUB + CBZ `comic-book.js` on `can_download` book/magazine/comic
-- [x] Frontend unit tests (cover cloth / peek click / job labels / reader / Find)
-- [x] Continue rail (progress API; Hall hides finished)
-- [x] Browser-verified Hall / login / peek (Automat foyer; local Hall cover → peek, Esc keeps `/`)
-- [x] Kind-skinned covers, search “searched X · N on shelves”, `?` field help, Settings wizard, Review tickets
-- [x] Audiobookshelf match (ISBN then author+title); quiet On the player chip; does not replace Plex `audiobook_target`
-
-### Automat
-
-- [x] `docs/DOCKER.md` — `/config` + `/data`, port 8793, env owner, PUID/PGID, extra_hosts
-- [x] `docs/ops/AUTOMAT.md` — LAN truth `:8793`, kit path, first-boot env, rsync
-- [x] `docs/SECURITY.md` — exhaustive handshake, `LIBRARIAN_TRUST_PROXY_HEADERS` fail-closed, rate limits
-- [x] `docker-run.sh` on-host build; does not wipe config; refuses 8788/8790/8791/8792
-- [x] Docker layer cache: npm ci / pip extras before source; `docker-run.sh` passes HARDCOVER, COMICVINE, ABS, SHOW_EXTRA_CATEGORIES, RADARR/SONARR, SAB_MOVIE/TV_CATEGORY, COMPLETE_ROOT
-- [x] Automat media contract doc (shared with Smart Map conceptually; no shared Python package yet)
-- [x] `rollout.sh` Hub-pull stub (fails until `romwil/librarian` exists)
-- [x] Deployed kit at `/mnt/user/appdata/librarian` (container `librarian`, `:8793`)
-- [x] Rebuild Automat image to then-`main` (`1d7f18a`; identify/convert Review fixes; `/config` kept)
-- [ ] Hub `romwil/librarian` published (later; not this slice)
-
-## Library first — landed
-
-Sequence (history): scan → enrich/Hardcover → reader → catalog gaps → RSS/ABS, with Search/Find split and five job words in the first slices. Those slices are shipped. Remaining work lives under Phase 2b / Later — do not treat scan, Find, or the reader as undone.
-
-- [x] **Scan** Settings `/data` roots (`books_root`, `magazines_root`, `comics_root`, `audiobooks_root`, `incoming_music_root`, `music_root`) into the catalog; idempotent; do not move files; collisions → Review
-- [x] Work/peek honesty: Incoming / Review chips, media note when no file, hide Finished on music
-- [x] **Enrich:** Open Library + **Hardcover** (live token in settings, never committed)
-- [x] **Goodreads CSV / shelf export** import onto Favorites, matched by ISBN (no live Goodreads OAuth)
-- [x] **In-browser reader:** foliate-js EPUB + CBZ `comic-book.js` on `can_download` book/magazine/comic
-- [x] **Catalog gaps:** Hardcover/OL series, Comic Vine, MusicBrainz; Hall Gaps stay Library; confirm only in Find
-- [x] **Find extras:** RSS subscriptions, additional Newznab hosts, Audiobookshelf API match (SAB client stays)
-- [x] Search / Find split + household job words + Discover + optional extra categories
-- [x] Advanced Search/Find typeahead (`GET /api/suggest` catalog-first; owner **Refresh suggestions from shelves**)
-
-### Phase 2b
-
-- [x] In-app audiobook player or deep-link to Plex/ABS
-
-### Later
-
-- [ ] Hub `romwil/librarian` published
-- [ ] Full MusicBrainz / Open Library dumps for typeahead (v1 is catalog + optional bounded MB from owned artists)
-- [ ] OIDC / Plex sign-in (not v1, not Phase 2)
-- [ ] Shared Python package with Smart Map: **contract first**; thin shared lib only if mutagen + filename agreement proves high reuse
-- [ ] Shared JSON+NZB **grab/traffic service** (fourth Automat container): too much now. Worthwhile as a **future refactor if two apps actually emit the same envelope** (Librarian extras + Projectionist). Until then each app keeps its own indexer/SAB/arr client
-- [ ] Blue sky: OPDS 2, highlights, TTS, barcode Review, offline PWA, kid shelf
-
-Personalized recs and HTML scrape of indexer Discover are **skipped on purpose**.
-
-### Out of v1 / product lock
-
-Hub as the only ship path, NZBGet, Plex/OIDC login, Calibre plugins / USB sync / content-server skin, Movies/TV/XXX as Hall library kinds (extras are Find/SAB/arr only), Goodreads live OAuth (CSV shipped). The built-in reader shipped in Library first.
+- `LIBRARIAN_TRUST_PROXY_HEADERS` opt-in (default off). Public `librarian-dev-session-secret` refused.
