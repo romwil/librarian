@@ -2,12 +2,58 @@
 
 from __future__ import annotations
 
+import logging
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 
+from librarian.auth import require_role
+from librarian.delight import rank_regrab_candidates
+from librarian.enrich import list_match_candidates
+from librarian.extra_files_reprocess_progress import (
+    ExtraFilesReprocessProgressReporter,
+    begin_extra_files_reprocess_run,
+    finish_extra_files_reprocess_run,
+    is_extra_files_reprocess_running,
+    is_extra_files_reprocess_stale,
+    read_extra_files_reprocess_progress,
+)
+from librarian.identify import diagnose_review_folder
+from librarian.indexers.rank import remember_candidates, search_and_rank
+from librarian.organize import (
+    apply_review,
+    repair_review,
+    reprocess_extra_files_reviews,
+    reprocess_extra_files_work,
+    retry_review,
+    review_slip_actions,
+    shelf_work_for_collision,
+    suggest_review_identity,
+)
+from librarian.purge_duplicates import purge_duplicate_reviews
+from librarian.purge_duplicates_progress import (
+    PurgeDuplicatesProgressReporter,
+    begin_purge_duplicates_run,
+    finish_purge_duplicates_run,
+    is_purge_duplicates_running,
+    is_purge_duplicates_stale,
+    read_purge_duplicates_progress,
+)
+from librarian.review_reasons import (
+    REVIEW_COMICVINE_AMBIGUOUS,
+    REVIEW_COMICVINE_UNMATCHED,
+    REVIEW_EXTRA,
+    REVIEW_LOW,
+    REVIEW_NO_PAYLOAD,
+    REVIEW_UNKNOWN,
+    REVIEW_UNPACK_STUCK,
+)
 from librarian.web.deps import WebDeps
-from librarian.web.route_imports import *  # noqa: F403
+from librarian.web.schemas import ReviewApplyPayload
+from librarian.web.serializers import public_works_admin
+
+logger = logging.getLogger("librarian.web")
 
 
 def register_review_routes(app: FastAPI, deps: WebDeps) -> None:
@@ -33,7 +79,7 @@ def register_review_routes(app: FastAPI, deps: WebDeps) -> None:
         from librarian.llm_providers import resolve_llm_connection
 
         llm_ok = bool(resolve_llm_connection(cfg).get("api_key"))
-        works = public_works(db.list_works(review_state="needs_review", limit=80))
+        works = public_works_admin(db.list_works(review_state="needs_review", limit=80))
         jobs_by_work: Dict[str, Any] = {}
         for job in db.list_jobs(limit=200):
             work_id = job.get("work_id")
@@ -181,10 +227,7 @@ def register_review_routes(app: FastAPI, deps: WebDeps) -> None:
             progress["needs_review_remaining"] = db.count_works(review_state="needs_review")
             return progress
         if alive:
-            error = (
-                "Purge duplicates stalled (no progress heartbeat). "
-                "Try Purge again."
-            )
+            error = "Purge duplicates stalled (no progress heartbeat). Try Purge again."
         else:
             error = "Purge duplicates stopped — the lamp was restarted. Try again."
         finished = finish_purge_duplicates_run(root, error=error)
@@ -218,7 +261,9 @@ def register_review_routes(app: FastAPI, deps: WebDeps) -> None:
         overrides = payload.model_dump(exclude_none=True)
         overrides.pop("folder", None)
         try:
-            result = apply_review(db, settings(), work_id=work_id, folder=folder, identity_overrides=overrides)
+            result = apply_review(
+                db, settings(), work_id=work_id, folder=folder, identity_overrides=overrides
+            )
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
         return result
@@ -244,7 +289,10 @@ def register_review_routes(app: FastAPI, deps: WebDeps) -> None:
             return {"candidates": [], "repair_fail_count": fails, "ready": False}
         q = " ".join(
             part
-            for part in [str(work.get("title") or "").strip(), str(work.get("author") or "").strip()]
+            for part in [
+                str(work.get("title") or "").strip(),
+                str(work.get("author") or "").strip(),
+            ]
             if part
         )
         failed_guid = str(work.get("indexer_guid") or "").strip()
@@ -255,9 +303,7 @@ def register_review_routes(app: FastAPI, deps: WebDeps) -> None:
             "size": None,
         }
         file_sizes = [
-            int(row["size"])
-            for row in db.files_for_work(work_id)
-            if row.get("size") is not None
+            int(row["size"]) for row in db.files_for_work(work_id) if row.get("size") is not None
         ]
         if file_sizes:
             failed_ctx["size"] = sum(file_sizes)
@@ -266,7 +312,9 @@ def register_review_routes(app: FastAPI, deps: WebDeps) -> None:
             prior = db.get_job_by_indexer_guid(failed_guid)
             if prior:
                 payload = prior.get("payload") if isinstance(prior.get("payload"), dict) else {}
-                selected = payload.get("selected") if isinstance(payload.get("selected"), dict) else {}
+                selected = (
+                    payload.get("selected") if isinstance(payload.get("selected"), dict) else {}
+                )
                 if selected.get("title"):
                     failed_ctx["title"] = str(selected.get("title") or "")
                 if selected.get("size") is not None:
@@ -289,7 +337,9 @@ def register_review_routes(app: FastAPI, deps: WebDeps) -> None:
         rank_reason = ""
         ranked_candidates: List[Dict[str, Any]] = []
         if remembered:
-            hits = [row for row in remembered if str(row.get("guid") or "").strip() not in set(exclude)]
+            hits = [
+                row for row in remembered if str(row.get("guid") or "").strip() not in set(exclude)
+            ]
         if len(hits) < 3:
             ranked = search_and_rank(
                 settings(),
@@ -376,4 +426,3 @@ def register_review_routes(app: FastAPI, deps: WebDeps) -> None:
             )
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
-

@@ -2,18 +2,107 @@
 
 from __future__ import annotations
 
+import logging
+import os
+from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse
+from starlette.background import BackgroundTask
 
+from librarian.audiobook_match import companion_audiobook_payload
+from librarian.auth import require_role
+from librarian.convert import ALLOWED_EBOOK_FORMATS, convert_ebook, which_ebook_convert
+from librarian.delight import (
+    WHISPER_LIST_LIMIT,
+    celebration_candidates,
+    estimate_finish_eta_minutes,
+    finish_set_label,
+    in_quiet_hours,
+    normalize_ambient,
+    normalize_ui_font_step,
+    normalize_ui_theme,
+    plexamp_handoff,
+    sanitize_whisper,
+    series_ribbon,
+    tonight_shelf,
+)
+from librarian.enrich import (
+    apply_audnexus_match,
+    apply_comicvine_match,
+    apply_openlibrary_match,
+    clear_enrichment,
+    enrich_work,
+    list_match_candidates,
+    update_work_metadata,
+)
+from librarian.gaps import catalog_gaps, gap_cards, gaps_for_series
+from librarian.indexers.discover import discover_beyond, resolve_feed_limit
+from librarian.indexers.rank import search_and_rank
 from librarian.indexers.scrub import (
     public_indexer_hit,
     public_indexer_hits,
     public_job,
     public_jobs,
 )
+from librarian.ingest import PathDenied, confined_serve_path, poll_watch_folder
+from librarian.jobs import (
+    confirm_asked_job,
+    enqueue_indexer_item,
+    poll_active_jobs,
+    poll_job,
+)
+from librarian.kinds import ALL_KINDS, EXTRA_KINDS
+from librarian.komga import komga_payload
+from librarian.listen import extract_chapters, listen_payload, split_continue_rails
+from librarian.lists import chase_missing_items, curated_list_payload, list_presets
+from librarian.nyt_books import (
+    NytBooksClient,
+    NytBooksError,
+    default_list_names,
+    match_local_work,
+    normalize_list_date,
+    normalize_list_name,
+)
+from librarian.nzbfinder import NZBFinderError
+from librarian.organize import promote_music
+from librarian.parts import build_part_set
+from librarian.rate_limit import enforce_rate_limit
+from librarian.rss import poll_rss_feeds
+from librarian.sabnzbd import SABError
+from librarian.serve import (
+    annotate_work_files,
+    can_read_work,
+    existing_file_paths,
+    is_inline_media,
+    is_reading_file,
+    is_streamable_audio,
+    media_type_for,
+    primary_reading_path,
+    resolve_catalog_file,
+    safe_filename,
+    zip_files,
+)
+from librarian.suggest import SUGGEST_FIELDS, suggest_items
 from librarian.web.deps import WebDeps
-from librarian.web.route_imports import *  # noqa: F403
+from librarian.web.schemas import (
+    ApplyMatchPayload,
+    CelebrationSeenPayload,
+    ConvertPayload,
+    FinishSetEtaPayload,
+    LlmListChasePayload,
+    LlmListPayload,
+    PrefsPayload,
+    ProgressPayload,
+    RequestPayload,
+    WhisperPayload,
+    WorkMetadataPayload,
+)
+from librarian.web.serializers import public_work, public_works
+
+logger = logging.getLogger("librarian.web")
 
 
 def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
@@ -42,7 +131,9 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
             "magazines": db.list_works(kind="magazine", limit=12, require_files=True),
             "comics": db.list_works(kind="comic", limit=12, require_files=True),
             "audiobooks": db.list_works(kind="audiobook", limit=12, require_files=True),
-            "incoming_music": db.list_works(kind="music", music_state="incoming", limit=12, require_files=True),
+            "incoming_music": db.list_works(
+                kind="music", music_state="incoming", limit=12, require_files=True
+            ),
         }
         gaps = []
         if user["role"] in ("owner", "op"):
@@ -264,9 +355,7 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
             "configured": llm_ok,
             "source": "llm",
             "empty_copy": (
-                ""
-                if llm_ok
-                else "Add a BYO LLM in Settings to load curated bestseller lists."
+                "" if llm_ok else "Add a BYO LLM in Settings to load curated bestseller lists."
             ),
         }
 
@@ -383,7 +472,12 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
         books = []
         for book in payload.get("books") or []:
             query = " ".join(
-                part for part in (str(book.get("author") or "").strip(), str(book.get("title") or "").strip()) if part
+                part
+                for part in (
+                    str(book.get("author") or "").strip(),
+                    str(book.get("title") or "").strip(),
+                )
+                if part
             )
             candidates: List[Dict[str, Any]] = []
             isbn = str(book.get("isbn") or "").strip()
@@ -408,7 +502,9 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
                     "id": pub.get("id") if pub else local.get("id"),
                     "title": (pub or local).get("title"),
                     "author": (pub or local).get("author"),
-                    "has_cover": bool((pub or local).get("has_cover") or (pub or local).get("cover_path")),
+                    "has_cover": bool(
+                        (pub or local).get("has_cover") or (pub or local).get("cover_path")
+                    ),
                 }
             else:
                 entry["shelved"] = None
@@ -580,9 +676,7 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
         if len(kind_samples) >= 2:
             samples = kind_samples
         else:
-            global_samples = db.recent_job_durations(
-                multipart=True if multipart else None
-            )
+            global_samples = db.recent_job_durations(multipart=True if multipart else None)
             if len(global_samples) >= 2:
                 samples = global_samples
                 pool_approximate = bool(kind)
@@ -632,7 +726,11 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
             fraction=fraction,
         )
         work = db.get_work(work_id)
-        if work and str(work.get("kind") or "") == "audiobook" and str(work.get("abs_item_id") or "").strip():
+        if (
+            work
+            and str(work.get("kind") or "") == "audiobook"
+            and str(work.get("abs_item_id") or "").strip()
+        ):
             try:
                 from librarian.audiobookshelf import push_abs_listen_progress
 
@@ -961,7 +1059,9 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
         if work is None:
             raise HTTPException(status_code=404, detail="Work not found")
         if str(work.get("kind") or "") not in ("book", "audiobook", "comic"):
-            raise HTTPException(status_code=400, detail="Only books, audiobooks, and comics can be matched")
+            raise HTTPException(
+                status_code=400, detail="Only books, audiobooks, and comics can be matched"
+            )
         candidates = list_match_candidates(work, settings=settings())
         return {"candidates": candidates, "title": work.get("title"), "author": work.get("author")}
 
@@ -998,12 +1098,17 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
                 )
         except ValueError as error:
             detail = str(error)
-            status = 404 if detail in (
-                "Work not found",
-                "Open Library match not found",
-                "Comic Vine match not found",
-                "Audnexus match not found",
-            ) else 400
+            status = (
+                404
+                if detail
+                in (
+                    "Work not found",
+                    "Open Library match not found",
+                    "Comic Vine match not found",
+                    "Audnexus match not found",
+                )
+                else 400
+            )
             raise HTTPException(status_code=status, detail=detail) from error
         result["work"] = public_work(result.get("work"))
         return result
@@ -1016,4 +1121,3 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
         except ValueError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
         return {"work": public_work(work)}
-

@@ -1,6 +1,28 @@
 {
-  "generated_at": "2026-09-28T01:35:09Z",
+  "generated_at": "2026-09-28T01:40:01Z",
   "releases": [
+    {
+      "version": "0.5.7",
+      "date": "2026-09-27",
+      "summary": "",
+      "highlights": [
+        "**API boundary.** Hall / browse / work responses use an allowlisted `public_work` shape — readers no longer see `folder_path`, `cover_path`, or `atmosphere_path`. Review keeps a thin admin serializer for desk tooling. Routers import explicitly; the star-import `route_imports` hub is gone."
+      ],
+      "sections": [
+        {
+          "title": "Security",
+          "bullets": [
+            "**Public work allowlist (P1-HIGH-02 / P4-HIGH-01).** Storage-engine paths and indexer repair counters stay off reader-facing catalog APIs; covers remain `has_cover` + `/api/works/{id}/cover`."
+          ]
+        },
+        {
+          "title": "Changed",
+          "bullets": [
+            "**Explicit router imports (P1-HIGH-01).** Each `librarian/web/routers/*.py` lists its own dependencies; `WebDeps` stays the composition object. Optional thin `catalog` split deferred."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.5.6",
       "date": "2026-09-27",

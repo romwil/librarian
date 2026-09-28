@@ -6,8 +6,20 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 
+from librarian.audiobookshelf import abs_match_counts
+from librarian.auth import require_role
+from librarian.config import mask_settings, merge_secret_fields, save_settings
+from librarian.delight import in_quiet_hours
+from librarian.indexers.sync import ping_nzbfinder, sync_nzbfinder
+from librarian.ingest import validate_watch_root
+from librarian.rss import (
+    create_rss_feed,
+    poll_rss_feeds,
+    public_rss_feed,
+    update_rss_feed,
+)
 from librarian.web.deps import WebDeps
-from librarian.web.route_imports import *  # noqa: F403
+from librarian.web.schemas import MailTestPayload, RssFeedPayload, SettingsPayload
 
 
 def register_settings_routes(app: FastAPI, deps: WebDeps) -> None:
@@ -47,8 +59,7 @@ def register_settings_routes(app: FastAPI, deps: WebDeps) -> None:
         incoming = {key: value for key, value in payload.model_dump().items() if value is not None}
         if "extra_indexers" in incoming:
             incoming["extra_indexers"] = [
-                row if isinstance(row, dict) else dict(row)
-                for row in incoming["extra_indexers"]
+                row if isinstance(row, dict) else dict(row) for row in incoming["extra_indexers"]
             ]
         if "mail" in incoming and isinstance(incoming["mail"], dict):
             # Drop unset nested keys so retain-on-empty only sees explicit blanks.
@@ -120,7 +131,8 @@ def register_settings_routes(app: FastAPI, deps: WebDeps) -> None:
         incoming = {
             key: value
             for key, value in payload.model_dump().items()
-            if value is not None and key in {"quiet_hours_enabled", "quiet_hours_start", "quiet_hours_end"}
+            if value is not None
+            and key in {"quiet_hours_enabled", "quiet_hours_start", "quiet_hours_end"}
         }
         merged = merge_secret_fields(incoming, settings())
         from librarian.config import Settings
@@ -171,4 +183,3 @@ def register_settings_routes(app: FastAPI, deps: WebDeps) -> None:
         require_role(request.state.user, "owner", "op")
         created = poll_rss_feeds(db, settings())
         return {"created": created, "feeds": [public_rss_feed(row) for row in db.list_rss_feeds()]}
-

@@ -2,12 +2,53 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 
+from librarian.audiobookshelf import match_audiobooks
+from librarian.auth import require_role
+from librarian.enrich import enrich_library, friendly_enrich_error
+from librarian.enrich_progress import (
+    EnrichProgressReporter,
+    begin_enrich_run,
+    finish_enrich_run,
+    is_enrich_running,
+    read_enrich_progress,
+)
+from librarian.goodreads import MAX_GOODREADS_BYTES, import_goodreads_csv
+from librarian.purge_shells import purge_shell_works
+from librarian.purge_shells_progress import (
+    PurgeShellsProgressReporter,
+    begin_purge_shells_run,
+    finish_purge_shells_run,
+    is_purge_shells_running,
+    is_purge_shells_stale,
+    read_purge_shells_progress,
+)
+from librarian.scan import scan_library
+from librarian.scan_progress import (
+    ScanProgressReporter,
+    begin_scan_run,
+    finish_scan_run,
+    is_scan_running,
+    read_scan_progress,
+)
+from librarian.shelf_health import shelf_permission_report
+from librarian.split_mixed_kinds import count_mixed_kind_works, split_mixed_kind_works
+from librarian.split_mixed_kinds_progress import (
+    SplitMixedKindsProgressReporter,
+    begin_split_mixed_kinds_run,
+    finish_split_mixed_kinds_run,
+    is_split_mixed_kinds_running,
+    is_split_mixed_kinds_stale,
+    read_split_mixed_kinds_progress,
+)
+from librarian.suggest import refresh_suggest_cache
 from librarian.web.deps import WebDeps
-from librarian.web.route_imports import *  # noqa: F403
+
+logger = logging.getLogger("librarian.web")
 
 
 def register_maintain_routes(app: FastAPI, deps: WebDeps) -> None:
@@ -25,7 +66,6 @@ def register_maintain_routes(app: FastAPI, deps: WebDeps) -> None:
 
     def current_user(request: Request) -> Optional[Dict[str, Any]]:
         return deps.current_user(request)
-
 
     @app.get("/api/maintain/shelf-health")
     def maintain_shelf_health(request: Request):
@@ -220,4 +260,3 @@ def register_maintain_routes(app: FastAPI, deps: WebDeps) -> None:
         except UnicodeDecodeError as error:
             raise HTTPException(status_code=400, detail="Goodreads CSV must be UTF-8") from error
         return import_goodreads_csv(db, request.state.user["id"], text)
-

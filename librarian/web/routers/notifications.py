@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import FastAPI, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
+from librarian.auth import require_role
 from librarian.notifications import (
     deliver_editions,
     deliver_notification,
@@ -17,7 +18,6 @@ from librarian.notifications import (
     resolve_push_user_ids,
 )
 from librarian.web.deps import WebDeps
-from librarian.web.route_imports import *  # noqa: F403
 
 
 class NotificationsSeenPayload(BaseModel):
@@ -94,19 +94,24 @@ def register_notification_routes(app: FastAPI, deps: WebDeps) -> None:
             **prefs,
             "channels": notification_channel_offerings(cfg),
             "mail_configured": any(
-                c.get("id") == "email" and c.get("available") for c in notification_channel_offerings(cfg)
+                c.get("id") == "email" and c.get("available")
+                for c in notification_channel_offerings(cfg)
             ),
         }
 
     @app.put("/api/notifications/prefs")
-    def put_notification_prefs(payload: NotificationPrefsPayload, request: Request) -> Dict[str, Any]:
+    def put_notification_prefs(
+        payload: NotificationPrefsPayload, request: Request
+    ) -> Dict[str, Any]:
         user = request.state.user
         require_role(user, "owner", "op", "reader")
         data = payload.model_dump(exclude_unset=True)
         try:
             nested = merge_notification_prefs(
                 db.get_user_prefs(user["id"]),
-                notification_email=data["notification_email"] if "notification_email" in data else ...,
+                notification_email=data["notification_email"]
+                if "notification_email" in data
+                else ...,
                 kinds=data.get("kinds") if "kinds" in data else None,
             )
         except ValueError as error:
@@ -118,7 +123,8 @@ def register_notification_routes(app: FastAPI, deps: WebDeps) -> None:
             **prefs,
             "channels": notification_channel_offerings(cfg),
             "mail_configured": any(
-                c.get("id") == "email" and c.get("available") for c in notification_channel_offerings(cfg)
+                c.get("id") == "email" and c.get("available")
+                for c in notification_channel_offerings(cfg)
             ),
         }
 

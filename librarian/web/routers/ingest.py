@@ -2,12 +2,31 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 
+from librarian.auth import require_role
+from librarian.ingest import (
+    PathDenied,
+    confined_path,
+    list_dir,
+    protected_path_refusal,
+    run_ingest_paths,
+)
+from librarian.ingest_progress import (
+    IngestProgressReporter,
+    begin_ingest_run,
+    finish_ingest_run,
+    is_ingest_running,
+    read_ingest_progress,
+)
+from librarian.organize import organize_identified
 from librarian.web.deps import WebDeps
-from librarian.web.route_imports import *  # noqa: F403
+from librarian.web.schemas import IngestPayload
+
+logger = logging.getLogger("librarian.web")
 
 
 def register_ingest_routes(app: FastAPI, deps: WebDeps) -> None:
@@ -65,7 +84,9 @@ def register_ingest_routes(app: FastAPI, deps: WebDeps) -> None:
         # Expand recursively in the worker so the meter denominator is real.
         kicked = ingest_job.start_if_idle(
             is_running=lambda: is_ingest_running(root),
-            begin=lambda: begin_ingest_run(root, source_path=source_path, total=0, phase="scanning"),
+            begin=lambda: begin_ingest_run(
+                root, source_path=source_path, total=0, phase="scanning"
+            ),
             target=run_ingest,
             name="librarian-ingest",
         )
@@ -104,4 +125,3 @@ def register_ingest_routes(app: FastAPI, deps: WebDeps) -> None:
             apply=False,
         )
         return result
-

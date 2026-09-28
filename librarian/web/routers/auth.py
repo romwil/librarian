@@ -5,9 +5,28 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi.responses import JSONResponse
 
+from librarian import __version__
+from librarian.auth import (
+    clear_session_cookie,
+    has_real_owner,
+    public_user,
+    require_role,
+    set_session_cookie,
+    verify_password,
+)
+from librarian.invites import (
+    create_household_invite,
+    lookup_pending_invite,
+    public_invite_view,
+    redeem_local_invite,
+)
+from librarian.rate_limit import auth_local_login_limit, enforce_rate_limit
+from librarian.sessions import has_usable_session_secret
+from librarian.web.build_info import read_build_info as _read_build_info
 from librarian.web.deps import WebDeps
-from librarian.web.route_imports import *  # noqa: F403
+from librarian.web.schemas import InvitePayload, LoginPayload, RedeemPayload
 
 
 def register_auth_routes(app: FastAPI, deps: WebDeps) -> None:
@@ -147,4 +166,3 @@ def register_auth_routes(app: FastAPI, deps: WebDeps) -> None:
     def people(request: Request):
         require_role(request.state.user, "owner")
         return {"users": [public_user(row) for row in db.list_users()]}
-
