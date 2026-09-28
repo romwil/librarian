@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.5.8] — 2026-09-27
+
+### Highlights
+
+- **Morning shelf brief.** Maintain opens as a morning desk: at most three soft-ranked tends (“tend these three”), with stuck jobs breathing — never a KPI strip. Why this feels alive: the lamp keeps a short list, not a dashboard.
+- **Series catch-up.** Nearly whole runs invite the house to fill a hole or two — Hall invitation for every role, soft Ask-the-house CTA for readers. Why this feels alive: missing issues read as invitation, not inventory.
+
+### Added
+
+- **`GET /api/maintain/morning-brief`** + `librarian.morning_brief` ranking (locked roots → Holds → extras → shells → blends; live jobs first).
+- **Maintain `MorningBrief`** surface with dawn wash, settle-in rows, reduced-motion path.
+- **Hall / Work series catch-up** invitation (landed on main ahead of this cut).
+
 ## [0.5.7] — 2026-09-27
 
 ### Highlights
