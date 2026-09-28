@@ -14,6 +14,7 @@ import {
   nextSleepTimerId,
   playableTracks,
   prevChapter,
+  listenRememberPresence,
   shouldPersistListenCadence,
   shouldWriteListenProgress,
   sleepTimerLabel,
@@ -31,6 +32,7 @@ export default function AudiobookPlayer({
   progress = null,
   player = null,
   playerNote = "",
+  remember = "",
   onClose,
   onProgress,
 }) {
@@ -69,6 +71,7 @@ export default function AudiobookPlayer({
   const activeTrack = tracks[fileIndex] || tracks[0] || null;
   const chapter = chapterAt(chapters, currentTime);
   const chapterLeft = chapterRemainingSeconds(chapters, currentTime, duration);
+  const rememberLine = listenRememberPresence(progress, remember);
 
   function persist(force = false) {
     if (!work?.id || !activeTrack) return;
@@ -435,6 +438,11 @@ export default function AudiobookPlayer({
           </div>
           <div className="listen-copy">
             <p className="muted">{work.author || "Unknown author"}</p>
+            {rememberLine ? (
+              <p className="listen-remember" data-testid="listen-remember">
+                {rememberLine}
+              </p>
+            ) : null}
             <p className="listen-chapter" data-testid="listen-chapter">
               {chapter?.title || activeTrack?.filename || "Audiobook"}
               {chapterLeft > 0 ? (

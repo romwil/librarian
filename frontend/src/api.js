@@ -109,6 +109,11 @@ export const api = {
   maintainSplitMixedKindsStatus: () => request("/maintain/split-mixed-kinds/status"),
   maintainShelfHealth: () => request("/maintain/shelf-health"),
   maintainMorningBrief: () => request("/maintain/morning-brief"),
+  maintainIndexerScorecard: () => request("/maintain/indexer-scorecard"),
+  maintainIndexerMute: (hostId) =>
+    request(`/maintain/indexer-scorecard/${encodeURIComponent(hostId)}/mute`, { method: "POST" }),
+  maintainIndexerUnmute: (hostId) =>
+    request(`/maintain/indexer-scorecard/${encodeURIComponent(hostId)}/unmute`, { method: "POST" }),
   queue: () => request("/queue"),
   queueTick: () => request("/queue/tick", { method: "POST" }),
   confirmJob: (id) => request(`/queue/${id}/confirm`, { method: "POST" }),

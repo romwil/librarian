@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import time
 import uuid
-from typing import Any, Dict, List, Optional, Tuple
+from pathlib import Path
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from librarian.config import Settings
 from librarian.indexers.query import run_beyond_search_traced
@@ -94,11 +96,12 @@ def mask_extra_indexers(raw: Any) -> List[Dict[str, Any]]:
 
 
 def enabled_hosts(settings: Settings) -> List[Dict[str, str]]:
-    """Hosts with a URL and token. NZBFinder stays first when configured."""
+    """Hosts with a URL and token. NZBFinder stays first when configured and unmuted."""
     hosts: List[Dict[str, str]] = []
     nzb_token = _text(getattr(settings, "nzbfinder_api_token", ""))
     nzb_url = _text(getattr(settings, "nzbfinder_url", ""))
-    if nzb_token and nzb_url:
+    nzb_muted = bool(getattr(settings, "nzbfinder_muted", False))
+    if nzb_token and nzb_url and not nzb_muted:
         hosts.append(
             {
                 "id": NZBFINDER_ID,
@@ -155,14 +158,44 @@ def _hit_key(item: Dict[str, Any]) -> str:
     return f"title:{title}:size:{size}"
 
 
+def _record_probe(
+    data_dir: Optional[Path],
+    *,
+    host: Mapping[str, Any],
+    ok: bool,
+    latency_ms: Optional[float],
+    hit_count: int = 0,
+    error: str = "",
+    rate_limited: bool = False,
+) -> None:
+    if data_dir is None:
+        return
+    try:
+        from librarian.indexer_scorecard import record_host_probe
+
+        record_host_probe(
+            Path(data_dir),
+            host_id=str(host.get("id") or ""),
+            host_name=str(host.get("name") or ""),
+            ok=ok,
+            latency_ms=latency_ms,
+            hit_count=hit_count,
+            error=error,
+            rate_limited=rate_limited,
+        )
+    except Exception:  # noqa: BLE001 — scorecard must never break Find
+        return
+
+
 def search_beyond(
     settings: Settings,
     *,
     transport: Optional[Any] = None,
+    data_dir: Optional[Path] = None,
     **fields: Any,
 ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
     """Query every enabled host. One 502 must not blank the others."""
-    traced = search_beyond_traced(settings, transport=transport, **fields)
+    traced = search_beyond_traced(settings, transport=transport, data_dir=data_dir, **fields)
     return traced["hits"], traced.get("error")
 
 
@@ -170,6 +203,7 @@ def search_beyond_traced(
     settings: Settings,
     *,
     transport: Optional[Any] = None,
+    data_dir: Optional[Path] = None,
     **fields: Any,
 ) -> Dict[str, Any]:
     """Beyond search with a decision trail for Bestsellers chase diagnostics."""
@@ -224,17 +258,37 @@ def search_beyond_traced(
             transport=transport,
             label=host["name"],
         )
+        started = time.perf_counter()
         try:
             traced = run_beyond_search_traced(client, **fields)
         except NZBFinderError as error:
-            errors.append(str(error))
+            latency_ms = (time.perf_counter() - started) * 1000.0
+            err_text = str(error)
+            rate_limited = "429" in err_text or "rate" in err_text.lower()
+            errors.append(err_text)
             steps.append({"step": "host", "detail": f"{host['name']}: {error}"})
+            _record_probe(
+                data_dir,
+                host=host,
+                ok=False,
+                latency_ms=latency_ms,
+                error=err_text,
+                rate_limited=rate_limited,
+            )
             continue
         finally:
             client.close()
+        latency_ms = (time.perf_counter() - started) * 1000.0
         host_raw = list(traced.get("raw") or [])
         host_rejected = list(traced.get("rejected") or [])
         host_accepted = list(traced.get("accepted") or [])
+        _record_probe(
+            data_dir,
+            host=host,
+            ok=True,
+            latency_ms=latency_ms,
+            hit_count=len(host_accepted),
+        )
         raw_count += len(host_raw)
         rejected_count += len(host_rejected)
         default_kind = str(traced.get("default_kind") or "")

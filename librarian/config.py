@@ -183,6 +183,7 @@ class Settings:
     sabnzbd_api_key: str = ""
     nzbfinder_url: str = "https://nzbfinder.ws"
     nzbfinder_api_token: str = ""
+    nzbfinder_muted: bool = False
     books_root: str = "/data/media/library/books"
     magazines_root: str = "/data/media/library/magazines"
     comics_root: str = "/data/media/library/comics"
@@ -243,6 +244,8 @@ class Settings:
             filtered["music_write_tags"] = _as_bool(filtered["music_write_tags"])
         if "quiet_hours_enabled" in filtered:
             filtered["quiet_hours_enabled"] = _as_bool(filtered["quiet_hours_enabled"])
+        if "nzbfinder_muted" in filtered:
+            filtered["nzbfinder_muted"] = _as_bool(filtered["nzbfinder_muted"])
         if "extra_indexers" in filtered:
             from librarian.indexers.hosts import normalize_extra_indexers
 

@@ -160,6 +160,7 @@ export default function WorkPage() {
   const canInlineOpen = canOpenInlineMedia(work, Boolean(data.can_download), canRead);
   const playerLink = data.listen?.player || null;
   const playerNote = data.listen?.player_note || "";
+  const listenRemember = data.listen?.remember || "";
   const komgaLink = data.komga?.reader || null;
   const mediaNote = peekMediaNote(work, { canDownload: Boolean(data.can_download), ready: true });
   const descriptionHtml = looksLikeHtml(work.description) ? sanitizeDescriptionHtml(work.description) : "";
@@ -998,6 +999,7 @@ export default function WorkPage() {
           progress={data.progress}
           player={playerLink}
           playerNote={playerNote}
+          remember={listenRemember}
           onClose={closeListen}
           onProgress={(row) => setData((prev) => (prev ? { ...prev, progress: row } : prev))}
         />

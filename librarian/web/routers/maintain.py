@@ -9,6 +9,7 @@ from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 
 from librarian.audiobookshelf import match_audiobooks
 from librarian.auth import require_role
+from librarian.config import save_settings
 from librarian.enrich import enrich_library, friendly_enrich_error
 from librarian.enrich_progress import (
     EnrichProgressReporter,
@@ -19,6 +20,7 @@ from librarian.enrich_progress import (
 )
 from librarian.extra_files_reprocess_progress import read_extra_files_reprocess_progress
 from librarian.goodreads import MAX_GOODREADS_BYTES, import_goodreads_csv
+from librarian.indexer_scorecard import assemble_indexer_scorecard, mute_host
 from librarian.ingest_progress import read_ingest_progress
 from librarian.morning_brief import assemble_morning_brief
 from librarian.purge_shells import purge_shell_works
@@ -137,6 +139,36 @@ def register_maintain_routes(app: FastAPI, deps: WebDeps) -> None:
             unshelved_shells=shells,
             comic_book_blends=blends,
         )
+
+    @app.get("/api/maintain/indexer-scorecard")
+    def maintain_indexer_scorecard(request: Request):
+        """Hosts as lanterns — weather + mute, never a latency KPI strip."""
+        require_role(current_user(request), "owner")
+        return assemble_indexer_scorecard(root, settings())
+
+    @app.post("/api/maintain/indexer-scorecard/{host_id}/mute")
+    def maintain_indexer_mute(host_id: str, request: Request):
+        """Mute a sick host without deleting it — Find skips it until unmute."""
+        require_role(current_user(request), "owner")
+        current = settings()
+        try:
+            mute_host(current, host_id, muted=True)
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail="Indexer not found") from error
+        save_settings(root, current)
+        return assemble_indexer_scorecard(root, current)
+
+    @app.post("/api/maintain/indexer-scorecard/{host_id}/unmute")
+    def maintain_indexer_unmute(host_id: str, request: Request):
+        """Unmute a resting host so Find queries it again."""
+        require_role(current_user(request), "owner")
+        current = settings()
+        try:
+            mute_host(current, host_id, muted=False)
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail="Indexer not found") from error
+        save_settings(root, current)
+        return assemble_indexer_scorecard(root, current)
 
 
     @app.post("/api/maintain/purge-shells")

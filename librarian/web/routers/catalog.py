@@ -224,7 +224,7 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
         if kind in EXTRA_KINDS and not extra_on:
             indexer, beyond_error = [], None
         elif has_beyond_query:
-            ranked = search_and_rank(settings(), **sought)
+            ranked = search_and_rank(settings(), data_dir=root, **sought)
             indexer = list(ranked.get("hits") or [])
             beyond_error = ranked.get("error")
             if beyond_error:
@@ -592,7 +592,12 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
             "can_open": bool(on_disk),
             "can_download": can_download,
             "can_read": can_read_work(str(work.get("kind") or ""), on_disk),
-            "listen": listen_payload(work, can_download=can_download, settings=settings()),
+            "listen": listen_payload(
+                work,
+                can_download=can_download,
+                settings=settings(),
+                progress=progress,
+            ),
             "komga": komga_payload(work, settings()),
             "audiobook": audiobook,
             "favorite": db.is_favorite(request.state.user["id"], work_id),

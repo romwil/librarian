@@ -8,6 +8,7 @@ import {
   encodeListenPosition,
   formatListenClock,
   listenFraction,
+  listenRememberPresence,
   nextChapter,
   nextListenRate,
   nextSleepTimerId,
@@ -62,6 +63,19 @@ describe("audiobook Listen helpers", () => {
     assert.equal(
       shouldWriteListenProgress({ ready: true, seconds: 0, resumeSeconds: 0 }),
       true,
+    );
+  });
+
+  it("shows lamp kept the page when a listen bookmark remains", () => {
+    assert.equal(listenRememberPresence(null), "");
+    assert.equal(listenRememberPresence({ fraction: 0, position: "" }), "");
+    assert.equal(
+      listenRememberPresence({ fraction: 0.2, position: encodeListenPosition("f1", 90) }),
+      "The lamp kept the page.",
+    );
+    assert.equal(
+      listenRememberPresence({ fraction: 0.2, position: "" }, "Custom remember"),
+      "Custom remember",
     );
   });
 

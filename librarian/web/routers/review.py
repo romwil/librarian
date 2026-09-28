@@ -343,6 +343,7 @@ def register_review_routes(app: FastAPI, deps: WebDeps) -> None:
         if len(hits) < 3:
             ranked = search_and_rank(
                 settings(),
+                data_dir=root,
                 q=q,
                 kind=str(work.get("kind") or ""),
                 title=str(work.get("title") or ""),

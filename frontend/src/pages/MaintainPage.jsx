@@ -11,6 +11,7 @@ import {
 import AddToLibrary from "../components/AddToLibrary.jsx";
 import MaintainStatusDock from "../components/MaintainStatusDock.jsx";
 import MorningBrief from "../components/MorningBrief.jsx";
+import IndexerScorecard from "../components/IndexerScorecard.jsx";
 import ShelfHealthPulse from "../components/ShelfHealthPulse.jsx";
 import { FieldLabel } from "../components/FieldHelp.jsx";
 import { FIELD_HELP, humanError } from "../copy.js";
@@ -95,11 +96,16 @@ export default function MaintainPage() {
   const mixPollRef = useRef(0);
   const [morningBrief, setMorningBrief] = useState(null);
   const [morningBriefLoading, setMorningBriefLoading] = useState(true);
+  const [indexerCard, setIndexerCard] = useState(null);
+  const [indexerCardLoading, setIndexerCardLoading] = useState(true);
+  const [indexerBusyId, setIndexerBusyId] = useState("");
+  const [indexerError, setIndexerError] = useState("");
 
   useEffect(() => {
     if (user?.role !== "owner") return undefined;
     let cancelled = false;
     setMorningBriefLoading(true);
+    setIndexerCardLoading(true);
     api
       .maintainMorningBrief()
       .then((data) => {
@@ -111,6 +117,20 @@ export default function MaintainPage() {
         if (cancelled) return;
         setMorningBrief(null);
         setMorningBriefLoading(false);
+      });
+    api
+      .maintainIndexerScorecard()
+      .then((data) => {
+        if (cancelled) return;
+        setIndexerCard(data);
+        setIndexerCardLoading(false);
+        setIndexerError("");
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setIndexerCard(null);
+        setIndexerCardLoading(false);
+        setIndexerError(humanError(err));
       });
     api
       .enrichStatus()
@@ -477,6 +497,34 @@ export default function MaintainPage() {
     }
   }
 
+  async function muteIndexer(hostId) {
+    if (!hostId || indexerBusyId) return;
+    setIndexerBusyId(hostId);
+    setIndexerError("");
+    try {
+      const next = await api.maintainIndexerMute(hostId);
+      setIndexerCard(next);
+    } catch (err) {
+      setIndexerError(humanError(err));
+    } finally {
+      setIndexerBusyId("");
+    }
+  }
+
+  async function unmuteIndexer(hostId) {
+    if (!hostId || indexerBusyId) return;
+    setIndexerBusyId(hostId);
+    setIndexerError("");
+    try {
+      const next = await api.maintainIndexerUnmute(hostId);
+      setIndexerCard(next);
+    } catch (err) {
+      setIndexerError(humanError(err));
+    } finally {
+      setIndexerBusyId("");
+    }
+  }
+
   return (
     <div className="admin-room maintain-page page-settle" data-testid="maintain-page">
       <p className="kicker">Owner</p>
@@ -487,6 +535,15 @@ export default function MaintainPage() {
       </p>
 
       <MorningBrief brief={morningBrief} loading={morningBriefLoading} />
+
+      <IndexerScorecard
+        card={indexerCard}
+        loading={indexerCardLoading}
+        busyId={indexerBusyId}
+        onMute={muteIndexer}
+        onUnmute={unmuteIndexer}
+      />
+      {indexerError ? <p className="alert">{indexerError}</p> : null}
 
       <MaintainStatusDock />
 

@@ -15,6 +15,8 @@ from librarian.listen import (
     listen_fraction,
     listen_payload,
     player_empty_note,
+    prefer_lamp_bookmark,
+    remember_presence,
     should_write_listen_progress,
     split_continue_rails,
 )
@@ -72,6 +74,28 @@ def test_listen_position_and_fraction_helpers():
     )
     assert [row["title"] for row in rails["reading"]] == ["Kindred"]
     assert [row["title"] for row in rails["listening"]] == ["Dune"]
+
+
+def test_listen_that_remembers_presence_and_bookmark():
+    assert remember_presence(None) == ""
+    assert remember_presence({"fraction": 0, "position": ""}) == ""
+    kept = {
+        "fraction": 0.35,
+        "position": encode_listen_position(file_id="f1", seconds=120.0),
+    }
+    assert remember_presence(kept) == "The lamp kept the page."
+    payload = listen_payload(
+        {"kind": "audiobook"},
+        can_download=True,
+        settings=Settings(audiobook_target="librarian_only"),
+        progress=kept,
+    )
+    assert payload["remember"] == "The lamp kept the page."
+    local = {"fraction": 0.4, "position": encode_listen_position(file_id="f1", seconds=200)}
+    wiped = {"fraction": 0.0, "position": encode_listen_position(file_id="f1", seconds=0.0)}
+    assert prefer_lamp_bookmark(local=local, incoming=wiped) == local
+    ahead = {"fraction": 0.7, "position": encode_listen_position(file_id="f1", seconds=400)}
+    assert prefer_lamp_bookmark(local=local, incoming=ahead) == ahead
 
 
 def test_extract_chapters_reads_mp4_markers(monkeypatch, tmp_path):

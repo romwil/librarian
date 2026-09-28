@@ -3000,6 +3000,111 @@ button.cover {
   opacity: 0.85;
   background: radial-gradient(circle, color-mix(in srgb, var(--brass, #c9954a) 42%, transparent), transparent 72%);
 }
+.indexer-scorecard {
+  position: relative;
+  margin: 0 0 var(--space-5);
+  padding: var(--space-4);
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--brass, #c9954a) 24%, var(--border-subtle));
+  background:
+    radial-gradient(ellipse 55% 70% at 88% 0%, color-mix(in srgb, var(--lamp, #f0b85a) 14%, transparent), transparent 65%),
+    color-mix(in srgb, var(--surface) 94%, var(--paper, #f4ead6));
+  overflow: hidden;
+}
+.indexer-scorecard-quiet .indexer-scorecard-presence {
+  color: var(--muted);
+}
+.indexer-scorecard .kicker,
+.indexer-scorecard-title,
+.indexer-scorecard-presence {
+  position: relative;
+}
+.indexer-scorecard-title {
+  margin: 0 0 var(--space-2);
+  font-family: var(--font-display);
+  font-size: clamp(1.2rem, 2.6vw, 1.45rem);
+  letter-spacing: -0.02em;
+}
+.indexer-scorecard-presence {
+  margin: 0 0 var(--space-3);
+  color: var(--fg);
+  line-height: 1.4;
+}
+.indexer-scorecard-glow {
+  position: absolute;
+  inset: -15% -5% auto auto;
+  width: 10rem;
+  height: 7rem;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--lamp, #f0b85a) 32%, transparent), transparent 72%);
+  pointer-events: none;
+  opacity: 0.5;
+}
+.indexer-lantern-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-3);
+  position: relative;
+}
+.indexer-lantern {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-3);
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--paper, #f4ead6) 55%, transparent);
+  animation: page-settle var(--motion-settle) both;
+  animation-delay: calc(var(--settle-i, 0) * 40ms);
+}
+.indexer-lantern-flame {
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--muted) 70%, transparent);
+  box-shadow: none;
+}
+.indexer-lantern-bright .indexer-lantern-flame {
+  background: var(--lamp, #f0b85a);
+  box-shadow: 0 0 0.65rem color-mix(in srgb, var(--lamp, #f0b85a) 55%, transparent);
+}
+.indexer-lantern-dim .indexer-lantern-flame {
+  background: color-mix(in srgb, var(--brass, #c9954a) 70%, var(--muted));
+  opacity: 0.75;
+}
+.indexer-lantern-dark .indexer-lantern-flame {
+  background: color-mix(in srgb, var(--muted) 80%, #4a3a2a);
+  opacity: 0.55;
+}
+.indexer-lantern-muted .indexer-lantern-flame,
+.indexer-lantern.is-muted .indexer-lantern-flame {
+  background: color-mix(in srgb, var(--muted) 50%, transparent);
+  opacity: 0.4;
+}
+.indexer-lantern-name {
+  margin: 0;
+  font-weight: 600;
+}
+.indexer-lantern-presence {
+  margin: 0.15rem 0 0;
+  color: var(--muted);
+  font-size: var(--text-sm, 0.9rem);
+  line-height: 1.35;
+}
+.indexer-lantern-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+.listen-remember {
+  margin: 0 0 var(--space-2);
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  letter-spacing: -0.01em;
+  color: color-mix(in srgb, var(--brass, #c9954a) 70%, var(--fg));
+}
 .shelf-health-roots {
   margin: 0;
   padding-left: 1.25rem;

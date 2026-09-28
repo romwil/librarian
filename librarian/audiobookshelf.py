@@ -438,7 +438,7 @@ def pull_abs_listen_progress(
     client: Optional[AudiobookshelfClient] = None,
 ) -> Optional[Dict[str, Any]]:
     """Pull ABS progress into Librarian when opening Listen. Fail-soft."""
-    from librarian.listen import decode_listen_position, should_write_listen_progress
+    from librarian.listen import decode_listen_position, prefer_lamp_bookmark, should_write_listen_progress
 
     if _text(work.get("kind")) != KIND_AUDIOBOOK:
         return None
@@ -494,11 +494,27 @@ def pull_abs_listen_progress(
         ):
             return None
 
+        kept = prefer_lamp_bookmark(
+            local=existing,
+            incoming={
+                "position": str(mapped.get("position") or ""),
+                "fraction": float(mapped.get("fraction") or 0.0),
+            },
+        )
+        kept_pos = str(kept.get("position") or "")
+        kept_frac = float(kept.get("fraction") or 0.0)
+        if (
+            existing
+            and str(existing.get("position") or "") == kept_pos
+            and abs(float(existing.get("fraction") or 0.0) - kept_frac) < 0.001
+        ):
+            return existing
+
         return db.upsert_progress(
             user_id=user_id,
             work_id=str(work["id"]),
-            position=str(mapped.get("position") or ""),
-            fraction=float(mapped.get("fraction") or 0.0),
+            position=kept_pos,
+            fraction=kept_frac,
         )
     except AudiobookshelfError as error:
         logger.info("ABS progress pull skipped: %s", error)

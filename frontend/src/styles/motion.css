@@ -404,6 +404,15 @@
   animation-duration: calc(var(--motion-breath) * 1.2);
 }
 
+/* Indexer lanterns — soft flame breath */
+.indexer-scorecard-glow,
+.indexer-lantern-bright .indexer-lantern-flame {
+  animation: lamp-breath var(--motion-breath) ease-in-out infinite alternate;
+}
+.indexer-lantern-dim .indexer-lantern-flame {
+  animation: lamp-breath calc(var(--motion-breath) * 0.7) ease-in-out infinite alternate;
+}
+
 /* Reading room calm — soft open settle */
 .reader.reader-calm {
   animation: soft-enter var(--motion-settle) both;
@@ -455,6 +464,10 @@
   .ingest-preview-glow,
   .ingest-preview-row.is-breathing::before,
   .shelf-health-pulse-glow,
+  .indexer-scorecard-glow,
+  .indexer-lantern-bright .indexer-lantern-flame,
+  .indexer-lantern-dim .indexer-lantern-flame,
+  .indexer-lantern,
   .reader.reader-calm,
   .reader.reader-calm .reader-stage,
   .cover-settle,

@@ -96,6 +96,59 @@ def should_write_listen_progress(
     return True
 
 
+def remember_presence(progress: Optional[Mapping[str, Any]] = None) -> str:
+    """Warm line when the lamp kept a listen place — recognition, not surveillance."""
+    if not progress:
+        return ""
+    try:
+        fraction = float(progress.get("fraction") or 0.0)
+    except (TypeError, ValueError):
+        fraction = 0.0
+    decoded = decode_listen_position(progress.get("position"))
+    seconds = max(0.0, float(decoded.get("seconds") or 0.0))
+    if fraction >= 0.999:
+        return ""
+    if seconds < 2.0 and fraction < 0.01:
+        return ""
+    return "The lamp kept the page."
+
+
+def prefer_lamp_bookmark(
+    *,
+    local: Optional[Mapping[str, Any]] = None,
+    incoming: Optional[Mapping[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Keep the farther honest bookmark — never wipe a better lamp place with a remount zero."""
+    local_row = dict(local or {})
+    incoming_row = dict(incoming or {})
+    if not incoming_row:
+        return local_row
+    if not local_row:
+        return incoming_row
+    local_decoded = decode_listen_position(local_row.get("position"))
+    incoming_decoded = decode_listen_position(incoming_row.get("position"))
+    try:
+        local_frac = float(local_row.get("fraction") or 0.0)
+    except (TypeError, ValueError):
+        local_frac = 0.0
+    try:
+        incoming_frac = float(incoming_row.get("fraction") or 0.0)
+    except (TypeError, ValueError):
+        incoming_frac = 0.0
+    local_secs = max(0.0, float(local_decoded.get("seconds") or 0.0))
+    incoming_secs = max(0.0, float(incoming_decoded.get("seconds") or 0.0))
+    # Incoming near-zero must not erase a real lamp bookmark.
+    if local_secs >= 2.0 and incoming_secs < 1.0 and incoming_frac < 0.01:
+        return local_row
+    if local_frac >= incoming_frac + 0.01:
+        return local_row
+    if incoming_frac >= local_frac + 0.01:
+        return incoming_row
+    if local_secs >= incoming_secs + 15.0:
+        return local_row
+    return incoming_row
+
+
 def split_continue_rails(rows: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
     """Hall Continue vs Continue listening."""
     reading: List[Dict[str, Any]] = []
@@ -215,13 +268,16 @@ def listen_payload(
     *,
     can_download: bool,
     settings: Settings,
+    progress: Optional[Mapping[str, Any]] = None,
 ) -> Dict[str, Any]:
     kind = _text((work or {}).get("kind"))
     can_listen = kind == KIND_AUDIOBOOK and bool(can_download)
     player = audiobook_player_link(work, settings) if can_listen else None
     note = player_empty_note(work, settings) if can_listen else ""
+    remember = remember_presence(progress) if can_listen else ""
     return {
         "can_listen": can_listen,
         "player": player,
         "player_note": note,
+        "remember": remember,
     }

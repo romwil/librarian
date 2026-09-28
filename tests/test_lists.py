@@ -201,7 +201,7 @@ def test_curated_list_fail_closed_without_llm(tmp_path):
 def test_chase_missing_searches_book_and_audiobook(monkeypatch):
     calls = []
 
-    def fake_search_traced(settings, *, transport=None, **fields):
+    def fake_search_traced(settings, *, transport=None, data_dir=None, **fields):
         calls.append(dict(fields))
         kind = fields.get("kind")
         if kind == "book":
@@ -269,7 +269,7 @@ def test_art_of_war_chase_query_construction(monkeypatch):
 
     captured = []
 
-    def fake_search_traced(settings, *, transport=None, **fields):
+    def fake_search_traced(settings, *, transport=None, data_dir=None, **fields):
         captured.append(dict(fields))
         return {
             "hits": [],
@@ -292,7 +292,7 @@ def test_art_of_war_chase_query_construction(monkeypatch):
 def test_chase_exposes_raw_when_kind_filter_empties_hits(monkeypatch):
     """Indexer returned a real ebook row; kind filter rejected it — still in trace."""
 
-    def fake_search_traced(settings, *, transport=None, **fields):
+    def fake_search_traced(settings, *, transport=None, data_dir=None, **fields):
         kind = fields.get("kind")
         if kind != "book":
             return {
@@ -444,7 +444,7 @@ def test_api_lists_llm_and_chase_mocked(tmp_path, monkeypatch):
         ),
     )
 
-    def fake_search(settings, *, transport=None, **fields):
+    def fake_search(settings, *, transport=None, data_dir=None, **fields):
         kind = fields.get("kind")
         hit = {
             "guid": f"{kind}-guid",

@@ -102,7 +102,7 @@ def test_rank_beyond_hits_degrades_on_429(monkeypatch):
 
 
 def test_search_and_rank_wires_traced_search(monkeypatch):
-    def fake_search(settings, *, transport=None, **fields):
+    def fake_search(settings, *, transport=None, data_dir=None, **fields):
         return {
             "hits": [_hit("z", fields.get("title") or "Z", fields.get("author") or "")],
             "error": None,

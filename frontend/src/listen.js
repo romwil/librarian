@@ -79,6 +79,18 @@ export function shouldWriteListenProgress({
   return true;
 }
 
+/** Warm resume line when the lamp kept a listen place. */
+export function listenRememberPresence(progress = null, remember = "") {
+  const fromServer = String(remember || "").trim();
+  if (fromServer) return fromServer;
+  if (!progress) return "";
+  const fraction = Math.max(0, Number(progress.fraction) || 0);
+  const decoded = decodeListenPosition(progress.position || "");
+  if (fraction >= 0.999) return "";
+  if (decoded.seconds < 2 && fraction < 0.01) return "";
+  return "The lamp kept the page.";
+}
+
 /** Cadence gate for progress POSTs — force always writes. */
 export function shouldPersistListenCadence({
   force = false,

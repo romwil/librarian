@@ -12,7 +12,7 @@ Librarian is a private **reading room** for the books, magazines, comics, audiob
 
 ## Find extras
 
-Find can query more than NZBFinder. Extra Newznab v2 hosts live in Settings; results show a muted host name. If one host fails, the others still appear.
+Find can query more than NZBFinder. Extra Newznab v2 hosts live in Settings; results show a muted host name. If one host fails, the others still appear. Maintain **Find lanterns** show host weather; mute a sick host without deleting it.
 
 **Discover** reads each host’s capabilities category tree (comics `7030`, magazines `7010`, other books `70xx`, audiobooks `3030`, music `3010`/`3040`/`3999`, and real subcats the indexer lists). Latest-in-category uses category RSS (`/rss/category?id=` on NZBFinder, then classic `/rss?t=` or `/api?t=search&cat=`). NZBFinder v2 search needs a real query, so Discover does not call empty-query v2. It does not scrape HTML and does not auto-queue SAB. Each rail is a short latest slice — click the category title or **See all** to open that feed (`/find?discover=7030`) and browse many more results with the same Request / peek chips.
 
@@ -34,7 +34,7 @@ Optional Audiobookshelf URL and token (`AUDIOBOOKSHELF_URL` / `AUDIOBOOKSHELF_AP
 
 ## The Hall
 
-After sign-in you land on **The Hall**, not Settings. The hero is search (the stacks, not “then the world”). Rails below: **Continue** (volumes you opened), What’s New, Favorites, Books, Magazines, Comics, Audiobooks, Incoming Music. Owners and ops also see a **Gaps** rail. Opening a work leaves a bookmark on Continue; **Finished** means you have read it and clears that bookmark. Finished is not a download status. Audiobook Listen writes the same Continue progress (file + seconds), so in-progress listens sit on the Continue rail beside books.
+After sign-in you land on **The Hall**, not Settings. The hero is search (the stacks, not “then the world”). Rails below: **Continue** (volumes you opened), What’s New, Favorites, Books, Magazines, Comics, Audiobooks, Incoming Music. Owners and ops also see a **Gaps** rail. Opening a work leaves a bookmark on Continue; **Finished** means you have read it and clears that bookmark. Finished is not a download status. Audiobook Listen writes the same Continue progress (file + seconds), so in-progress listens sit on the Continue rail beside books. The lamp keeps the page across remounts and Audiobookshelf sync.
 
 Chrome stays Hall / Search / Favorites / You. Queue and Review are op links, not extra tabs.
 

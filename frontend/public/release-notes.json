@@ -1,6 +1,25 @@
 {
-  "generated_at": "2026-09-28T02:32:37Z",
+  "generated_at": "2026-09-28T02:47:21Z",
   "releases": [
+    {
+      "version": "0.5.11",
+      "date": "2026-09-27",
+      "summary": "",
+      "highlights": [
+        "**Indexer scorecard.** Maintain Find lanterns show hosts as bright / dim / dark lanterns — mute a sick host without deleting it. Why this feels alive: Find hosts feel like lamps on the desk, not a latency chart.",
+        "**Listen that remembers.** Opening Listen keeps the lamp bookmark across ABS sync and remounts, with a quiet “The lamp kept the page.” Why this feels alive: the house remembers where you left the story."
+      ],
+      "sections": [
+        {
+          "title": "Added",
+          "bullets": [
+            "**`GET/POST /api/maintain/indexer-scorecard`** (+ mute/unmute) and `librarian.indexer_scorecard` probe history.",
+            "**`nzbfinder_muted`** setting; muted hosts skip Find without leaving Settings.",
+            "**Listen `remember` presence** + `prefer_lamp_bookmark` so near-zero remounts cannot wipe a real place."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.5.10",
       "date": "2026-09-27",

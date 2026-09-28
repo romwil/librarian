@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.5.11] — 2026-09-27
+
+### Highlights
+
+- **Indexer scorecard.** Maintain Find lanterns show hosts as bright / dim / dark lanterns — mute a sick host without deleting it. Why this feels alive: Find hosts feel like lamps on the desk, not a latency chart.
+- **Listen that remembers.** Opening Listen keeps the lamp bookmark across ABS sync and remounts, with a quiet “The lamp kept the page.” Why this feels alive: the house remembers where you left the story.
+
+### Added
+
+- **`GET/POST /api/maintain/indexer-scorecard`** (+ mute/unmute) and `librarian.indexer_scorecard` probe history.
+- **`nzbfinder_muted`** setting; muted hosts skip Find without leaving Settings.
+- **Listen `remember` presence** + `prefer_lamp_bookmark` so near-zero remounts cannot wipe a real place.
+
 ## [0.5.10] — 2026-09-27
 
 ### Highlights
