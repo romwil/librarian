@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.5.10] — 2026-09-27
+
+### Highlights
+
+- **Shelf health score.** Maintain Shelf health opens with a living pulse — calm / stirring / needs you — and one tend action, weather not a grade. Why this feels alive: the stacks speak in weather, not a KPI strip.
+- **Reading room calm.** Open a volume and the rest of the app falls away: softer margins, lights-up/down tuned paper, chrome that dims for long sessions (stays put under reduced-motion). Why this feels alive: the lamp keeps the page, not the admin chrome.
+
+### Added
+
+- **`score` on `GET /api/maintain/shelf-health`** + `librarian.shelf_health_score` (one tend; locked roots → extras → shells → blends).
+- **Maintain `ShelfHealthPulse`** weather chrome with reduced-motion path.
+- **Reader calm shell** (`reader-calm`) — idle chrome dim, EPUB line-height/margins, lights theme washes.
+
 ## [0.5.9] — 2026-09-27
 
 ### Highlights

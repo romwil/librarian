@@ -103,7 +103,7 @@ Owners and ops keep the lamp healthy from **Maintain** (`/maintain`) — not Set
 
 Long jobs share one **status dock** on Maintain (scan, enrich, shelving, Clear, Purge). Progress survives refresh under `/config`.
 
-If Review **Apply** hits a PUID-locked author folder (often after Calibre migrate as uid 1000), Maintain **Shelf health** shows a permission report and the host tip: `chown -R 99:100` on `library/books` to match the container PUID. Scan/enrich progress stays in the Maintain telemetry dock.
+If Review **Apply** hits a PUID-locked author folder (often after Calibre migrate as uid 1000), Maintain **Shelf health** shows a living pulse (weather, not a score) plus a permission report and the host tip: `chown -R 99:100` on `library/books` to match the container PUID. Scan/enrich progress stays in the Maintain telemetry dock.
 
 ## Motif glossary
 
@@ -114,6 +114,7 @@ If Review **Apply** hits a PUID-locked author folder (often after Calibre migrat
 | **Library card** | Your personal chrome menu — theme, text size, inbox, library preferences |
 | **Shelving** | Settings panel for SAB complete root (`#shelving`; legacy `#bagging` still works) |
 | **Hall / shelves / lamp** | The reading room itself — presence, not KPI dashboards. Dawn/dusk wash and a quiet welcome-back when Continue waits are lamp rituals, not settings. |
+| **Reading room (open volume)** | Margins and lights-down tuned for long sessions; chrome dims so the rest of the app falls away. |
 | **Find beyond / Ask the house** | Looking outside the stacks; household voice stays warm and honest |
 
 ## Indexers

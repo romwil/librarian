@@ -1,6 +1,25 @@
 {
-  "generated_at": "2026-09-28T02:24:41Z",
+  "generated_at": "2026-09-28T02:32:37Z",
   "releases": [
+    {
+      "version": "0.5.10",
+      "date": "2026-09-27",
+      "summary": "",
+      "highlights": [
+        "**Shelf health score.** Maintain Shelf health opens with a living pulse — calm / stirring / needs you — and one tend action, weather not a grade. Why this feels alive: the stacks speak in weather, not a KPI strip.",
+        "**Reading room calm.** Open a volume and the rest of the app falls away: softer margins, lights-up/down tuned paper, chrome that dims for long sessions (stays put under reduced-motion). Why this feels alive: the lamp keeps the page, not the admin chrome."
+      ],
+      "sections": [
+        {
+          "title": "Added",
+          "bullets": [
+            "**`score` on `GET /api/maintain/shelf-health`** + `librarian.shelf_health_score` (one tend; locked roots → extras → shells → blends).",
+            "**Maintain `ShelfHealthPulse`** weather chrome with reduced-motion path.",
+            "**Reader calm shell** (`reader-calm`) — idle chrome dim, EPUB line-height/margins, lights theme washes."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.5.9",
       "date": "2026-09-27",

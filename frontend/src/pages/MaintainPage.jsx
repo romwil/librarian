@@ -11,6 +11,7 @@ import {
 import AddToLibrary from "../components/AddToLibrary.jsx";
 import MaintainStatusDock from "../components/MaintainStatusDock.jsx";
 import MorningBrief from "../components/MorningBrief.jsx";
+import ShelfHealthPulse from "../components/ShelfHealthPulse.jsx";
 import { FieldLabel } from "../components/FieldHelp.jsx";
 import { FIELD_HELP, humanError } from "../copy.js";
 import { bestsellersHref } from "../find.js";
@@ -604,6 +605,7 @@ export default function MaintainPage() {
           Rescan library roots and fill thin metadata. Job progress stays in the telemetry dock above. Paths and
           tokens live in Settings.
         </p>
+        {shelfHealth?.score ? <ShelfHealthPulse score={shelfHealth.score} /> : null}
         {shelfHealth ? (
           <div className="shelf-health-report" data-testid="maintain-shelf-health-report">
             <p className="muted">

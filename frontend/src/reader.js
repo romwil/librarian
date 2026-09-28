@@ -14,6 +14,16 @@ html {
   color-scheme: only light;
   --theme-bg-color: ${EPUB_PAGE_SURFACE};
 }
+body {
+  margin: 0;
+  line-height: 1.65;
+  font-size: 1.05rem;
+  letter-spacing: 0.01em;
+  hyphens: auto;
+}
+p, li {
+  max-width: 38rem;
+}
 `;
 
 /** Left / right thirds → page turn; middle stays free for selection. */

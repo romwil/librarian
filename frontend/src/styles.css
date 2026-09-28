@@ -1813,6 +1813,12 @@ body:has(.reader) .topbar,
 body:has(.listen-room) .topbar {
   z-index: 1;
 }
+/* Reading room calm — the rest of the app falls away while a volume is open. */
+body:has(.reader.reader-calm) .topbar,
+body:has(.reader.reader-calm) .mobile-tabbar {
+  visibility: hidden;
+  pointer-events: none;
+}
 body:has(.listen-room) {
   overflow: hidden;
 }
@@ -1826,6 +1832,11 @@ body:has(.listen-room) {
     radial-gradient(ellipse 90% 55% at 50% -8%, color-mix(in srgb, var(--lamp) 18%, transparent), transparent 58%),
     linear-gradient(180deg, var(--workspace-base) 0%, var(--bg) 42%);
 }
+.reader.reader-calm {
+  background:
+    radial-gradient(ellipse 70% 45% at 50% -12%, color-mix(in srgb, var(--lamp) 12%, transparent), transparent 62%),
+    linear-gradient(180deg, color-mix(in srgb, var(--bg) 92%, #1a1410) 0%, var(--bg) 48%);
+}
 .reader-head {
   display: flex;
   align-items: center;
@@ -1835,6 +1846,29 @@ body:has(.listen-room) {
   border-bottom: 1px solid var(--border-subtle);
   background: color-mix(in srgb, var(--surface) 88%, transparent);
   backdrop-filter: blur(14px);
+  transition: opacity var(--motion-settle), transform var(--motion-settle);
+}
+.reader.reader-calm .reader-head {
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  border-bottom-color: transparent;
+}
+.reader.reader-calm.is-chrome-dim .reader-head {
+  opacity: 0;
+  transform: translateY(-0.35rem);
+  pointer-events: none;
+}
+.reader.reader-calm.is-chrome-dim .reader-head .cta {
+  pointer-events: none;
+}
+html[data-theme="lights-down"] .reader.reader-calm {
+  background:
+    radial-gradient(ellipse 65% 40% at 50% -10%, color-mix(in srgb, var(--lamp) 10%, transparent), transparent 60%),
+    #0c0907;
+}
+html[data-theme="lights-up"] .reader.reader-calm {
+  background:
+    radial-gradient(ellipse 70% 45% at 50% -12%, color-mix(in srgb, var(--lamp) 14%, transparent), transparent 62%),
+    linear-gradient(180deg, #f7f1e6 0%, #efe6d4 48%);
 }
 .reader-titleblock {
   min-width: 0;
@@ -1867,6 +1901,12 @@ body:has(.listen-room) {
   min-height: 0;
   background: var(--workspace-base);
 }
+.reader.reader-calm .reader-stage {
+  padding: clamp(0.5rem, 2.5vw, 1.75rem) clamp(0.75rem, 4vw, 3.5rem) clamp(1rem, 3vw, 2.25rem);
+}
+.reader.reader-calm .reader-stage[data-engine="epub"] {
+  padding-inline: max(var(--gutter), calc((100% - 42rem) / 2));
+}
 .reader-host,
 .reader-stage iframe,
 .reader-stage foliate-view {
@@ -1882,8 +1922,18 @@ body:has(.listen-room) {
 .reader-stage[data-engine="epub"] foliate-view {
   background: #faf6ee;
 }
+.reader.reader-calm .reader-stage[data-engine="epub"] .reader-host,
+.reader.reader-calm .reader-stage[data-engine="epub"] foliate-view {
+  background: #f7f1e4;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px color-mix(in srgb, #c9b896 35%, transparent);
+}
 .reader-stage iframe {
   background: var(--paper);
+}
+.reader.reader-calm .reader-stage iframe {
+  background: #f7f1e4;
+  border-radius: 2px;
 }
 /* Hero wash stays under the fixed reader; hide art while open so it cannot bleed. */
 body:has(.reader) .work-hero-art,
@@ -2904,6 +2954,51 @@ button.cover {
 .shelf-health-report {
   display: grid;
   gap: var(--space-2);
+}
+.shelf-health-pulse {
+  position: relative;
+  margin: 0 0 var(--space-4);
+  padding: var(--space-4) var(--space-4) var(--space-3);
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--brass, #c9954a) 28%, var(--border-subtle));
+  background:
+    radial-gradient(ellipse 70% 80% at 12% 0%, color-mix(in srgb, var(--lamp, #f0b85a) 16%, transparent), transparent 62%),
+    color-mix(in srgb, var(--surface) 92%, var(--paper, #f4ead6));
+  overflow: hidden;
+}
+.shelf-health-pulse .kicker {
+  margin: 0 0 0.35rem;
+  position: relative;
+}
+.shelf-health-pulse-presence {
+  position: relative;
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(1.05rem, 2.4vw, 1.25rem);
+  letter-spacing: -0.02em;
+  line-height: 1.35;
+  color: var(--fg);
+}
+.shelf-health-pulse-tend {
+  position: relative;
+  margin: var(--space-3) 0 0;
+}
+.shelf-health-pulse-glow {
+  position: absolute;
+  inset: -20% auto auto -10%;
+  width: 12rem;
+  height: 8rem;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--lamp, #f0b85a) 35%, transparent), transparent 70%);
+  pointer-events: none;
+  opacity: 0.55;
+}
+.shelf-health-pulse-stirring .shelf-health-pulse-glow {
+  opacity: 0.7;
+}
+.shelf-health-pulse-needs_you .shelf-health-pulse-glow {
+  opacity: 0.85;
+  background: radial-gradient(circle, color-mix(in srgb, var(--brass, #c9954a) 42%, transparent), transparent 72%);
 }
 .shelf-health-roots {
   margin: 0;

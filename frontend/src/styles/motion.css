@@ -21,6 +21,11 @@
 
 /* —— Intentional motions (2–3) —— */
 
+@keyframes lamp-breath {
+  from { opacity: 0.45; transform: scale(1); }
+  to { opacity: 0.75; transform: scale(1.04); }
+}
+
 /* 1. Settle-in: main room content arrives gently */
 @keyframes page-settle {
   from {
@@ -391,6 +396,23 @@
   }
 }
 
+/* Shelf health pulse — soft weather glow (not a KPI meter) */
+.shelf-health-pulse-glow {
+  animation: lamp-breath var(--motion-breath) ease-in-out infinite alternate;
+}
+.shelf-health-pulse.is-calm .shelf-health-pulse-glow {
+  animation-duration: calc(var(--motion-breath) * 1.2);
+}
+
+/* Reading room calm — soft open settle */
+.reader.reader-calm {
+  animation: soft-enter var(--motion-settle) both;
+}
+.reader.reader-calm .reader-stage {
+  animation: page-settle var(--motion-settle) both;
+  animation-delay: 60ms;
+}
+
 /* —— prefers-reduced-motion: keep presence, drop motion —— */
 @media (prefers-reduced-motion: reduce) {
   :root {
@@ -432,6 +454,9 @@
   .ingest-preview-map,
   .ingest-preview-glow,
   .ingest-preview-row.is-breathing::before,
+  .shelf-health-pulse-glow,
+  .reader.reader-calm,
+  .reader.reader-calm .reader-stage,
   .cover-settle,
   .hall-welcome-back,
   .finish-ritual-note,
@@ -457,6 +482,17 @@
   .morning-brief-glow {
     opacity: 0.5;
     transform: none;
+  }
+
+  .shelf-health-pulse-glow {
+    opacity: 0.5;
+    transform: none;
+  }
+
+  .reader.reader-calm.is-chrome-dim .reader-head {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
   }
 
   .morning-brief-row.is-breathing::before {

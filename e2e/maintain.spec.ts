@@ -48,4 +48,16 @@ test.describe("Maintain", () => {
     await expect(page.getByTestId("maintain-scan")).toBeVisible();
     await expect(page.getByTestId("maintain-enrich")).toBeVisible();
   });
+
+  test("Maintain Shelf health shows living pulse weather", async ({ page }) => {
+    await page.goto("/maintain");
+    await expect(page.getByTestId("maintain-shelf-health")).toBeVisible({ timeout: 30_000 });
+    const pulse = page.getByTestId("shelf-health-pulse");
+    await expect(pulse).toBeVisible();
+    await expect(page.getByText("Shelf pulse", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("shelf-health-pulse-presence")).toBeVisible();
+    // Quiet house — settled weather, not a numeric grade.
+    await expect(page.getByTestId("shelf-health-pulse-presence")).toContainText(/settled|breeze|locked|stacks/i);
+    await expect(pulse).not.toContainText(/%|scoreboard|KPI/i);
+  });
 });

@@ -40,6 +40,7 @@ from librarian.scan_progress import (
     read_scan_progress,
 )
 from librarian.shelf_health import shelf_permission_report
+from librarian.shelf_health_score import assemble_shelf_health_score
 from librarian.split_mixed_kinds import count_mixed_kind_works, split_mixed_kind_works
 from librarian.split_mixed_kinds_progress import (
     SplitMixedKindsProgressReporter,
@@ -73,8 +74,19 @@ def register_maintain_routes(app: FastAPI, deps: WebDeps) -> None:
 
     @app.get("/api/maintain/shelf-health")
     def maintain_shelf_health(request: Request):
+        """Permission roots plus living pulse + one tend (weather, not KPI)."""
         require_role(current_user(request), "owner")
-        return shelf_permission_report(settings())
+        report = shelf_permission_report(settings())
+        extra = db.count_works(review_state="needs_review", review_reason=REVIEW_EXTRA)
+        shells = db.count_shell_works()
+        blends = count_mixed_kind_works(db)
+        score = assemble_shelf_health_score(
+            shelf_health=report,
+            extra_files=extra,
+            unshelved_shells=shells,
+            comic_book_blends=blends,
+        )
+        return {**report, "score": score}
 
     @app.get("/api/maintain/morning-brief")
     def maintain_morning_brief(request: Request):

@@ -9,6 +9,11 @@ import {
   readingFileName,
   workDownloadUrl,
 } from "../reader.js";
+import {
+  READER_CHROME_IDLE_MS,
+  prefersReducedMotion,
+  readerCalmClassNames,
+} from "../lib/readingRoomCalm.js";
 
 export default function Reader({ work, files = [], fileId = "", progress = null, onClose }) {
   const stage = useRef(null);
@@ -18,6 +23,8 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
   const [status, setStatus] = useState("Opening the volume…");
   const [error, setError] = useState("");
   const [pdfUrl, setPdfUrl] = useState("");
+  const [chromeDim, setChromeDim] = useState(false);
+  const reducedMotion = prefersReducedMotion();
   const engine = readerEngine(files, fileId);
 
   function persist(detail) {
@@ -57,6 +64,27 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
     const width = doc?.documentElement?.clientWidth || event.currentTarget?.clientWidth || 0;
     turnPage(pageTurnSide(event.clientX, width));
   }
+
+
+  useEffect(() => {
+    if (reducedMotion) {
+      setChromeDim(false);
+      return undefined;
+    }
+    let timer = window.setTimeout(() => setChromeDim(true), READER_CHROME_IDLE_MS);
+    function wake() {
+      setChromeDim(false);
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => setChromeDim(true), READER_CHROME_IDLE_MS);
+    }
+    window.addEventListener("pointermove", wake, { passive: true });
+    window.addEventListener("keydown", wake, true);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("pointermove", wake);
+      window.removeEventListener("keydown", wake, true);
+    };
+  }, [reducedMotion]);
 
   useEffect(() => {
     function onKey(event) {
@@ -169,8 +197,15 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
   }, [work.id, engine, fileId]);
 
   return (
-    <div className="reader" role="dialog" aria-modal="true" aria-labelledby="reader-title" data-testid="reader">
-      <header className="reader-head">
+    <div
+      className={readerCalmClassNames({ chromeDim, reducedMotion })}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="reader-title"
+      data-testid="reader"
+      data-calm="true"
+    >
+      <header className="reader-head" data-testid="reader-head">
         <div className="reader-titleblock">
           <p className="kicker">Reading room</p>
           <h1 id="reader-title">{work.title}</h1>
