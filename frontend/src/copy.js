@@ -145,9 +145,41 @@ export function emptyHallCopy({ owner = false, configured = false } = {}) {
 export function peekMediaNote(work, { canDownload = false, ready = true } = {}) {
   if (!ready || canDownload || !work?.id) return "";
   if (work.review_reason === "no_payload" || work.review_state === "needs_review") {
-    return "Still in Review — there isn’t a file to open yet.";
+    return "Still at the Holds desk — there isn’t a file to open yet. The lamp is honest about what’s missing.";
   }
-  return "This volume isn’t on the shelf as a file yet.";
+  return "This volume isn’t on the shelf as a file yet — the house hasn’t shelved it.";
+}
+
+/**
+ * Soft Ask-the-house CTA for peeks that teach when a volume isn’t openable.
+ * Only when the parent wired onRequest (Find/Discover) — never invent Request.
+ */
+export function peekTeachesAsk(work, { canDownload = false, ready = true, role = "reader", hasRequest = false } = {}) {
+  if (!ready || canDownload || !hasRequest) return null;
+  if (!work) return null;
+  // Beyond Find hits without a catalog id, or catalog shells without files.
+  const beyond = Boolean(work.guid || work.download_url) && !canDownload;
+  const shell = Boolean(work.id) && !canDownload;
+  if (!beyond && !shell) return null;
+  if (work.review_state === "needs_review") {
+    return {
+      kind: "holds",
+      label: role === "reader" ? "Ask the house" : "Open Holds desk",
+      teach: "A slip is waiting — ask the house, or tend the Holds desk.",
+    };
+  }
+  if (role === "reader") {
+    return {
+      kind: "ask",
+      label: "Ask the house",
+      teach: "Not on these shelves yet — a soft ask is enough.",
+    };
+  }
+  return {
+    kind: "request",
+    label: "Request",
+    teach: "Not on these shelves yet — Request when you’re ready.",
+  };
 }
 
 export function canPromoteIncomingMusic(work, role) {

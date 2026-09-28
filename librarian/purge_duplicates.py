@@ -237,6 +237,7 @@ def purge_duplicate_reviews(
     kept = 0
     failed = 0
     errors: List[str] = []
+    removed: List[Dict[str, Any]] = []
 
     for index, slip in enumerate(slips, start=1):
         work_id = str(slip.get("id") or "")
@@ -274,6 +275,7 @@ def purge_duplicate_reviews(
             if str(fresh.get("review_state") or "") != "needs_review":
                 kept += 1
                 continue
+            removed.append(dict(fresh))
             _dismiss_slip(db, fresh)
             purged += 1
             if reason == "shelf_duplicate":
@@ -310,6 +312,17 @@ def purge_duplicate_reviews(
                 kept=kept,
                 failed=failed,
             )
+
+    root = getattr(progress, "data_dir", None)
+    if removed and root is not None:
+        try:
+            from pathlib import Path
+
+            from librarian.grooming_undo import record_grooming_batch
+
+            record_grooming_batch(Path(root), action="purge_duplicates", works=removed)
+        except Exception:  # noqa: BLE001 — undo must never break purge
+            pass
 
     result = {
         "considered": total,

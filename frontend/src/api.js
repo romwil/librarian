@@ -114,6 +114,8 @@ export const api = {
     request(`/maintain/indexer-scorecard/${encodeURIComponent(hostId)}/mute`, { method: "POST" }),
   maintainIndexerUnmute: (hostId) =>
     request(`/maintain/indexer-scorecard/${encodeURIComponent(hostId)}/unmute`, { method: "POST" }),
+  maintainGroomingUndo: () => request("/maintain/grooming-undo"),
+  maintainGroomingUndoRestore: () => request("/maintain/grooming-undo", { method: "POST" }),
   queue: () => request("/queue"),
   queueTick: () => request("/queue/tick", { method: "POST" }),
   confirmJob: (id) => request(`/queue/${id}/confirm`, { method: "POST" }),

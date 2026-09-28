@@ -10,6 +10,7 @@ import {
   findStatusLine,
   humanError,
   peekMediaNote,
+  peekTeachesAsk,
   queueNeedsYouHelp,
   searchStatusLine,
   setupComplete,
@@ -88,15 +89,28 @@ describe("reading room copy", () => {
   it("explains a peek with no file instead of offering a dead Open", () => {
     assert.equal(peekMediaNote({ id: "w1" }, { canDownload: true, ready: true }), "");
     assert.equal(peekMediaNote({ id: "w1" }, { ready: false }), "");
-    assert.equal(
+    assert.match(
       peekMediaNote({ id: "w1", review_reason: "no_payload", review_state: "needs_review" }, { ready: true }),
-      "Still in Review — there isn’t a file to open yet.",
+      /Holds desk|isn’t a file/i,
     );
-    assert.equal(peekMediaNote({ id: "w1" }, { ready: true }), "This volume isn’t on the shelf as a file yet.");
-    assert.equal(
+    assert.match(peekMediaNote({ id: "w1" }, { ready: true }), /isn’t on the shelf as a file yet/i);
+    assert.match(
       peekMediaNote({ id: "w1", kind: "music", music_state: "incoming" }, { ready: true }),
-      "This volume isn’t on the shelf as a file yet.",
+      /isn’t on the shelf as a file yet/i,
     );
+  });
+
+  it("teaches peek Ask-the-house only when Request is wired", () => {
+    assert.equal(peekTeachesAsk({ id: "w1" }, { ready: true, hasRequest: false }), null);
+    assert.equal(peekTeachesAsk({ id: "w1" }, { canDownload: true, ready: true, hasRequest: true }), null);
+    const reader = peekTeachesAsk(
+      { id: "w1", guid: "g1" },
+      { ready: true, role: "reader", hasRequest: true },
+    );
+    assert.equal(reader?.label, "Ask the house");
+    assert.match(reader?.teach || "", /Not on these shelves|soft ask/i);
+    const owner = peekTeachesAsk({ id: "w1" }, { ready: true, role: "owner", hasRequest: true });
+    assert.equal(owner?.label, "Request");
   });
 
   it("offers peek Promote only to keepers on incoming music", () => {

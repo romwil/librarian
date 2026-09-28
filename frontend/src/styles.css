@@ -3105,6 +3105,39 @@ button.cover {
   letter-spacing: -0.01em;
   color: color-mix(in srgb, var(--brass, #c9954a) 70%, var(--fg));
 }
+.grooming-undo {
+  margin: 0 0 var(--space-5);
+  padding: var(--space-4);
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--brass, #c9954a) 18%, var(--border-subtle));
+  background: color-mix(in srgb, var(--paper, #f4ead6) 40%, var(--surface));
+}
+.grooming-undo-quiet {
+  border-style: dashed;
+  opacity: 0.92;
+}
+.grooming-undo.is-available {
+  border-color: color-mix(in srgb, var(--brass, #c9954a) 36%, var(--border-subtle));
+  background:
+    radial-gradient(ellipse 50% 80% at 0% 0%, color-mix(in srgb, var(--lamp, #f0b85a) 12%, transparent), transparent 70%),
+    color-mix(in srgb, var(--paper, #f4ead6) 55%, var(--surface));
+}
+.grooming-undo-presence {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  line-height: 1.4;
+}
+.grooming-undo-actions {
+  margin: var(--space-3) 0 0;
+}
+.peek-teaches {
+  max-width: 36ch;
+}
+.peek-teaches-soft {
+  margin: 0.25rem 0 0;
+  max-width: 36ch;
+}
 .shelf-health-roots {
   margin: 0;
   padding-left: 1.25rem;

@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.5.12] — 2026-09-27
+
+### Highlights
+
+- **Safe undo for grooming.** After Skip / Purge shells / Purge twins, Maintain offers a short warm window to restore the last metadata-only batch. Why this feels alive: tending the stacks has confidence without fear.
+- **Peek that teaches.** When a volume isn’t on the shelf as a file, peek speaks honestly and offers Ask the house only when Request is wired — never a fake Open. Why this feels alive: empty peeks teach, they don’t pretend.
+
+### Added
+
+- **`GET/POST /api/maintain/grooming-undo`** + `librarian.grooming_undo` (4-hour metadata restore).
+- **Maintain Safe undo** chrome with calm empty + restore CTA.
+- **Peek teach copy** + soft Ask-the-house when role and parent allow.
+
 ## [0.5.11] — 2026-09-27
 
 ### Highlights

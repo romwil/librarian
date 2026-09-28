@@ -16,7 +16,7 @@ import {
   jobChipLabel,
   partHint,
 } from "../cover.js";
-import { canPromoteIncomingMusic, humanError, peekMediaNote } from "../copy.js";
+import { canPromoteIncomingMusic, humanError, peekMediaNote, peekTeachesAsk } from "../copy.js";
 import { looksLikeHtml, sanitizeDescriptionHtml } from "../description.js";
 import { beyondHostName, findHref } from "../find.js";
 import { isIncompleteOwnedPartSet, partSetFindFields } from "../findParts.js";
@@ -100,6 +100,12 @@ export default function WorkPeek({ work, onClose, onRequest }) {
   const mediaNote = peekMediaNote(catalog, {
     canDownload,
     ready: !work?.id || detailMatches || Boolean(error),
+  });
+  const teachAsk = peekTeachesAsk(catalog, {
+    canDownload,
+    ready: !work?.id || detailMatches || Boolean(error),
+    role,
+    hasRequest: Boolean(onRequest),
   });
   const openHref = catalog.id ? `/api/works/${catalog.id}/download?inline=1` : "";
   const downloadHref = catalog.id ? `/api/works/${catalog.id}/download` : "";
@@ -259,8 +265,17 @@ export default function WorkPeek({ work, onClose, onRequest }) {
               ) : null}
               {error ? <p className="alert">{error}</p> : null}
               {mediaNote ? (
-                <p className="lede" data-testid="peek-media-note">
+                <p className="lede peek-teaches" data-testid="peek-media-note">
                   {mediaNote}
+                </p>
+              ) : null}
+              {teachAsk?.teach && !mediaNote ? (
+                <p className="lede peek-teaches" data-testid="peek-teach">
+                  {teachAsk.teach}
+                </p>
+              ) : teachAsk?.teach && mediaNote ? (
+                <p className="muted peek-teaches-soft" data-testid="peek-teach">
+                  {teachAsk.teach}
                 </p>
               ) : null}
               <div className="cta-row compact peek-actions" data-testid="peek-actions">
@@ -376,10 +391,29 @@ export default function WorkPeek({ work, onClose, onRequest }) {
                         Find missing parts
                       </Link>
                     ) : null}
+                    {teachAsk && onRequest && !canDownload && !canListen && !canRead && !canInlineOpen ? (
+                      <button
+                        type="button"
+                        className="cta compact"
+                        onClick={request}
+                        disabled={Boolean(jobStatus)}
+                        data-testid="peek-ask-house"
+                      >
+                        {jobStatus ? jobChipLabel(jobStatus, role) : teachAsk.label}
+                      </button>
+                    ) : null}
                   </>
                 ) : onRequest ? (
-                  <button type="button" className="cta compact" onClick={request} disabled={Boolean(jobStatus)}>
-                    {jobChipLabel(jobStatus, role)}
+                  <button
+                    type="button"
+                    className="cta compact"
+                    onClick={request}
+                    disabled={Boolean(jobStatus)}
+                    data-testid="peek-ask-house"
+                  >
+                    {jobStatus
+                      ? jobChipLabel(jobStatus, role)
+                      : teachAsk?.label || jobChipLabel(jobStatus, role)}
                   </button>
                 ) : null}
               </div>

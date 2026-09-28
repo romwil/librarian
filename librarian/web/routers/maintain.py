@@ -20,6 +20,7 @@ from librarian.enrich_progress import (
 )
 from librarian.extra_files_reprocess_progress import read_extra_files_reprocess_progress
 from librarian.goodreads import MAX_GOODREADS_BYTES, import_goodreads_csv
+from librarian.grooming_undo import assemble_grooming_undo, restore_grooming_batch
 from librarian.indexer_scorecard import assemble_indexer_scorecard, mute_host
 from librarian.ingest_progress import read_ingest_progress
 from librarian.morning_brief import assemble_morning_brief
@@ -170,6 +171,18 @@ def register_maintain_routes(app: FastAPI, deps: WebDeps) -> None:
         save_settings(root, current)
         return assemble_indexer_scorecard(root, current)
 
+    @app.get("/api/maintain/grooming-undo")
+    def maintain_grooming_undo(request: Request):
+        """Last Clear/Purge/Skip batch — recoverable for a short warm window."""
+        require_role(current_user(request), "owner", "op")
+        return assemble_grooming_undo(root)
+
+    @app.post("/api/maintain/grooming-undo")
+    def maintain_grooming_undo_restore(request: Request):
+        """Restore the last metadata-only grooming batch when still in window."""
+        require_role(current_user(request), "owner", "op")
+        return restore_grooming_batch(db, root)
+
 
     @app.post("/api/maintain/purge-shells")
     def maintain_purge_shells(request: Request, limit: int = 0):
@@ -185,6 +198,7 @@ def register_maintain_routes(app: FastAPI, deps: WebDeps) -> None:
                     settings(),
                     limit=run_limit,
                     progress=reporter,
+                    data_dir=root,
                 )
             except Exception as error:
                 logger.exception("Purge shells failed")

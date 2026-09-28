@@ -12,6 +12,7 @@ import AddToLibrary from "../components/AddToLibrary.jsx";
 import MaintainStatusDock from "../components/MaintainStatusDock.jsx";
 import MorningBrief from "../components/MorningBrief.jsx";
 import IndexerScorecard from "../components/IndexerScorecard.jsx";
+import GroomingUndo from "../components/GroomingUndo.jsx";
 import ShelfHealthPulse from "../components/ShelfHealthPulse.jsx";
 import { FieldLabel } from "../components/FieldHelp.jsx";
 import { FIELD_HELP, humanError } from "../copy.js";
@@ -100,12 +101,17 @@ export default function MaintainPage() {
   const [indexerCardLoading, setIndexerCardLoading] = useState(true);
   const [indexerBusyId, setIndexerBusyId] = useState("");
   const [indexerError, setIndexerError] = useState("");
+  const [groomingUndo, setGroomingUndo] = useState(null);
+  const [groomingUndoLoading, setGroomingUndoLoading] = useState(true);
+  const [groomingUndoBusy, setGroomingUndoBusy] = useState(false);
+  const [groomingUndoNote, setGroomingUndoNote] = useState("");
 
   useEffect(() => {
     if (user?.role !== "owner") return undefined;
     let cancelled = false;
     setMorningBriefLoading(true);
     setIndexerCardLoading(true);
+    setGroomingUndoLoading(true);
     api
       .maintainMorningBrief()
       .then((data) => {
@@ -131,6 +137,18 @@ export default function MaintainPage() {
         setIndexerCard(null);
         setIndexerCardLoading(false);
         setIndexerError(humanError(err));
+      });
+    api
+      .maintainGroomingUndo()
+      .then((data) => {
+        if (cancelled) return;
+        setGroomingUndo(data);
+        setGroomingUndoLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setGroomingUndo(null);
+        setGroomingUndoLoading(false);
       });
     api
       .enrichStatus()
@@ -525,6 +543,21 @@ export default function MaintainPage() {
     }
   }
 
+  async function restoreGroomingUndo() {
+    if (groomingUndoBusy) return;
+    setGroomingUndoBusy(true);
+    setGroomingUndoNote("");
+    try {
+      const result = await api.maintainGroomingUndoRestore();
+      setGroomingUndo(result?.undo || result);
+      setGroomingUndoNote(result?.presence || "The last tend is back on the desk.");
+    } catch (err) {
+      setGroomingUndoNote(humanError(err));
+    } finally {
+      setGroomingUndoBusy(false);
+    }
+  }
+
   return (
     <div className="admin-room maintain-page page-settle" data-testid="maintain-page">
       <p className="kicker">Owner</p>
@@ -544,6 +577,14 @@ export default function MaintainPage() {
         onUnmute={unmuteIndexer}
       />
       {indexerError ? <p className="alert">{indexerError}</p> : null}
+
+      <GroomingUndo
+        undo={groomingUndo}
+        loading={groomingUndoLoading}
+        busy={groomingUndoBusy}
+        onUndo={restoreGroomingUndo}
+      />
+      {groomingUndoNote ? <p className="muted">{groomingUndoNote}</p> : null}
 
       <MaintainStatusDock />
 

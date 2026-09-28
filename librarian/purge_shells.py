@@ -81,6 +81,7 @@ def purge_shell_works(
     *,
     limit: int = PURGE_SHELL_LIMIT_DEFAULT,
     progress: Any = None,
+    data_dir: Any = None,
 ) -> Dict[str, Any]:
     """Owner bulk: delete catalog shells with no on-disk media."""
     candidates = db.list_shell_works(limit=max(1, int(limit) or PURGE_SHELL_LIMIT_DEFAULT))
@@ -94,6 +95,7 @@ def purge_shell_works(
     kept = 0
     failed = 0
     errors: List[str] = []
+    removed: List[Dict[str, Any]] = []
 
     if progress is not None:
         progress.tick(phase="purging", done=0, total=total, purged=0, kept=0, failed=0)
@@ -139,7 +141,9 @@ def purge_shell_works(
             if is_wishlist_stub(fresh):
                 kept += 1
                 continue
+            removed.append(dict(fresh))
             if not db.delete_work(work_id):
+                removed.pop()
                 kept += 1
                 continue
             purged += 1
@@ -169,6 +173,15 @@ def purge_shell_works(
                 kept=kept,
                 failed=failed,
             )
+
+    root = data_dir or getattr(progress, "data_dir", None)
+    if removed and root is not None:
+        try:
+            from librarian.grooming_undo import record_grooming_batch
+
+            record_grooming_batch(Path(root), action="purge_shells", works=removed)
+        except Exception:  # noqa: BLE001 — undo must never break purge
+            pass
 
     result = {
         "considered": total,

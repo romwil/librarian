@@ -12,7 +12,7 @@ Librarian is a private **reading room** for the books, magazines, comics, audiob
 
 ## Find extras
 
-Find can query more than NZBFinder. Extra Newznab v2 hosts live in Settings; results show a muted host name. If one host fails, the others still appear. Maintain **Find lanterns** show host weather; mute a sick host without deleting it.
+Find can query more than NZBFinder. Extra Newznab v2 hosts live in Settings; results show a muted host name. If one host fails, the others still appear. Maintain **Find lanterns** show host weather; mute a sick host without deleting it. After Skip or Purge, **Safe undo** can restore the last metadata-only batch for a few hours.
 
 **Discover** reads each host’s capabilities category tree (comics `7030`, magazines `7010`, other books `70xx`, audiobooks `3030`, music `3010`/`3040`/`3999`, and real subcats the indexer lists). Latest-in-category uses category RSS (`/rss/category?id=` on NZBFinder, then classic `/rss?t=` or `/api?t=search&cat=`). NZBFinder v2 search needs a real query, so Discover does not call empty-query v2. It does not scrape HTML and does not auto-queue SAB. Each rail is a short latest slice — click the category title or **See all** to open that feed (`/find?discover=7030`) and browse many more results with the same Request / peek chips.
 

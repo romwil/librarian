@@ -409,6 +409,12 @@ def register_review_routes(app: FastAPI, deps: WebDeps) -> None:
         work = db.get_work(work_id)
         if work is None:
             raise HTTPException(status_code=404, detail="Work not found")
+        try:
+            from librarian.grooming_undo import record_grooming_batch
+
+            record_grooming_batch(root, action="skip", works=[work])
+        except Exception:  # noqa: BLE001 — undo must never block Skip
+            pass
         updated = db.delete_work(work_id)
         if not updated:
             raise HTTPException(status_code=404, detail="Work not found")
