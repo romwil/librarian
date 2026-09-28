@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import sqlite3
 import threading
@@ -454,8 +455,16 @@ def match_audiobook_tokens(
 
 
 def cache_path_for_settings(settings: Any) -> Path:
-    data_dir = Path(getattr(settings, "data_dir", None) or getattr(settings, "DATA_DIR", ".") or ".")
-    return Path(data_dir) / "audnexus_cache.sqlite"
+    """Resolve Audnexus SQLite cache under DATA_DIR (writable config volume).
+
+    ``Settings`` has no ``data_dir`` field — never fall back to cwd ``.`` (Docker
+    image ``/app`` is read-only for the lamp user and yields OperationalError).
+    Prefer explicit attrs, then ``DATA_DIR`` env (same default as comicvine/web).
+    """
+    explicit = getattr(settings, "data_dir", None) or getattr(settings, "DATA_DIR", None)
+    raw = str(explicit).strip() if explicit else ""
+    data_dir = Path(raw or os.environ.get("DATA_DIR") or "/config")
+    return data_dir / "audnexus_cache.sqlite"
 
 
 def client_from_settings(

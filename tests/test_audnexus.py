@@ -10,9 +10,28 @@ from librarian.audnexus import (
     AudnexusCache,
     AudnexusClient,
     band_for_score,
+    cache_path_for_settings,
     match_audiobook_tokens,
     score_candidate,
 )
+
+
+def test_cache_path_uses_data_dir_env(tmp_path, monkeypatch):
+    """Settings has no data_dir — must not resolve to cwd (read-only /app in Docker)."""
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    path = cache_path_for_settings(object())
+    assert path == tmp_path / "audnexus_cache.sqlite"
+    AudnexusCache(path)
+    assert path.is_file()
+
+
+def test_cache_path_prefers_explicit_attr(tmp_path, monkeypatch):
+    monkeypatch.setenv("DATA_DIR", "/should-not-win")
+
+    class WithDir:
+        data_dir = tmp_path
+
+    assert cache_path_for_settings(WithDir()) == tmp_path / "audnexus_cache.sqlite"
 
 
 def test_score_bands():

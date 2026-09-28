@@ -6,6 +6,7 @@ Plan: [librarian_automat_rss](file:///Users/willrompala/.cursor/plans/librarian_
 
 ## Shipped
 
+- **2026-09-28** — Patch **0.5.16** Audnexus cache under `/config` (`DATA_DIR`) so the lamp (uid 99) can write it — no `/app` cwd fallback.
 - **2026-09-28** — Patch **0.5.15** snappier Hall: drop catalog fan-out from `/api/hall`, one local_gaps pass, shell boot calm, honest warm loads.
 - **2026-09-27** — Sprint **D7** `calibre-renormalize` + `gaps-as-gifts` / `search-that-forgives` → **0.5.14**: Calibre Look first; Gaps as gifts; forgiving search. Phase D Top-10 sequence complete.
 - **2026-09-27** — Sprint **D6** `whats-new-truth` + `named-shelves` → **0.5.13**: Honest What’s New tip; named household shelves.

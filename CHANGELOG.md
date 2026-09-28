@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.5.16] — 2026-09-28
+
+### Highlights
+
+- **Audnexus cache under /config.** The lamp writes `audnexus_cache.sqlite` on the writable DATA_DIR volume instead of falling back to cwd `/app` (read-only for uid 99). Why this feels alive: audiobook identify keeps working without a host symlink hotfix.
+
+### Fixed
+
+- **`cache_path_for_settings`** prefers Settings attrs, then `DATA_DIR` env, then `/config` — never cwd `.`.
+
 ## [0.5.15] — 2026-09-28
 
 ### Highlights
