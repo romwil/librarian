@@ -14,10 +14,10 @@ Active staged plan (agent pickup): `~/.cursor/plans/librarian_unified_recommend_
 | --- | --- |
 | **Date** | 2026-09-27 |
 | **Branch** | `main` |
-| **Version** | **0.5.8** |
-| **Arc** | Living-library Phases **0–5** complete; Phase R done; Phase D — **D1** `morning-brief` + `series-catch-up` → **0.5.8**. |
+| **Version** | **0.5.9** |
+| **Arc** | Living-library Phases **0–5** complete; Phase R done; Phase D — **D2** `ingest-preview` + `beautiful-finished` → **0.5.9**. |
 | **Green** | pytest coverage floor **70%**; frontend `npm test`; Playwright e2e on **8794**. LAN truth `http://10.10.1.202:8793`. |
-| **Next** | **D2** `ingest-preview` + `beautiful-finished` (see §3 / unified plan). |
+| **Next** | **D3** `shelf-health-score` + `reading-room-calm` (see §3 / unified plan). |
 | **Automat** | Host `./docker-run.sh` only. Hub `romwil/librarian` deferred. Never bind **8788 / 8790 / 8791 / 8792**. |
 
 ---
@@ -42,7 +42,7 @@ Active staged plan (agent pickup): `~/.cursor/plans/librarian_unified_recommend_
 | 5 | 5.2 | `smart-holds-desk` | 0.5.1 | done |
 | 5 | 5.3 | `lamp-rituals` | 0.5.2 | done |
 
-Full-build QA closed with 0.5.2. Patches: **0.5.3** enrich author placeholder; **0.5.4** notification email clear sticks. **R1** `security-perimeter` → **0.5.5**. **R2** `queue-and-dock-calm` → **0.5.6**. **R3** `api-boundary` → **0.5.7**. **D1** `morning-brief` + `series-catch-up` → **0.5.8**.
+Full-build QA closed with 0.5.2. Patches: **0.5.3** enrich author placeholder; **0.5.4** notification email clear sticks. **R1** `security-perimeter` → **0.5.5**. **R2** `queue-and-dock-calm` → **0.5.6**. **R3** `api-boundary` → **0.5.7**. **D1** `morning-brief` + `series-catch-up` → **0.5.8**. **D2** `ingest-preview` + `beautiful-finished` → **0.5.9**.
 
 ### Library-first kit (pre-arc, still true)
 
@@ -60,8 +60,9 @@ Remediation first (2026-09-25 review Critical/High), then Top-10 delight. Each s
 | **R2** | `queue-and-dock-calm` | **0.5.6** | **done** — `GET /api/queue` readonly; Maintain dock idle + hidden-tab pause; auth-gate `owner_ready` cache |
 | **R3** | `api-boundary` | **0.5.7** | **done** — allowlist `public_work` + admin serializer; explicit router imports; `route_imports` hub deleted (catalog split deferred) |
 | **D1** | `morning-brief` + `series-catch-up` | **0.5.8** | **done** — Maintain morning desk (“tend these three”) + Hall series catch-up invitation |
+| **D2** | `ingest-preview` + `beautiful-finished` | **0.5.9** | **done** — Look first ingest map + Finished ceremony whisper |
 
-After D1: continue Phase D sequenced Top-10 (one owner + one reader per minor when possible). See unified plan.
+After D2: continue Phase D sequenced Top-10 (one owner + one reader per minor when possible). See unified plan.
 
 ---
 
@@ -75,7 +76,7 @@ Score and ship at most **one owner + one reader** delight per minor unless tiny.
 | --- | --- | --- |
 | 1 | **Morning shelf brief** — Maintain as morning desk; “tend these three,” not a KPI strip | **landed** 0.5.8 |
 | 2 | **Smart Review inbox** → Smart Holds desk | **landed** 0.5.1 |
-| 3 | **Ingest preview** — quiet map before the lamp shelves a dump | open |
+| 3 | **Ingest preview** — quiet map before the lamp shelves a dump | **landed** 0.5.9 |
 | 4 | **Shelf health score** — living pulse + one tend action | open |
 | 5 | **Indexer scorecard** — hosts as lanterns; mute a sick host | open |
 | 6 | **Quiet hours that wake up** | polish (mail/notify shipped 0.4.21–0.4.22) |
@@ -90,7 +91,7 @@ Score and ship at most **one owner + one reader** delight per minor unless tiny.
 | --- | --- | --- |
 | 1 | **Tonight’s Shelf that feels alive** | **landed** 0.5.0 |
 | 2 | **Series catch-up** — missing issues as invitation | **landed** 0.5.8 |
-| 3 | **Beautiful Finished** (+ optional household whisper) | partial (finish ceremony in 0.5.2; whisper open) |
+| 3 | **Beautiful Finished** (+ optional household whisper) | **landed** 0.5.9 |
 | 4 | **Reading room calm** | open |
 | 5 | **Listen that remembers** | open |
 | 6 | **Peek that teaches** | open |

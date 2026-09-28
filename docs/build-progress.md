@@ -6,6 +6,7 @@ Plan: [librarian_automat_rss](file:///Users/willrompala/.cursor/plans/librarian_
 
 ## Shipped
 
+- **2026-09-27** — Sprint **D2** `ingest-preview` + `beautiful-finished` → **0.5.9**: Look first quiet ingest map + Finished ceremony whisper for the house.
 - **2026-09-27** — Sprint **D1** `morning-brief` + `series-catch-up` → **0.5.8**: Maintain morning desk (tend these three) + Hall series catch-up invitation.
 - **2026-09-27** `3254ff0` — Sprint **R3** `api-boundary` → **0.5.7**: allowlist `public_work` + `public_work_admin`; delete star-import `route_imports` hub; explicit per-router imports (catalog split deferred).
 - **2026-09-27** `19787cf` — Sprint **R2** `queue-and-dock-calm` → **0.5.6**: `GET /api/queue` readonly + `POST /api/queue/tick`; Maintain dock 15s idle + hidden-tab pause; auth-gate `owner_ready` cache.

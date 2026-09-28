@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.5.9] — 2026-09-27
+
+### Highlights
+
+- **Ingest preview.** Before the lamp shelves a dump, Look first opens a quiet map of stems, twins, and kinds — ceremony before the move, not a dump table. Why this feels alive: the house sees what’s coming before anything shifts.
+- **Beautiful Finished.** Finish opens a lamp ceremony with an optional quiet note; the first transition to Finished can whisper the household once. Why this feels alive: closing a volume is a beat, not a checkbox.
+
+### Added
+
+- **`POST /api/ingest/preview`** + `librarian.ingest_preview` read-only inventory (capped map; never moves files).
+- **Maintain `IngestPreviewMap`** + Look first CTA on Add a volume.
+- **Finished ceremony whisper** on Work — optional note, bounded `WhisperPayload`, first-finish household `someone_finished` fan-out.
+
 ## [0.5.8] — 2026-09-27
 
 ### Highlights
