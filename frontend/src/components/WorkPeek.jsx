@@ -171,7 +171,7 @@ export default function WorkPeek({ work, onClose, onRequest }) {
   return (
     <>
       <button type="button" className="scrim" aria-label="Close peek" onClick={onClose} />
-      <aside
+      <div
         className={`peek peek-ritual${washUrl ? " has-wash" : ""}`}
         role="dialog"
         aria-modal="true"
@@ -407,7 +407,7 @@ export default function WorkPeek({ work, onClose, onRequest }) {
             </div>
           </div>
         </div>
-      </aside>
+      </div>
       {plexamp ? <PlexampToast handoff={plexamp} onClose={() => setPlexamp(null)} /> : null}
     </>
   );
