@@ -212,7 +212,7 @@ def test_hall_invites_every_role_to_catch_up(tmp_path, monkeypatch):
     owner_catch_up = owner_body["series_catch_up"]
     assert owner_catch_up["empty"] is False
     assert owner_catch_up["series"][0]["invitation"] == "One issue from a whole Saga."
-    # Owner gaps rail (catalog fan-out) stays its own thing.
+    # Owner gaps rail is local gifts on Hall; catalog fan-out stays on GET /api/gaps.
     assert any(card["missing_index"] == "3" for card in owner_body["gaps"])
 
     token = client.post("/api/invites", json={"role": "reader"}).json()["token"]

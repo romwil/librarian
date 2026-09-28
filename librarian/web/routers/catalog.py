@@ -148,17 +148,12 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
                 kind="music", music_state="incoming", limit=12, require_files=True
             ),
         }
-        gaps = []
-        # Local holes as gifts for every role; catalog fan-out stays owner/op.
-        local_gift = gift_cards(gap_cards(local_gaps(db)))
-        if user["role"] in ("owner", "op"):
-            catalog = gift_cards(gap_cards(catalog_gaps(db, settings())))
-            # Prefer catalog cards when present; otherwise local gifts.
-            gaps = catalog or local_gift
-        else:
-            gaps = local_gift
-        # Catch-up is local-only so readers get invited too (catalog fan-out stays owner/op).
-        catch_up = series_catch_up(gap_cards(local_gaps(db)))
+        # Hall stays local + snappy: one local_gaps pass for gifts + catch-up.
+        # Catalog fan-out (Hardcover / Open Library / …) lives on GET /api/gaps —
+        # never on the hot Hall path (remote HTTP was blocking shelf first paint).
+        local_cards = gap_cards(local_gaps(db))
+        gaps = gift_cards(local_cards)
+        catch_up = series_catch_up(local_cards)
         continue_rows = db.continue_works(user["id"], limit=18)
         continue_split = split_continue_rails(continue_rows)
         surprise = None
@@ -182,13 +177,20 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
         named_rows = db.list_named_shelves(user["id"], include_shared=True)
         named_shelves = []
         for row in named_rows:
-            meta = public_shelf(row, work_count=db.shelf_work_count(row["id"]))
+            rail = db.shelf_works(row["id"], limit=MAX_SHELF_WORKS_RAIL)
+            # Prefer count from the rail query when under the cap; one connect less per shelf.
+            work_count = (
+                len(rail)
+                if len(rail) < MAX_SHELF_WORKS_RAIL
+                else db.shelf_work_count(row["id"])
+            )
+            meta = public_shelf(row, work_count=work_count)
             if not meta:
                 continue
             named_shelves.append(
                 {
                     **meta,
-                    "works": public_works(db.shelf_works(row["id"], limit=MAX_SHELF_WORKS_RAIL)),
+                    "works": public_works(rail),
                 }
             )
         return {
@@ -627,10 +629,17 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
             )
         whispers = db.list_whispers(work_id, limit=WHISPER_LIST_LIMIT)
         can_download = bool(on_disk)
-        audiobook = companion_audiobook_payload(
-            work,
-            audiobooks=db.list_works(kind="audiobook", limit=500) if kind == "book" else [],
-        )
+        companion_candidates: List[Dict[str, Any]] = []
+        if kind == "book":
+            # Narrow search beats scanning hundreds of audiobooks on every book open.
+            probe = " ".join(
+                part
+                for part in (str(work.get("author") or "").strip(), str(work.get("title") or "").strip())
+                if part
+            ).strip() or str(work.get("series_name") or "").strip()
+            if probe:
+                companion_candidates = db.search_works(probe, limit=40, kind="audiobook")
+        audiobook = companion_audiobook_payload(work, audiobooks=companion_candidates)
         return {
             "work": work,
             "files": annotate_work_files(files, on_disk),

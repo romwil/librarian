@@ -450,3 +450,48 @@ def test_hall_gaps_do_not_queue_sab(tmp_path, monkeypatch):
     assert listed.status_code == 200
     assert any(card["missing_index"] == "2026-09" for card in listed.json()["cards"])
 
+
+def test_hall_skips_catalog_fanout(tmp_path, monkeypatch):
+    """Hall must not block on Hardcover / Open Library / MusicBrainz catalog_gaps."""
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("LIBRARIAN_OWNER_USERNAME", "owner")
+    monkeypatch.setenv("LIBRARIAN_OWNER_PASSWORD", "password123")
+    clear_session_secret_cache()
+    clear_rate_limits()
+    db = Database(tmp_path / "librarian.db")
+    mag_a = db.upsert_work(
+        {"kind": "magazine", "title": "Linux Magazin", "series_name": "Linux Magazin", "series_index": "2026-08"}
+    )
+    mag_b = db.upsert_work(
+        {"kind": "magazine", "title": "Linux Magazin", "series_name": "Linux Magazin", "series_index": "2026-10"}
+    )
+    db.add_file({"work_id": mag_a["id"], "path": "/m/2026-08.pdf", "filename": "2026-08.pdf", "kind": "magazine"})
+    db.add_file({"work_id": mag_b["id"], "path": "/m/2026-10.pdf", "filename": "2026-10.pdf", "kind": "magazine"})
+
+    calls = {"catalog": 0, "local": 0}
+    real_local = local_gaps
+    real_catalog = catalog_gaps
+
+    def counting_local(database):
+        calls["local"] += 1
+        return real_local(database)
+
+    def forbid_catalog(*args, **kwargs):
+        calls["catalog"] += 1
+        raise AssertionError("catalog_gaps must not run on GET /api/hall")
+
+    monkeypatch.setattr("librarian.web.routers.catalog.local_gaps", counting_local)
+    monkeypatch.setattr("librarian.web.routers.catalog.catalog_gaps", forbid_catalog)
+    client = TestClient(create_app(tmp_path))
+    assert client.post("/api/auth/local/login", json={"username": "owner", "password": "password123"}).status_code == 200
+    hall = client.get("/api/hall")
+    assert hall.status_code == 200
+    assert calls["catalog"] == 0
+    assert calls["local"] == 1
+    gaps = hall.json()["gaps"]
+    assert any(card["missing_index"] == "2026-09" for card in gaps)
+    # Catalog fan-out remains available on the dedicated gaps desk.
+    monkeypatch.setattr("librarian.web.routers.catalog.catalog_gaps", real_catalog)
+    listed = client.get("/api/gaps")
+    assert listed.status_code == 200
+

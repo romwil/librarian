@@ -43,6 +43,8 @@ test("WarmLoad is the shared warm skeleton", () => {
   assert.match(warmLoadSrc, /Warming the lamp/);
   assert.match(warmLoadSrc, /warm-load-skeleton/);
   assert.match(warmLoadSrc, /aria-busy/);
+  assert.match(warmLoadSrc, /Still warming the lamp/);
+  assert.match(warmLoadSrc, /longAfterMs/);
 });
 
 test("Queue / Browse / Work / People / Settings / Inbox use warm loads", () => {

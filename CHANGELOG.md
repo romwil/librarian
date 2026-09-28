@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+## [0.5.15] — 2026-09-28
+
+### Highlights
+
+- **Snappier Hall.** Shelves no longer wait on remote catalog fan-out — local gifts and catch-up paint fast, while Hardcover/Open Library stays on the Gaps desk. Why this feels alive: the lamp greets you before the catalogs finish thinking.
+- **Honest warm loads.** Primary pages stop re-blocking the shell on every click; long throbs admit “still warming” instead of pretending forever. Why this feels alive: waiting feels brief and truthful.
+
+### Changed
+
+- **`GET /api/hall`** runs `local_gaps` once for gifts + series catch-up; skips `catalog_gaps` (still on `GET /api/gaps`).
+- **Named shelf rails** reuse the works query for count when under the rail cap (one fewer SQLite connect per shelf).
+- **Work detail** companion audiobook match uses a narrow search instead of scanning 500 audiobooks.
+- **App shell** boots auth once; badge soft-refresh on navigation no longer clears the room.
+- **WarmLoad / Hall shelves** acknowledge a long wait after ~3.5s.
+
 ## [0.5.14] — 2026-09-27
 
 ### Highlights

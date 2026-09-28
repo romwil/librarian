@@ -11,6 +11,7 @@ export default function App() {
   const [reviewCount, setReviewCount] = useState(0);
   const [inboxUnread, setInboxUnread] = useState(0);
 
+  // Auth + features once — never re-block the shell on every route change.
   useEffect(() => {
     let alive = true;
     api
@@ -36,7 +37,26 @@ export default function App() {
     return () => {
       alive = false;
     };
-  }, [location.pathname]);
+  }, []);
+
+  // Soft-refresh bag + inbox badges on navigation without clearing the shell.
+  useEffect(() => {
+    if (!user?.id) return undefined;
+    let alive = true;
+    api
+      .me()
+      .then((data) => {
+        if (!alive) return;
+        setReviewCount(data.review_count || 0);
+        setInboxUnread(data.inbox_unread || 0);
+      })
+      .catch(() => {
+        /* keep last known badges */
+      });
+    return () => {
+      alive = false;
+    };
+  }, [location.pathname, user?.id]);
 
   if (user === undefined) {
     return <div className="boot-lamp" aria-hidden="true" />;

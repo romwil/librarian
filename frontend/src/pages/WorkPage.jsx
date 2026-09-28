@@ -54,16 +54,25 @@ export default function WorkPage() {
   });
 
   useEffect(() => {
+    let alive = true;
+    setData(null);
+    setError("");
     api
       .work(id)
       .then((payload) => {
+        if (!alive) return;
         setData(payload);
         // Books/comics leave a Continue bookmark on open; audiobooks only on real Listen progress.
         if (payload?.work?.id && payload.work.kind !== "audiobook") {
           api.progress(payload.work.id).catch(() => {});
         }
       })
-      .catch((err) => setError(humanError(err)));
+      .catch((err) => {
+        if (alive) setError(humanError(err));
+      });
+    return () => {
+      alive = false;
+    };
   }, [id]);
 
   useEffect(() => {

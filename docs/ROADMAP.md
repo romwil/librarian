@@ -14,7 +14,7 @@ Active staged plan (agent pickup): `~/.cursor/plans/librarian_unified_recommend_
 | --- | --- |
 | **Date** | 2026-09-27 |
 | **Branch** | `main` |
-| **Version** | **0.5.14** |
+| **Version** | **0.5.15** |
 | **Arc** | Living-library Phases **0–5** complete; Phase R done; Phase D Top-10 sequence **complete** through **D7** → **0.5.14**. |
 | **Green** | pytest coverage floor **70%**; frontend `npm test`; Playwright e2e on **8794**. LAN truth `http://10.10.1.202:8793`. |
 | **Next** | Phase D Top-10 sequence complete. Quiet-hours / Ask-the-house polish when touching mail surfaces; Hub deferred. |

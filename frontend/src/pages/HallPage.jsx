@@ -17,6 +17,7 @@ function HallShelves({ role, owner, configured, lampPeriod }) {
   const [phase, setPhase] = useState("loading");
   const [loadError, setLoadError] = useState("");
   const [reloadToken, setReloadToken] = useState(0);
+  const [longWait, setLongWait] = useState(false);
   const empty = emptyHallCopy({ owner, configured });
   const counts = hall?.kind_counts || {};
   const welcome =
@@ -31,6 +32,8 @@ function HallShelves({ role, owner, configured, lampPeriod }) {
   useEffect(() => {
     let cancelled = false;
     let timeoutId = 0;
+    let longTimer = 0;
+    setLongWait(false);
     // Defer fetch so the search hero paints before rails work.
     const raf = window.requestAnimationFrame(() => {
       timeoutId = window.setTimeout(() => {
@@ -49,11 +52,15 @@ function HallShelves({ role, owner, configured, lampPeriod }) {
             setPhase("error");
           });
       }, 0);
+      longTimer = window.setTimeout(() => {
+        if (!cancelled) setLongWait(true);
+      }, 3500);
     });
     return () => {
       cancelled = true;
       window.cancelAnimationFrame(raf);
       window.clearTimeout(timeoutId);
+      window.clearTimeout(longTimer);
     };
   }, [reloadToken]);
 
@@ -61,7 +68,9 @@ function HallShelves({ role, owner, configured, lampPeriod }) {
     return (
       <section className="hall-shelves-loading" data-testid="hall-shelves-loading" aria-busy="true">
         <p className="kicker">Tonight’s shelf</p>
-        <p className="muted">Warming the lamp on the shelves below…</p>
+        <p className="muted">
+          {longWait ? "Still warming the shelves…" : "Warming the lamp on the shelves below…"}
+        </p>
         <div className="hall-shelves-skeleton" aria-hidden="true" />
       </section>
     );
