@@ -150,6 +150,34 @@
   animation: soft-enter var(--motion-settle) both;
 }
 
+/* Morning shelf brief — dawn wash + stuck-job breath */
+.morning-brief-alive {
+  position: relative;
+  overflow: hidden;
+}
+
+.morning-brief-glow {
+  position: absolute;
+  inset: -22% 10% auto;
+  height: 58%;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse at 50% 0%,
+    color-mix(in srgb, var(--lamp, #f0b85a) 38%, transparent),
+    transparent 70%
+  );
+  opacity: 0.65;
+  animation: shelf-breath var(--motion-breath) infinite;
+}
+
+.morning-brief-row.is-breathing::before {
+  animation: shelf-breath var(--motion-breath) infinite;
+}
+
+.morning-brief-slot.is-breathing .morning-brief-label {
+  animation: soft-enter var(--motion-settle) both;
+}
+
 .rail.is-continue-presence .rail-head h2 {
   position: relative;
 }
@@ -338,6 +366,9 @@
   .series-catch-up,
   .series-catch-up-glow,
   .series-catch-up-invite,
+  .morning-brief,
+  .morning-brief-glow,
+  .morning-brief-row.is-breathing::before,
   .cover-settle,
   .hall-welcome-back,
   .finish-ritual-note,
@@ -357,6 +388,15 @@
   .series-catch-up-glow {
     opacity: 0.45;
     transform: none;
+  }
+
+  .morning-brief-glow {
+    opacity: 0.5;
+    transform: none;
+  }
+
+  .morning-brief-row.is-breathing::before {
+    box-shadow: none;
   }
 
   .hall-page.hall-lamp-ritual::before {

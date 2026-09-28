@@ -17,7 +17,10 @@ from librarian.enrich_progress import (
     is_enrich_running,
     read_enrich_progress,
 )
+from librarian.extra_files_reprocess_progress import read_extra_files_reprocess_progress
 from librarian.goodreads import MAX_GOODREADS_BYTES, import_goodreads_csv
+from librarian.ingest_progress import read_ingest_progress
+from librarian.morning_brief import assemble_morning_brief
 from librarian.purge_shells import purge_shell_works
 from librarian.purge_shells_progress import (
     PurgeShellsProgressReporter,
@@ -27,6 +30,7 @@ from librarian.purge_shells_progress import (
     is_purge_shells_stale,
     read_purge_shells_progress,
 )
+from librarian.review_reasons import REVIEW_EXTRA
 from librarian.scan import scan_library
 from librarian.scan_progress import (
     ScanProgressReporter,
@@ -71,6 +75,57 @@ def register_maintain_routes(app: FastAPI, deps: WebDeps) -> None:
     def maintain_shelf_health(request: Request):
         require_role(current_user(request), "owner")
         return shelf_permission_report(settings())
+
+    @app.get("/api/maintain/morning-brief")
+    def maintain_morning_brief(request: Request):
+        """Owner morning desk: at most three tend items, ranked softly."""
+        require_role(current_user(request), "owner")
+        health = shelf_permission_report(settings())
+        stuck: List[Dict[str, Any]] = []
+        for job_id, label, href, reader in (
+            ("scan", "Scan is walking the shelves", "#maintain-scan", read_scan_progress),
+            ("enrich", "Enrich is still naming volumes", "#maintain-enrich", read_enrich_progress),
+            ("ingest", "Shelving is still at work", "#maintain-ingest", read_ingest_progress),
+            (
+                "extra_files",
+                "Clear extra-files is still running",
+                "#maintain-clear-extra-files",
+                read_extra_files_reprocess_progress,
+            ),
+            ("shells", "Purge shells is still running", "#maintain-shells", read_purge_shells_progress),
+            (
+                "mixed",
+                "Split blends is still running",
+                "#maintain-split-mixed",
+                read_split_mixed_kinds_progress,
+            ),
+        ):
+            progress = reader(root)
+            if str(progress.get("status") or "") == "running":
+                stuck.append(
+                    {
+                        "id": job_id,
+                        "label": label,
+                        "detail": str(progress.get("phase") or "Still breathing.").strip(),
+                        "href": href,
+                        "cta": "Watch the dock",
+                    }
+                )
+        needs = db.count_works(review_state="needs_review")
+        extra = db.count_works(review_state="needs_review", review_reason=REVIEW_EXTRA)
+        # Holds desk = identity slips; extra-files are their own tend row.
+        holds = max(0, int(needs) - int(extra))
+        shells = db.count_shell_works()
+        blends = count_mixed_kind_works(db)
+        return assemble_morning_brief(
+            shelf_health=health,
+            stuck_jobs=stuck,
+            holds_desk_slips=holds,
+            extra_files=extra,
+            unshelved_shells=shells,
+            comic_book_blends=blends,
+        )
+
 
     @app.post("/api/maintain/purge-shells")
     def maintain_purge_shells(request: Request, limit: int = 0):

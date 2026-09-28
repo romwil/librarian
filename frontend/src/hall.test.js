@@ -27,6 +27,7 @@ test("Maintain is owner-only and houses grooming entry points", () => {
   assert.match(maintainSrc, /Navigate to="\/"/);
   assert.match(maintainSrc, /bestsellersHref/);
   assert.match(maintainSrc, /AddToLibrary/);
+  assert.match(maintainSrc, /MorningBrief/);
   assert.match(maintainSrc, /maintain-scan/);
   assert.match(maintainSrc, /maintain-clear-extra-files/);
   assert.match(maintainSrc, /MaintainStatusDock/);

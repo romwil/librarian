@@ -10,6 +10,7 @@ import {
 } from "../actionBusy.js";
 import AddToLibrary from "../components/AddToLibrary.jsx";
 import MaintainStatusDock from "../components/MaintainStatusDock.jsx";
+import MorningBrief from "../components/MorningBrief.jsx";
 import { FieldLabel } from "../components/FieldHelp.jsx";
 import { FIELD_HELP, humanError } from "../copy.js";
 import { bestsellersHref } from "../find.js";
@@ -91,10 +92,25 @@ export default function MaintainPage() {
   const [mixBacklog, setMixBacklog] = useState(0);
   const [mixStatus, setMixStatus] = useState(null);
   const mixPollRef = useRef(0);
+  const [morningBrief, setMorningBrief] = useState(null);
+  const [morningBriefLoading, setMorningBriefLoading] = useState(true);
 
   useEffect(() => {
     if (user?.role !== "owner") return undefined;
     let cancelled = false;
+    setMorningBriefLoading(true);
+    api
+      .maintainMorningBrief()
+      .then((data) => {
+        if (cancelled) return;
+        setMorningBrief(data);
+        setMorningBriefLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setMorningBrief(null);
+        setMorningBriefLoading(false);
+      });
     api
       .enrichStatus()
       .then((status) => {
@@ -469,6 +485,8 @@ export default function MaintainPage() {
         <Link to="/settings">Settings</Link>.
       </p>
 
+      <MorningBrief brief={morningBrief} loading={morningBriefLoading} />
+
       <MaintainStatusDock />
 
       <section className="maintain-section" data-testid="maintain-curated">
@@ -482,25 +500,26 @@ export default function MaintainPage() {
         </div>
       </section>
 
-      <section className="maintain-section" data-testid="maintain-ingest">
+      <section className="maintain-section" id="maintain-ingest" data-testid="maintain-ingest">
         <p className="kicker">Already on disk</p>
         <h2>Add a volume</h2>
         <AddToLibrary embedded />
       </section>
 
-      <section className="maintain-section" data-testid="maintain-review">
-        <p className="kicker">Review</p>
+      <section className="maintain-section" id="maintain-review" data-testid="maintain-review">
+        <p className="kicker">Holds desk</p>
         <h2>Slips and extra files</h2>
         <p className="lede">
-          Open the Review bag for identity slips. Clear extra-files reprocesses Calibre dumps that landed as extras.
+          Open the Holds desk for identity slips. Clear extra-files reprocesses Calibre dumps that landed as extras.
         </p>
         <div className="cta-row">
           <Link className="cta outline" to="/review" data-testid="maintain-review-link">
-            Open Review
+            Open Holds desk
           </Link>
           <button
             type="button"
             className="cta outline"
+            id="maintain-clear-extra-files"
             disabled={extraClearing}
             aria-busy={extraClearing || undefined}
             onClick={clearExtraFiles}
@@ -516,7 +535,7 @@ export default function MaintainPage() {
         {extraNote ? <p className="muted">{extraNote}</p> : null}
       </section>
 
-      <section className="maintain-section" data-testid="maintain-shells">
+      <section className="maintain-section" id="maintain-shells" data-testid="maintain-shells">
         <p className="kicker">Catalog</p>
         <h2>Purge unshelved shells</h2>
         <p className="lede">
@@ -547,7 +566,7 @@ export default function MaintainPage() {
         ) : null}
       </section>
 
-      <section className="maintain-section" data-testid="maintain-split-mixed">
+      <section className="maintain-section" id="maintain-split-mixed" data-testid="maintain-split-mixed">
         <p className="kicker">Catalog</p>
         <h2>Split comic / book blends</h2>
         <p className="lede">
@@ -578,7 +597,7 @@ export default function MaintainPage() {
         ) : null}
       </section>
 
-      <section className="maintain-section" data-testid="maintain-shelf-health">
+      <section className="maintain-section" id="maintain-shelf-health" data-testid="maintain-shelf-health">
         <p className="kicker">Shelves</p>
         <h2>Shelf health</h2>
         <p className="lede">
@@ -624,6 +643,7 @@ export default function MaintainPage() {
           <button
             type="button"
             className="cta outline"
+            id="maintain-scan"
             disabled={scanning}
             aria-busy={scanning || undefined}
             onClick={startScanShelves}
@@ -634,6 +654,7 @@ export default function MaintainPage() {
           <button
             type="button"
             className="cta outline"
+            id="maintain-enrich"
             disabled={enriching}
             aria-busy={enriching || undefined}
             onClick={startEnrichShelves}

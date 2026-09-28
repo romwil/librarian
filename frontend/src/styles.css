@@ -2920,6 +2920,7 @@ button.cover {
   margin: 0;
 }
 
+
 /* Hall deferred shelves */
 .hall-shelves-loading {
   width: min(var(--hero-search-max), calc(100% - 2 * var(--gutter)));
@@ -3825,6 +3826,82 @@ button.cover {
   display: inline-block;
 }
 
+.morning-brief {
+  margin: 0 0 var(--space-5);
+  padding: var(--space-5);
+  border: 1px solid color-mix(in srgb, var(--gilt) 26%, var(--border-subtle));
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(155deg, color-mix(in srgb, var(--lamp) 12%, transparent), transparent 58%),
+    color-mix(in srgb, var(--surface) 88%, transparent);
+  box-shadow: 0 14px 36px color-mix(in srgb, var(--lamp) 7%, transparent);
+}
+.morning-brief .kicker,
+.morning-brief-title,
+.morning-brief-presence,
+.morning-brief-list {
+  position: relative;
+  z-index: 1;
+}
+.morning-brief-title {
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  margin: 0 0 var(--space-2);
+  color: var(--paper);
+}
+.morning-brief-presence {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+.morning-brief-quiet .morning-brief-presence {
+  margin-bottom: 0;
+}
+.morning-brief-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  align-items: start;
+}
+.morning-brief-label {
+  font-size: var(--text-xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 var(--space-2);
+}
+.morning-brief-item-presence {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--paper);
+  line-height: 1.4;
+}
+.morning-brief-row {
+  position: relative;
+  padding-left: 1.5rem;
+}
+.morning-brief-row::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.35rem;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--lamp, #f0b85a) 55%, var(--gilt));
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--lamp, #f0b85a) 35%, transparent);
+}
+.morning-brief-row.is-breathing::before {
+  background: color-mix(in srgb, var(--lamp, #f0b85a) 80%, var(--gilt));
+}
+.morning-brief-slot .cta {
+  margin-top: var(--space-1);
+  display: inline-block;
+}
+
 .series-catch-up {
   margin: var(--space-5) var(--gutter) var(--space-4);
   padding: var(--space-5);
@@ -4411,6 +4488,7 @@ button.cover {
 @media (prefers-reduced-motion: reduce) {
   .plexamp-toast,
   .tonight-shelf,
+  .morning-brief,
   .room.ambient-paper::before,
   .room.ambient-lamp::before {
     animation: none !important;

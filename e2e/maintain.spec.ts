@@ -6,6 +6,19 @@ test.describe("Maintain", () => {
     await loginAsOwner(page);
   });
 
+  test("Maintain shows morning desk before the dock", async ({ page }) => {
+    await page.goto("/maintain");
+    await expect(page.getByRole("heading", { name: "Maintain" })).toBeVisible();
+    const brief = page.getByTestId("morning-brief");
+    await expect(brief).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("heading", { name: "Tend these three." })).toBeVisible();
+    await expect(page.getByText("Morning desk", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("morning-brief-presence")).toBeVisible();
+    // Quiet house in mocked e2e — presence, not a zero KPI strip.
+    await expect(page.getByTestId("morning-brief-presence")).toContainText(/clear|Tend|quiet/i);
+    await expect(page.getByTestId("maintain-status-idle")).toBeVisible({ timeout: 30_000 });
+  });
+
   test("Maintain shows telemetry dock idle copy", async ({ page }) => {
     await page.goto("/maintain");
     await expect(page.getByRole("heading", { name: "Maintain" })).toBeVisible();

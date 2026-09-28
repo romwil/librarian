@@ -108,6 +108,7 @@ export const api = {
     }),
   maintainSplitMixedKindsStatus: () => request("/maintain/split-mixed-kinds/status"),
   maintainShelfHealth: () => request("/maintain/shelf-health"),
+  maintainMorningBrief: () => request("/maintain/morning-brief"),
   queue: () => request("/queue"),
   queueTick: () => request("/queue/tick", { method: "POST" }),
   confirmJob: (id) => request(`/queue/${id}/confirm`, { method: "POST" }),
