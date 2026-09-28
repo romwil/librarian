@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Mapping, Optional, Protocol
 import httpx
 
 from librarian.config import Settings
-from librarian.covers import download_image, fetch_cover, looks_like_image
+from librarian.covers import assert_safe_cover_url, download_image, fetch_cover, looks_like_image
 from librarian.db import Database
 from librarian.hardcover import HardcoverClient, HardcoverError
 from librarian.identify import extract_isbn
@@ -104,6 +104,7 @@ def fetch_cover_with_fallback(
     indexer_cover_url: str = "",
     transport: Optional[httpx.BaseTransport] = None,
     client: Optional[httpx.Client] = None,
+    require_safe_url: bool = False,
 ) -> Optional[Path]:
     """Write cover to the shelf folder, or fall back to DATA_DIR/covers/{id}."""
     preferred = work_cover_folder(work, data_dir)
@@ -114,6 +115,7 @@ def fetch_cover_with_fallback(
         indexer_cover_url=indexer_cover_url,
         transport=transport,
         client=client,
+        require_safe_url=require_safe_url,
     )
     if written is not None:
         return written
@@ -129,6 +131,7 @@ def fetch_cover_with_fallback(
         indexer_cover_url=indexer_cover_url,
         transport=transport,
         client=client,
+        require_safe_url=require_safe_url,
     )
 
 
@@ -852,6 +855,7 @@ def update_work_metadata(
 
     cover_url = str(fields.get("cover_url") or "").strip()
     if cover_url:
+        cover_url = assert_safe_cover_url(cover_url)
         existing = str(updated.get("cover_path") or "").strip()
         if existing:
             try:
@@ -865,6 +869,7 @@ def update_work_metadata(
             indexer_cover_url=cover_url,
             transport=transport,
             client=client,
+            require_safe_url=True,
         )
         if written is not None:
             updated["cover_path"] = str(written)

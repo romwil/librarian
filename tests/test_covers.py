@@ -3,7 +3,14 @@ from pathlib import Path
 
 import httpx
 
-from librarian.covers import OPENLIB_ISBN_COVER, cover_from_cbz, fetch_cover, looks_like_image
+from librarian.covers import (
+    OPENLIB_ISBN_COVER,
+    assert_safe_cover_url,
+    cover_from_cbz,
+    download_image,
+    fetch_cover,
+    looks_like_image,
+)
 
 JPEG = b"\xff\xd8\xff\xe0" + b"\x00" * 80
 
@@ -130,3 +137,48 @@ def test_fetch_cover_permission_error_returns_none(tmp_path, monkeypatch):
         transport=httpx.MockTransport(handler),
     )
     assert cover is None
+
+
+def test_assert_safe_cover_url_allowlist_and_blocks():
+    assert assert_safe_cover_url("https://covers.openlibrary.org/b/id/1-L.jpg").startswith("https://")
+    assert assert_safe_cover_url("https://coverartarchive.org/release/x/front-500")
+    for bad in (
+        "http://127.0.0.1/cover.jpg",
+        "http://169.254.169.254/latest/meta-data/",
+        "https://evil.example/cover.jpg",
+        "file:///etc/passwd",
+        "ftp://covers.openlibrary.org/x.jpg",
+        "https://localhost/cover.jpg",
+    ):
+        try:
+            assert_safe_cover_url(bad)
+            raise AssertionError(f"expected refusal for {bad}")
+        except ValueError as error:
+            assert "not allowed" in str(error).lower() or "http(s)" in str(error).lower()
+
+
+def test_download_image_require_safe_revalidates_redirects():
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if "openlibrary.org" in url:
+            return httpx.Response(302, headers={"location": "http://127.0.0.1/secret.jpg"})
+        return httpx.Response(200, content=JPEG)
+
+    data = download_image(
+        "https://covers.openlibrary.org/b/id/1-L.jpg",
+        transport=httpx.MockTransport(handler),
+        require_safe_url=True,
+    )
+    assert data == b""
+
+    def ok_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=JPEG, headers={"content-type": "image/jpeg"})
+
+    assert (
+        download_image(
+            "https://covers.openlibrary.org/b/id/1-L.jpg",
+            transport=httpx.MockTransport(ok_handler),
+            require_safe_url=True,
+        )
+        == JPEG
+    )

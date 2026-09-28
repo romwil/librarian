@@ -89,10 +89,17 @@ def register_ingest_routes(app: FastAPI, deps: WebDeps) -> None:
     @app.post("/api/organize/preview")
     def organize_preview(folder: str, request: Request, guid: str = "", title: str = ""):
         require_role(request.state.user, "owner", "op")
+        try:
+            target = confined_path(folder, must_exist=True)
+        except PathDenied as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        refusal = protected_path_refusal(target, settings())
+        if refusal:
+            raise HTTPException(status_code=400, detail=refusal)
         result = organize_identified(
             db,
             settings(),
-            folder=Path(folder),
+            folder=target,
             indexer_item={"guid": guid, "title": title} if title or guid else None,
             apply=False,
         )

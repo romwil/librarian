@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 import zipfile
 from pathlib import Path
 from typing import Any, Mapping, Optional
+from urllib.parse import urljoin, urlparse
 
 import httpx
 
@@ -18,6 +20,38 @@ DEFAULT_USER_AGENT = f"Librarian/{__version__} (+https://github.com/romwil/libra
 OPENLIB_ISBN_COVER = "https://covers.openlibrary.org/b/isbn/{isbn}-L.jpg"
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
 MIN_IMAGE_BYTES = 64
+
+# Manual owner/op cover_url + redirect hops — not for indexer CDN free-for-all.
+_ALLOWED_COVER_HOST_SUFFIXES = (
+    "openlibrary.org",
+    "coverartarchive.org",
+    "hardcover.app",
+    "comicvine.gamespot.com",
+    "static.comicvine.com",
+    "upload.wikimedia.org",
+    "wikipedia.org",
+)
+_MAX_COVER_REDIRECTS = 5
+
+
+def assert_safe_cover_url(url: str) -> str:
+    """Refuse non-http(s), IP literals, localhost, and non-allowlisted hosts."""
+    text = str(url or "").strip()
+    parsed = urlparse(text)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise ValueError("Cover URL must be http(s)")
+    host = parsed.hostname.lower().rstrip(".")
+    if host in {"localhost", "127.0.0.1", "::1"} or host.endswith(".local"):
+        raise ValueError("Cover URL host not allowed")
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        pass
+    else:
+        raise ValueError("Cover URL host not allowed")
+    if not any(host == suffix or host.endswith("." + suffix) for suffix in _ALLOWED_COVER_HOST_SUFFIXES):
+        raise ValueError("Cover URL host not allowed")
+    return text
 
 
 def looks_like_image(data: bytes) -> bool:
@@ -66,16 +100,46 @@ def download_image(
     *,
     transport: Optional[httpx.BaseTransport] = None,
     client: Optional[httpx.Client] = None,
+    require_safe_url: bool = False,
 ) -> bytes:
     if not url:
         return b""
+    if require_safe_url:
+        try:
+            url = assert_safe_cover_url(url)
+        except ValueError:
+            return b""
     own = client is None
-    http = client or httpx.Client(timeout=20.0, transport=transport, follow_redirects=True)
+    http = client or httpx.Client(
+        timeout=20.0,
+        transport=transport,
+        follow_redirects=not require_safe_url,
+    )
+    headers = {"User-Agent": DEFAULT_USER_AGENT, "Accept": "image/*"}
     try:
-        response = http.get(
-            url,
-            headers={"User-Agent": DEFAULT_USER_AGENT, "Accept": "image/*"},
-        )
+        if require_safe_url:
+            current = url
+            response = None
+            for _ in range(_MAX_COVER_REDIRECTS + 1):
+                try:
+                    current = assert_safe_cover_url(current)
+                except ValueError:
+                    return b""
+                response = http.get(current, headers=headers, follow_redirects=False)
+                if response.status_code in {301, 302, 303, 307, 308}:
+                    location = response.headers.get("location") or ""
+                    if not location:
+                        return b""
+                    current = urljoin(current, location)
+                    continue
+                break
+            else:
+                return b""
+            if response is None or response.status_code >= 400:
+                return b""
+            data = response.content or b""
+            return data if looks_like_image(data) else b""
+        response = http.get(url, headers=headers)
         if response.status_code >= 400:
             return b""
         data = response.content or b""
@@ -94,6 +158,7 @@ def fetch_cover(
     indexer_cover_url: str = "",
     transport: Optional[httpx.BaseTransport] = None,
     client: Optional[httpx.Client] = None,
+    require_safe_url: bool = False,
 ) -> Optional[Path]:
     """Write cover.jpg from indexer URL, Open Library ISBN, or CBZ page 1.
 
@@ -123,7 +188,12 @@ def fetch_cover(
         urls.append(OPENLIB_ISBN_COVER.format(isbn=isbn))
 
     for url in urls:
-        data = download_image(url, transport=transport, client=client)
+        data = download_image(
+            url,
+            transport=transport,
+            client=client,
+            require_safe_url=require_safe_url,
+        )
         if data:
             try:
                 dest.write_bytes(data)

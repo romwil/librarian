@@ -654,13 +654,26 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
         work = db.get_work(work_id)
         if work is None:
             raise HTTPException(status_code=404, detail="Work not found")
-        path = Path(str(work.get("cover_path") or ""))
-        if not path.is_file():
-            raise HTTPException(status_code=404, detail="Cover not found")
+        path = _media_file_or_404(str(work.get("cover_path") or ""), detail="Cover not found")
         return FileResponse(path, media_type="image/jpeg")
 
+    def _media_file_or_404(raw: str, *, detail: str = "File not found") -> Path:
+        try:
+            path = confined_serve_path(raw, data_dir=root, must_exist=True)
+        except PathDenied as error:
+            raise HTTPException(status_code=404, detail=detail) from error
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail=detail)
+        return path
+
     def _files_on_disk(work_id: str) -> List[Path]:
-        return existing_file_paths(db.files_for_work(work_id))
+        confined: List[Path] = []
+        for path in existing_file_paths(db.files_for_work(work_id)):
+            try:
+                confined.append(confined_serve_path(str(path), data_dir=root, must_exist=True))
+            except PathDenied:
+                continue
+        return confined
 
     def _canonical_file(work_id: str) -> Path:
         on_disk = _files_on_disk(work_id)
@@ -673,6 +686,12 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
             os.unlink(path)
         except OSError:
             pass
+
+    def _resolve_work_file(rows: List[Dict[str, Any]], file_id: str) -> Path:
+        chosen = resolve_catalog_file(rows, file_id)
+        if chosen is None:
+            raise HTTPException(status_code=404, detail="File not found")
+        return _media_file_or_404(str(chosen), detail="File not found")
 
     @app.get("/api/works/{work_id}/download")
     def work_download(
@@ -687,14 +706,12 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
         if work is None:
             raise HTTPException(status_code=404, detail="Work not found")
         rows = db.files_for_work(work_id)
-        on_disk = existing_file_paths(rows)
+        on_disk = _files_on_disk(work_id)
         if not on_disk:
             raise HTTPException(status_code=404, detail="File missing")
         chosen = None
         if str(file or "").strip():
-            chosen = resolve_catalog_file(rows, file)
-            if chosen is None:
-                raise HTTPException(status_code=404, detail="File not found")
+            chosen = _resolve_work_file(rows, file)
         reading = primary_reading_path(on_disk)
         # Convert / Download may use Kindle; Reading Room never does.
         src = chosen or reading or on_disk[0]
@@ -710,6 +727,7 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
                     raise HTTPException(status_code=422, detail=str(error)) from error
                 except RuntimeError as error:
                     raise HTTPException(status_code=502, detail=str(error)) from error
+                dest = _media_file_or_404(str(dest), detail="File missing")
                 return FileResponse(dest, filename=dest.name)
         if inline:
             # Hard rule: Reading Room gets ONLY EPUB/CBZ/PDF — never Kindle, never a zip.
@@ -775,9 +793,7 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
         if work is None:
             raise HTTPException(status_code=404, detail="Work not found")
         rows = db.files_for_work(work_id)
-        chosen = resolve_catalog_file(rows, file)
-        if chosen is None:
-            raise HTTPException(status_code=404, detail="File not found")
+        chosen = _resolve_work_file(rows, file)
         if not is_streamable_audio(chosen):
             raise HTTPException(status_code=422, detail="Not a streamable audio file")
         return FileResponse(
@@ -797,11 +813,9 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
         rows = db.files_for_work(work_id)
         wanted = str(file or "").strip()
         if wanted:
-            chosen = resolve_catalog_file(rows, wanted)
-            if chosen is None:
-                raise HTTPException(status_code=404, detail="File not found")
+            chosen = _resolve_work_file(rows, wanted)
         else:
-            on_disk = existing_file_paths(rows)
+            on_disk = _files_on_disk(work_id)
             streamable = [path for path in on_disk if is_streamable_audio(path)]
             if not streamable:
                 raise HTTPException(status_code=404, detail="File not found")

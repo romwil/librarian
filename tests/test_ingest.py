@@ -173,6 +173,28 @@ def test_path_outside_data_is_rejected(tmp_path, monkeypatch):
     assert escaped.status_code == 400
 
 
+def test_organize_preview_rejects_outside_and_library_roots(tmp_path, monkeypatch):
+    settings = _settings(tmp_path)
+    save_settings(tmp_path, settings)
+    client = _client(tmp_path, monkeypatch)
+    _login(client)
+    outside = client.post("/api/organize/preview", params={"folder": "/etc"})
+    assert outside.status_code == 400
+    assert "outside" in outside.json()["detail"].lower()
+    books = Path(settings.books_root)
+    books.mkdir(parents=True)
+    refused = client.post("/api/organize/preview", params={"folder": str(books)})
+    assert refused.status_code == 400
+    assert "library" in refused.json()["detail"].lower()
+    dump = tmp_path / "inbox" / "preview-dump"
+    dump.mkdir(parents=True)
+    (dump / "mystery.epub").write_bytes(b"epub")
+    ok = client.post("/api/organize/preview", params={"folder": str(dump)})
+    assert ok.status_code == 200, ok.text
+    assert "identity" in ok.json()
+    assert ok.json().get("organized") is False
+
+
 def test_reader_forbidden_on_ingest_and_fs(tmp_path, monkeypatch):
     save_settings(tmp_path, _settings(tmp_path))
     client = _client(tmp_path, monkeypatch)

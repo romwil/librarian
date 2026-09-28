@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 from librarian.config import MEDIA_ROOT_FIELDS, Settings
 from librarian.db import Database
@@ -69,32 +69,74 @@ def _rewrite_host_data(path: Path, root: Path) -> Path:
     return path
 
 
-def confined_path(raw: str, *, must_exist: bool = True) -> Path:
-    """Resolve a household path under `/data` (or DATA_DIR in tests). Fail closed."""
+def _resolve_under_roots(
+    raw: str,
+    roots: Sequence[Path],
+    *,
+    must_exist: bool = True,
+    rewrite_host_data: bool = True,
+) -> Path:
+    """Resolve ``raw`` and require it to sit under one of ``roots``. Fail closed."""
     text = str(raw or "").strip()
     if not text or text in {".", ".."}:
         raise PathDenied("Path is required")
     parts = Path(text).parts
     if ".." in parts:
         raise PathDenied("Path is outside /data")
-    root = data_fs_root()
+    allowed = []
+    for root in roots:
+        try:
+            allowed.append(Path(root).expanduser().resolve())
+        except OSError as error:
+            raise PathDenied("Path is outside /data") from error
+    if not allowed:
+        raise PathDenied("Path is outside /data")
     candidate = Path(text)
-    candidate = _rewrite_host_data(candidate, root)
+    if rewrite_host_data:
+        candidate = _rewrite_host_data(candidate, allowed[0])
     if not candidate.is_absolute():
-        candidate = root / candidate
+        candidate = allowed[0] / candidate
     try:
         resolved = candidate.resolve()
     except OSError as error:
         raise PathDenied("Path is outside /data") from error
+    for root in allowed:
+        try:
+            resolved.relative_to(root)
+        except ValueError:
+            continue
+        if resolved != root and root not in resolved.parents:
+            continue
+        if must_exist and not resolved.exists():
+            raise PathDenied("Path not found")
+        return resolved
+    raise PathDenied("Path is outside /data")
+
+
+def confined_path(raw: str, *, must_exist: bool = True) -> Path:
+    """Resolve a household path under `/data` (or DATA_DIR in tests). Fail closed."""
+    return _resolve_under_roots(raw, [data_fs_root()], must_exist=must_exist)
+
+
+# Cover cache + ebook conversions live under DATA_DIR, not always under `/data`.
+_SERVE_DATA_DIR_SUBDIRS = ("covers", "conversions")
+
+
+def confined_serve_path(raw: str, *, data_dir: Path, must_exist: bool = True) -> Path:
+    """Jail for files the API may stream — `/data` or DATA_DIR/{covers,conversions}."""
     try:
-        resolved.relative_to(root)
-    except ValueError as error:
-        raise PathDenied("Path is outside /data") from error
-    if resolved != root and root not in resolved.parents:
-        raise PathDenied("Path is outside /data")
-    if must_exist and not resolved.exists():
-        raise PathDenied("Path not found")
-    return resolved
+        return confined_path(raw, must_exist=must_exist)
+    except PathDenied as error:
+        if str(error) == "Path not found":
+            raise
+    root = Path(data_dir).expanduser()
+    extra_roots = [root / name for name in _SERVE_DATA_DIR_SUBDIRS]
+    return _resolve_under_roots(
+        raw,
+        extra_roots,
+        must_exist=must_exist,
+        rewrite_host_data=False,
+    )
 
 
 def skipped_name(name: str) -> bool:

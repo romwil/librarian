@@ -1,5 +1,6 @@
 import io
 import zipfile
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
@@ -365,3 +366,71 @@ def test_inline_file_id_never_serves_kindle(tmp_path, monkeypatch):
     download = client.get(f"/api/works/{work['id']}/download", params={"file": kindle["id"]})
     assert download.status_code == 200
     assert download.content == b"AZW3-bytes"
+
+
+def test_cover_and_download_reject_paths_outside_fs_root(tmp_path, monkeypatch):
+    """Poisoned cover_path / file rows outside the /data jail must 404."""
+    monkeypatch.setenv("LIBRARIAN_FS_ROOT", str(tmp_path))
+    client = _client(tmp_path, monkeypatch)
+    _login(client)
+    db = Database(tmp_path / "librarian.db")
+    secret = Path("/etc/hosts")
+    assert secret.is_file()
+    work = db.upsert_work(
+        {
+            "kind": "book",
+            "title": "Poisoned Cover",
+            "author": "Nobody",
+            "cover_path": str(secret),
+        }
+    )
+    cover = client.get(f"/api/works/{work['id']}/cover")
+    assert cover.status_code == 404
+    assert cover.json()["detail"] == "Cover not found"
+
+    leak = db.upsert_work({"kind": "book", "title": "Poisoned File", "author": "Nobody"})
+    db.add_file(
+        {
+            "work_id": leak["id"],
+            "path": str(secret),
+            "filename": secret.name,
+            "kind": "book",
+            "size": secret.stat().st_size,
+        }
+    )
+    missing = client.get(f"/api/works/{leak['id']}/download")
+    assert missing.status_code == 404
+    assert missing.json()["detail"] == "File missing"
+
+
+def test_cover_serves_owned_cache_under_data_dir(tmp_path, monkeypatch):
+    """Cover cache under DATA_DIR/covers remains readable when media lives on /data."""
+    fs_root = tmp_path / "data"
+    config = tmp_path / "config"
+    fs_root.mkdir()
+    config.mkdir()
+    monkeypatch.setenv("LIBRARIAN_FS_ROOT", str(fs_root))
+    monkeypatch.setenv("DATA_DIR", str(config))
+    monkeypatch.setenv("LIBRARIAN_OWNER_USERNAME", "owner")
+    monkeypatch.setenv("LIBRARIAN_OWNER_PASSWORD", "password123")
+    clear_session_secret_cache()
+    clear_rate_limits()
+    client = TestClient(create_app(config))
+    _login(client)
+    db = Database(config / "librarian.db")
+    jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 80
+    work = db.upsert_work({"kind": "book", "title": "Cached Cover", "author": "Author"})
+    cached = config / "covers" / work["id"] / "cover.jpg"
+    cached.parent.mkdir(parents=True)
+    cached.write_bytes(jpeg)
+    db.upsert_work({**work, "cover_path": str(cached)})
+    resp = client.get(f"/api/works/{work['id']}/cover")
+    assert resp.status_code == 200
+    assert resp.content == jpeg
+    # Settings under DATA_DIR must not be serveable via cover_path.
+    settings_path = config / "settings.json"
+    settings_path.write_text("{}")
+    poisoned = db.upsert_work(
+        {"kind": "book", "title": "Settings Leak", "author": "Nope", "cover_path": str(settings_path)}
+    )
+    assert client.get(f"/api/works/{poisoned['id']}/cover").status_code == 404

@@ -1043,6 +1043,49 @@ def test_metadata_patch_and_clear_enrich_api(tmp_path, monkeypatch):
     assert cleared_work["year"] == 2016
 
 
+def test_metadata_cover_url_rejects_ssrf_hosts(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    client.post("/api/auth/local/login", json={"username": "owner", "password": "password123"})
+    db = Database(tmp_path / "librarian.db")
+    work = db.upsert_work({"kind": "book", "title": "Dune", "author": "Frank Herbert"})
+    refused = client.patch(
+        f"/api/works/{work['id']}/metadata",
+        json={"cover_url": "http://127.0.0.1:9090/cover.jpg"},
+    )
+    assert refused.status_code == 400
+    assert "not allowed" in refused.json()["detail"].lower()
+    refused_lan = client.patch(
+        f"/api/works/{work['id']}/metadata",
+        json={"cover_url": "https://evil.example/cover.jpg"},
+    )
+    assert refused_lan.status_code == 400
+
+    captured = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(str(request.url))
+        return httpx.Response(200, content=JPEG, headers={"content-type": "image/jpeg"})
+
+    monkeypatch.setattr(
+        "librarian.enrich._http_client",
+        lambda transport=None: httpx.Client(
+            timeout=20.0, transport=httpx.MockTransport(handler), follow_redirects=True
+        ),
+    )
+    # Bypass module-level client wiring used by update_work_metadata transport=None path:
+    from librarian.enrich import update_work_metadata
+
+    updated = update_work_metadata(
+        db,
+        work["id"],
+        {"cover_url": "https://covers.openlibrary.org/b/id/12345-L.jpg"},
+        data_dir=tmp_path,
+        transport=httpx.MockTransport(handler),
+    )
+    assert updated["cover_path"]
+    assert Path(updated["cover_path"]).read_bytes() == JPEG
+    assert captured and "openlibrary.org" in captured[0]
+
 def test_fix_match_apply_api(tmp_path, monkeypatch):
     client = _client(tmp_path, monkeypatch)
     client.post("/api/auth/local/login", json={"username": "owner", "password": "password123"})

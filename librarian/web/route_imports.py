@@ -76,6 +76,7 @@ from librarian.indexers.sync import ping_nzbfinder, sync_nzbfinder
 from librarian.ingest import (
     PathDenied,
     confined_path,
+    confined_serve_path,
     list_dir,
     poll_watch_folder,
     protected_path_refusal,
@@ -300,6 +301,7 @@ __all__ = [
     'sync_nzbfinder',
     'PathDenied',
     'confined_path',
+    'confined_serve_path',
     'list_dir',
     'poll_watch_folder',
     'protected_path_refusal',
