@@ -11,6 +11,7 @@ import re
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 from librarian.identify import tidy_title
+from librarian.indexers.query import strip_secret_query
 from librarian.llm import LLMClient, LLMError, client_from_settings
 
 
@@ -62,8 +63,8 @@ def compact_candidate(hit: Mapping[str, Any], *, rank: int = 0, note: str = "") 
         "category_name": _text(hit.get("category_name")),
         "host_id": _text(hit.get("host_id")),
         "host_name": _text(hit.get("host_name") or hit.get("host") or hit.get("indexer")),
-        "download_url": _text(hit.get("download_url")),
-        "cover": _text(hit.get("cover")),
+        "download_url": strip_secret_query(_text(hit.get("download_url"))),
+        "cover": strip_secret_query(_text(hit.get("cover"))),
         "isbn": _text(hit.get("isbn")),
         "poster": _text(hit.get("poster")),
         "rank": int(rank) if rank else None,

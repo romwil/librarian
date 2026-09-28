@@ -6,6 +6,12 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 
+from librarian.indexers.scrub import (
+    public_indexer_hit,
+    public_indexer_hits,
+    public_job,
+    public_jobs,
+)
 from librarian.web.deps import WebDeps
 from librarian.web.route_imports import *  # noqa: F403
 
@@ -141,16 +147,17 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
                 "rank_method": rank_method,
                 "rank_reason": rank_reason,
             }
+        owner_trace = user["role"] in ("owner", "op")
         return {
             "q": q,
             "local": local,
-            "beyond": indexer,
+            "beyond": public_indexer_hits(indexer),
             "beyond_error": beyond_error,
-            "pick": pick,
-            "candidates": candidates,
+            "pick": public_indexer_hit(pick) if isinstance(pick, dict) else pick,
+            "candidates": public_indexer_hits(candidates),
             "rank_method": rank_method,
             "rank_reason": rank_reason,
-            "search_trace": search_trace,
+            "search_trace": search_trace if owner_trace else None,
             "can_request": user["role"] in ("owner", "op", "reader"),
         }
 
@@ -238,7 +245,7 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
             "kind": kind,
             "cat": cat,
             "limit": feed_limit,
-            "items": items,
+            "items": public_indexer_hits(items),
             "categories": categories,
             "beyond_error": beyond_error,
             "show_extra_categories": bool(cfg.show_extra_categories),
@@ -834,7 +841,7 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
             )
         except (SABError, NZBFinderError) as error:
             raise HTTPException(status_code=502, detail=str(error)) from error
-        return {"job": job}
+        return {"job": public_job(job)}
 
     @app.get("/api/queue")
     def queue(request: Request):
@@ -861,7 +868,7 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
                 continue
             job["review_reason"] = work.get("review_reason")
             job["review_state"] = work.get("review_state")
-        return {"jobs": jobs}
+        return {"jobs": public_jobs(jobs)}
 
     @app.post("/api/queue/{job_id}/poll")
     def queue_poll(job_id: str, request: Request):
@@ -870,7 +877,7 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
             job = poll_job(db, settings(), job_id)
         except (ValueError, SABError) as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
-        return {"job": job}
+        return {"job": public_job(job)}
 
     @app.post("/api/queue/{job_id}/confirm")
     def queue_confirm(job_id: str, request: Request):
@@ -879,7 +886,7 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
             job = confirm_asked_job(db, settings(), job_id)
         except (ValueError, SABError, NZBFinderError) as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
-        return {"job": job}
+        return {"job": public_job(job)}
 
     @app.get("/api/gaps")
     def gaps(request: Request):

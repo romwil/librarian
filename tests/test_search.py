@@ -227,3 +227,55 @@ def test_search_movie_maps_kind_from_category(tmp_path, monkeypatch):
     beyond = resp.json()["beyond"]
     assert [row["kind"] for row in beyond] == ["movie"]
     assert beyond[0]["title"].startswith("SUPERCARS")
+
+
+def test_search_beyond_scrubs_tokens_and_raw(tmp_path, monkeypatch):
+    """P3-CRIT-02: Find-beyond JSON never ships api_token/apikey or raw Newznab blobs."""
+    monkeypatch.setenv("NZBFINDER_API_TOKEN", "household-secret")
+    client = _client(tmp_path, monkeypatch)
+    _login(client)
+
+    def fake_books_traced(self, *, query="", title="", author="", isbn="", cat=None, limit=25, default_kind="book"):
+        hit = {
+            "title": "Dune",
+            "book_title": "Dune",
+            "author": "Herbert",
+            "kind": "book",
+            "guid": "g-dune",
+            "isbn": isbn,
+            "download_url": "https://nzb.example/get?id=g-dune.nzb&api_token=household-secret&apikey=household-secret",
+            "cover": "https://cdn.example/c.jpg?api_token=cover-secret",
+            "raw": {"enclosure": "https://nzb.example/get?api_token=household-secret", "attrs": {}},
+            "description": "leaky HTML",
+        }
+        return {"raw": [hit], "accepted": [hit], "rejected": [], "default_kind": "book"}
+
+    monkeypatch.setattr("librarian.nzbfinder.NZBFinderClient.books_traced", fake_books_traced)
+    monkeypatch.setattr(
+        "librarian.nzbfinder.NZBFinderClient.search_traced",
+        lambda *a, **k: {"raw": [], "accepted": [], "rejected": [], "default_kind": ""},
+    )
+    resp = client.get(
+        "/api/search",
+        params={"beyond": 1, "kind": "book", "title": "Dune", "author": "Herbert"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    blob = str(body)
+    assert "household-secret" not in blob
+    assert "cover-secret" not in blob
+    assert "api_token" not in blob
+    assert "apikey" not in blob
+    beyond = body["beyond"]
+    assert beyond
+    assert "raw" not in beyond[0]
+    assert "description" not in beyond[0]
+    assert beyond[0]["download_url"] == "https://nzb.example/get?id=g-dune.nzb"
+    pick = body.get("pick")
+    if isinstance(pick, dict):
+        assert "raw" not in pick
+        assert "household-secret" not in str(pick.get("download_url") or "")
+    for row in body.get("candidates") or []:
+        assert "raw" not in row
+        assert "household-secret" not in str(row.get("download_url") or "")
+    assert body.get("search_trace") is not None  # owner session keeps diagnostics

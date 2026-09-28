@@ -18,6 +18,8 @@ import httpx
 
 from librarian.audiobook_match import audiobook_find_fields, match_companion_audiobook
 from librarian.identify import isbn_match_keys, tidy_title, validated_isbn
+from librarian.indexers.query import strip_secret_query
+from librarian.indexers.scrub import public_indexer_hits
 from librarian.llm import (
     LLMClient,
     LLMError,
@@ -325,8 +327,8 @@ def public_beyond_hit(hit: Optional[Mapping[str, Any]]) -> Optional[Dict[str, An
         "isbn": isbn,
         "kind": str(hit.get("kind") or "").strip(),
         "size": hit.get("size"),
-        "cover": str(hit.get("cover") or "").strip(),
-        "download_url": str(hit.get("download_url") or "").strip(),
+        "cover": strip_secret_query(str(hit.get("cover") or "").strip()),
+        "download_url": strip_secret_query(str(hit.get("download_url") or "").strip()),
         "category": hit.get("category"),
         "category_name": str(hit.get("category_name") or "").strip(),
         "host_id": str(hit.get("host_id") or "").strip(),
@@ -410,11 +412,11 @@ def chase_missing_item(
     if audio_hit and not audio_hit.get("kind"):
         audio_hit["kind"] = "audiobook"
     if book_hit:
-        book_hit["candidates"] = list(book_traced.get("candidates") or [])
+        book_hit["candidates"] = public_indexer_hits(book_traced.get("candidates") or [])
         book_hit["rank_method"] = str(book_traced.get("rank_method") or "")
         book_hit["rank_reason"] = str(book_traced.get("rank_reason") or "")
     if audio_hit:
-        audio_hit["candidates"] = list(audio_traced.get("candidates") or [])
+        audio_hit["candidates"] = public_indexer_hits(audio_traced.get("candidates") or [])
         audio_hit["rank_method"] = str(audio_traced.get("rank_method") or "")
         audio_hit["rank_reason"] = str(audio_traced.get("rank_reason") or "")
     conversation = [
@@ -445,8 +447,8 @@ def chase_missing_item(
         "sought": {"book": sought_book, "audiobook": sought_audio},
         "book_hit": book_hit,
         "audiobook_hit": audio_hit,
-        "book_candidates": list(book_traced.get("candidates") or []),
-        "audiobook_candidates": list(audio_traced.get("candidates") or []),
+        "book_candidates": public_indexer_hits(book_traced.get("candidates") or []),
+        "audiobook_candidates": public_indexer_hits(audio_traced.get("candidates") or []),
         "book_error": book_error,
         "audiobook_error": audio_error,
         "audiobook_available": bool(audio_hit and audio_hit.get("guid")),

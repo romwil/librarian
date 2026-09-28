@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from librarian.config import Settings
 from librarian.indexers.query import run_beyond_search_traced
+from librarian.indexers.scrub import public_indexer_hit
 from librarian.nzbfinder import NZBFinderClient, NZBFinderError, _hit_summary
 
 NZBFINDER_ID = "nzbfinder"
@@ -278,8 +279,10 @@ def search_beyond_traced(
                 rejected_count += 1
                 continue
             seen.add(key)
-            hits.append(tagged)
-            guid = _text(tagged.get("guid"))
+            # Public disclosure boundary: no api_token query params / raw Newznab blobs.
+            scrubbed = public_indexer_hit(tagged) or {}
+            hits.append(scrubbed)
+            guid = _text(scrubbed.get("guid") or tagged.get("guid"))
             if not guid:
                 results.append(
                     {
