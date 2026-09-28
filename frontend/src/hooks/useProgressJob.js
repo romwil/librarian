@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 /**
  * Poll a progress status endpoint while active (and optionally while idle).
+ * Hidden tabs pause scheduling (P2-HIGH-02) — visibilitychange resumes.
  *
  * @param {object} opts
  * @param {() => Promise<object|null>} opts.fetchStatus
@@ -37,7 +38,18 @@ export function useProgressJob({
     let cancelled = false;
     let timer = 0;
 
+    function pageHidden() {
+      return typeof document !== "undefined" && document.visibilityState === "hidden";
+    }
+
+    function schedule(wait) {
+      window.clearTimeout(timer);
+      if (cancelled || pageHidden()) return;
+      timer = window.setTimeout(poll, wait);
+    }
+
     async function poll() {
+      if (cancelled || pageHidden()) return;
       try {
         const next = await fetchStatus();
         if (cancelled) return;
@@ -50,16 +62,31 @@ export function useProgressJob({
         }
         wasRunningRef.current = live;
         const wait = live || active ? liveMs : idleMs;
-        timer = window.setTimeout(poll, wait);
+        schedule(wait);
       } catch {
-        if (!cancelled) timer = window.setTimeout(poll, idleMs);
+        schedule(idleMs);
       }
     }
 
+    function onVisibility() {
+      if (cancelled) return;
+      if (pageHidden()) {
+        window.clearTimeout(timer);
+        return;
+      }
+      poll();
+    }
+
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", onVisibility);
+    }
     poll();
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", onVisibility);
+      }
     };
   }, [fetchStatus, isRunning, active, pollIdle, liveMs, idleMs]);
 

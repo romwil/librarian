@@ -859,17 +859,8 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
 
     @app.get("/api/queue")
     def queue(request: Request):
+        """List jobs only — no watch/RSS/SAB side effects (P2-CRIT-01)."""
         require_role(request.state.user, "owner", "op")
-        cfg = settings()
-        poll_watch_folder(db, cfg)
-        try:
-            poll_rss_feeds(db, cfg)
-        except Exception:
-            pass
-        try:
-            poll_active_jobs(db, cfg)
-        except SABError:
-            pass
         jobs = db.list_jobs()
         for job in jobs:
             if job.get("status") != "review":
@@ -883,6 +874,22 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
             job["review_reason"] = work.get("review_reason")
             job["review_state"] = work.get("review_state")
         return {"jobs": public_jobs(jobs)}
+
+    @app.post("/api/queue/tick")
+    def queue_tick(request: Request):
+        """Explicit poller kick — JobPoller remains the automatic driver."""
+        require_role(request.state.user, "owner", "op")
+        cfg = settings()
+        poll_watch_folder(db, cfg)
+        try:
+            poll_rss_feeds(db, cfg)
+        except Exception:
+            logger.exception("RSS tick failed")
+        try:
+            poll_active_jobs(db, cfg)
+        except SABError:
+            pass
+        return {"ok": True}
 
     @app.post("/api/queue/{job_id}/poll")
     def queue_poll(job_id: str, request: Request):

@@ -6,6 +6,7 @@ Plan: [librarian_automat_rss](file:///Users/willrompala/.cursor/plans/librarian_
 
 ## Shipped
 
+- **2026-09-27** — Sprint **R2** `queue-and-dock-calm` → **0.5.6**: `GET /api/queue` readonly + `POST /api/queue/tick`; Maintain dock 15s idle + hidden-tab pause; auth-gate `owner_ready` cache.
 - **2026-09-27** `3bdbc43`/`0a0120c`/`72f22ad` — Sprint **R1** `security-perimeter` → **0.5.5**: SPA `FRONTEND_DIST` jail; public indexer scrub; cover/download + organize preview path jails; cover URL SSRF allowlist.
 - **2026-09-25** `8b9fd51` / `24dff20` — Sprint **5.3** `lamp-rituals` → **0.5.2** + full-build QA closeout: dawn/dusk Hall, welcome-back, peek/finish ceremony; pytest 635 / cov 80%; frontend unit 232; Playwright 18/18 on :8794 (e2e login rate-limit relax); interactive alive walk on local :8793 (Automat LAN reachable but still **0.4.15** — kit not mounted here; host `./docker-run.sh` to pick up 0.5.2). codegraph sync done. Major living-library arc complete; Top-10 backlog not started.
 - **2026-09-25** — Sprint **5.3** `lamp-rituals` → **0.5.2**: dawn/dusk Hall wash, welcome-back when Continue waits, peek/finish micro-motion.

@@ -41,25 +41,32 @@ export default function MaintainStatusDock() {
   const fetchIngest = useCallback(() => api.ingestStatus().catch(() => null), []);
   const fetchExtra = useCallback(() => api.reviewReprocessExtraFilesStatus().catch(() => null), []);
 
+  // P2-HIGH-02: slower idle cadence; useProgressJob also pauses when the tab is hidden.
+  const dockIdleMs = 15_000;
+
   const { status: scanStatus } = useProgressJob({
     fetchStatus: fetchScan,
     isRunning: scanIsRunning,
     pollIdle: true,
+    idleMs: dockIdleMs,
   });
   const { status: enrichStatus } = useProgressJob({
     fetchStatus: fetchEnrich,
     isRunning: enrichIsRunning,
     pollIdle: true,
+    idleMs: dockIdleMs,
   });
   const { status: ingestStatus } = useProgressJob({
     fetchStatus: fetchIngest,
     isRunning: ingestIsRunning,
     pollIdle: true,
+    idleMs: dockIdleMs,
   });
   const { status: extraStatus } = useProgressJob({
     fetchStatus: fetchExtra,
     isRunning: extraFilesReprocessIsRunning,
     pollIdle: true,
+    idleMs: dockIdleMs,
   });
 
   const cards = [];

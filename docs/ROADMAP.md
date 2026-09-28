@@ -14,10 +14,10 @@ Active staged plan (agent pickup): `~/.cursor/plans/librarian_unified_recommend_
 | --- | --- |
 | **Date** | 2026-09-27 |
 | **Branch** | `main` |
-| **Version** | **0.5.5** |
-| **Arc** | Living-library Phases **0–5** complete; Phase R started — **R1** `security-perimeter` → **0.5.5**. |
+| **Version** | **0.5.6** |
+| **Arc** | Living-library Phases **0–5** complete; Phase R — **R2** `queue-and-dock-calm` → **0.5.6**. |
 | **Green** | pytest coverage floor **70%**; frontend `npm test`; Playwright e2e on **8794**. LAN truth `http://10.10.1.202:8793`. |
-| **Next** | **R2** `queue-and-dock-calm` → **0.5.6**, then R3 → D1 (see §3). |
+| **Next** | **R3** `api-boundary` → **0.5.7**, then D1 (see §3). |
 | **Automat** | Host `./docker-run.sh` only. Hub `romwil/librarian` deferred. Never bind **8788 / 8790 / 8791 / 8792**. |
 
 ---
@@ -42,7 +42,7 @@ Active staged plan (agent pickup): `~/.cursor/plans/librarian_unified_recommend_
 | 5 | 5.2 | `smart-holds-desk` | 0.5.1 | done |
 | 5 | 5.3 | `lamp-rituals` | 0.5.2 | done |
 
-Full-build QA closed with 0.5.2. Patches: **0.5.3** enrich author placeholder; **0.5.4** notification email clear sticks. **R1** `security-perimeter` → **0.5.5**.
+Full-build QA closed with 0.5.2. Patches: **0.5.3** enrich author placeholder; **0.5.4** notification email clear sticks. **R1** `security-perimeter` → **0.5.5**. **R2** `queue-and-dock-calm` → **0.5.6**.
 
 ### Library-first kit (pre-arc, still true)
 
@@ -57,7 +57,7 @@ Remediation first (2026-09-25 review Critical/High), then Top-10 delight. Each s
 | Sprint | Feature | Version | Focus |
 | --- | --- | --- | --- |
 | **R1** | `security-perimeter` | **0.5.5** | **done** — SPA jail; indexer scrub; cover/download + organize preview jails; cover URL SSRF allowlist |
-| **R2** | `queue-and-dock-calm` | **0.5.6** | `GET /api/queue` readonly — no mutating poller (P2-CRIT-01); Maintain dock idle-poll calm / multiplex + hidden-tab pause (P2-HIGH-02); auth-gate SQLite connect calm (P2-HIGH-01) |
+| **R2** | `queue-and-dock-calm` | **0.5.6** | **done** — `GET /api/queue` readonly; Maintain dock idle + hidden-tab pause; auth-gate `owner_ready` cache |
 | **R3** | `api-boundary` | **0.5.7** | Allowlist `public_work` + admin serializer (P1-HIGH-02 / P4-HIGH-01); kill star-import `route_imports` hub (P1-HIGH-01); optional thin `catalog` split |
 | **D1** | `morning-brief` + `series-catch-up` | **0.5.8** | First post-arc Top-10 pair: owner morning Maintain desk + reader series invitation |
 
@@ -113,7 +113,7 @@ Full write-up: [reviews/review-2026-09-25.md](reviews/review-2026-09-25.md). Shi
 | --- | --- | --- |
 | [P3-CRIT-01](reviews/review-2026-09-25.md#p3-crit-01--unauthenticated-spa-path-traversal) | Unauthenticated SPA catch-all path traversal | R1 |
 | [P3-CRIT-02](reviews/review-2026-09-25.md#p3-crit-02--indexer-tokens--raw-newznab-blobs-on-find-beyond-responses) | Indexer tokens / raw Newznab blobs on Find-beyond (+ queue) | R1 |
-| [P2-CRIT-01](reviews/review-2026-09-25.md#p2-crit-01--get-apiqueue-performs-mutating-poller-work) | `GET /api/queue` performs mutating poller work | R2 |
+| [P2-CRIT-01](reviews/review-2026-09-25.md#p2-crit-01--get-apiqueue-performs-mutating-poller-work) | `GET /api/queue` performs mutating poller work | **done** R2 / 0.5.6 |
 
 ### High
 
@@ -125,8 +125,8 @@ Full write-up: [reviews/review-2026-09-25.md](reviews/review-2026-09-25.md). Shi
 | [P1-HIGH-01](reviews/review-2026-09-25.md#p1-high-01--router-split-still-coupled-through-star-import-bag) | Star-import `route_imports` hub | R3 |
 | [P1-HIGH-02](reviews/review-2026-09-25.md#p1-high-02--public_work-bleeds-storage-engine-fields-into-the-api) | `public_work` bleeds storage fields | R3 |
 | [P4-HIGH-01](reviews/review-2026-09-25.md#p4-high-01--filesystem-paths-disclosed-to-every-household-role) | Filesystem paths disclosed to every role | R3 |
-| [P2-HIGH-01](reviews/review-2026-09-25.md#p2-high-01--per-request-sqlite-connect-storm-in-auth-gate--api) | Per-request SQLite connect storm in auth gate | R2 |
-| [P2-HIGH-02](reviews/review-2026-09-25.md#p2-high-02--maintain-dock-keeps-four-idle-progress-polls-forever) | Maintain dock four forever idle polls | R2 |
+| [P2-HIGH-01](reviews/review-2026-09-25.md#p2-high-01--per-request-sqlite-connect-storm-in-auth-gate--api) | Per-request SQLite connect storm in auth gate | **done** R2 / 0.5.6 |
+| [P2-HIGH-02](reviews/review-2026-09-25.md#p2-high-02--maintain-dock-keeps-four-idle-progress-polls-forever) | Maintain dock four forever idle polls | **done** R2 / 0.5.6 |
 
 Medium findings stay in the review doc; pick up opportunistically inside R\* lanes when they touch the same files.
 

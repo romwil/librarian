@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [0.5.6] — 2026-09-27
+
+### Highlights
+
+- **Queue and dock calm.** `GET /api/queue` is read-only again — watch/RSS/SAB work stays on `JobPoller` (and optional `POST /api/queue/tick`). Maintain’s telemetry dock idles slower and pauses when the tab is hidden; auth gate caches `owner_ready` so idle polls stop thrashing SQLite.
+
+### Fixed
+
+- **Queue GET side effects (P2-CRIT-01).** Listing jobs no longer runs `poll_watch_folder` / `poll_rss_feeds` / `poll_active_jobs`.
+- **Maintain dock idle polls (P2-HIGH-02).** Four progress hooks use a 15s idle cadence and pause on `document.visibilityState === "hidden"`.
+- **Auth-gate connect calm (P2-HIGH-01).** `app.state.owner_ready` caches after seed so authenticated requests skip repeated `owner_count` connects.
+
 ## [0.5.5] — 2026-09-27
 
 ### Highlights

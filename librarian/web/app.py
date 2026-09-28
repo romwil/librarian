@@ -73,6 +73,8 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
     )
     app.state.data_dir = root
     app.state.db = db
+    # P2-HIGH-01: avoid has_real_owner SQLite connects on every authenticated request.
+    app.state.owner_ready = has_real_owner(db)
     enrich_job = BackgroundJobSlot()
     scan_job = BackgroundJobSlot()
     ingest_job = BackgroundJobSlot()
@@ -105,7 +107,9 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             return await call_next(request)
         if is_public_handshake(method, path):
             return await call_next(request)
-        if not has_real_owner(db) and path.startswith("/api/"):
+        if not getattr(app.state, "owner_ready", False):
+            app.state.owner_ready = has_real_owner(db)
+        if not app.state.owner_ready:
             return JSONResponse({"detail": "Owner has not been seeded"}, status_code=503)
         user = user_from_request(request, db)
         if user is None:
