@@ -47,11 +47,16 @@ def register_auth_routes(app: FastAPI, deps: WebDeps) -> None:
 
     @app.get("/api/health")
     def health() -> Dict[str, Any]:
+        from librarian.whats_new_truth import notes_match_runtime, read_notes_tip_version
+
+        notes_version = read_notes_tip_version(root)
         return {
             "status": "ok",
             "ok": True,
             "version": __version__,
             "build": _read_build_info(),
+            "notes_version": notes_version,
+            "notes_match": notes_match_runtime(runtime=__version__, notes_version=notes_version),
         }
 
     @app.get("/api/features")

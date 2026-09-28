@@ -82,6 +82,20 @@ export function findReleaseByVersion(releases, version) {
   return normalizeReleaseNotes(releases).find((item) => item.version === target) || null;
 }
 
+/**
+ * Exact version match only — never fall back to a newer/older story.
+ * What’s New that never lies.
+ */
+export function truthfulReleaseForVersion(releases, version) {
+  return findReleaseByVersion(releases, version);
+}
+
+export function notesMatchRuntime(runtimeVersion, notesVersion) {
+  const runtime = String(runtimeVersion || "").trim();
+  const notes = String(notesVersion || "").trim();
+  return Boolean(runtime) && runtime === notes;
+}
+
 /** Max version chips in the Settings jump rail before switching to a picker. */
 export const RELEASE_JUMP_RECENT_LIMIT = 10;
 

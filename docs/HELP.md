@@ -34,7 +34,7 @@ Optional Audiobookshelf URL and token (`AUDIOBOOKSHELF_URL` / `AUDIOBOOKSHELF_AP
 
 ## The Hall
 
-After sign-in you land on **The Hall**, not Settings. The hero is search (the stacks, not “then the world”). Rails below: **Continue** (volumes you opened), What’s New, Favorites, Books, Magazines, Comics, Audiobooks, Incoming Music. Owners and ops also see a **Gaps** rail. Opening a work leaves a bookmark on Continue; **Finished** means you have read it and clears that bookmark. Finished is not a download status. Audiobook Listen writes the same Continue progress (file + seconds), so in-progress listens sit on the Continue rail beside books. The lamp keeps the page across remounts and Audiobookshelf sync.
+After sign-in you land on **The Hall**, not Settings. The hero is search (the stacks, not “then the world”). Rails below: **Continue** (volumes you opened), What’s New, Favorites, **Named shelves** (shareable household collections), Books, Magazines, Comics, Audiobooks, Incoming Music. Owners and ops also see a **Gaps** rail. Opening a work leaves a bookmark on Continue; **Finished** means you have read it and clears that bookmark. Finished is not a download status. Audiobook Listen writes the same Continue progress (file + seconds), so in-progress listens sit on the Continue rail beside books. The lamp keeps the page across remounts and Audiobookshelf sync.
 
 Chrome stays Hall / Search / Favorites / You. Queue and Review are op links, not extra tabs.
 

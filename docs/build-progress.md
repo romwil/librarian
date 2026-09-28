@@ -6,6 +6,7 @@ Plan: [librarian_automat_rss](file:///Users/willrompala/.cursor/plans/librarian_
 
 ## Shipped
 
+- **2026-09-27** — Sprint **D6** `whats-new-truth` + `named-shelves` → **0.5.13**: Honest What’s New tip; named household shelves.
 - **2026-09-27** — Sprint **D5** `safe-undo-grooming` + `peek-that-teaches` → **0.5.12**: Safe undo for last tend; peek teaches honest empty.
 - **2026-09-27** — Sprint **D4** `indexer-scorecard` + `listen-that-remembers` → **0.5.11**: Find lanterns + mute; Listen keeps the page.
 - **2026-09-27** — Sprint **D3** `shelf-health-score` + `reading-room-calm` → **0.5.10**: Shelf pulse weather + one tend; reading room calm chrome for long sessions.

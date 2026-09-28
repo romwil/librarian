@@ -210,3 +210,12 @@ class LlmListChasePayload(BaseModel):
     items: List[LlmListChaseItem] = []
 
 
+class NamedShelfPayload(BaseModel):
+    name: str
+    shared: bool = False
+
+
+class NamedShelfSharePayload(BaseModel):
+    shared: bool = True
+
+

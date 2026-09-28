@@ -2,17 +2,19 @@ import { useEffect, useState } from "react";
 import { api } from "../api.js";
 import {
   fetchReleaseNotes,
-  findReleaseByVersion,
   getLastSeenVersion,
   normalizeReleaseNotes,
   setLastSeenVersion,
   shouldShowWhatsNew,
+  truthfulReleaseForVersion,
 } from "../lib/releaseNotes.js";
 import WhatsNewModal from "./WhatsNewModal.jsx";
 
 /**
  * Compares runtime /api/health version to localStorage last-seen.
  * Shows What’s New when last-seen is missing or older than runtime.
+ * Notes only render when release-notes.json has an exact version match —
+ * never a newer/older story that would lie about this deploy.
  * Dismiss / Read full notes persist last-seen = runtime (no silent seed).
  */
 export default function WhatsNewGate() {
@@ -36,7 +38,7 @@ export default function WhatsNewGate() {
         try {
           const payload = await fetchReleaseNotes();
           const releases = normalizeReleaseNotes(payload);
-          matched = findReleaseByVersion(releases, runtimeVersion) || releases[0] || null;
+          matched = truthfulReleaseForVersion(releases, runtimeVersion);
         } catch {
           matched = null;
         }

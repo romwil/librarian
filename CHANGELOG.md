@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.5.13] — 2026-09-27
+
+### Highlights
+
+- **What’s New that never lies.** The upgrade lamp only tells the story for this exact version — no borrowed notes from another tip — and a lockstep verify script keeps packages honest. Why this feels alive: the house always has a true story when the version changes.
+- **Named household shelves.** Beyond Favorites, name living collections (“Beach,” “Kids comics”) and share them with the house. Why this feels alive: shelves feel like corners of a home, not a private checkbox.
+
+### Added
+
+- **`scripts/verify-release-truth.sh`** + `librarian.whats_new_truth` (version lockstep + exact tip match).
+- **Health `notes_version` / `notes_match`** so What’s New can refuse a lying story.
+- **Named shelves API** (`GET/POST /api/shelves`, share / add / remove) + Hall create chrome.
+
 ## [0.5.12] — 2026-09-27
 
 ### Highlights

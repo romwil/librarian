@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useOutletContext } from "react-router-dom";
 import { api } from "../api.js";
 import { browseHref, kindShelfTotalLine } from "../browse.js";
+import NamedShelves from "../components/NamedShelves.jsx";
 import Rail from "../components/Rail.jsx";
 import SeriesCatchUp from "../components/SeriesCatchUp.jsx";
 import TonightShelf from "../components/TonightShelf.jsx";
@@ -14,6 +15,7 @@ function HallShelves({ role, owner, configured, lampPeriod }) {
   const [hall, setHall] = useState(null);
   const [phase, setPhase] = useState("loading");
   const [loadError, setLoadError] = useState("");
+  const [reloadToken, setReloadToken] = useState(0);
   const empty = emptyHallCopy({ owner, configured });
   const counts = hall?.kind_counts || {};
   const welcome =
@@ -52,7 +54,7 @@ function HallShelves({ role, owner, configured, lampPeriod }) {
       window.cancelAnimationFrame(raf);
       window.clearTimeout(timeoutId);
     };
-  }, []);
+  }, [reloadToken]);
 
   if (phase === "loading") {
     return (
@@ -104,6 +106,11 @@ function HallShelves({ role, owner, configured, lampPeriod }) {
       />
       <Rail title="What’s New" kicker="Recently organized" items={hall?.whats_new} />
       <Rail title="Favorites" items={hall?.favorites} seeAllTo={browseHref({ shelf: "favorites" })} />
+      <NamedShelves
+        shelves={hall?.named_shelves}
+        presence={hall?.named_shelves_presence}
+        onChanged={() => setReloadToken((value) => value + 1)}
+      />
       <Rail
         title="Books"
         kicker={kindShelfTotalLine("book", counts.book) || undefined}

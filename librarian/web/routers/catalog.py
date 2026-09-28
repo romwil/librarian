@@ -32,7 +32,6 @@ from librarian.delight import (
     series_ribbon,
     tonight_shelf,
 )
-from librarian.notifications import fan_out_notifications
 from librarian.enrich import (
     apply_audnexus_match,
     apply_comicvine_match,
@@ -62,6 +61,12 @@ from librarian.kinds import ALL_KINDS, EXTRA_KINDS
 from librarian.komga import komga_payload
 from librarian.listen import extract_chapters, listen_payload, split_continue_rails
 from librarian.lists import chase_missing_items, curated_list_payload, list_presets
+from librarian.named_shelves import (
+    MAX_SHELF_WORKS_RAIL,
+    public_shelf,
+    shelf_presence,
+)
+from librarian.notifications import fan_out_notifications
 from librarian.nyt_books import (
     NytBooksClient,
     NytBooksError,
@@ -98,6 +103,8 @@ from librarian.web.schemas import (
     FinishSetEtaPayload,
     LlmListChasePayload,
     LlmListPayload,
+    NamedShelfPayload,
+    NamedShelfSharePayload,
     PrefsPayload,
     ProgressPayload,
     RequestPayload,
@@ -164,9 +171,23 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
             gaps=gaps,
             surprise=surprise,
         )
+        named_rows = db.list_named_shelves(user["id"], include_shared=True)
+        named_shelves = []
+        for row in named_rows:
+            meta = public_shelf(row, work_count=db.shelf_work_count(row["id"]))
+            if not meta:
+                continue
+            named_shelves.append(
+                {
+                    **meta,
+                    "works": public_works(db.shelf_works(row["id"], limit=MAX_SHELF_WORKS_RAIL)),
+                }
+            )
         return {
             "whats_new": public_works(recent),
             "favorites": public_works(favorites),
+            "named_shelves": named_shelves,
+            "named_shelves_presence": shelf_presence(named_shelves),
             "areas": {key: public_works(value) for key, value in areas.items()},
             "gaps": gaps,
             "series_catch_up": catch_up,
@@ -274,19 +295,30 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
     ):
         user = request.state.user
         kind_key = kind if kind in ALL_KINDS else None
-        shelf_key = "favorites" if str(shelf or "").strip().lower() == "favorites" else None
-        page = db.browse_works(
-            kind=kind_key,
-            author=author.strip() or None,
-            letter=letter.strip() or None,
-            series=series.strip() or None,
-            genre=genre.strip() or None,
-            shelf=shelf_key,
-            user_id=user["id"] if shelf_key else None,
-            sort=sort,
-            offset=offset,
-            limit=limit,
-        )
+        raw_shelf = str(shelf or "").strip()
+        shelf_key = None
+        if raw_shelf.lower() == "favorites":
+            shelf_key = "favorites"
+        elif raw_shelf:
+            shelf_row = db.get_shelf(raw_shelf)
+            if not shelf_row or not db.user_can_view_shelf(shelf_row, user["id"]):
+                raise HTTPException(status_code=404, detail="Shelf not found")
+            shelf_key = shelf_row["id"]
+        try:
+            page = db.browse_works(
+                kind=kind_key,
+                author=author.strip() or None,
+                letter=letter.strip() or None,
+                series=series.strip() or None,
+                genre=genre.strip() or None,
+                shelf=shelf_key,
+                user_id=user["id"] if shelf_key else None,
+                sort=sort,
+                offset=offset,
+                limit=limit,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
         return {
             "items": public_works(page["items"]),
             "total": page["total"],
@@ -615,6 +647,72 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
             raise HTTPException(status_code=404, detail="Work not found")
         on = db.toggle_favorite(request.state.user["id"], work_id)
         return {"favorite": on}
+
+    @app.get("/api/shelves")
+    def list_shelves(request: Request):
+        require_role(request.state.user, "owner", "op", "reader")
+        user = request.state.user
+        rows = db.list_named_shelves(user["id"], include_shared=True)
+        shelves = []
+        for row in rows:
+            meta = public_shelf(row, work_count=db.shelf_work_count(row["id"]))
+            if meta:
+                shelves.append(meta)
+        return {"shelves": shelves, "presence": shelf_presence(shelves)}
+
+    @app.post("/api/shelves")
+    def create_shelf(payload: NamedShelfPayload, request: Request):
+        require_role(request.state.user, "owner", "op", "reader")
+        try:
+            shelf = db.create_named_shelf(
+                request.state.user["id"],
+                payload.name,
+                shared=bool(payload.shared),
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        meta = public_shelf(shelf, work_count=0)
+        return {"shelf": meta, "presence": shelf_presence(db.list_named_shelves(request.state.user["id"]))}
+
+    @app.post("/api/shelves/{shelf_id}/share")
+    def share_shelf(shelf_id: str, payload: NamedShelfSharePayload, request: Request):
+        require_role(request.state.user, "owner", "op", "reader")
+        try:
+            shelf = db.set_shelf_shared(shelf_id, request.state.user["id"], shared=bool(payload.shared))
+        except ValueError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        return {"shelf": public_shelf(shelf, work_count=db.shelf_work_count(shelf_id))}
+
+    @app.delete("/api/shelves/{shelf_id}")
+    def delete_shelf(shelf_id: str, request: Request):
+        require_role(request.state.user, "owner", "op", "reader")
+        try:
+            removed = db.delete_named_shelf(shelf_id, request.state.user["id"])
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        if not removed:
+            raise HTTPException(status_code=404, detail="Shelf not found")
+        return {"ok": True}
+
+    @app.post("/api/shelves/{shelf_id}/works/{work_id}")
+    def add_shelf_work(shelf_id: str, work_id: str, request: Request):
+        require_role(request.state.user, "owner", "op", "reader")
+        if db.get_work(work_id) is None:
+            raise HTTPException(status_code=404, detail="Work not found")
+        try:
+            added = db.add_to_named_shelf(shelf_id, request.state.user["id"], work_id)
+        except ValueError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        return {"on_shelf": True, "added": added}
+
+    @app.delete("/api/shelves/{shelf_id}/works/{work_id}")
+    def remove_shelf_work(shelf_id: str, work_id: str, request: Request):
+        require_role(request.state.user, "owner", "op", "reader")
+        try:
+            removed = db.remove_from_named_shelf(shelf_id, request.state.user["id"], work_id)
+        except ValueError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        return {"on_shelf": False, "removed": removed}
 
     @app.get("/api/works/{work_id}/whispers")
     def work_whispers(work_id: str, request: Request):

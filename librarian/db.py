@@ -139,6 +139,7 @@ CREATE TABLE IF NOT EXISTS shelves (
     name TEXT NOT NULL,
     owner_user_id TEXT NOT NULL,
     created_at REAL NOT NULL,
+    shared INTEGER NOT NULL DEFAULT 0,
     UNIQUE(name, owner_user_id)
 );
 CREATE TABLE IF NOT EXISTS shelf_items (
@@ -328,6 +329,12 @@ def _ensure_file_columns(conn: sqlite3.Connection) -> None:
             conn.execute(f"ALTER TABLE files ADD COLUMN {name} {decl}")
 
 
+def _ensure_shelf_columns(conn: sqlite3.Connection) -> None:
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(shelves)").fetchall()}
+    if "shared" not in existing:
+        conn.execute("ALTER TABLE shelves ADD COLUMN shared INTEGER NOT NULL DEFAULT 0")
+
+
 class Database:
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
@@ -339,6 +346,7 @@ class Database:
                 _ensure_job_columns(conn)
                 _ensure_work_columns(conn)
                 _ensure_file_columns(conn)
+                _ensure_shelf_columns(conn)
         except Exception:
             self._write_serializer.shutdown(timeout=5.0)
             raise
@@ -1088,10 +1096,21 @@ class Database:
         clauses = ["1=1"]
         args: List[Any] = []
         from_sql = "works w"
-        if shelf == "favorites":
+        shelf_key = str(shelf or "").strip()
+        if shelf_key == "favorites":
             if not user_id:
                 raise ValueError("user_id required for favorites shelf")
             shelf_row = self.favorites_shelf(user_id)
+            from_sql = "shelf_items s JOIN works w ON w.id = s.work_id"
+            clauses.append("s.shelf_id = ?")
+            args.append(shelf_row["id"])
+        elif shelf_key and shelf_key != "favorites":
+            # Named household shelf id (hex). Caller enforces visibility.
+            if not user_id:
+                raise ValueError("user_id required for named shelf")
+            shelf_row = self.get_shelf(shelf_key)
+            if not shelf_row or not self.user_can_view_shelf(shelf_row, user_id):
+                raise ValueError("Shelf not found")
             from_sql = "shelf_items s JOIN works w ON w.id = s.work_id"
             clauses.append("s.shelf_id = ?")
             args.append(shelf_row["id"])
@@ -1146,7 +1165,8 @@ class Database:
             order_sql = "w.updated_at DESC, w.title COLLATE NOCASE ASC"
         else:
             order_sql = "w.author COLLATE NOCASE ASC, w.title COLLATE NOCASE ASC"
-        if shelf == "favorites" and sort_key == "updated":
+        shelf_key = str(shelf or "").strip()
+        if shelf_key and sort_key == "updated":
             order_sql = "s.added_at DESC, w.title COLLATE NOCASE ASC"
 
         from_sql, where_sql, args = self._browse_base(
@@ -1796,6 +1816,200 @@ class Database:
                 (shelf["id"], int(limit)),
             ).fetchall()
         return [_row_dict(row) or {} for row in rows]
+
+    def get_shelf(self, shelf_id: str) -> Optional[Dict[str, Any]]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM shelves WHERE id = ?", (shelf_id,)).fetchone()
+        return _row_dict(row)
+
+    def list_named_shelves(self, user_id: str, *, include_shared: bool = True) -> List[Dict[str, Any]]:
+        """Personal named shelves (+ household-shared ones when requested). Favorites excluded."""
+        uid = str(user_id or "").strip()
+        if not uid:
+            return []
+        with self._connect() as conn:
+            if include_shared:
+                rows = conn.execute(
+                    """
+                    SELECT * FROM shelves
+                    WHERE name != ?
+                      AND (owner_user_id = ? OR shared = 1)
+                    ORDER BY shared DESC, lower(name) ASC, created_at ASC
+                    """,
+                    (FAVORITES_SHELF, uid),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT * FROM shelves
+                    WHERE name != ? AND owner_user_id = ?
+                    ORDER BY lower(name) ASC, created_at ASC
+                    """,
+                    (FAVORITES_SHELF, uid),
+                ).fetchall()
+        return [_row_dict(row) or {} for row in rows]
+
+    def create_named_shelf(
+        self,
+        user_id: str,
+        name: str,
+        *,
+        shared: bool = False,
+    ) -> Dict[str, Any]:
+        from librarian.named_shelves import (
+            MAX_NAMED_SHELVES_PER_USER,
+            normalize_shelf_name,
+            shelf_name_ok,
+        )
+
+        uid = str(user_id or "").strip()
+        cleaned = normalize_shelf_name(name)
+        if not uid or not shelf_name_ok(cleaned):
+            raise ValueError("Shelf needs a warm name that isn’t Favorites.")
+        owned = self.list_named_shelves(uid, include_shared=False)
+        if len(owned) >= MAX_NAMED_SHELVES_PER_USER:
+            raise ValueError("The house already keeps enough named shelves.")
+        for row in owned:
+            if str(row.get("name") or "").casefold() == cleaned.casefold():
+                raise ValueError("That shelf name is already on the wall.")
+        now = time.time()
+        shelf_id = uuid.uuid4().hex
+
+        def _write() -> Any:
+            with self._connect() as conn:
+                conn.execute(
+                    "INSERT INTO shelves (id, name, owner_user_id, created_at, shared) VALUES (?, ?, ?, ?, ?)",
+                    (shelf_id, cleaned, uid, now, 1 if shared else 0),
+                )
+
+        self.run_write(_write, label="create_named_shelf")
+        return {
+            "id": shelf_id,
+            "name": cleaned,
+            "owner_user_id": uid,
+            "created_at": now,
+            "shared": bool(shared),
+        }
+
+    def set_shelf_shared(self, shelf_id: str, user_id: str, *, shared: bool) -> Dict[str, Any]:
+        shelf = self.get_shelf(shelf_id)
+        if not shelf or str(shelf.get("owner_user_id") or "") != str(user_id or ""):
+            raise ValueError("Shelf not found")
+        if str(shelf.get("name") or "") == FAVORITES_SHELF:
+            raise ValueError("Favorites stays personal.")
+
+        def _write() -> Any:
+            with self._connect() as conn:
+                conn.execute(
+                    "UPDATE shelves SET shared = ? WHERE id = ?",
+                    (1 if shared else 0, shelf_id),
+                )
+
+        self.run_write(_write, label="set_shelf_shared")
+        shelf["shared"] = bool(shared)
+        return shelf
+
+    def delete_named_shelf(self, shelf_id: str, user_id: str) -> bool:
+        shelf = self.get_shelf(shelf_id)
+        if not shelf or str(shelf.get("owner_user_id") or "") != str(user_id or ""):
+            return False
+        if str(shelf.get("name") or "") == FAVORITES_SHELF:
+            raise ValueError("Favorites cannot be removed.")
+
+        def _write() -> Any:
+            with self._connect() as conn:
+                conn.execute("DELETE FROM shelf_items WHERE shelf_id = ?", (shelf_id,))
+                conn.execute("DELETE FROM shelves WHERE id = ?", (shelf_id,))
+
+        self.run_write(_write, label="delete_named_shelf")
+        return True
+
+    def shelf_work_count(self, shelf_id: str) -> int:
+        with self._connect() as conn:
+            row = conn.execute(
+                f"""
+                SELECT COUNT(*) AS n FROM shelf_items s
+                JOIN works w ON w.id = s.work_id
+                WHERE s.shelf_id = ?
+                  AND {self._HAS_FILES_SQL.format(alias="w")}
+                """,
+                (shelf_id,),
+            ).fetchone()
+        return int(row["n"] if row else 0)
+
+    def shelf_works(self, shelf_id: str, *, limit: int = 24) -> List[Dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT w.* FROM shelf_items s
+                JOIN works w ON w.id = s.work_id
+                WHERE s.shelf_id = ?
+                  AND {self._HAS_FILES_SQL.format(alias="w")}
+                ORDER BY s.added_at DESC
+                LIMIT ?
+                """,
+                (shelf_id, int(limit)),
+            ).fetchall()
+        return [_row_dict(row) or {} for row in rows]
+
+    def add_to_named_shelf(self, shelf_id: str, user_id: str, work_id: str) -> bool:
+        shelf = self._shelf_writable(shelf_id, user_id)
+        if self.is_on_shelf(shelf_id, work_id):
+            return False
+
+        def _write() -> Any:
+            with self._connect() as conn:
+                conn.execute(
+                    "INSERT OR IGNORE INTO shelf_items (shelf_id, work_id, added_at) VALUES (?, ?, ?)",
+                    (shelf["id"], work_id, time.time()),
+                )
+
+        self.run_write(_write, label="add_to_named_shelf")
+        return True
+
+    def remove_from_named_shelf(self, shelf_id: str, user_id: str, work_id: str) -> bool:
+        shelf = self._shelf_writable(shelf_id, user_id)
+        if not self.is_on_shelf(shelf["id"], work_id):
+            return False
+
+        def _write() -> Any:
+            with self._connect() as conn:
+                conn.execute(
+                    "DELETE FROM shelf_items WHERE shelf_id = ? AND work_id = ?",
+                    (shelf["id"], work_id),
+                )
+
+        self.run_write(_write, label="remove_from_named_shelf")
+        return True
+
+    def is_on_shelf(self, shelf_id: str, work_id: str) -> bool:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM shelf_items WHERE shelf_id = ? AND work_id = ?",
+                (shelf_id, work_id),
+            ).fetchone()
+        return row is not None
+
+    def _shelf_writable(self, shelf_id: str, user_id: str) -> Dict[str, Any]:
+        shelf = self.get_shelf(shelf_id)
+        if not shelf:
+            raise ValueError("Shelf not found")
+        if str(shelf.get("name") or "") == FAVORITES_SHELF:
+            raise ValueError("Use Favorites for that shelf.")
+        owner = str(shelf.get("owner_user_id") or "")
+        uid = str(user_id or "")
+        shared = bool(int(shelf.get("shared") or 0))
+        if owner != uid and not shared:
+            raise ValueError("Shelf not found")
+        # Shared shelves: any household member may tend items; rename/delete stay owner-only.
+        return shelf
+
+    def user_can_view_shelf(self, shelf: Mapping[str, Any], user_id: str) -> bool:
+        if not shelf:
+            return False
+        if str(shelf.get("owner_user_id") or "") == str(user_id or ""):
+            return True
+        return bool(int(shelf.get("shared") or 0))
 
     def upsert_progress(
         self,

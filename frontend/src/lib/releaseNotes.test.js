@@ -13,6 +13,8 @@ import {
   plainChangelogText,
   setLastSeenVersion,
   shouldShowWhatsNew,
+  truthfulReleaseForVersion,
+  notesMatchRuntime,
 } from "./releaseNotes.js";
 
 test("compareSemver orders patch/minor/major", () => {
@@ -68,6 +70,18 @@ test("pickLatestRelease and findReleaseByVersion", () => {
   assert.equal(pickLatestRelease(releases).version, "0.1.2");
   assert.equal(findReleaseByVersion(releases, "0.1.1").version, "0.1.1");
   assert.equal(findReleaseByVersion(releases, "9.9.9"), null);
+});
+
+test("truthfulReleaseForVersion never falls back to a different tip", () => {
+  const releases = [
+    { version: "0.5.12", highlights: ["safe undo"] },
+    { version: "0.5.11", highlights: ["lanterns"] },
+  ];
+  assert.equal(truthfulReleaseForVersion(releases, "0.5.12").version, "0.5.12");
+  assert.equal(truthfulReleaseForVersion(releases, "0.5.13"), null);
+  assert.equal(truthfulReleaseForVersion(releases, ""), null);
+  assert.equal(notesMatchRuntime("0.5.12", "0.5.12"), true);
+  assert.equal(notesMatchRuntime("0.5.12", "0.5.11"), false);
 });
 
 test("plainChangelogText strips light markdown", () => {

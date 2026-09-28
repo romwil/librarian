@@ -80,6 +80,19 @@ export const api = {
     request(`/settings/suggest-cache${external ? "?external=1" : ""}`, { method: "POST" }),
   work: (id) => request(`/works/${id}`),
   favorite: (id) => request(`/works/${id}/favorite`, { method: "POST" }),
+  shelves: () => request("/shelves"),
+  createShelf: (name, { shared = true } = {}) =>
+    request("/shelves", { method: "POST", body: JSON.stringify({ name, shared: Boolean(shared) }) }),
+  shareShelf: (id, shared = true) =>
+    request(`/shelves/${encodeURIComponent(id)}/share`, {
+      method: "POST",
+      body: JSON.stringify({ shared: Boolean(shared) }),
+    }),
+  deleteShelf: (id) => request(`/shelves/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  addToShelf: (shelfId, workId) =>
+    request(`/shelves/${encodeURIComponent(shelfId)}/works/${encodeURIComponent(workId)}`, { method: "POST" }),
+  removeFromShelf: (shelfId, workId) =>
+    request(`/shelves/${encodeURIComponent(shelfId)}/works/${encodeURIComponent(workId)}`, { method: "DELETE" }),
   requestItem: (item) => request("/request", { method: "POST", body: JSON.stringify(item) }),
   review: () => request("/review"),
   reviewApply: (id, body) => request(`/review/${id}/apply`, { method: "POST", body: JSON.stringify(body) }),
