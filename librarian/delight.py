@@ -645,6 +645,29 @@ def sanitize_whisper(body: object) -> str:
     return text
 
 
+def progress_already_finished(progress: Optional[Mapping[str, Any]]) -> bool:
+    """True when a progress row already counts as Finished (fraction ≈ 1)."""
+    if not progress:
+        return False
+    try:
+        return float(progress.get("fraction") or 0) >= 0.999
+    except (TypeError, ValueError):
+        return False
+
+
+def finished_notice_copy(
+    *,
+    finisher_name: object = "",
+    work_title: object = "",
+    whisper_body: object = "",
+) -> Dict[str, str]:
+    """Quiet title/body for ``someone_finished`` household notices."""
+    who = str(finisher_name or "").strip() or "Someone"
+    title = str(work_title or "").strip() or "a title"
+    note = sanitize_whisper(whisper_body)
+    return {"title": f"{who} finished {title}", "body": note}
+
+
 def _as_int(value: object) -> Optional[int]:
     try:
         if value is None or value == "":

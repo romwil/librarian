@@ -20,16 +20,19 @@ from librarian.delight import (
     celebration_candidates,
     estimate_finish_eta_minutes,
     finish_set_label,
+    finished_notice_copy,
     in_quiet_hours,
     normalize_ambient,
     normalize_ui_font_step,
     normalize_ui_theme,
     plexamp_handoff,
+    progress_already_finished,
     sanitize_whisper,
     series_catch_up,
     series_ribbon,
     tonight_shelf,
 )
+from librarian.notifications import fan_out_notifications
 from librarian.enrich import (
     apply_audnexus_match,
     apply_comicvine_match,
@@ -711,9 +714,11 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
     @app.post("/api/works/{work_id}/progress")
     def touch_progress(work_id: str, payload: ProgressPayload, request: Request):
         require_role(request.state.user, "owner", "op", "reader")
-        if db.get_work(work_id) is None:
+        work = db.get_work(work_id)
+        if work is None:
             raise HTTPException(status_code=404, detail="Work not found")
         existing = db.get_progress(request.state.user["id"], work_id)
+        already_finished = progress_already_finished(existing)
         if payload.finished:
             fraction = 1.0
         elif payload.fraction is not None:
@@ -729,7 +734,44 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
             position=str(position),
             fraction=fraction,
         )
-        work = db.get_work(work_id)
+        whisper_row = None
+        whisper_text = ""
+        if payload.finished and payload.whisper is not None:
+            whisper_text = sanitize_whisper(payload.whisper)
+            if whisper_text:
+                whisper_row = db.add_whisper(
+                    work_id=work_id,
+                    user_id=request.state.user["id"],
+                    body=whisper_text,
+                )
+        # Beautiful Finished: first transition to Finished whispers the household
+        # (optional note rides along). Re-finish does not re-notify.
+        if payload.finished and not already_finished:
+            notice = finished_notice_copy(
+                finisher_name=request.state.user.get("display_name") or "",
+                work_title=work.get("title") or "",
+                whisper_body=whisper_text,
+            )
+            others = [
+                str(u["id"])
+                for u in db.list_users()
+                if str(u.get("id") or "") and str(u["id"]) != str(request.state.user["id"])
+            ]
+            if others:
+                try:
+                    fan_out_notifications(
+                        db,
+                        settings(),
+                        user_ids=others,
+                        kind="someone_finished",
+                        title=notice["title"],
+                        body=notice["body"] or None,
+                        payload={"work_id": work_id, "path": f"/works/{work_id}"},
+                        from_user_id=str(request.state.user["id"]),
+                        related_id=work_id,
+                    )
+                except Exception:  # noqa: BLE001 — fail-soft household whisper
+                    logger.exception("someone_finished fan-out failed for %s", work_id)
         if (
             work
             and str(work.get("kind") or "") == "audiobook"
@@ -748,7 +790,11 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
                 )
             except Exception:  # noqa: BLE001 — fail-soft ABS federation
                 pass
-        return {"progress": row}
+        out: Dict[str, Any] = {"progress": row}
+        if whisper_row is not None:
+            out["whisper"] = whisper_row
+            out["whispers"] = db.list_whispers(work_id, limit=WHISPER_LIST_LIMIT)
+        return out
 
     @app.get("/api/works/{work_id}/cover")
     def work_cover(work_id: str, request: Request):

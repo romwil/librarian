@@ -47,7 +47,15 @@ export function welcomeBackCopy({ continueCount = 0, listeningCount = 0, period 
   return "Welcome back — something waits under the lamp.";
 }
 
-/** Soft finish ceremony line (Work page Finished). */
-export function finishRitualCopy() {
+/** Soft finish ceremony line (Work page Finished). Period-aware presence. */
+export function finishRitualCopy(period = "day") {
+  if (period === "dawn") return "The early lamp remembers.";
+  if (period === "dusk") return "The evening lamp remembers.";
+  if (period === "night") return "The night lamp remembers.";
   return "The lamp remembers.";
+}
+
+/** Invite line under the finish ceremony — optional household whisper. */
+export function finishWhisperInvite() {
+  return "Leave a quiet note for the house?";
 }

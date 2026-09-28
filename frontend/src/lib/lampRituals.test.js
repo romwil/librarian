@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   finishRitualCopy,
+  finishWhisperInvite,
   hallLampPeriod,
   hallLampPeriodLabel,
   welcomeBackCopy,
@@ -43,4 +44,12 @@ test("welcomeBackCopy greets when Continue waits", () => {
 
 test("finishRitualCopy is a quiet ceremony line", () => {
   assert.equal(finishRitualCopy(), "The lamp remembers.");
+  assert.equal(finishRitualCopy("dawn"), "The early lamp remembers.");
+  assert.equal(finishRitualCopy("dusk"), "The evening lamp remembers.");
+  assert.equal(finishRitualCopy("night"), "The night lamp remembers.");
+});
+
+test("finishWhisperInvite invites without surveillance", () => {
+  assert.match(finishWhisperInvite(), /quiet note/);
+  assert.doesNotMatch(finishWhisperInvite(), /feed|streak|badge|share/i);
 });

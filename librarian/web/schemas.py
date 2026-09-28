@@ -147,6 +147,8 @@ class ProgressPayload(BaseModel):
     position: str = ""
     fraction: Optional[float] = None
     finished: bool = False
+    # Optional household note when marking Finished (Beautiful Finished / D2).
+    whisper: Optional[str] = Field(default=None, max_length=280)
 
 
 class ConvertPayload(BaseModel):
@@ -160,7 +162,7 @@ class PrefsPayload(BaseModel):
 
 
 class WhisperPayload(BaseModel):
-    body: str
+    body: str = Field(..., max_length=280)
 
 
 class WorkMetadataPayload(BaseModel):

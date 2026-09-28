@@ -8,11 +8,15 @@ export const E2E_OWNER = {
 
 /** Dismiss What’s New if it appears after first login for this runtime version. */
 export async function dismissWhatsNewIfPresent(page: Page) {
-  const dialog = page.getByRole("dialog");
-  if (await dialog.isVisible().catch(() => false)) {
-    await dialog.getByRole("button", { name: "Got it" }).click();
-    await expect(dialog).toHaveCount(0);
+  // Gate loads release notes async — wait briefly so we do not race the backdrop.
+  const gotIt = page.getByRole("button", { name: "Got it" });
+  try {
+    await gotIt.waitFor({ state: "visible", timeout: 2500 });
+  } catch {
+    return;
   }
+  await gotIt.click();
+  await expect(gotIt).toHaveCount(0);
 }
 
 /** Log in as the seeded e2e owner and land on the Hall. */

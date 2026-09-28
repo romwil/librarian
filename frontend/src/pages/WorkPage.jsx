@@ -10,7 +10,7 @@ import { findHref, gapFindFields } from "../find.js";
 import { companionAudiobookView } from "../audiobookCompanion.js";
 import { isIncompleteOwnedPartSet, ownedPartSetStatusLine, partSetFindFields } from "../findParts.js";
 import { useAlbumPlayer } from "../hooks/useAlbumPlayer.js";
-import { finishRitualCopy } from "../lib/lampRituals.js";
+import { finishRitualCopy, finishWhisperInvite, hallLampPeriod } from "../lib/lampRituals.js";
 import { catchUpCtaLabel, catchUpInvitation, missingRibbonBeads } from "../lib/seriesCatchUp.js";
 import { canListenInApp, isAudioFile } from "../listen.js";
 import { canOpenInlineMedia, canReadInApp, readerCtaLabel, workDownloadUrl } from "../reader.js";
@@ -43,6 +43,9 @@ export default function WorkPage() {
   const [whisperBody, setWhisperBody] = useState("");
   const [whisperNote, setWhisperNote] = useState("");
   const [plexamp, setPlexamp] = useState(null);
+  const [finishCeremony, setFinishCeremony] = useState(false);
+  const [finishWhisper, setFinishWhisper] = useState("");
+  const [finishSaving, setFinishSaving] = useState(false);
   const [finishRitual, setFinishRitual] = useState(false);
   const album = useAlbumPlayer({
     workId: id,
@@ -187,13 +190,45 @@ export default function WorkPage() {
       )
     : "";
 
-  async function markFinished() {
+  function beginFinishCeremony() {
+    setFinishCeremony(true);
+    setFinishWhisper("");
+    setError("");
+  }
+
+  function cancelFinishCeremony() {
+    if (finishSaving) return;
+    setFinishCeremony(false);
+    setFinishWhisper("");
+  }
+
+  async function completeFinish({ withWhisper = false } = {}) {
+    if (!work?.id || finishSaving) return;
+    setFinishSaving(true);
+    setError("");
     try {
-      await api.progress(work.id, { finished: true });
+      const body = { finished: true };
+      if (withWhisper && finishWhisper.trim()) {
+        body.whisper = finishWhisper.trim();
+      }
+      const result = await api.progress(work.id, body);
+      setData((prev) => {
+        if (!prev) return prev;
+        const next = { ...prev, progress: result.progress || prev.progress };
+        if (result.whispers) next.whispers = result.whispers;
+        else if (result.whisper) {
+          next.whispers = [result.whisper, ...(prev.whispers || [])];
+        }
+        return next;
+      });
+      setFinishCeremony(false);
+      setFinishWhisper("");
       setFinishRitual(true);
-      window.setTimeout(() => setFinishRitual(false), 1800);
+      window.setTimeout(() => setFinishRitual(false), 2200);
     } catch (err) {
       setError(humanError(err));
+    } finally {
+      setFinishSaving(false);
     }
   }
 
@@ -474,8 +509,10 @@ export default function WorkPage() {
               <button
                 type="button"
                 className={`cta ghost compact${finishRitual ? " finish-ritual-active" : ""}`}
-                onClick={markFinished}
+                onClick={beginFinishCeremony}
                 data-testid="work-finished"
+                aria-expanded={finishCeremony}
+                disabled={finishCeremony || finishSaving}
               >
                 Finished
               </button>
@@ -504,9 +541,69 @@ export default function WorkPage() {
               Back to The Hall
             </Link>
           </div>
-          {finishRitual ? (
+          {finishCeremony ? (
+            <div
+              className="finish-ceremony"
+              data-testid="finish-ceremony"
+              role="region"
+              aria-label="Finished ceremony"
+            >
+              <p className="finish-ritual-note" data-testid="finish-ritual-note" role="status">
+                {finishRitualCopy(hallLampPeriod())}
+              </p>
+              <p className="finish-whisper-invite muted">{finishWhisperInvite()}</p>
+              <form
+                className="finish-ceremony-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  completeFinish({ withWhisper: true });
+                }}
+              >
+                <label className="sr-only" htmlFor="finish-whisper-body">
+                  Quiet note for the house
+                </label>
+                <input
+                  id="finish-whisper-body"
+                  value={finishWhisper}
+                  onChange={(e) => setFinishWhisper(e.target.value)}
+                  maxLength={280}
+                  placeholder="A soft word for the shelf…"
+                  disabled={finishSaving}
+                  data-testid="finish-whisper-input"
+                />
+                <div className="finish-ceremony-actions">
+                  <button
+                    type="submit"
+                    className="cta compact"
+                    disabled={finishSaving || !finishWhisper.trim()}
+                    data-testid="finish-whisper-submit"
+                  >
+                    Whisper to the house
+                  </button>
+                  <button
+                    type="button"
+                    className="cta ghost compact"
+                    disabled={finishSaving}
+                    onClick={() => completeFinish({ withWhisper: false })}
+                    data-testid="finish-just-finished"
+                  >
+                    Just finished
+                  </button>
+                  <button
+                    type="button"
+                    className="cta ghost compact"
+                    disabled={finishSaving}
+                    onClick={cancelFinishCeremony}
+                  >
+                    Not yet
+                  </button>
+                </div>
+              </form>
+            </div>
+          ) : null}
+          {finishRitual && !finishCeremony ? (
             <p className="finish-ritual-note" data-testid="finish-ritual-note" role="status">
-              {finishRitualCopy()}
+              {finishRitualCopy(hallLampPeriod())}
             </p>
           ) : null}
           {canListen && !playerLink?.href && playerNote ? (
