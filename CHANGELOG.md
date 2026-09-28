@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.5.5] — 2026-09-27
+
+### Highlights
+
+- **Security perimeter.** Unauthenticated SPA paths stay inside `FRONTEND_DIST`; Find-beyond and queue responses no longer leak indexer `api_token`/`apikey` or raw Newznab blobs; cover/download and organize preview are jailed under `/data` (plus owned cover cache); owner cover URLs are allowlisted against SSRF.
+
+### Security
+
+- **SPA catch-all jail (P3-CRIT-01).** `resolve()` + `relative_to(FRONTEND_DIST)` before serving static files.
+- **Public indexer scrub (P3-CRIT-02).** `librarian.indexers.scrub` strips secret query params and drops `raw`/`description` on search, discover, chase, and queue payloads.
+- **Media path jails (P3-HIGH-01/02).** Cover/download/stream use `confined_serve_path`; organize preview uses `confined_path` + protected-root refusal.
+- **Cover URL SSRF allowlist (P3-HIGH-03).** Manual `cover_url` must hit allowlisted hosts; redirects are re-validated hop-by-hop.
+
 ## [0.5.4] — 2026-09-27
 
 ### Highlights

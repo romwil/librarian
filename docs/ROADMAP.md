@@ -14,10 +14,10 @@ Active staged plan (agent pickup): `~/.cursor/plans/librarian_unified_recommend_
 | --- | --- |
 | **Date** | 2026-09-27 |
 | **Branch** | `main` |
-| **Version** | **0.5.4** |
-| **Arc** | Living-library Phases **0–5** complete through **0.5.2**; patches **0.5.3** (enrich Unknown Author) and **0.5.4** (clear notification email). |
+| **Version** | **0.5.5** |
+| **Arc** | Living-library Phases **0–5** complete; Phase R started — **R1** `security-perimeter` → **0.5.5**. |
 | **Green** | pytest coverage floor **70%**; frontend `npm test`; Playwright e2e on **8794**. LAN truth `http://10.10.1.202:8793`. |
-| **Next** | Remediation series **R1** `security-perimeter` → **0.5.5**, then R2 → R3 → D1 (see §3). |
+| **Next** | **R2** `queue-and-dock-calm` → **0.5.6**, then R3 → D1 (see §3). |
 | **Automat** | Host `./docker-run.sh` only. Hub `romwil/librarian` deferred. Never bind **8788 / 8790 / 8791 / 8792**. |
 
 ---
@@ -42,7 +42,7 @@ Active staged plan (agent pickup): `~/.cursor/plans/librarian_unified_recommend_
 | 5 | 5.2 | `smart-holds-desk` | 0.5.1 | done |
 | 5 | 5.3 | `lamp-rituals` | 0.5.2 | done |
 
-Full-build QA closed with 0.5.2. Patches: **0.5.3** enrich author placeholder; **0.5.4** notification email clear sticks.
+Full-build QA closed with 0.5.2. Patches: **0.5.3** enrich author placeholder; **0.5.4** notification email clear sticks. **R1** `security-perimeter` → **0.5.5**.
 
 ### Library-first kit (pre-arc, still true)
 
@@ -56,7 +56,7 @@ Remediation first (2026-09-25 review Critical/High), then Top-10 delight. Each s
 
 | Sprint | Feature | Version | Focus |
 | --- | --- | --- | --- |
-| **R1** | `security-perimeter` | **0.5.5** | SPA path jail (P3-CRIT-01); scrub indexer tokens / raw on Find-beyond + queue (P3-CRIT-02); cover/download + organize preview `/data` jails (P3-HIGH-01/02); cover URL SSRF allowlist (P3-HIGH-03) |
+| **R1** | `security-perimeter` | **0.5.5** | **done** — SPA jail; indexer scrub; cover/download + organize preview jails; cover URL SSRF allowlist |
 | **R2** | `queue-and-dock-calm` | **0.5.6** | `GET /api/queue` readonly — no mutating poller (P2-CRIT-01); Maintain dock idle-poll calm / multiplex + hidden-tab pause (P2-HIGH-02); auth-gate SQLite connect calm (P2-HIGH-01) |
 | **R3** | `api-boundary` | **0.5.7** | Allowlist `public_work` + admin serializer (P1-HIGH-02 / P4-HIGH-01); kill star-import `route_imports` hub (P1-HIGH-01); optional thin `catalog` split |
 | **D1** | `morning-brief` + `series-catch-up` | **0.5.8** | First post-arc Top-10 pair: owner morning Maintain desk + reader series invitation |
