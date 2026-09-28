@@ -14,6 +14,7 @@ import {
   ingestTallyLines,
 } from "../ingest.js";
 import { FieldLabel } from "./FieldHelp.jsx";
+import IngestPreviewMap from "./IngestPreviewMap.jsx";
 
 export default function AddToLibrary({ embedded = false } = {}) {
   const [path, setPath] = useState("");
@@ -24,14 +25,22 @@ export default function AddToLibrary({ embedded = false } = {}) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const pollRef = useRef(0);
   const parentRef = useRef(parent);
   const rootRef = useRef(root);
   parentRef.current = parent;
   rootRef.current = root;
 
+  function clearPreview() {
+    setPreview(null);
+    setPreviewLoading(false);
+  }
+
   function load(next = path) {
     setError("");
+    clearPreview();
     return api
       .fs(next)
       .then((data) => {
@@ -103,11 +112,28 @@ export default function AddToLibrary({ embedded = false } = {}) {
     };
   }, [busy]);
 
+  async function onLookFirst() {
+    if (!path || busy) return;
+    setPreviewLoading(true);
+    setError("");
+    setStatus("");
+    try {
+      const data = await api.ingestPreview(path);
+      setPreview(data);
+    } catch (err) {
+      clearPreview();
+      setError(humanError(err));
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
   async function onAdd() {
     if (!path) return;
     setBusy(true);
     setStatus("Scanning…");
     setError("");
+    clearPreview();
     setProgress({
       status: "running",
       phase: "scanning",
@@ -170,6 +196,8 @@ export default function AddToLibrary({ embedded = false } = {}) {
     ? ingestDisplayPath(progress.current_path || progress.source_path || "")
     : "";
   const recentLogs = showProgress && Array.isArray(progress.logs) ? progress.logs.slice(-6) : [];
+  const hasLooked = Boolean(preview) || previewLoading;
+  const addLabel = busy ? "Adding…" : hasLooked ? "Add these" : "Add";
 
   const progressPanel = showProgress ? (
     <section className="ingest-progress" data-testid="ingest-progress" aria-live="polite">
@@ -245,7 +273,10 @@ export default function AddToLibrary({ embedded = false } = {}) {
         <input
           id="ingest-path"
           value={path}
-          onChange={(event) => setPath(event.target.value)}
+          onChange={(event) => {
+            setPath(event.target.value);
+            clearPreview();
+          }}
           spellCheck={false}
         />
       </div>
@@ -262,7 +293,11 @@ export default function AddToLibrary({ embedded = false } = {}) {
             <button
               type="button"
               className={`fs-row${entry.path === path ? " is-on" : ""}`}
-              onClick={() => (entry.kind === "dir" ? load(entry.path) : setPath(entry.path))}
+              onClick={() => {
+                clearPreview();
+                if (entry.kind === "dir") load(entry.path);
+                else setPath(entry.path);
+              }}
             >
               <span className="muted">{entry.kind === "dir" ? "folder" : "file"}</span>
               {entry.name}
@@ -270,9 +305,26 @@ export default function AddToLibrary({ embedded = false } = {}) {
           </li>
         ))}
       </ul>
+      <IngestPreviewMap preview={preview} loading={previewLoading} />
       <div className="cta-row">
-        <button type="button" className="cta" disabled={busy || !path} onClick={onAdd}>
-          {busy ? "Adding…" : "Add"}
+        <button
+          type="button"
+          className="cta outline"
+          disabled={busy || previewLoading || !path}
+          aria-busy={previewLoading || undefined}
+          onClick={onLookFirst}
+          data-testid="ingest-look-first"
+        >
+          {previewLoading ? "Looking…" : "Look first"}
+        </button>
+        <button
+          type="button"
+          className="cta"
+          disabled={busy || !path}
+          onClick={onAdd}
+          data-testid="ingest-add"
+        >
+          {addLabel}
         </button>
       </div>
     </>

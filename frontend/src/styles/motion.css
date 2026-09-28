@@ -178,6 +178,31 @@
   animation: soft-enter var(--motion-settle) both;
 }
 
+
+/* Ingest preview — quiet map glow + twin breath */
+.ingest-preview-alive {
+  position: relative;
+  overflow: hidden;
+}
+
+.ingest-preview-glow {
+  position: absolute;
+  inset: -18% 12% auto;
+  height: 52%;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse at 50% 0%,
+    color-mix(in srgb, var(--lamp, #f0b85a) 32%, transparent),
+    transparent 72%
+  );
+  opacity: 0.55;
+  animation: shelf-breath var(--motion-breath) infinite;
+}
+
+.ingest-preview-row.is-breathing::before {
+  animation: shelf-breath var(--motion-breath) infinite;
+}
+
 .rail.is-continue-presence .rail-head h2 {
   position: relative;
 }
@@ -369,6 +394,9 @@
   .morning-brief,
   .morning-brief-glow,
   .morning-brief-row.is-breathing::before,
+  .ingest-preview-map,
+  .ingest-preview-glow,
+  .ingest-preview-row.is-breathing::before,
   .cover-settle,
   .hall-welcome-back,
   .finish-ritual-note,
@@ -396,6 +424,15 @@
   }
 
   .morning-brief-row.is-breathing::before {
+    box-shadow: none;
+  }
+
+  .ingest-preview-glow {
+    opacity: 0.45;
+    transform: none;
+  }
+
+  .ingest-preview-row.is-breathing::before {
     box-shadow: none;
   }
 

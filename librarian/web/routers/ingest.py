@@ -15,6 +15,7 @@ from librarian.ingest import (
     protected_path_refusal,
     run_ingest_paths,
 )
+from librarian.ingest_preview import preview_for_path
 from librarian.ingest_progress import (
     IngestProgressReporter,
     begin_ingest_run,
@@ -106,6 +107,19 @@ def register_ingest_routes(app: FastAPI, deps: WebDeps) -> None:
             root,
             error="Shelving stopped — the lamp was restarted. Try Add again.",
         )
+
+    @app.post("/api/ingest/preview")
+    def ingest_preview(payload: IngestPayload, request: Request):
+        """Quiet map of stems / twins / kinds — no shelve, no DB writes."""
+        require_role(request.state.user, "owner", "op")
+        try:
+            target = confined_path(payload.path, must_exist=True)
+        except PathDenied as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        refusal = protected_path_refusal(target, settings())
+        if refusal:
+            raise HTTPException(status_code=400, detail=refusal)
+        return preview_for_path(target)
 
     @app.post("/api/organize/preview")
     def organize_preview(folder: str, request: Request, guid: str = "", title: str = ""):

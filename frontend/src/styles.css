@@ -3902,6 +3902,81 @@ button.cover {
   display: inline-block;
 }
 
+.ingest-preview-map {
+  margin: var(--space-4) 0;
+  padding: var(--space-4);
+  border: 1px solid color-mix(in srgb, var(--gilt) 22%, var(--border-subtle));
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(165deg, color-mix(in srgb, var(--lamp) 10%, transparent), transparent 55%),
+    color-mix(in srgb, var(--surface) 90%, transparent);
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--lamp) 6%, transparent);
+}
+.ingest-preview-map .kicker,
+.ingest-preview-title,
+.ingest-preview-presence,
+.ingest-preview-list,
+.ingest-preview-more {
+  position: relative;
+  z-index: 1;
+}
+.ingest-preview-title {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  margin: 0 0 var(--space-2);
+  color: var(--paper);
+}
+.ingest-preview-presence {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+.ingest-preview-quiet .ingest-preview-presence {
+  margin-bottom: 0;
+}
+.ingest-preview-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+.ingest-preview-row {
+  position: relative;
+  padding: var(--space-2) var(--space-3) var(--space-2) calc(var(--space-3) + 0.7rem);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+}
+.ingest-preview-row::before {
+  content: "";
+  position: absolute;
+  left: var(--space-2);
+  top: 50%;
+  width: 0.35rem;
+  height: 0.35rem;
+  border-radius: 50%;
+  transform: translateY(-50%);
+  background: color-mix(in srgb, var(--gilt) 70%, var(--lamp));
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--lamp, #f0b85a) 30%, transparent);
+}
+.ingest-preview-row.is-twin::before {
+  background: color-mix(in srgb, var(--lamp, #f0b85a) 75%, var(--gilt));
+}
+.ingest-preview-stem {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  color: var(--paper);
+}
+.ingest-preview-meta {
+  margin: 0.15rem 0 0;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+.ingest-preview-more {
+  margin: var(--space-3) 0 0;
+}
+
 .series-catch-up {
   margin: var(--space-5) var(--gutter) var(--space-4);
   padding: var(--space-5);
@@ -4489,6 +4564,7 @@ button.cover {
   .plexamp-toast,
   .tonight-shelf,
   .morning-brief,
+  .ingest-preview-map,
   .room.ambient-paper::before,
   .room.ambient-lamp::before {
     animation: none !important;

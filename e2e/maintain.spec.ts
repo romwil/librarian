@@ -28,6 +28,17 @@ test.describe("Maintain", () => {
     await expect(page.getByTestId("ingest-progress")).toHaveCount(0);
   });
 
+  test("Maintain Add a volume offers Look first for ingest preview", async ({ page }) => {
+    await page.goto("/maintain");
+    await expect(page.getByRole("heading", { name: "Add a volume" })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("maintain-ingest")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Look first" })).toBeVisible();
+    await expect(page.getByTestId("ingest-look-first")).toBeVisible();
+    await expect(page.getByTestId("ingest-add")).toBeVisible();
+    // Quiet map stays dark until Look first — presence ceremony, not a dump table.
+    await expect(page.getByTestId("ingest-preview-map")).toHaveCount(0);
+  });
+
   test("Maintain Shelf health shows permission report and chown tip", async ({ page }) => {
     await page.goto("/maintain");
     await expect(page.getByRole("heading", { name: "Shelf health" })).toBeVisible({ timeout: 30_000 });
