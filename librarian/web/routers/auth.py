@@ -61,16 +61,26 @@ def register_auth_routes(app: FastAPI, deps: WebDeps) -> None:
 
     @app.get("/api/features")
     def features() -> Dict[str, Any]:
+        """Foyer-minimal handshake — no ops posture for anonymous LAN recon (P4-MED-01)."""
+        cfg = settings()
+        return {
+            "household_name": cfg.household_name,
+            "owner_ready": has_real_owner(db),
+            "auth_methods": ["local"],
+            "version": __version__,
+        }
+
+    @app.get("/api/features/ops")
+    def features_ops(request: Request) -> Dict[str, Any]:
+        """Authenticated ops posture (session secret, Find extras, notification channels)."""
+        user = getattr(request.state, "user", None) or current_user(request)
+        require_role(user, "owner", "op", "reader")
         cfg = settings()
         from librarian.mail import mail_configured
         from librarian.notifications import notification_channel_offerings
 
         return {
-            "household_name": cfg.household_name,
-            "owner_ready": has_real_owner(db),
             "session_secret_ok": has_usable_session_secret(root),
-            "auth_methods": ["local"],
-            "version": __version__,
             "show_extra_categories": bool(cfg.show_extra_categories),
             "notifications": {
                 "channels": notification_channel_offerings(cfg),

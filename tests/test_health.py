@@ -29,8 +29,11 @@ def test_features_public_and_owner_ready(tmp_path):
     client = TestClient(create_app(tmp_path))
     resp = client.get("/api/features")
     assert resp.status_code == 200
-    assert resp.json()["owner_ready"] is True
-    assert resp.json()["auth_methods"] == ["local"]
+    body = resp.json()
+    assert body["owner_ready"] is True
+    assert body["auth_methods"] == ["local"]
+    assert "session_secret_ok" not in body
+    assert "notifications" not in body
 
 
 def test_me_is_not_public(tmp_path):

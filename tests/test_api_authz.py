@@ -80,6 +80,7 @@ def test_unauthenticated_handshake_only(tmp_path, monkeypatch):
     client.cookies.clear()
     assert client.get("/api/health").status_code == 200
     assert client.get("/api/features").status_code == 200
+    assert client.get("/api/features/ops").status_code == 401
     assert client.get("/api/invites/validate").status_code == 404
     assert client.post("/api/auth/logout").status_code == 200
     assert client.get("/api/hall").status_code == 401

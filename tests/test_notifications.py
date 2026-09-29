@@ -301,7 +301,11 @@ def test_notifications_api_inbox_and_prefs(tmp_path, monkeypatch):
         == 200
     )
 
-    features = client.get("/api/features")
+    foyer = client.get("/api/features")
+    assert foyer.status_code == 200
+    assert "notifications" not in foyer.json()
+
+    features = client.get("/api/features/ops")
     assert features.status_code == 200
     assert features.json()["notifications"]["mail_configured"] is True
 

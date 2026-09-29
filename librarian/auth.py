@@ -66,6 +66,9 @@ def verify_password(password: str, stored_hash: str) -> bool:
     try:
         salt = bytes.fromhex(salt_hex)
     except ValueError:
+        # Same dummy PBKDF2 cost as a missing-$ hash so callers cannot cheap-time
+        # a malformed salt vs a well-formed reject (P3-MED-01).
+        verify_password("!", _DUMMY_PASSWORD_HASH)
         return False
     derived = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, _pbkdf2_iterations())
     return _hmac.compare_digest(derived.hex(), expected_hex)
