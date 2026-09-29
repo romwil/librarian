@@ -337,32 +337,30 @@ export function coverCaption(work) {
   return work.title || "Untitled";
 }
 
-/** Prefer local cover; fall back to indexer/remote cover URL for hero/peek wash. */
+/**
+ * Local cover only — never emit third-party URLs into img/CSS (P4-MED-02).
+ * Unshelved Find / list stubs omit art until the work is on the shelves.
+ */
+export function localCoverUrl(work) {
+  if (!work?.has_cover || !work?.id) return "";
+  return `/api/works/${encodeURIComponent(work.id)}/cover`;
+}
+
+/** Prefer shelved local cover for hero/peek wash; omit remote art until shelved. */
 export function coverWashUrl(work) {
-  if (!work) return "";
-  if (work.has_cover && work.id) return `/api/works/${work.id}/cover`;
-  const remote = String(work.cover || work.cover_url || "").trim();
-  return remote;
+  return localCoverUrl(work);
 }
 
 /**
- * Cover for a curated-list row: list/NYT image → shelved local art → chase hit
- * cover → Open Library by ISBN (same URL shape as librarian.covers).
+ * Cover for a curated-list row: shelved local art only.
+ * Remote list/NYT/chase/Open-Library URLs stay off the browser (P4-MED-02).
+ * ``chase`` is accepted for call-site compatibility and ignored for art.
  */
 export function listRowCoverUrl(book = {}, chase = null) {
-  const remote = String(book.cover || book.book_image || book.cover_url || "").trim();
-  if (remote) return remote;
-  for (const stub of [book.shelved, book.shelved_audiobook]) {
-    if (!stub) continue;
-    if (stub.has_cover && stub.id) return `/api/works/${encodeURIComponent(stub.id)}/cover`;
-    const stubRemote = String(stub.cover || stub.cover_url || "").trim();
-    if (stubRemote) return stubRemote;
-  }
-  const hitCover = String(chase?.book_hit?.cover || chase?.audiobook_hit?.cover || "").trim();
-  if (hitCover) return hitCover;
-  const isbn = String(book.isbn || "").replace(/[^0-9Xx]/g, "");
-  if (isbn.length === 10 || isbn.length === 13) {
-    return `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`;
+  void chase;
+  for (const stub of [book.shelved, book.shelved_audiobook, book]) {
+    const url = localCoverUrl(stub);
+    if (url) return url;
   }
   return "";
 }

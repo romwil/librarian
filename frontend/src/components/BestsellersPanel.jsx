@@ -50,7 +50,7 @@ function ListCover({ book, chase }) {
           loading="lazy"
           onError={() => setFailed(true)}
           onLoad={(event) => {
-            // Open Library serves a 1×1 placeholder when no cover exists.
+            // Defensive: refuse tiny placeholder bitmaps if a CDN ever slips through.
             if (event.currentTarget.naturalWidth < 3) setFailed(true);
           }}
         />

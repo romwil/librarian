@@ -14,6 +14,7 @@ import {
   isBeyondWork,
   isInboundJob,
   jobChipLabel,
+  localCoverUrl,
   partHint,
 } from "../cover.js";
 import { canPromoteIncomingMusic, humanError, peekMediaNote, peekTeachesAsk } from "../copy.js";
@@ -84,7 +85,7 @@ export default function WorkPeek({ work, onClose, onRequest }) {
   const ageLabel = formatPubAge(catalog.pub_date);
   const hostLabel = beyondHostName(catalog);
   const partLabel = partHint(catalog.title);
-  const art = catalog.has_cover && catalog.id ? `/api/works/${catalog.id}/cover` : catalog.cover || "";
+  const art = localCoverUrl(catalog);
   const hasArt = Boolean(art) && !artFailed;
   const washUrl = !artFailed ? coverWashUrl(catalog) : "";
   const washStyle = washUrl ? coverWashStyle(catalog) : undefined;

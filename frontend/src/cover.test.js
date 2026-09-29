@@ -20,6 +20,7 @@ import {
   jobNeedsYouReason,
   jobQueueDetail,
   listRowCoverUrl,
+  localCoverUrl,
   partHint,
   shouldOpenPeek,
 } from "./cover.js";
@@ -220,22 +221,22 @@ describe("reading room cover helpers", () => {
     );
   });
 
-  it("resolves curated-list covers from list, shelf, chase, then Open Library ISBN", () => {
-    assert.equal(listRowCoverUrl({ cover: "https://nyt.test/a.jpg" }), "https://nyt.test/a.jpg");
-    assert.equal(listRowCoverUrl({ book_image: "https://nyt.test/b.jpg" }), "https://nyt.test/b.jpg");
+  it("resolves curated-list covers from shelved local art only (P4-MED-02)", () => {
+    assert.equal(listRowCoverUrl({ cover: "https://nyt.test/a.jpg" }), "");
+    assert.equal(listRowCoverUrl({ book_image: "https://nyt.test/b.jpg" }), "");
     assert.equal(
       listRowCoverUrl({ shelved: { id: "w1", has_cover: true } }),
       "/api/works/w1/cover",
     );
     assert.equal(
-      listRowCoverUrl({}, { book_hit: { cover: "https://indexer.test/c.jpg" } }),
-      "https://indexer.test/c.jpg",
+      listRowCoverUrl({ shelved_audiobook: { id: "a1", has_cover: true } }),
+      "/api/works/a1/cover",
     );
-    assert.equal(
-      listRowCoverUrl({ isbn: "978-0-7653-9276-3" }),
-      "https://covers.openlibrary.org/b/isbn/9780765392763-L.jpg",
-    );
+    assert.equal(listRowCoverUrl({}, { book_hit: { cover: "https://indexer.test/c.jpg" } }), "");
+    assert.equal(listRowCoverUrl({ isbn: "978-0-7653-9276-3" }), "");
     assert.equal(listRowCoverUrl({ title: "No Art" }), "");
+    assert.equal(localCoverUrl({ cover: "https://cdn.test/x.jpg" }), "");
+    assert.equal(localCoverUrl({ id: "w2", has_cover: true }), "/api/works/w2/cover");
   });
 
 });

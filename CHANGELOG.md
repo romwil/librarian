@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **P4-MED-02** — Find / list / peek stubs no longer load naked third-party cover URLs in the browser; art waits until the work is shelved (`/api/works/{id}/cover`).
+
 ## [0.5.19] — 2026-09-29
 
 ### Highlights

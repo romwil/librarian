@@ -8,6 +8,7 @@ import {
   coverTip,
   jobChipLabel,
   jobChipTone,
+  localCoverUrl,
   shouldOpenPeek,
 } from "../cover.js";
 import { beyondHostName, findHref, gapFindFields } from "../find.js";
@@ -53,7 +54,7 @@ export default function CoverCard({ work, onRequest, badge, beyond = false, role
   const status = work.job_status || badge;
   const tone = isGap ? "" : jobChipTone(status);
   const chip = isGap ? "" : status ? jobChipLabel(status, role) : "";
-  const art = work.has_cover && work.id ? `/api/works/${work.id}/cover` : work.cover || "";
+  const art = localCoverUrl(work);
   const [artFailed, setArtFailed] = useState(false);
   const hasArt = Boolean(art) && !artFailed;
   const item = beyond ? { ...work, beyond: true } : work;

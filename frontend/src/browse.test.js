@@ -26,9 +26,9 @@ describe("cover wash helpers", () => {
     );
   });
 
-  it("falls back to remote cover when no local art", () => {
-    assert.equal(coverWashUrl({ cover: "https://example.test/a.jpg" }), "https://example.test/a.jpg");
-    assert.equal(coverWashUrl({ cover_url: "https://example.test/b.jpg" }), "https://example.test/b.jpg");
+  it("omits remote cover when no local art (P4-MED-02)", () => {
+    assert.equal(coverWashUrl({ cover: "https://example.test/a.jpg" }), "");
+    assert.equal(coverWashUrl({ cover_url: "https://example.test/b.jpg" }), "");
   });
 
   it("returns no wash style without art", () => {
