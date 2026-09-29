@@ -21,7 +21,7 @@ OPENLIB_ISBN_COVER = "https://covers.openlibrary.org/b/isbn/{isbn}-L.jpg"
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
 MIN_IMAGE_BYTES = 64
 
-# Manual owner/op cover_url + redirect hops — not for indexer CDN free-for-all.
+# Cover / atmosphere fetch allowlist (manual cover_url + automatic enrich/organize).
 _ALLOWED_COVER_HOST_SUFFIXES = (
     "openlibrary.org",
     "coverartarchive.org",
@@ -100,7 +100,7 @@ def download_image(
     *,
     transport: Optional[httpx.BaseTransport] = None,
     client: Optional[httpx.Client] = None,
-    require_safe_url: bool = False,
+    require_safe_url: bool = True,
 ) -> bytes:
     if not url:
         return b""
@@ -158,7 +158,7 @@ def fetch_cover(
     indexer_cover_url: str = "",
     transport: Optional[httpx.BaseTransport] = None,
     client: Optional[httpx.Client] = None,
-    require_safe_url: bool = False,
+    require_safe_url: bool = True,
 ) -> Optional[Path]:
     """Write cover.jpg from indexer URL, Open Library ISBN, or CBZ page 1.
 
@@ -253,7 +253,10 @@ def ensure_music_cover(
     if group_id:
         for template in (CAA_RELEASE_GROUP, CAA_RELEASE):
             data = download_image(
-                template.format(mbid=group_id), transport=transport, client=client
+                template.format(mbid=group_id),
+                transport=transport,
+                client=client,
+                require_safe_url=True,
             )
             if data:
                 dest.write_bytes(data)

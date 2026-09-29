@@ -104,7 +104,7 @@ def fetch_cover_with_fallback(
     indexer_cover_url: str = "",
     transport: Optional[httpx.BaseTransport] = None,
     client: Optional[httpx.Client] = None,
-    require_safe_url: bool = False,
+    require_safe_url: bool = True,
 ) -> Optional[Path]:
     """Write cover to the shelf folder, or fall back to DATA_DIR/covers/{id}."""
     preferred = work_cover_folder(work, data_dir)
@@ -500,6 +500,7 @@ def apply_enrichment(
                 indexer_cover_url=found.cover_url,
                 transport=transport,
                 client=client,
+                require_safe_url=True,
             )
             if written is not None:
                 updated["cover_path"] = str(written)
@@ -509,7 +510,12 @@ def apply_enrichment(
     if found.atmosphere_url and found.art_attribution:
         atmosphere = dest_folder / "atmosphere.jpg"
         if not atmosphere.is_file():
-            data = download_image(found.atmosphere_url, transport=transport, client=client)
+            data = download_image(
+                found.atmosphere_url,
+                transport=transport,
+                client=client,
+                require_safe_url=True,
+            )
             if data and looks_like_image(data):
                 written_atmo = write_image_with_fallback(
                     dest_folder, owned_folder, "atmosphere.jpg", data

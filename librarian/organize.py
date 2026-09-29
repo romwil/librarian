@@ -729,6 +729,7 @@ def organize_identified(
         identity,
         indexer_cover_url=cover_url,
         transport=cover_transport,
+        require_safe_url=True,
     )
     if identity["kind"] == KIND_MUSIC:
         music_cover = ensure_music_cover(

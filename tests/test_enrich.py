@@ -71,12 +71,12 @@ def _hardcover_edition():
         "isbn_13": ISBN13,
         "isbn_10": ISBN10,
         "release_date": "1969-01-01",
-        "cached_image": {"url": "https://covers.hardcover.test/lh.jpg"},
+        "cached_image": {"url": "https://covers.hardcover.app/lh.jpg"},
         "book": {
             "title": "The Left Hand of Darkness",
             "description": f"<p>{BLURB}</p>",
             "release_year": 1969,
-            "cached_image": {"url": "https://covers.hardcover.test/lh.jpg"},
+            "cached_image": {"url": "https://covers.hardcover.app/lh.jpg"},
             "cached_featured_series": {"name": "Hainish Cycle", "position": 4},
             "cached_tags": {"Genre": [{"tag": "Science Fiction"}, {"tag": "Fiction"}]},
         },
@@ -103,7 +103,7 @@ def _handler(request: httpx.Request) -> httpx.Response:
                                     "release_year": 1965,
                                     "isbns": ["9780441172719"],
                                     "featured_series": {"name": "Dune", "position": 1},
-                                    "image": {"url": "https://covers.hardcover.test/dune.jpg"},
+                                    "image": {"url": "https://covers.hardcover.app/dune.jpg"},
                                 }
                             ]
                         }
@@ -230,7 +230,7 @@ def test_still_needs_when_series_name_missing_from_work_and_enrichment():
     found = Enrichment(
         description=BLURB,
         year=1969,
-        cover_url="https://covers.hardcover.test/lh.jpg",
+        cover_url="https://covers.hardcover.app/lh.jpg",
         series_name="",
     )
     assert _still_needs(found, work) is True
@@ -1085,6 +1085,48 @@ def test_metadata_cover_url_rejects_ssrf_hosts(tmp_path, monkeypatch):
     assert updated["cover_path"]
     assert Path(updated["cover_path"]).read_bytes() == JPEG
     assert captured and "openlibrary.org" in captured[0]
+
+
+def test_apply_enrichment_blocks_unsafe_automatic_cover_and_atmosphere(tmp_path):
+    """P3-HIGH-01: enrich/atmosphere automatic fetches use the cover allowlist."""
+    db = Database(tmp_path / "librarian.db")
+    folder = tmp_path / "books" / "Author" / "Poisoned"
+    folder.mkdir(parents=True)
+    work = db.upsert_work(
+        {
+            "kind": "book",
+            "title": "Poisoned",
+            "author": "Author",
+            "folder_path": str(folder),
+        }
+    )
+    captured = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(str(request.url))
+        return httpx.Response(200, content=JPEG, headers={"content-type": "image/jpeg"})
+
+    found = Enrichment(
+        description=BLURB,
+        year=1969,
+        cover_url="http://169.254.169.254/latest/meta-data/",
+        atmosphere_url="http://127.0.0.1/atmosphere.jpg",
+        art_attribution="Someone / CC BY-SA 4.0",
+        source="hardcover",
+    )
+    row = apply_enrichment(
+        db,
+        work,
+        found,
+        data_dir=tmp_path,
+        transport=httpx.MockTransport(handler),
+    )
+    assert captured == []
+    assert not row.get("cover_path")
+    assert not row.get("atmosphere_path")
+    assert not (folder / "cover.jpg").exists()
+    assert not (folder / "atmosphere.jpg").exists()
+
 
 def test_fix_match_apply_api(tmp_path, monkeypatch):
     client = _client(tmp_path, monkeypatch)

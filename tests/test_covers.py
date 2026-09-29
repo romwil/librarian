@@ -60,14 +60,72 @@ def test_fetch_cover_prefers_indexer_url(tmp_path):
 
     folder = tmp_path / "comic"
     folder.mkdir()
+    indexer = "https://static.comicvine.com/uploads/scale_large/saga.jpg"
     cover = fetch_cover(
         folder,
         {"isbn": "9780441478125"},
-        indexer_cover_url="https://covers.example/saga.jpg",
+        indexer_cover_url=indexer,
         transport=httpx.MockTransport(handler),
     )
     assert cover == folder / "cover.jpg"
-    assert captured[0] == "https://covers.example/saga.jpg"
+    assert captured[0] == indexer
+
+
+def test_fetch_cover_blocks_unsafe_indexer_url_falls_back_to_isbn(tmp_path):
+    """P3-HIGH-01: automatic indexer covers must not hit LAN / non-allowlisted hosts."""
+    captured = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(str(request.url))
+        return httpx.Response(200, content=JPEG, headers={"content-type": "image/jpeg"})
+
+    folder = tmp_path / "book"
+    folder.mkdir()
+    cover = fetch_cover(
+        folder,
+        {"isbn": "9780441478125"},
+        indexer_cover_url="http://169.254.169.254/latest/meta-data/",
+        transport=httpx.MockTransport(handler),
+    )
+    assert cover == folder / "cover.jpg"
+    assert captured == [OPENLIB_ISBN_COVER.format(isbn="9780441478125")]
+
+
+def test_fetch_cover_skips_unsafe_indexer_without_isbn(tmp_path):
+    captured = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(str(request.url))
+        return httpx.Response(200, content=JPEG)
+
+    folder = tmp_path / "book"
+    folder.mkdir()
+    cover = fetch_cover(
+        folder,
+        {"title": "No ISBN"},
+        indexer_cover_url="https://evil.example/cover.jpg",
+        transport=httpx.MockTransport(handler),
+    )
+    assert cover is None
+    assert captured == []
+
+
+def test_download_image_default_requires_safe_url():
+    captured = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(str(request.url))
+        return httpx.Response(200, content=JPEG)
+
+    assert download_image("http://127.0.0.1/cover.jpg", transport=httpx.MockTransport(handler)) == b""
+    assert captured == []
+    assert (
+        download_image(
+            "https://covers.openlibrary.org/b/id/1-L.jpg",
+            transport=httpx.MockTransport(handler),
+        )
+        == JPEG
+    )
 
 
 def test_ensure_music_cover_from_caa(tmp_path):
