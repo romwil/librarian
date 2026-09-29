@@ -179,6 +179,9 @@ CREATE INDEX IF NOT EXISTS idx_works_review ON works(review_state);
 CREATE INDEX IF NOT EXISTS idx_works_author ON works(author COLLATE NOCASE);
 CREATE INDEX IF NOT EXISTS idx_works_kind_author ON works(kind, author COLLATE NOCASE);
 CREATE INDEX IF NOT EXISTS idx_works_series ON works(series_name COLLATE NOCASE);
+-- Hall / Stacks / facets gate on EXISTS (files.work_id = works.id); without this
+-- index a ~20k-file catalog turns every browse into a multi-minute table scan.
+CREATE INDEX IF NOT EXISTS idx_files_work_id ON files(work_id);
 CREATE INDEX IF NOT EXISTS idx_jobs_nzo ON jobs(nzo_id);
 CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
 CREATE TABLE IF NOT EXISTS rss_feeds (

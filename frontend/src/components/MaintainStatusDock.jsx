@@ -23,17 +23,14 @@ import {
   extraFilesReprocessProgressSummary,
 } from "../review.js";
 import { useProgressJob } from "../hooks/useProgressJob.js";
+import { livingJob } from "../lib/maintainDock.js";
 import JobProgress from "./JobProgress.jsx";
-
-function jobVisible(status, isRunning) {
-  if (!status) return false;
-  return isRunning(status) || status.status === "completed" || status.status === "failed";
-}
 
 /**
  * Standardized job-status dock for Maintain — one live telemetry surface for
- * scan / enrich / shelving / clear. Embedded Add-to-library progress is hidden
- * on Maintain so this dock is the only status UI.
+ * scan / enrich / shelving / clear. Collapses entirely when nothing is running.
+ * Embedded Add-to-library progress is hidden on Maintain so this dock is the
+ * only status UI while a job lives.
  */
 export default function MaintainStatusDock() {
   const fetchScan = useCallback(() => api.scanStatus().catch(() => null), []);
@@ -71,7 +68,7 @@ export default function MaintainStatusDock() {
 
   const cards = [];
 
-  if (jobVisible(scanStatus, scanIsRunning)) {
+  if (livingJob(scanStatus, scanIsRunning)) {
     cards.push(
       <JobProgress
         key="scan"
@@ -86,7 +83,7 @@ export default function MaintainStatusDock() {
     );
   }
 
-  if (jobVisible(enrichStatus, enrichIsRunning)) {
+  if (livingJob(enrichStatus, enrichIsRunning)) {
     cards.push(
       <JobProgress
         key="enrich"
@@ -101,7 +98,7 @@ export default function MaintainStatusDock() {
     );
   }
 
-  if (jobVisible(ingestStatus, ingestIsRunning)) {
+  if (livingJob(ingestStatus, ingestIsRunning)) {
     const percent = ingestProgressPercent(ingestStatus);
     const tallyLines = ingestTallyLines(ingestStatus);
     const displayPath = ingestDisplayPath(ingestStatus.current_path || ingestStatus.source_path || "");
@@ -134,7 +131,7 @@ export default function MaintainStatusDock() {
     );
   }
 
-  if (jobVisible(extraStatus, extraFilesReprocessIsRunning)) {
+  if (livingJob(extraStatus, extraFilesReprocessIsRunning)) {
     const percent = extraFilesReprocessProgressPercent(extraStatus);
     cards.push(
       <JobProgress
@@ -152,14 +149,7 @@ export default function MaintainStatusDock() {
     );
   }
 
-  if (!cards.length) {
-    return (
-      <section className="maintain-status-idle" data-testid="maintain-status-idle">
-        <p className="kicker">Telemetry</p>
-        <p className="muted">No scan, enrich, shelving, or clear jobs running.</p>
-      </section>
-    );
-  }
+  if (!cards.length) return null;
 
   return (
     <div className="maintain-status-dock" data-testid="maintain-status-dock">

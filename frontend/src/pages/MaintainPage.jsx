@@ -97,13 +97,14 @@ export default function MaintainPage() {
   const [mixStatus, setMixStatus] = useState(null);
   const mixPollRef = useRef(0);
   const [morningBrief, setMorningBrief] = useState(null);
-  const [morningBriefLoading, setMorningBriefLoading] = useState(true);
+  // Progressive load: start quiet so Maintain chrome paints before desk cards.
+  const [morningBriefLoading, setMorningBriefLoading] = useState(false);
   const [indexerCard, setIndexerCard] = useState(null);
-  const [indexerCardLoading, setIndexerCardLoading] = useState(true);
+  const [indexerCardLoading, setIndexerCardLoading] = useState(false);
   const [indexerBusyId, setIndexerBusyId] = useState("");
   const [indexerError, setIndexerError] = useState("");
   const [groomingUndo, setGroomingUndo] = useState(null);
-  const [groomingUndoLoading, setGroomingUndoLoading] = useState(true);
+  const [groomingUndoLoading, setGroomingUndoLoading] = useState(false);
   const [groomingUndoBusy, setGroomingUndoBusy] = useState(false);
   const [groomingUndoNote, setGroomingUndoNote] = useState("");
   const [calibrePreview, setCalibrePreview] = useState(null);
@@ -114,47 +115,16 @@ export default function MaintainPage() {
   useEffect(() => {
     if (user?.role !== "owner") return undefined;
     let cancelled = false;
-    setMorningBriefLoading(true);
-    setIndexerCardLoading(true);
-    setGroomingUndoLoading(true);
-    api
-      .maintainMorningBrief()
-      .then((data) => {
-        if (cancelled) return;
-        setMorningBrief(data);
-        setMorningBriefLoading(false);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setMorningBrief(null);
-        setMorningBriefLoading(false);
-      });
-    api
-      .maintainIndexerScorecard()
-      .then((data) => {
-        if (cancelled) return;
-        setIndexerCard(data);
-        setIndexerCardLoading(false);
-        setIndexerError("");
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setIndexerCard(null);
-        setIndexerCardLoading(false);
-        setIndexerError(humanError(err));
-      });
-    api
-      .maintainGroomingUndo()
-      .then((data) => {
-        if (cancelled) return;
-        setGroomingUndo(data);
-        setGroomingUndoLoading(false);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setGroomingUndo(null);
-        setGroomingUndoLoading(false);
-      });
+    const timers = [];
+
+    function later(ms, fn) {
+      const id = window.setTimeout(() => {
+        if (!cancelled) fn();
+      }, ms);
+      timers.push(id);
+    }
+
+    // Wave 0 — cheap progress JSON for button state (do not block desk paint).
     api
       .enrichStatus()
       .then((status) => {
@@ -191,15 +161,6 @@ export default function MaintainPage() {
       })
       .catch(() => {});
     api
-      .review()
-      .then((data) => {
-        if (cancelled) return;
-        if (data.extra_files_count != null) {
-          setExtraBacklog(Number(data.extra_files_count) || 0);
-        }
-      })
-      .catch(() => {});
-    api
       .maintainPurgeShellsStatus()
       .then((status) => {
         if (cancelled) return;
@@ -227,19 +188,83 @@ export default function MaintainPage() {
         }
       })
       .catch(() => {});
-    api
-      .maintainShelfHealth()
-      .then((data) => {
-        if (cancelled) return;
-        setShelfHealth(data);
-        setShelfHealthError("");
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setShelfHealthError(humanError(err));
-      });
+
+    // Wave 1 — morning desk hero after first paint.
+    later(0, () => {
+      setMorningBriefLoading(true);
+      api
+        .maintainMorningBrief()
+        .then((data) => {
+          if (cancelled) return;
+          setMorningBrief(data);
+          setMorningBriefLoading(false);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setMorningBrief(null);
+          setMorningBriefLoading(false);
+        });
+    });
+
+    // Wave 2 — indexer scorecard + grooming undo.
+    later(80, () => {
+      setIndexerCardLoading(true);
+      setGroomingUndoLoading(true);
+      api
+        .maintainIndexerScorecard()
+        .then((data) => {
+          if (cancelled) return;
+          setIndexerCard(data);
+          setIndexerCardLoading(false);
+          setIndexerError("");
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          setIndexerCard(null);
+          setIndexerCardLoading(false);
+          setIndexerError(humanError(err));
+        });
+      api
+        .maintainGroomingUndo()
+        .then((data) => {
+          if (cancelled) return;
+          setGroomingUndo(data);
+          setGroomingUndoLoading(false);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setGroomingUndo(null);
+          setGroomingUndoLoading(false);
+        });
+    });
+
+    // Wave 3 — shelf health + Holds backlog counts (heavier).
+    later(160, () => {
+      api
+        .maintainShelfHealth()
+        .then((data) => {
+          if (cancelled) return;
+          setShelfHealth(data);
+          setShelfHealthError("");
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          setShelfHealthError(humanError(err));
+        });
+      api
+        .review()
+        .then((data) => {
+          if (cancelled) return;
+          if (data.extra_files_count != null) {
+            setExtraBacklog(Number(data.extra_files_count) || 0);
+          }
+        })
+        .catch(() => {});
+    });
+
     return () => {
       cancelled = true;
+      for (const id of timers) window.clearTimeout(id);
     };
   }, [user?.role]);
 

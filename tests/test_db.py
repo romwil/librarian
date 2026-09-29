@@ -9,6 +9,30 @@ def test_wal_pragmas(tmp_path):
     assert pragmas["synchronous"] == 1
 
 
+def test_files_work_id_index_exists_for_browse_exists(tmp_path):
+    """Stacks/Hall gate on EXISTS(files.work_id) — index must ship with SCHEMA."""
+    db = Database(tmp_path / "librarian.db")
+    with db._connect() as conn:
+        names = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'files'"
+            ).fetchall()
+        }
+        plan = " ".join(
+            " ".join(str(part) for part in row)
+            for row in conn.execute(
+                """
+                EXPLAIN QUERY PLAN
+                SELECT COUNT(*) FROM works w
+                WHERE EXISTS (SELECT 1 FROM files f WHERE f.work_id = w.id)
+                """
+            ).fetchall()
+        )
+    assert "idx_files_work_id" in names
+    assert "idx_files_work_id" in plan
+
+
 def test_fts_exact_titles(tmp_path):
     db = Database(tmp_path / "librarian.db")
     dune = db.upsert_work({"kind": "book", "title": "Dune", "author": "Herbert", "genre": "sf"})

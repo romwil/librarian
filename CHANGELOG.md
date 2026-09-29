@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+## [0.5.17] — 2026-09-28
+
+### Highlights
+
+- **Stacks unstuck.** Hall / Browse / facets no longer hang on a missing `files.work_id` index — the lamp paints shelves again. Why this feels alive: opening the stacks is a breath, not a throb.
+- **Maintain dock calm.** Idle job chips collapse; desk cards progressive-load so Maintain chrome paints first. Why this feels alive: the desk greets you before every scorecard finishes thinking.
+
+### Fixed
+
+- **`idx_files_work_id`** on `files(work_id)` so `_HAS_FILES_SQL` EXISTS checks stay indexed (was a full files scan per work — multi-minute WarmLoad on Automat).
+
+### Changed
+
+- **MaintainStatusDock** shows only living jobs; returns null when idle (no completed/failed chip clutter).
+- **MaintainPage** staggers morning-brief / indexer / shelf-health fetches after first paint.
+
 ## [0.5.16] — 2026-09-28
 
 ### Highlights
