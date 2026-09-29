@@ -1,14 +1,19 @@
 import { useEffect, useRef, useState } from "react";
+import { nextProgressPollWait } from "../lib/maintainDock.js";
 
 /**
  * Poll a progress status endpoint while active (and optionally while idle).
  * Hidden tabs pause scheduling (P2-HIGH-02) — visibilitychange resumes.
+ * With `probe: true` and `pollIdle: false`, runs one fetch (plus wake/visibility)
+ * and only keeps polling while a job is running (P2-MED-05).
  *
  * @param {object} opts
  * @param {() => Promise<object|null>} opts.fetchStatus
  * @param {(status: object|null) => boolean} opts.isRunning
  * @param {boolean} [opts.active] When true, poll at liveMs after each tick.
  * @param {boolean} [opts.pollIdle] When true and not active, keep a slow poll.
+ * @param {boolean} [opts.probe] When true, run at least one poll even if idle.
+ * @param {string} [opts.wakeEvent] window event name that triggers a probe.
  * @param {number} [opts.liveMs]
  * @param {number} [opts.idleMs]
  * @param {(status: object|null) => void} [opts.onUpdate]
@@ -19,6 +24,8 @@ export function useProgressJob({
   isRunning,
   active = false,
   pollIdle = false,
+  probe = false,
+  wakeEvent = "",
   liveMs = 700,
   idleMs = 4000,
   onUpdate,
@@ -34,7 +41,7 @@ export function useProgressJob({
 
   useEffect(() => {
     if (!fetchStatus || typeof isRunning !== "function") return undefined;
-    if (!active && !pollIdle) return undefined;
+    if (!active && !pollIdle && !probe) return undefined;
     let cancelled = false;
     let timer = 0;
 
@@ -44,7 +51,7 @@ export function useProgressJob({
 
     function schedule(wait) {
       window.clearTimeout(timer);
-      if (cancelled || pageHidden()) return;
+      if (cancelled || pageHidden() || wait == null) return;
       timer = window.setTimeout(poll, wait);
     }
 
@@ -61,10 +68,23 @@ export function useProgressJob({
           onSettledRef.current?.(next);
         }
         wasRunningRef.current = live;
-        const wait = live || active ? liveMs : idleMs;
+        const wait = nextProgressPollWait({
+          live,
+          active,
+          pollIdle,
+          liveMs,
+          idleMs,
+        });
         schedule(wait);
       } catch {
-        schedule(idleMs);
+        const wait = nextProgressPollWait({
+          live: false,
+          active,
+          pollIdle,
+          liveMs,
+          idleMs,
+        });
+        schedule(wait);
       }
     }
 
@@ -77,8 +97,16 @@ export function useProgressJob({
       poll();
     }
 
+    function onWake() {
+      if (cancelled || pageHidden()) return;
+      poll();
+    }
+
     if (typeof document !== "undefined") {
       document.addEventListener("visibilitychange", onVisibility);
+    }
+    if (wakeEvent && typeof window !== "undefined") {
+      window.addEventListener(wakeEvent, onWake);
     }
     poll();
     return () => {
@@ -87,8 +115,11 @@ export function useProgressJob({
       if (typeof document !== "undefined") {
         document.removeEventListener("visibilitychange", onVisibility);
       }
+      if (wakeEvent && typeof window !== "undefined") {
+        window.removeEventListener(wakeEvent, onWake);
+      }
     };
-  }, [fetchStatus, isRunning, active, pollIdle, liveMs, idleMs]);
+  }, [fetchStatus, isRunning, active, pollIdle, probe, wakeEvent, liveMs, idleMs]);
 
   return { status, setStatus, running, setRunning };
 }

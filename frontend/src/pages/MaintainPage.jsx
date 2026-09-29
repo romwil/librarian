@@ -22,6 +22,7 @@ import {
   extraFilesReprocessIsRunning,
   extraFilesReprocessProgressSummary,
 } from "../review.js";
+import { wakeMaintainJobs } from "../lib/maintainDock.js";
 
 function purgeShellsIsRunning(status) {
   return String(status?.status || "") === "running";
@@ -434,6 +435,7 @@ export default function MaintainPage() {
   async function startScanShelves() {
     setScan("");
     setScanning(true);
+    wakeMaintainJobs();
     setScanStatus({
       status: "running",
       phase: "starting",
@@ -462,6 +464,7 @@ export default function MaintainPage() {
   async function startEnrichShelves() {
     setEnrich("");
     setEnriching(true);
+    wakeMaintainJobs();
     setEnrichStatus({
       status: "running",
       phase: "starting",
@@ -488,6 +491,7 @@ export default function MaintainPage() {
 
   async function clearExtraFiles() {
     setExtraClearing(true);
+    wakeMaintainJobs();
     setExtraNote("Clearing extra-files…");
     try {
       const started = await api.reviewReprocessExtraFiles();

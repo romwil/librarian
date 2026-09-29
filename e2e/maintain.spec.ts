@@ -16,16 +16,44 @@ test.describe("Maintain", () => {
     await expect(page.getByTestId("morning-brief-presence")).toBeVisible();
     // Quiet house in mocked e2e — presence, not a zero KPI strip.
     await expect(page.getByTestId("morning-brief-presence")).toContainText(/clear|Tend|quiet/i);
-    await expect(page.getByTestId("maintain-status-idle")).toBeVisible({ timeout: 30_000 });
+    // Idle dock collapses entirely (no idle chip clutter).
+    await expect(page.getByTestId("maintain-status-dock")).toHaveCount(0);
   });
 
-  test("Maintain shows telemetry dock idle copy", async ({ page }) => {
+  test("Maintain idle dock does not keep four job-status polls alive", async ({ page }) => {
+    const jobsStatus: string[] = [];
+    const fourFanOut: string[] = [];
+    page.on("request", (req) => {
+      const url = req.url();
+      if (url.includes("/api/maintain/jobs/status")) {
+        jobsStatus.push(url);
+      }
+      if (
+        url.includes("/api/settings/scan/status") ||
+        url.includes("/api/settings/enrich/status") ||
+        url.includes("/api/ingest/status") ||
+        url.includes("/api/review/reprocess-extra-files/status")
+      ) {
+        fourFanOut.push(url);
+      }
+    });
+
     await page.goto("/maintain");
     await expect(page.getByRole("heading", { name: "Maintain" })).toBeVisible();
-    await expect(page.getByTestId("maintain-status-idle")).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByText(/No scan, enrich, shelving, or clear jobs running/i)).toBeVisible();
-    // Embedded Add-to-library must not duplicate shelving meters on Maintain.
-    await expect(page.getByTestId("ingest-progress")).toHaveCount(0);
+    await expect(page.getByTestId("morning-brief")).toBeVisible({ timeout: 30_000 });
+    // Dock collapsed when idle.
+    await expect(page.getByTestId("maintain-status-dock")).toHaveCount(0);
+
+    const jobsAfterPaint = jobsStatus.length;
+    const fourAfterPaint = fourFanOut.length;
+    // Probe once via multiplex; Wave 0 may one-shot individual endpoints for buttons.
+    expect(jobsAfterPaint).toBeGreaterThanOrEqual(1);
+    expect(jobsAfterPaint).toBeLessThanOrEqual(2);
+
+    // Wait past a former live cadence — must not grow a four-endpoint idle fan-out.
+    await page.waitForTimeout(2500);
+    expect(jobsStatus.length).toBe(jobsAfterPaint);
+    expect(fourFanOut.length).toBe(fourAfterPaint);
   });
 
   test("Maintain Add a volume offers Look first for ingest preview", async ({ page }) => {

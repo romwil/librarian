@@ -23,48 +23,35 @@ import {
   extraFilesReprocessProgressSummary,
 } from "../review.js";
 import { useProgressJob } from "../hooks/useProgressJob.js";
-import { livingJob } from "../lib/maintainDock.js";
+import {
+  MAINTAIN_JOBS_WAKE,
+  anyMaintainJobRunning,
+  livingJob,
+} from "../lib/maintainDock.js";
 import JobProgress from "./JobProgress.jsx";
 
 /**
  * Standardized job-status dock for Maintain — one live telemetry surface for
  * scan / enrich / shelving / clear. Collapses entirely when nothing is running.
- * Embedded Add-to-library progress is hidden on Maintain so this dock is the
- * only status UI while a job lives.
+ * P2-MED-05: multiplexed `/api/maintain/jobs/status`; probe on mount / wake /
+ * visibility — no idle four-poll while collapsed.
  */
 export default function MaintainStatusDock() {
-  const fetchScan = useCallback(() => api.scanStatus().catch(() => null), []);
-  const fetchEnrich = useCallback(() => api.enrichStatus().catch(() => null), []);
-  const fetchIngest = useCallback(() => api.ingestStatus().catch(() => null), []);
-  const fetchExtra = useCallback(() => api.reviewReprocessExtraFilesStatus().catch(() => null), []);
+  const fetchJobs = useCallback(() => api.maintainJobsStatus().catch(() => null), []);
 
-  // P2-HIGH-02: slower idle cadence; useProgressJob also pauses when the tab is hidden.
-  const dockIdleMs = 15_000;
+  const { status: jobs } = useProgressJob({
+    fetchStatus: fetchJobs,
+    isRunning: anyMaintainJobRunning,
+    pollIdle: false,
+    probe: true,
+    wakeEvent: MAINTAIN_JOBS_WAKE,
+    liveMs: 700,
+  });
 
-  const { status: scanStatus } = useProgressJob({
-    fetchStatus: fetchScan,
-    isRunning: scanIsRunning,
-    pollIdle: true,
-    idleMs: dockIdleMs,
-  });
-  const { status: enrichStatus } = useProgressJob({
-    fetchStatus: fetchEnrich,
-    isRunning: enrichIsRunning,
-    pollIdle: true,
-    idleMs: dockIdleMs,
-  });
-  const { status: ingestStatus } = useProgressJob({
-    fetchStatus: fetchIngest,
-    isRunning: ingestIsRunning,
-    pollIdle: true,
-    idleMs: dockIdleMs,
-  });
-  const { status: extraStatus } = useProgressJob({
-    fetchStatus: fetchExtra,
-    isRunning: extraFilesReprocessIsRunning,
-    pollIdle: true,
-    idleMs: dockIdleMs,
-  });
+  const scanStatus = jobs?.scan ?? null;
+  const enrichStatus = jobs?.enrich ?? null;
+  const ingestStatus = jobs?.ingest ?? null;
+  const extraStatus = jobs?.extra_files ?? null;
 
   const cards = [];
 

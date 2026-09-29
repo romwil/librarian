@@ -15,6 +15,7 @@ import {
 } from "../ingest.js";
 import { FieldLabel } from "./FieldHelp.jsx";
 import IngestPreviewMap from "./IngestPreviewMap.jsx";
+import { wakeMaintainJobs } from "../lib/maintainDock.js";
 
 export default function AddToLibrary({ embedded = false } = {}) {
   const [path, setPath] = useState("");
@@ -131,6 +132,7 @@ export default function AddToLibrary({ embedded = false } = {}) {
   async function onAdd() {
     if (!path) return;
     setBusy(true);
+    wakeMaintainJobs();
     setStatus("Scanning…");
     setError("");
     clearPreview();

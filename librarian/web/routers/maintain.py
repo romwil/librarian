@@ -19,11 +19,15 @@ from librarian.enrich_progress import (
     is_enrich_running,
     read_enrich_progress,
 )
-from librarian.extra_files_reprocess_progress import read_extra_files_reprocess_progress
+from librarian.extra_files_reprocess_progress import (
+    finish_extra_files_reprocess_run,
+    is_extra_files_reprocess_stale,
+    read_extra_files_reprocess_progress,
+)
 from librarian.goodreads import MAX_GOODREADS_BYTES, import_goodreads_csv
 from librarian.grooming_undo import assemble_grooming_undo, restore_grooming_batch
 from librarian.indexer_scorecard import assemble_indexer_scorecard, mute_host
-from librarian.ingest_progress import read_ingest_progress
+from librarian.ingest_progress import finish_ingest_run, read_ingest_progress
 from librarian.morning_brief import assemble_morning_brief
 from librarian.purge_shells import purge_shell_works
 from librarian.purge_shells_progress import (
@@ -141,6 +145,58 @@ def register_maintain_routes(app: FastAPI, deps: WebDeps) -> None:
             unshelved_shells=shells,
             comic_book_blends=blends,
         )
+
+    @app.get("/api/maintain/jobs/status")
+    def maintain_jobs_status(request: Request):
+        """Multiplex Maintain dock telemetry — one round-trip for four job blobs."""
+        require_role(current_user(request), "owner")
+
+        scan = read_scan_progress(root)
+        if str(scan.get("status") or "") == "running" and not scan_job.alive():
+            scan = finish_scan_run(
+                root,
+                error="Scan stopped — the lamp was restarted. Try Scan again.",
+            )
+
+        enrich = read_enrich_progress(root)
+        if str(enrich.get("status") or "") == "running" and not enrich_job.alive():
+            enrich = finish_enrich_run(
+                root,
+                error="Enrich stopped — the lamp was restarted. Try Enrich again.",
+            )
+
+        ingest = read_ingest_progress(root)
+        if str(ingest.get("status") or "") == "running" and not ingest_job.alive():
+            ingest = finish_ingest_run(
+                root,
+                error="Shelving stopped — the lamp was restarted. Try Add again.",
+            )
+
+        extra_files = read_extra_files_reprocess_progress(root)
+        if str(extra_files.get("status") or "") == "running":
+            alive = extra_files_reprocess_job.alive()
+            if not alive or is_extra_files_reprocess_stale(extra_files):
+                if alive:
+                    error = (
+                        "Clear extra-files stalled (no progress heartbeat). "
+                        "Try Clear again — large author folders now queue instead of blocking."
+                    )
+                else:
+                    error = "Clear extra-files stopped — the lamp was restarted. Try again."
+                extra_files = finish_extra_files_reprocess_run(root, error=error)
+        extra_files = {
+            **extra_files,
+            "extra_files_remaining": db.count_works(
+                review_state="needs_review", review_reason=REVIEW_EXTRA
+            ),
+        }
+
+        return {
+            "scan": scan,
+            "enrich": enrich,
+            "ingest": ingest,
+            "extra_files": extra_files,
+        }
 
     @app.get("/api/maintain/indexer-scorecard")
     def maintain_indexer_scorecard(request: Request):

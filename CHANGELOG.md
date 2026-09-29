@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- **P2-MED-05** — Maintain dock multiplexes `GET /api/maintain/jobs/status` and probes only on mount / job wake / visibility — no idle four-poll while collapsed.
 - **P3-MED-01** — `verify_password` runs the dummy PBKDF2 path when salt hex is malformed (same cost as a missing-`$` hash).
 - **P4-MED-01** — public `GET /api/features` is foyer-minimal; ops posture (`session_secret_ok`, Find extras, notification channels) moves to authenticated `GET /api/features/ops`.
 - **P4-MED-02** — Find / list / peek stubs no longer load naked third-party cover URLs in the browser; art waits until the work is shelved (`/api/works/{id}/cover`).

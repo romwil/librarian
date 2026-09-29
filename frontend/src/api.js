@@ -123,6 +123,7 @@ export const api = {
   maintainSplitMixedKindsStatus: () => request("/maintain/split-mixed-kinds/status"),
   maintainShelfHealth: () => request("/maintain/shelf-health"),
   maintainMorningBrief: () => request("/maintain/morning-brief"),
+  maintainJobsStatus: () => request("/maintain/jobs/status"),
   maintainIndexerScorecard: () => request("/maintain/indexer-scorecard"),
   maintainIndexerMute: (hostId) =>
     request(`/maintain/indexer-scorecard/${encodeURIComponent(hostId)}/mute`, { method: "POST" }),
