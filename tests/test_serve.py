@@ -62,6 +62,7 @@ def test_annotate_work_files_marks_reading_room_source(tmp_path):
     assert by_name[azw3.name]["on_disk"] is True
     assert by_name[missing.name]["on_disk"] is False
     assert by_name[missing.name]["reading_room"] is False
+    assert all("path" not in row for row in annotated)
     assert primary_reading_path(on_disk) == epub
     assert can_read_work("book", on_disk) is True
     assert can_read_work("book", [azw3]) is False
@@ -85,6 +86,7 @@ def test_annotate_marks_every_magazine_pdf_for_reading_room(tmp_path):
     assert by_name[vol1.name]["reading_room"] is True
     assert by_name[vol2.name]["reading_room"] is True
     assert by_name[cover.name]["reading_room"] is False
+    assert all("path" not in row for row in annotated)
     assert primary_reading_path(on_disk) == vol1
     assert resolve_catalog_file(rows, "b") == vol2
     assert resolve_catalog_file(rows, "missing") is None

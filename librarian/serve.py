@@ -94,11 +94,18 @@ def existing_file_paths(rows: Iterable[dict]) -> list[Path]:
     return out
 
 
+# Catalog file rows for work detail — never absolute filesystem paths.
+_PUBLIC_FILE_KEYS = ("id", "filename", "kind", "size", "duration_seconds", "track", "disc")
+
+
 def annotate_work_files(rows: Iterable[dict], on_disk: Sequence[Path]) -> list[dict]:
     """Mark which catalog files exist and which are Reading Room sources.
 
     Every on-disk EPUB/CBZ/PDF is marked ``reading_room`` so multi-file magazines
     can open any volume. ``primary_reading_path`` still picks the default Open.
+
+    Public shape is allowlisted — absolute ``path`` / storage paths stay server-side
+    for ``resolve_catalog_file`` / ``existing_file_paths`` only (P4-HIGH-01).
     """
     reading_keys: set[Path] = set()
     for path in on_disk:
@@ -110,9 +117,10 @@ def annotate_work_files(rows: Iterable[dict], on_disk: Sequence[Path]) -> list[d
             reading_keys.add(path)
     out: list[dict] = []
     for row in rows:
-        item = dict(row or {})
-        path = Path(str(item.get("path") or ""))
+        raw = dict(row or {})
+        path = Path(str(raw.get("path") or ""))
         exists = path.is_file()
+        item = {key: raw[key] for key in _PUBLIC_FILE_KEYS if key in raw}
         item["on_disk"] = exists
         room = False
         if exists and reading_keys:

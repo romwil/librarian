@@ -113,7 +113,7 @@ from librarian.web.schemas import (
     WhisperPayload,
     WorkMetadataPayload,
 )
-from librarian.web.serializers import public_work, public_works
+from librarian.web.serializers import public_work, public_work_admin, public_works
 
 logger = logging.getLogger("librarian.web")
 
@@ -1201,7 +1201,8 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
             work = promote_music(db, settings(), work_id)
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
-        return {"work": work, "plexamp": plexamp_handoff(work)}
+        # plexamp_handoff still needs the raw row; response work is allowlisted.
+        return {"work": public_work_admin(work), "plexamp": plexamp_handoff(work)}
 
     @app.post("/api/works/{work_id}/enrich")
     def work_enrich(work_id: str, request: Request):
@@ -1212,6 +1213,7 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
             detail = str(error)
             status = 404 if detail == "Work not found" else 400
             raise HTTPException(status_code=status, detail=detail) from error
+        result["work"] = public_work(result.get("work"))
         return result
 
     @app.patch("/api/works/{work_id}/metadata")

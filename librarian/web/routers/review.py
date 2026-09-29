@@ -51,7 +51,19 @@ from librarian.review_reasons import (
 )
 from librarian.web.deps import WebDeps
 from librarian.web.schemas import ReviewApplyPayload
-from librarian.web.serializers import public_works_admin
+from librarian.web.serializers import public_work_admin, public_works_admin
+
+
+def _shape_review_work_payload(result: Dict[str, Any]) -> Dict[str, Any]:
+    """Allowlist work objects on Review mutation responses (P4-HIGH-02)."""
+    if not isinstance(result, dict):
+        return result
+    out = dict(result)
+    if "work" in out:
+        out["work"] = public_work_admin(out.get("work"))
+    if "shelf_work" in out:
+        out["shelf_work"] = public_work_admin(out.get("shelf_work"))
+    return out
 
 logger = logging.getLogger("librarian.web")
 
@@ -100,7 +112,7 @@ def register_review_routes(app: FastAPI, deps: WebDeps) -> None:
             if problem == REVIEW_UNPACK_STUCK and stored in {"", REVIEW_NO_PAYLOAD}:
                 work["review_reason"] = REVIEW_UNPACK_STUCK
             shelf = shelf_work_for_collision(db, work)
-            work["shelf_work"] = shelf
+            work["shelf_work"] = public_work_admin(shelf) if shelf else None
             work["actions"] = review_slip_actions(work, diagnosis, llm_configured=llm_ok)
             reason = str(work.get("review_reason") or "")
             if work.get("kind") == "comic" and reason in (
@@ -261,12 +273,13 @@ def register_review_routes(app: FastAPI, deps: WebDeps) -> None:
         overrides = payload.model_dump(exclude_none=True)
         overrides.pop("folder", None)
         try:
-            result = apply_review(
-                db, settings(), work_id=work_id, folder=folder, identity_overrides=overrides
+            return _shape_review_work_payload(
+                apply_review(
+                    db, settings(), work_id=work_id, folder=folder, identity_overrides=overrides
+                )
             )
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
-        return result
 
     @app.post("/api/review/{work_id}/repair")
     def review_repair(work_id: str, request: Request):
@@ -274,7 +287,7 @@ def register_review_routes(app: FastAPI, deps: WebDeps) -> None:
         if db.get_work(work_id) is None:
             raise HTTPException(status_code=404, detail="Work not found")
         try:
-            return repair_review(db, settings(), work_id=work_id)
+            return _shape_review_work_payload(repair_review(db, settings(), work_id=work_id))
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
 
@@ -399,7 +412,7 @@ def register_review_routes(app: FastAPI, deps: WebDeps) -> None:
         if db.get_work(work_id) is None:
             raise HTTPException(status_code=404, detail="Work not found")
         try:
-            return retry_review(db, settings(), work_id=work_id)
+            return _shape_review_work_payload(retry_review(db, settings(), work_id=work_id))
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
 
@@ -425,11 +438,13 @@ def register_review_routes(app: FastAPI, deps: WebDeps) -> None:
         require_role(request.state.user, "owner", "op")
         user = request.state.user
         try:
-            return reprocess_extra_files_work(
-                db,
-                settings(),
-                work_id=work_id,
-                requested_by=str(user.get("id") or user.get("display_name") or "owner"),
+            return _shape_review_work_payload(
+                reprocess_extra_files_work(
+                    db,
+                    settings(),
+                    work_id=work_id,
+                    requested_by=str(user.get("id") or user.get("display_name") or "owner"),
+                )
             )
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error

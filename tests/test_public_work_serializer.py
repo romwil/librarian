@@ -1,14 +1,15 @@
-"""P1-HIGH-02 / P4-HIGH-01 — public_work allowlist hides storage paths."""
+"""P1-HIGH-02 / P4-HIGH-01 / P4-HIGH-02 — public_work allowlist hides storage paths."""
 
 from __future__ import annotations
 
-from pathlib import Path
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
 from librarian.config import Settings, save_settings
 from librarian.db import Database
 from librarian.rate_limit import clear_rate_limits
+from librarian.serve import annotate_work_files, existing_file_paths
 from librarian.sessions import clear_session_secret_cache
 from librarian.web.app import create_app
 from librarian.web.serializers import public_work, public_work_admin, public_works
@@ -85,6 +86,33 @@ def test_public_work_admin_keeps_folder_not_cover_paths():
     assert "atmosphere_path" not in shaped
 
 
+def test_annotate_work_files_omits_absolute_path(tmp_path):
+    epub = tmp_path / "Dune.epub"
+    epub.write_bytes(b"PK\x03\x04")
+    rows = [
+        {
+            "id": "f1",
+            "path": str(epub),
+            "filename": epub.name,
+            "kind": "book",
+            "size": epub.stat().st_size,
+            "storage_path": str(tmp_path / "secret"),
+        }
+    ]
+    annotated = annotate_work_files(rows, existing_file_paths(rows))
+    assert len(annotated) == 1
+    item = annotated[0]
+    assert item["id"] == "f1"
+    assert item["filename"] == "Dune.epub"
+    assert item["on_disk"] is True
+    assert item["reading_room"] is True
+    assert "path" not in item
+    assert "storage_path" not in item
+    blob = str(annotated)
+    assert str(tmp_path) not in blob
+    assert str(epub) not in blob
+
+
 def _client(tmp_path, monkeypatch):
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
     monkeypatch.setenv("LIBRARIAN_OWNER_USERNAME", "owner")
@@ -146,7 +174,8 @@ def test_hall_and_work_detail_omit_storage_paths(tmp_path, monkeypatch):
 
     detail = client.get(f"/api/works/{work['id']}")
     assert detail.status_code == 200
-    shaped = detail.json()["work"]
+    payload = detail.json()
+    shaped = payload["work"]
     assert shaped["title"] == "Dune"
     assert shaped["has_cover"] is True
     assert "folder_path" not in shaped
@@ -154,6 +183,13 @@ def test_hall_and_work_detail_omit_storage_paths(tmp_path, monkeypatch):
     assert "atmosphere_path" not in shaped
     assert "indexer_guid" not in shaped
     assert "repair_fail_count" not in shaped
+    files = payload["files"]
+    assert files
+    assert all("path" not in row for row in files)
+    assert all(row.get("filename") == "Dune.epub" for row in files)
+    detail_blob = str(payload)
+    assert str(epub) not in detail_blob
+    assert str(folder) not in detail_blob
 
 
 def test_review_list_admin_keeps_folder_path(tmp_path, monkeypatch):
@@ -182,3 +218,86 @@ def test_review_list_admin_keeps_folder_path(tmp_path, monkeypatch):
     assert match["folder_path"] == str(folder)
     assert "cover_path" not in match
     assert "atmosphere_path" not in match
+
+
+def test_music_promote_response_uses_admin_serializer(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    _login(client)
+    folder = tmp_path / "inbox" / "Radiohead" / "In Rainbows"
+    folder.mkdir(parents=True)
+    track = folder / "01 15 Step.flac"
+    track.write_bytes(b"flac")
+    cover = folder / "cover.jpg"
+    cover.write_bytes(b"jpg")
+    raw = {
+        "id": "music-1",
+        "kind": "music",
+        "title": "In Rainbows",
+        "author": "Radiohead",
+        "folder_path": str(folder),
+        "cover_path": str(cover),
+        "atmosphere_path": str(folder / "atmosphere.jpg"),
+        "music_state": "promoted",
+        "indexer_guid": "music-guid",
+        "repair_fail_count": 0,
+    }
+    with patch("librarian.web.routers.catalog.promote_music", return_value=raw):
+        with patch(
+            "librarian.web.routers.catalog.plexamp_handoff",
+            return_value={"url": "plexamp://album"},
+        ):
+            resp = client.post("/api/music/music-1/promote")
+    assert resp.status_code == 200
+    body = resp.json()
+    work = body["work"]
+    assert work["title"] == "In Rainbows"
+    assert work["folder_path"] == str(folder)
+    assert work["music_state"] == "promoted"
+    assert "cover_path" not in work
+    assert "atmosphere_path" not in work
+    assert body["plexamp"]["url"] == "plexamp://album"
+    assert str(cover) not in str(body)
+
+
+def test_enrich_response_strips_storage_paths(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    _login(client)
+    folder = tmp_path / "library" / "Dune"
+    folder.mkdir(parents=True)
+    cover = folder / "cover.jpg"
+    cover.write_bytes(b"jpg")
+    shaped_work = {
+        "id": "w-enrich",
+        "kind": "book",
+        "title": "Dune",
+        "author": "Frank Herbert",
+        "folder_path": str(folder),
+        "cover_path": str(cover),
+        "atmosphere_path": str(folder / "atmosphere.jpg"),
+        "description": "Desert planet.",
+    }
+    with patch(
+        "librarian.web.routers.catalog.enrich_work",
+        return_value={
+            "work": shaped_work,
+            "updated": True,
+            "source": "openlibrary",
+            "thin": False,
+            "match_key": "ol-1",
+            "match_confidence": "high",
+        },
+    ):
+        resp = client.post("/api/works/w-enrich/enrich")
+    assert resp.status_code == 200
+    body = resp.json()
+    work = body["work"]
+    assert work["title"] == "Dune"
+    assert work["description"] == "Desert planet."
+    assert work["has_cover"] is True
+    assert "folder_path" not in work
+    assert "cover_path" not in work
+    assert "atmosphere_path" not in work
+    assert str(folder) not in str(body)
+    assert str(cover) not in str(body)
+    assert body["updated"] is True
+    assert body["source"] == "openlibrary"
