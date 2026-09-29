@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+import time
+
 import httpx
 
 from librarian.audnexus import (
@@ -55,6 +58,41 @@ def test_audnexus_cache_roundtrip(tmp_path):
     cache.set("book:us:B08G9PRS1K", {"asin": "B08G9PRS1K", "title": "Project Hail Mary"})
     hit = cache.get("book:us:B08G9PRS1K")
     assert hit["title"] == "Project Hail Mary"
+
+
+def test_audnexus_cache_prune_expired(tmp_path):
+    cache = AudnexusCache(tmp_path / "audnexus_cache.sqlite")
+    cache.set("fresh", {"ok": True})
+    stale_at = time.time() - (86400 * 20)
+    with cache._connect() as conn:
+        conn.execute(
+            "INSERT INTO audnexus_cache (cache_key, payload, fetched_at) VALUES (?, ?, ?)",
+            ("stale", json.dumps({"old": True}), stale_at),
+        )
+        conn.commit()
+    removed = cache.prune_expired()
+    assert removed == 1
+    assert cache.get("fresh") == {"ok": True}
+    assert cache.get("stale") is None
+    with cache._connect() as conn:
+        keys = {row["cache_key"] for row in conn.execute("SELECT cache_key FROM audnexus_cache")}
+    assert keys == {"fresh"}
+
+
+def test_audnexus_cache_set_opportunistic_prune(tmp_path, monkeypatch):
+    cache = AudnexusCache(tmp_path / "audnexus_cache.sqlite")
+    stale_at = time.time() - (86400 * 20)
+    with cache._connect() as conn:
+        conn.execute(
+            "INSERT INTO audnexus_cache (cache_key, payload, fetched_at) VALUES (?, ?, ?)",
+            ("stale", json.dumps({"old": True}), stale_at),
+        )
+        conn.commit()
+    monkeypatch.setattr("librarian.audnexus.random.random", lambda: 0.0)
+    cache.set("fresh", {"ok": True})
+    with cache._connect() as conn:
+        keys = {row["cache_key"] for row in conn.execute("SELECT cache_key FROM audnexus_cache")}
+    assert keys == {"fresh"}
 
 
 def test_match_audiobook_tokens_with_mock_transport(tmp_path):

@@ -119,7 +119,7 @@ def register_auth_routes(app: FastAPI, deps: WebDeps) -> None:
             "inbox_unread": db.count_unread_notifications(user["id"]),
         }
         if user["role"] in ("owner", "op"):
-            payload["review_count"] = len(db.list_works(review_state="needs_review", limit=80))
+            payload["review_count"] = db.count_works(review_state="needs_review")
         return payload
 
     @app.get("/api/invites/validate")

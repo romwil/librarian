@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import threading
 from datetime import datetime, timedelta, timezone
 
@@ -209,3 +210,20 @@ def test_utc_now_is_zulu():
     assert parsed.tzinfo is not None
     assert abs((datetime.now(timezone.utc) - parsed).total_seconds()) < 5
     assert parsed + timedelta(seconds=0) == parsed
+
+
+def test_write_uses_atomic_replace(tmp_path):
+    """Progress JSON must land via os.replace so a crash cannot tear the blob."""
+    job = _job()
+    written = job.write(tmp_path, {"status": "running", "phase": "working", "done": 3})
+    path = job.progress_path(tmp_path)
+    assert path.is_file()
+    assert not path.with_suffix(path.suffix + ".tmp").exists()
+    on_disk = json.loads(path.read_text(encoding="utf-8"))
+    assert on_disk["status"] == "running"
+    assert on_disk["done"] == 3
+    assert written["done"] == 3
+    # Second write replaces cleanly; no leftover .tmp.
+    job.patch(tmp_path, done=4)
+    assert json.loads(path.read_text(encoding="utf-8"))["done"] == 4
+    assert not path.with_suffix(path.suffix + ".tmp").exists()

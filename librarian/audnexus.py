@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import random
 import re
 import sqlite3
 import threading
@@ -25,6 +26,11 @@ AUDIBLE_CATALOG = "https://api.audible.com/1.0/catalog/products"
 
 SCORE_AUTO = 0.85
 SCORE_REVIEW = 0.65
+
+# Cache TTL for get() and opportunistic set() prune (14 days).
+CACHE_MAX_AGE_S = 86400 * 14
+# Roughly 1% of writes delete expired rows so the SQLite file cannot grow unbounded.
+_PRUNE_WRITE_PROBABILITY = 0.01
 
 _CACHE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS audnexus_cache (
@@ -92,7 +98,7 @@ class AudnexusCache:
         conn.row_factory = sqlite3.Row
         return conn
 
-    def get(self, key: str, *, max_age: float = 86400 * 14) -> Optional[Any]:
+    def get(self, key: str, *, max_age: float = CACHE_MAX_AGE_S) -> Optional[Any]:
         now = time.time()
         with self._lock, self._connect() as conn:
             row = conn.execute(
@@ -108,8 +114,21 @@ class AudnexusCache:
         except json.JSONDecodeError:
             return None
 
+    def prune_expired(self, *, max_age: float = CACHE_MAX_AGE_S) -> int:
+        """Delete rows older than ``max_age``. Returns rows removed."""
+        cutoff = time.time() - max_age
+        with self._lock, self._connect() as conn:
+            cur = conn.execute(
+                "DELETE FROM audnexus_cache WHERE fetched_at < ?",
+                (cutoff,),
+            )
+            conn.commit()
+            return int(cur.rowcount or 0)
+
     def set(self, key: str, payload: Any) -> None:
         blob = json.dumps(payload)
+        prune = random.random() < _PRUNE_WRITE_PROBABILITY
+        cutoff = time.time() - CACHE_MAX_AGE_S
         with self._lock, self._connect() as conn:
             conn.execute(
                 """
@@ -121,6 +140,12 @@ class AudnexusCache:
                 """,
                 (key, blob, time.time()),
             )
+            # Opportunistic prune so expired identify/enrich rows do not accumulate.
+            if prune:
+                conn.execute(
+                    "DELETE FROM audnexus_cache WHERE fetched_at < ?",
+                    (cutoff,),
+                )
             conn.commit()
 
 

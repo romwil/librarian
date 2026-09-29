@@ -122,6 +122,31 @@ def test_login_then_hall_and_favorite(tmp_path, monkeypatch):
     assert [row["title"] for row in search.json()["local"]] == ["Dune"]
 
 
+def test_me_review_count_uses_count_works_not_page_limit(tmp_path, monkeypatch):
+    """Badge must reflect full needs_review backlog, not list_works(limit=80)."""
+    client = _client(tmp_path, monkeypatch)
+    assert (
+        client.post("/api/auth/local/login", json={"username": "owner", "password": "password123"}).status_code
+        == 200
+    )
+    from librarian.db import Database
+
+    db = Database(tmp_path / "librarian.db")
+    for i in range(85):
+        db.upsert_work(
+            {
+                "kind": "book",
+                "title": f"Review Slip {i}",
+                "author": "Author",
+                "review_state": "needs_review",
+            }
+        )
+    assert db.count_works(review_state="needs_review") == 85
+    me = client.get("/api/auth/me")
+    assert me.status_code == 200
+    assert me.json()["review_count"] == 85
+
+
 def test_secure_cookie_ignored_without_trusted_proxy(tmp_path, monkeypatch):
     client = _client(tmp_path, monkeypatch)
     resp = client.post(

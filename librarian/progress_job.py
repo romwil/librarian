@@ -9,6 +9,7 @@ heartbeat stale detection.
 from __future__ import annotations
 
 import json
+import os
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -126,7 +127,11 @@ class ProgressJob:
             merged["heartbeat_at"] = utc_now()
         path.parent.mkdir(parents=True, exist_ok=True)
         text = json.dumps(merged, indent=2, sort_keys=True)
-        path.write_text(text + "\n", encoding="utf-8")
+        # Atomic replace so a crash mid-write cannot tear the JSON blob
+        # (readers would reset to defaults and falsely idle a running job).
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        tmp.write_text(text + "\n", encoding="utf-8")
+        os.replace(tmp, path)
         return merged
 
     def read(self, data_dir: Path) -> Dict[str, Any]:
