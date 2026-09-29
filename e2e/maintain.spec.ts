@@ -32,7 +32,7 @@ test.describe("Maintain", () => {
     await page.goto("/maintain");
     await expect(page.getByRole("heading", { name: "Add a volume" })).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId("maintain-ingest")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Look first" })).toBeVisible();
+    // Scope to ingest — Calibre renormalize also ships a "Look first" CTA on Maintain.
     await expect(page.getByTestId("ingest-look-first")).toBeVisible();
     await expect(page.getByTestId("ingest-add")).toBeVisible();
     // Quiet map stays dark until Look first — presence ceremony, not a dump table.

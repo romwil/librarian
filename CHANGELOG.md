@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [0.5.18] — 2026-09-29
+
+### Highlights
+
+- **Disclosure-and-SSRF.** Automatic cover and atmosphere fetches enforce the URL allowlist by default; work-detail files and promote/enrich/Review mutation responses no longer leak absolute paths. Why this feels alive: the lamp keeps the house private while still painting covers and shelves.
+
+### Fixed
+
+- **P3-HIGH-01** — enrich / organize / CAA downloads default `require_safe_url=True` so poisoned indexer URLs cannot reach LAN.
+- **P4-HIGH-01** — `annotate_work_files` strips `path` from the public `files[]` shape.
+- **P4-HIGH-02** — promote / enrich / Review mutations return `public_work` / `public_work_admin` only.
+
 ## [0.5.17] — 2026-09-28
 
 ### Highlights

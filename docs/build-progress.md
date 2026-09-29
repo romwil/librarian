@@ -6,6 +6,7 @@ Plan: [librarian_automat_rss](file:///Users/willrompala/.cursor/plans/librarian_
 
 ## Shipped
 
+- **2026-09-29** — Sprint **F1** `disclosure-and-ssrf` → **0.5.18**: SSRF allowlist default on enrich/organize/CAA; strip `files[].path`; `public_work` on promote/enrich/Review mutations (P3-HIGH-01, P4-HIGH-01/02).
 - **2026-09-28** — Patch **0.5.17** Stacks unstuck (`idx_files_work_id`) + Maintain dock collapses idle chips and progressive-loads desk cards.
 - **2026-09-28** — Patch **0.5.16** Audnexus cache under `/config` (`DATA_DIR`) so the lamp (uid 99) can write it — no `/app` cwd fallback.
 - **2026-09-28** — Patch **0.5.15** snappier Hall: drop catalog fan-out from `/api/hall`, one local_gaps pass, shell boot calm, honest warm loads.

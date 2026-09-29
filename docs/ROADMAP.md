@@ -12,12 +12,12 @@ Active staged plan (agent pickup): `~/.cursor/plans/librarian_unified_recommend_
 
 | | |
 | --- | --- |
-| **Date** | 2026-09-28 |
+| **Date** | 2026-09-29 |
 | **Branch** | `main` |
-| **Version** | **0.5.17** |
-| **Arc** | Living-library Phases **0–5** complete; Phase R done; Phase D Top-10 sequence **complete** through **D7** → **0.5.14**. |
+| **Version** | **0.5.18** |
+| **Arc** | Living-library Phases **0–5** complete; Phase R/D done. Review-2026-09-29 remediation: **F1** `disclosure-and-ssrf` → **0.5.18** shipped; F2–F5 next. |
 | **Green** | pytest coverage floor **70%**; frontend `npm test`; Playwright e2e on **8794**. LAN truth `http://10.10.1.202:8793`. |
-| **Next** | Phase D Top-10 sequence complete. Quiet-hours / Ask-the-house polish when touching mail surfaces; Hub deferred. |
+| **Next** | F2 `hall-and-engine-calm` → 0.5.19. Quiet-hours / Ask-the-house polish when touching mail surfaces; Hub deferred. |
 | **Automat** | Host `./docker-run.sh` only. Hub `romwil/librarian` deferred. Never bind **8788 / 8790 / 8791 / 8792**. |
 
 ---
@@ -66,8 +66,13 @@ Remediation first (2026-09-25 review Critical/High), then Top-10 delight. Each s
 | **D5** | `safe-undo-grooming` + `peek-that-teaches` | **0.5.12** | **done** — Safe undo window; peek teaches honest empty |
 | **D6** | `whats-new-truth` + `named-shelves` | **0.5.13** | **done** — Honest What’s New tip; named household shelves |
 | **D7** | `calibre-renormalize` + `gaps-as-gifts` / `search-that-forgives` | **0.5.14** | **done** — Calibre Look first; Gaps as gifts; forgiving search |
+| **F1** | `disclosure-and-ssrf` | **0.5.18** | **done** — SSRF `require_safe_url` default; strip `files[].path`; `public_work` on promote/enrich/Review mutations |
+| **F2** | `hall-and-engine-calm` | 0.5.19 | pending — Hall defers local_gaps; engine hygiene (progress atomic, rate-limit, Audnexus prune, me badge) |
+| **F3** | `edge-delivery` | 0.5.20 | pending — Maintain dock / Find stub covers / auth timing + foyer features |
+| **F4** | `catalog-decouple` | 0.5.21 | pending — split catalog.py; `make_job`; lexicon cleanup |
+| **F5** | `findings-closeout` | 0.5.22 | pending — P3-MED-02 docs track; close review register |
 
-Phase D Top-10 sequence complete through **0.5.14** (D1–D7). See unified plan for polish notes.
+Phase D Top-10 sequence complete through **0.5.14** (D1–D7). Review-2026-09-29 remediation: **F1** shipped; F2–F5 next.
 
 ---
 
