@@ -80,7 +80,9 @@ def test_hall_gaps_include_multipart_cards(tmp_path, monkeypatch):
         }
     )
     hall = client.get("/api/hall").json()
-    multipart = [card for card in hall.get("gaps") or [] if card.get("gap_type") == "multipart"]
+    assert hall.get("gaps_pending") is True
+    soft = client.get("/api/gaps/local").json()
+    multipart = [card for card in soft.get("gaps") or [] if card.get("gap_type") == "multipart"]
     assert multipart
     assert {card["missing_index"] for card in multipart} >= {"1", "2", "4", "5"}
     assert all(card["part_set"]["total"] == 5 for card in multipart)

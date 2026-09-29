@@ -209,11 +209,18 @@ def test_hall_invites_every_role_to_catch_up(tmp_path, monkeypatch):
     owner_hall = client.get("/api/hall")
     assert owner_hall.status_code == 200
     owner_body = owner_hall.json()
-    owner_catch_up = owner_body["series_catch_up"]
+    assert owner_body["gaps_pending"] is True
+    assert owner_body["gaps"] == []
+    assert owner_body["series_catch_up"] == {"series": [], "empty": True}
+
+    owner_local = client.get("/api/gaps/local")
+    assert owner_local.status_code == 200
+    owner_soft = owner_local.json()
+    owner_catch_up = owner_soft["series_catch_up"]
     assert owner_catch_up["empty"] is False
     assert owner_catch_up["series"][0]["invitation"] == "One issue from a whole Saga."
-    # Owner gaps rail is local gifts on Hall; catalog fan-out stays on GET /api/gaps.
-    assert any(card["missing_index"] == "3" for card in owner_body["gaps"])
+    # Soft-fill gifts stay local; catalog fan-out stays on GET /api/gaps.
+    assert any(card["missing_index"] == "3" for card in owner_soft["gaps"])
 
     token = client.post("/api/invites", json={"role": "reader"}).json()["token"]
     client.post("/api/auth/logout")
@@ -228,11 +235,15 @@ def test_hall_invites_every_role_to_catch_up(tmp_path, monkeypatch):
 
     reader_hall = client.get("/api/hall")
     assert reader_hall.status_code == 200
-    reader_body = reader_hall.json()
+    assert reader_hall.json()["gaps_pending"] is True
+
+    reader_local = client.get("/api/gaps/local")
+    assert reader_local.status_code == 200
+    reader_soft = reader_local.json()
     # Gaps as gifts: readers see local holes as invitations (not catalog fan-out admin debt).
-    assert any(card.get("missing_index") == "3" and card.get("gift") for card in reader_body["gaps"])
-    assert "gift" in (reader_body.get("gaps_presence") or "").lower() or reader_body.get("gaps_presence")
-    reader_catch_up = reader_body["series_catch_up"]
+    assert any(card.get("missing_index") == "3" and card.get("gift") for card in reader_soft["gaps"])
+    assert "gift" in (reader_soft.get("gaps_presence") or "").lower() or reader_soft.get("gaps_presence")
+    reader_catch_up = reader_soft["series_catch_up"]
     assert reader_catch_up["empty"] is False
     saga = reader_catch_up["series"][0]
     assert saga["series_name"] == "Saga"
@@ -250,4 +261,7 @@ def test_hall_catch_up_empty_on_a_whole_shelf(tmp_path, monkeypatch):
     client.post("/api/auth/local/login", json={"username": "owner", "password": "password123"})
 
     body = client.get("/api/hall").json()
+    assert body["gaps_pending"] is True
     assert body["series_catch_up"] == {"series": [], "empty": True}
+    soft = client.get("/api/gaps/local").json()
+    assert soft["series_catch_up"] == {"series": [], "empty": True}

@@ -439,7 +439,11 @@ def test_hall_gaps_do_not_queue_sab(tmp_path, monkeypatch):
     assert client.post("/api/auth/local/login", json={"username": "owner", "password": "password123"}).status_code == 200
     hall = client.get("/api/hall")
     assert hall.status_code == 200
-    gaps = hall.json()["gaps"]
+    assert hall.json()["gaps_pending"] is True
+    assert hall.json()["gaps"] == []
+    local = client.get("/api/gaps/local")
+    assert local.status_code == 200
+    gaps = local.json()["gaps"]
     hole = next(card for card in gaps if card["missing_index"] == "2026-09")
     assert hole["kind"] == "magazine"
     assert hole["series_name"] == "Linux Magazin"
@@ -451,8 +455,8 @@ def test_hall_gaps_do_not_queue_sab(tmp_path, monkeypatch):
     assert any(card["missing_index"] == "2026-09" for card in listed.json()["cards"])
 
 
-def test_hall_skips_catalog_fanout(tmp_path, monkeypatch):
-    """Hall must not block on Hardcover / Open Library / MusicBrainz catalog_gaps."""
+def test_hall_skips_local_and_catalog_fanout(tmp_path, monkeypatch):
+    """Hall first paint must not block on local_gaps or remote catalog_gaps."""
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
     monkeypatch.setenv("LIBRARIAN_OWNER_USERNAME", "owner")
     monkeypatch.setenv("LIBRARIAN_OWNER_PASSWORD", "password123")
@@ -480,18 +484,58 @@ def test_hall_skips_catalog_fanout(tmp_path, monkeypatch):
         calls["catalog"] += 1
         raise AssertionError("catalog_gaps must not run on GET /api/hall")
 
-    monkeypatch.setattr("librarian.web.routers.catalog.local_gaps", counting_local)
+    monkeypatch.setattr("librarian.gaps.local_gaps", counting_local)
     monkeypatch.setattr("librarian.web.routers.catalog.catalog_gaps", forbid_catalog)
     client = TestClient(create_app(tmp_path))
     assert client.post("/api/auth/local/login", json={"username": "owner", "password": "password123"}).status_code == 200
     hall = client.get("/api/hall")
     assert hall.status_code == 200
     assert calls["catalog"] == 0
+    assert calls["local"] == 0
+    body = hall.json()
+    assert body["gaps_pending"] is True
+    assert body["gaps"] == []
+    assert body["series_catch_up"] == {"series": [], "empty": True}
+
+    soft = client.get("/api/gaps/local")
+    assert soft.status_code == 200
     assert calls["local"] == 1
-    gaps = hall.json()["gaps"]
-    assert any(card["missing_index"] == "2026-09" for card in gaps)
+    assert any(card["missing_index"] == "2026-09" for card in soft.json()["gaps"])
+    assert soft.json()["gaps_pending"] is False
+    assert soft.json()["series_catch_up"]["empty"] is False
+
+    # Second soft-fill hits short TTL cache — no second local_gaps walk.
+    soft2 = client.get("/api/gaps/local")
+    assert soft2.status_code == 200
+    assert calls["local"] == 1
+
     # Catalog fan-out remains available on the dedicated gaps desk.
     monkeypatch.setattr("librarian.web.routers.catalog.catalog_gaps", real_catalog)
     listed = client.get("/api/gaps")
     assert listed.status_code == 200
 
+
+def test_hall_first_paint_skips_slow_local_gaps(tmp_path, monkeypatch):
+    """Regression: a slow local_gaps walk must not delay Hall shelf paint."""
+    import time
+
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("LIBRARIAN_OWNER_USERNAME", "owner")
+    monkeypatch.setenv("LIBRARIAN_OWNER_PASSWORD", "password123")
+    clear_session_secret_cache()
+    clear_rate_limits()
+    Database(tmp_path / "librarian.db")
+
+    def slow_local(database):
+        time.sleep(0.4)
+        return []
+
+    monkeypatch.setattr("librarian.gaps.local_gaps", slow_local)
+    client = TestClient(create_app(tmp_path))
+    assert client.post("/api/auth/local/login", json={"username": "owner", "password": "password123"}).status_code == 200
+    started = time.perf_counter()
+    hall = client.get("/api/hall")
+    elapsed = time.perf_counter() - started
+    assert hall.status_code == 200
+    assert hall.json()["gaps_pending"] is True
+    assert elapsed < 0.25, f"Hall waited on local_gaps ({elapsed:.3f}s)"

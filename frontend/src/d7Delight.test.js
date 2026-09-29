@@ -13,6 +13,7 @@ test("calibre renormalize helpers", () => {
 test("gaps as gifts copy", () => {
   assert.equal(gapsGiftTitle(), "Gaps as gifts");
   assert.match(gapsGiftPresence({ gaps: [] }), /whole/i);
+  assert.match(gapsGiftPresence({ gaps_pending: true }), /Checking the runs/i);
 });
 
 test("search forgive helpers", () => {

@@ -1,6 +1,7 @@
 /** Gaps as gifts — invitation copy for Hall rails. */
 
 export function gapsGiftPresence(hall) {
+  if (hall?.gaps_pending) return "Checking the runs on these shelves…";
   const fromServer = String(hall?.gaps_presence || "").trim();
   if (fromServer) return fromServer;
   const count = Array.isArray(hall?.gaps) ? hall.gaps.length : 0;

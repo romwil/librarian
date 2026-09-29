@@ -64,6 +64,45 @@ function HallShelves({ role, owner, configured, lampPeriod }) {
     };
   }, [reloadToken]);
 
+  // Soft-fill gifts + catch-up after shelves paint (local gaps are off the Hall hot path).
+  useEffect(() => {
+    if (phase !== "ready" || !hall?.gaps_pending) return undefined;
+    let cancelled = false;
+    api
+      .gapsLocal()
+      .then((data) => {
+        if (cancelled) return;
+        setHall((prev) => {
+          if (!prev) return prev;
+          const gifts = Array.isArray(data?.gaps) ? data.gaps : [];
+          const nextGap = data?.tonight_gap ?? null;
+          const tonight = prev.tonight
+            ? {
+                ...prev.tonight,
+                gap: nextGap,
+                empty: !(prev.tonight.continue || nextGap || prev.tonight.surprise),
+              }
+            : prev.tonight;
+          return {
+            ...prev,
+            gaps: gifts,
+            gaps_presence: data?.gaps_presence ?? prev.gaps_presence,
+            series_catch_up: data?.series_catch_up ?? prev.series_catch_up,
+            gaps_pending: false,
+            tonight,
+          };
+        });
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setHall((prev) => (prev ? { ...prev, gaps_pending: false } : prev));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [phase, hall?.gaps_pending, reloadToken]);
+
   if (phase === "loading") {
     return (
       <section className="hall-shelves-loading" data-testid="hall-shelves-loading" aria-busy="true">
@@ -155,7 +194,11 @@ function HallShelves({ role, owner, configured, lampPeriod }) {
         title={gapsGiftTitle()}
         kicker={gapsGiftKicker(hall)}
         items={(hall?.gaps || []).map((item) => ({ ...item, gap: true }))}
-        empty={hall ? "The runs on these shelves feel whole tonight." : undefined}
+        empty={
+          hall && !hall.gaps_pending
+            ? "The runs on these shelves feel whole tonight."
+            : undefined
+        }
       />
     </div>
   );

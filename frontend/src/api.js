@@ -39,6 +39,7 @@ export const api = {
     request("/invites/redeem/local", { method: "POST", body: JSON.stringify({ token, username, password }) }),
   mintInvite: (role) => request("/invites", { method: "POST", body: JSON.stringify({ role }) }),
   hall: () => request("/hall"),
+  gapsLocal: () => request("/gaps/local"),
   browse: (filters = {}) => {
     const params = new URLSearchParams();
     for (const key of ["kind", "author", "letter", "series", "genre", "shelf", "sort"]) {

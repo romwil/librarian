@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import re
+import time
 from collections import defaultdict
+from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 import httpx
@@ -27,6 +30,12 @@ MAX_BOOK_SERIES = 12
 MAX_COMIC_SERIES = 12
 MAX_MUSIC_ALBUMS = 8
 MAX_MUSIC_ARTISTS = 4
+
+# Short TTL under DATA_DIR so Hall soft-fill / Gaps desk stay cheap without
+# blocking shelf first paint on every magazine/comic series walk.
+LOCAL_GAPS_CACHE_TTL_SECONDS = 45.0
+_LOCAL_GAPS_CACHE_FILE = "local-gaps-cache.json"
+_local_gaps_memory: Dict[str, Tuple[float, List[Dict[str, Any]]]] = {}
 
 
 def magazine_month_holes(indexes: Sequence[str]) -> List[str]:
@@ -241,6 +250,56 @@ def local_gaps(db: Database) -> List[Dict[str, Any]]:
     rails.extend(_file_gaps(db, KIND_MUSIC, music_track_holes, "music_tracks"))
     rails.extend(multipart_owned_gaps(db))
     return rails
+
+
+def invalidate_local_gaps_cache(data_dir: Optional[Path] = None) -> None:
+    """Drop memory + on-disk local gap cache (tests / after scan)."""
+    if data_dir is None:
+        _local_gaps_memory.clear()
+        return
+    key = str(Path(data_dir).resolve())
+    _local_gaps_memory.pop(key, None)
+    path = Path(data_dir) / _LOCAL_GAPS_CACHE_FILE
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def cached_local_gaps(
+    db: Database,
+    data_dir: Optional[Path] = None,
+    *,
+    ttl: float = LOCAL_GAPS_CACHE_TTL_SECONDS,
+) -> List[Dict[str, Any]]:
+    """local_gaps with a short TTL under DATA_DIR — for soft-fill, not Hall paint."""
+    key = str(Path(data_dir).resolve()) if data_dir is not None else "default"
+    now = time.time()
+    mem = _local_gaps_memory.get(key)
+    if mem is not None and (now - mem[0]) <= ttl:
+        return [dict(row) for row in mem[1]]
+
+    path = Path(data_dir) / _LOCAL_GAPS_CACHE_FILE if data_dir is not None else None
+    if path is not None and path.is_file():
+        try:
+            age = now - path.stat().st_mtime
+            if age <= ttl:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(payload, list):
+                    rows = [dict(row) for row in payload if isinstance(row, dict)]
+                    _local_gaps_memory[key] = (now, rows)
+                    return [dict(row) for row in rows]
+        except (OSError, ValueError, TypeError):
+            pass
+
+    rows = local_gaps(db)
+    _local_gaps_memory[key] = (now, rows)
+    if path is not None:
+        try:
+            path.write_text(json.dumps(rows), encoding="utf-8")
+        except OSError:
+            pass
+    return rows
 
 
 def _http_client(*, transport: Optional[httpx.BaseTransport] = None) -> httpx.Client:

@@ -25,6 +25,7 @@ from librarian.delight import (
     normalize_ambient,
     normalize_ui_font_step,
     normalize_ui_theme,
+    pick_fast_gap,
     plexamp_handoff,
     progress_already_finished,
     sanitize_whisper,
@@ -41,7 +42,12 @@ from librarian.enrich import (
     list_match_candidates,
     update_work_metadata,
 )
-from librarian.gaps import catalog_gaps, gap_cards, gaps_for_series, local_gaps
+from librarian.gaps import (
+    cached_local_gaps,
+    catalog_gaps,
+    gap_cards,
+    gaps_for_series,
+)
 from librarian.gaps_gifts import gift_cards, gift_presence
 from librarian.indexers.discover import discover_beyond, resolve_feed_limit
 from librarian.indexers.rank import search_and_rank
@@ -148,12 +154,11 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
                 kind="music", music_state="incoming", limit=12, require_files=True
             ),
         }
-        # Hall stays local + snappy: one local_gaps pass for gifts + catch-up.
-        # Catalog fan-out (Hardcover / Open Library / …) lives on GET /api/gaps —
-        # never on the hot Hall path (remote HTTP was blocking shelf first paint).
-        local_cards = gap_cards(local_gaps(db))
-        gaps = gift_cards(local_cards)
-        catch_up = series_catch_up(local_cards)
+        # Hall paints shelves first — local gap fan-out is deferred to
+        # GET /api/gaps/local (SPA soft-fills gifts + catch-up). Catalog HTTP
+        # stays on GET /api/gaps only.
+        gaps: List[Dict[str, Any]] = []
+        catch_up = series_catch_up([])
         continue_rows = db.continue_works(user["id"], limit=18)
         continue_split = split_continue_rails(continue_rows)
         surprise = None
@@ -200,7 +205,8 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
             "named_shelves_presence": shelf_presence(named_shelves),
             "areas": {key: public_works(value) for key, value in areas.items()},
             "gaps": gaps,
-            "gaps_presence": gift_presence(gaps),
+            "gaps_presence": "",
+            "gaps_pending": True,
             "series_catch_up": catch_up,
             "continue": continue_split["reading"],
             "continue_listening": continue_split["listening"],
@@ -1188,6 +1194,24 @@ def register_catalog_routes(app: FastAPI, deps: WebDeps) -> None:
         require_role(request.state.user, "owner", "op")
         rows = catalog_gaps(db, settings())
         return {"series": rows, "cards": gap_cards(rows)}
+
+    @app.get("/api/gaps/local")
+    def gaps_local(request: Request):
+        """Hall soft-fill: local holes only (no catalog HTTP). Short TTL under DATA_DIR."""
+        require_role(request.state.user, "owner", "op", "reader")
+        rows = cached_local_gaps(db, root)
+        cards = gap_cards(rows)
+        gifts = gift_cards(cards)
+        catch_up = series_catch_up(cards)
+        return {
+            "series": rows,
+            "cards": cards,
+            "gaps": gifts,
+            "gaps_presence": gift_presence(gifts),
+            "series_catch_up": catch_up,
+            "tonight_gap": pick_fast_gap(gifts),
+            "gaps_pending": False,
+        }
 
     @app.post("/api/gaps/confirm")
     def gaps_confirm(payload: RequestPayload, request: Request):

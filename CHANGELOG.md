@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **Hall soft-fills local gaps** — `GET /api/hall` no longer walks `local_gaps` on first paint (`gaps_pending`); SPA fills gifts + series catch-up via `GET /api/gaps/local` (short TTL cache under DATA_DIR). Closes **P2-HIGH-01**.
+
 ## [0.5.18] — 2026-09-29
 
 ### Highlights

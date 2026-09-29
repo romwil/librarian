@@ -111,6 +111,7 @@ test("Hall mounts catch-up after Tonight’s Shelf", () => {
   const catchUpAt = hallSrc.indexOf("<SeriesCatchUp");
   assert.ok(shelfAt > -1 && catchUpAt > shelfAt, "catch-up must follow Tonight’s Shelf");
   assert.match(hallSrc, /catchUp=\{hall\?\.series_catch_up\}/);
+  assert.match(hallSrc, /gapsLocal\(\)/);
 });
 
 test("Work soft invite rides the series ribbon", () => {

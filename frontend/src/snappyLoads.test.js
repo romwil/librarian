@@ -26,6 +26,13 @@ test("Hall shelves cancel on unmount and acknowledge a long warm", () => {
   assert.match(hallSrc, /3500/);
 });
 
+test("Hall soft-fills local gaps after shelves paint", () => {
+  assert.match(hallSrc, /gapsLocal\(\)/);
+  assert.match(hallSrc, /gaps_pending/);
+  assert.match(hallSrc, /tonight_gap/);
+  assert.match(hallSrc, /!hall\.gaps_pending/);
+});
+
 test("WorkPage cancels in-flight detail loads on unmount or id change", () => {
   assert.match(workSrc, /let alive = true/);
   assert.match(workSrc, /alive = false/);
