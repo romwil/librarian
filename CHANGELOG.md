@@ -2,9 +2,22 @@
 
 ## [Unreleased]
 
+## [0.5.19] — 2026-09-29
+
+### Highlights
+
+- **Hall-and-engine calm.** Hall paints shelves before the gap walk; gifts and series catch-up soft-fill after first paint. Progress writes, rate-limit eviction, Audnexus prune, and the review badge count stay quiet in the engine room. Why this feels alive: opening the Hall is a breath again, not a wait for every missing book.
+
 ### Changed
 
 - **Hall soft-fills local gaps** — `GET /api/hall` no longer walks `local_gaps` on first paint (`gaps_pending`); SPA fills gifts + series catch-up via `GET /api/gaps/local` (short TTL cache under DATA_DIR). Closes **P2-HIGH-01**.
+- **`/api/auth/me` review badge** — returns `count_works` so the badge stays honest without a second catalog count (**P2-MED-02**).
+
+### Fixed
+
+- **P2-MED-01** — progress JSON writes use atomic `os.replace` so a crash mid-write cannot leave a half file.
+- **P2-MED-03** — empty rate-limit keys are evicted so the in-process limiter does not grow without bound.
+- **P2-MED-04** — expired Audnexus cache rows are pruned opportunistically on read.
 
 ## [0.5.18] — 2026-09-29
 

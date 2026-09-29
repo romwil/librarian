@@ -6,7 +6,7 @@ Plan: [librarian_automat_rss](file:///Users/willrompala/.cursor/plans/librarian_
 
 ## Shipped
 
-- **2026-09-29** — Sprint **F2** lane **BE-gaps** (P2-HIGH-01): Hall defers `local_gaps`; `GET /api/gaps/local` + SPA soft-fill + short DATA_DIR TTL (`ef5c3a5`). Version bump stays with F2 merge → 0.5.19.
+- **2026-09-29** — Sprint **F2** `hall-and-engine-calm` → **0.5.19**: Hall defers `local_gaps` + `GET /api/gaps/local` soft-fill (P2-HIGH-01); atomic progress writes; me `count_works`; rate-limit eviction; Audnexus prune (P2-MED-01..04).
 - **2026-09-29** — Sprint **F1** `disclosure-and-ssrf` → **0.5.18**: SSRF allowlist default on enrich/organize/CAA; strip `files[].path`; `public_work` on promote/enrich/Review mutations (P3-HIGH-01, P4-HIGH-01/02).
 - **2026-09-28** — Patch **0.5.17** Stacks unstuck (`idx_files_work_id`) + Maintain dock collapses idle chips and progressive-loads desk cards.
 - **2026-09-28** — Patch **0.5.16** Audnexus cache under `/config` (`DATA_DIR`) so the lamp (uid 99) can write it — no `/app` cwd fallback.
