@@ -46,9 +46,9 @@ def test_get_queue_does_not_call_pollers(tmp_path, monkeypatch):
         calls["active"] += 1
         return 0
 
-    monkeypatch.setattr("librarian.web.routers.catalog.poll_watch_folder", fake_watch)
-    monkeypatch.setattr("librarian.web.routers.catalog.poll_rss_feeds", fake_rss)
-    monkeypatch.setattr("librarian.web.routers.catalog.poll_active_jobs", fake_active)
+    monkeypatch.setattr("librarian.web.routers.queue.poll_watch_folder", fake_watch)
+    monkeypatch.setattr("librarian.web.routers.queue.poll_rss_feeds", fake_rss)
+    monkeypatch.setattr("librarian.web.routers.queue.poll_active_jobs", fake_active)
 
     client = _owner_client(tmp_path, monkeypatch)
     db = Database(tmp_path / "librarian.db")
@@ -85,9 +85,9 @@ def test_post_queue_tick_runs_pollers(tmp_path, monkeypatch):
         calls["active"] += 1
         return 0
 
-    monkeypatch.setattr("librarian.web.routers.catalog.poll_watch_folder", fake_watch)
-    monkeypatch.setattr("librarian.web.routers.catalog.poll_rss_feeds", fake_rss)
-    monkeypatch.setattr("librarian.web.routers.catalog.poll_active_jobs", fake_active)
+    monkeypatch.setattr("librarian.web.routers.queue.poll_watch_folder", fake_watch)
+    monkeypatch.setattr("librarian.web.routers.queue.poll_rss_feeds", fake_rss)
+    monkeypatch.setattr("librarian.web.routers.queue.poll_active_jobs", fake_active)
 
     client = _owner_client(tmp_path, monkeypatch)
     resp = client.post("/api/queue/tick")

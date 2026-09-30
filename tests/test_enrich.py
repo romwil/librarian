@@ -1149,7 +1149,7 @@ def test_fix_match_apply_api(tmp_path, monkeypatch):
         ),
     )
     monkeypatch.setattr(
-        "librarian.web.routers.catalog.list_match_candidates",
+        "librarian.web.routers.works.list_match_candidates",
         lambda work, **kwargs: __import__("librarian.enrich", fromlist=["list_match_candidates"]).list_match_candidates(
             work, transport=httpx.MockTransport(_born_to_run_handler), **kwargs
         ),

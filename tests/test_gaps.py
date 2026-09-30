@@ -485,7 +485,7 @@ def test_hall_skips_local_and_catalog_fanout(tmp_path, monkeypatch):
         raise AssertionError("catalog_gaps must not run on GET /api/hall")
 
     monkeypatch.setattr("librarian.gaps.local_gaps", counting_local)
-    monkeypatch.setattr("librarian.web.routers.catalog.catalog_gaps", forbid_catalog)
+    monkeypatch.setattr("librarian.web.routers.hall.catalog_gaps", forbid_catalog)
     client = TestClient(create_app(tmp_path))
     assert client.post("/api/auth/local/login", json={"username": "owner", "password": "password123"}).status_code == 200
     hall = client.get("/api/hall")
@@ -510,7 +510,7 @@ def test_hall_skips_local_and_catalog_fanout(tmp_path, monkeypatch):
     assert calls["local"] == 1
 
     # Catalog fan-out remains available on the dedicated gaps desk.
-    monkeypatch.setattr("librarian.web.routers.catalog.catalog_gaps", real_catalog)
+    monkeypatch.setattr("librarian.web.routers.hall.catalog_gaps", real_catalog)
     listed = client.get("/api/gaps")
     assert listed.status_code == 200
 

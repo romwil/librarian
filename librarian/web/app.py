@@ -26,12 +26,16 @@ from librarian.web.build_info import FRONTEND_DIST
 from librarian.web.deps import WebDeps
 from librarian.web.routers import (
     register_auth_routes,
-    register_catalog_routes,
+    register_hall_routes,
     register_ingest_routes,
     register_maintain_routes,
     register_notification_routes,
+    register_queue_routes,
+    register_reader_media_routes,
     register_review_routes,
+    register_search_routes,
     register_settings_routes,
+    register_works_routes,
 )
 
 
@@ -118,7 +122,11 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         return await call_next(request)
 
     register_auth_routes(app, deps)
-    register_catalog_routes(app, deps)
+    register_hall_routes(app, deps)
+    register_search_routes(app, deps)
+    register_works_routes(app, deps)
+    register_queue_routes(app, deps)
+    register_reader_media_routes(app, deps)
     register_review_routes(app, deps)
     register_ingest_routes(app, deps)
     register_maintain_routes(app, deps)

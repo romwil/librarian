@@ -241,9 +241,9 @@ def test_music_promote_response_uses_admin_serializer(tmp_path, monkeypatch):
         "indexer_guid": "music-guid",
         "repair_fail_count": 0,
     }
-    with patch("librarian.web.routers.catalog.promote_music", return_value=raw):
+    with patch("librarian.web.routers.works.promote_music", return_value=raw):
         with patch(
-            "librarian.web.routers.catalog.plexamp_handoff",
+            "librarian.web.routers.works.plexamp_handoff",
             return_value={"url": "plexamp://album"},
         ):
             resp = client.post("/api/music/music-1/promote")
@@ -277,7 +277,7 @@ def test_enrich_response_strips_storage_paths(tmp_path, monkeypatch):
         "description": "Desert planet.",
     }
     with patch(
-        "librarian.web.routers.catalog.enrich_work",
+        "librarian.web.routers.works.enrich_work",
         return_value={
             "work": shaped_work,
             "updated": True,
