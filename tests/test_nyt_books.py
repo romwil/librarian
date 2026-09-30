@@ -157,39 +157,3 @@ def test_default_list_names_cover_fiction_and_nonfiction():
     assert "hardcover-fiction" in ids
     assert "hardcover-nonfiction" in ids
 
-
-def _api_client(tmp_path, monkeypatch, **settings_fields):
-    from fastapi.testclient import TestClient
-
-    from librarian.config import Settings, save_settings
-    from librarian.rate_limit import clear_rate_limits
-    from librarian.sessions import clear_session_secret_cache
-    from librarian.web.app import create_app
-
-    monkeypatch.setenv("DATA_DIR", str(tmp_path))
-    monkeypatch.setenv("LIBRARIAN_OWNER_USERNAME", "owner")
-    monkeypatch.setenv("LIBRARIAN_OWNER_PASSWORD", "password123")
-    if settings_fields:
-        save_settings(tmp_path, Settings(**settings_fields))
-    clear_session_secret_cache()
-    clear_rate_limits()
-    return TestClient(create_app(tmp_path))
-
-
-def test_api_nyt_fail_closed_without_key(tmp_path, monkeypatch):
-    client = _api_client(tmp_path, monkeypatch, nyt_books_api_key="")
-    login = client.post("/api/auth/local/login", json={"username": "owner", "password": "password123"})
-    assert login.status_code == 200
-    names = client.get("/api/lists/nyt/names")
-    assert names.status_code == 200
-    body = names.json()
-    assert body["configured"] is False
-    assert body["empty_reason"] == "missing_key"
-    assert "New York Times" in body["empty_copy"] or "LLM" in body["empty_copy"] or "bestseller" in body["empty_copy"].lower()
-    assert any(row["list_name_encoded"] == "hardcover-fiction" for row in body["names"])
-    listing = client.get("/api/lists/nyt", params={"list": "hardcover-fiction"})
-    assert listing.status_code == 200
-    payload = listing.json()
-    assert payload["configured"] is False
-    assert payload["books"] == []
-    assert "LLM" in payload["empty_copy"] or "API" in payload["empty_copy"] or "fallback" in payload["empty_copy"].lower()

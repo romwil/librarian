@@ -20,14 +20,7 @@ from librarian.indexers.scrub import (
 )
 from librarian.kinds import ALL_KINDS, EXTRA_KINDS
 from librarian.lists import chase_missing_items, curated_list_payload, list_presets
-from librarian.nyt_books import (
-    NytBooksClient,
-    NytBooksError,
-    default_list_names,
-    match_local_work,
-    normalize_list_date,
-    normalize_list_name,
-)
+from librarian.nyt_books import normalize_list_date
 from librarian.rate_limit import enforce_rate_limit
 from librarian.search_forgive import search_with_forgiveness
 from librarian.suggest import SUGGEST_FIELDS, suggest_items
@@ -293,125 +286,6 @@ def register_search_routes(app: FastAPI, deps: WebDeps) -> None:
             "results": results,
             "can_request": request.state.user["role"] in ("owner", "op", "reader"),
             "can_confirm": request.state.user["role"] in ("owner", "op"),
-        }
-
-    @app.get("/api/lists/nyt/names")
-    def nyt_list_names(request: Request):
-        """Legacy NYT Books API names — prefer POST /api/lists/llm."""
-        require_role(request.state.user, "owner", "op", "reader")
-        cfg = settings()
-        key = str(cfg.nyt_books_api_key or "").strip()
-        if not key:
-            return {
-                "configured": False,
-                "names": default_list_names(),
-                "empty_reason": "missing_key",
-                "empty_copy": "Add a BYO LLM in Settings for curated bestseller lists.",
-                "deprecated": True,
-            }
-        client = NytBooksClient(key, data_dir=root)
-        try:
-            names = client.list_names()
-        except NytBooksError as error:
-            return {
-                "configured": True,
-                "names": default_list_names(),
-                "empty_reason": "error",
-                "empty_copy": str(error),
-                "deprecated": True,
-            }
-        finally:
-            client.close()
-        return {
-            "configured": True,
-            "names": names or default_list_names(),
-            "empty_reason": "",
-            "empty_copy": "",
-            "deprecated": True,
-        }
-
-    @app.get("/api/lists/nyt")
-    def nyt_bestseller_list(
-        request: Request,
-        list: str = "hardcover-fiction",  # noqa: A002 — query param name matches NYT docs
-        date: str = "current",
-    ):
-        require_role(request.state.user, "owner", "op", "reader")
-        slug = normalize_list_name(list) or "hardcover-fiction"
-        when = normalize_list_date(date)
-        if not when:
-            raise HTTPException(status_code=400, detail="Date must be YYYY-MM-DD or current")
-        cfg = settings()
-        key = str(cfg.nyt_books_api_key or "").strip()
-        client = NytBooksClient(key, data_dir=root)
-        try:
-            payload = client.bestseller_list(slug, date=when)
-        except NytBooksError as error:
-            client.close()
-            return {
-                "configured": bool(key),
-                "list_name": slug,
-                "date": when,
-                "published_date": "",
-                "display_name": slug,
-                "books": [],
-                "empty_reason": "error",
-                "empty_copy": str(error),
-            }
-        client.close()
-        books = []
-        for book in payload.get("books") or []:
-            query = " ".join(
-                part
-                for part in (
-                    str(book.get("author") or "").strip(),
-                    str(book.get("title") or "").strip(),
-                )
-                if part
-            )
-            candidates: List[Dict[str, Any]] = []
-            isbn = str(book.get("isbn") or "").strip()
-            if isbn:
-                candidates.extend(db.search_works(isbn, limit=8, kind="book"))
-            if query:
-                candidates.extend(db.search_works(query, limit=12, kind="book"))
-            # Deduplicate by id while preserving order.
-            seen: set[str] = set()
-            uniq: List[Dict[str, Any]] = []
-            for row in candidates:
-                wid = str(row.get("id") or "")
-                if not wid or wid in seen:
-                    continue
-                seen.add(wid)
-                uniq.append(row)
-            local = match_local_work(book, uniq)
-            entry = dict(book)
-            if local:
-                pub = public_work(local)
-                entry["shelved"] = {
-                    "id": pub.get("id") if pub else local.get("id"),
-                    "title": (pub or local).get("title"),
-                    "author": (pub or local).get("author"),
-                    "has_cover": bool(
-                        (pub or local).get("has_cover") or (pub or local).get("cover_path")
-                    ),
-                }
-            else:
-                entry["shelved"] = None
-            books.append(entry)
-        empty_reason = str(payload.get("empty_reason") or "")
-        empty_copy = ""
-        if empty_reason == "missing_key":
-            empty_copy = "Add a BYO LLM in Settings for curated bestseller lists."
-        elif empty_reason == "empty_list":
-            empty_copy = "That list came back empty for this date."
-        elif not books and not empty_reason:
-            empty_copy = "No titles on this list yet."
-        return {
-            **payload,
-            "books": books,
-            "empty_copy": empty_copy,
-            "deprecated": True,
         }
 
     @app.post("/api/find/finish-eta")
