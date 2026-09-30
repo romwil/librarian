@@ -6,6 +6,7 @@ Plan: [librarian_automat_rss](file:///Users/willrompala/.cursor/plans/librarian_
 
 ## Shipped
 
+- **2026-09-29** — Sprint **F5** `findings-closeout` → **0.5.22**: P3-MED-02 accepted bind documented (Hub reverse-proxy-only exit; listen stays `0.0.0.0`); review-2026-09-29 register closed (16/16 finding headings).
 - **2026-09-29** — Sprint **F4** `catalog-decouple` → **0.5.21**: catalog split into hall/search/works/queue/reader_media (P1-HIGH-01); `make_job` factory + thin `*_progress` re-exports (P1-MED-01); unused NYT list routes removed, `#bagging` kept (P1-MED-02).
 - **2026-09-29** — Sprint **F3** `edge-delivery` → **0.5.20**: Maintain dock multiplex status + idle calm (P2-MED-05); Find stub covers omitted until shelved (P4-MED-02); timing-safe malformed salt + foyer vs ops `/api/features` (P3-MED-01, P4-MED-01).
 - **2026-09-29** — Sprint **F2** `hall-and-engine-calm` → **0.5.19**: Hall defers `local_gaps` + `GET /api/gaps/local` soft-fill (P2-HIGH-01); atomic progress writes; me `count_works`; rate-limit eviction; Audnexus prune (P2-MED-01..04).

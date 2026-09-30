@@ -17,7 +17,9 @@ Living brief for operators. Status values move between **Open**, **Mitigated**, 
 
 ### Trusted LAN
 
-Typical Unraid / Docker deploy on a private network. Neighbors on the same VLAN (or a compromised device) can hit `:8793`. Default bind is all interfaces (S3). Keep the host on a trusted segment; do not port-forward bare 8793.
+Typical Unraid / Docker deploy on a private network. Neighbors on the same VLAN (or a compromised device) can hit `:8793`. Default bind stays all interfaces (`0.0.0.0:8793`, S3 / review **P3-MED-02**, **Accepted**). Keep the host on a trusted segment; do not port-forward bare 8793.
+
+**Exit for S3:** Hub reverse-proxy-only. When Hub `romwil/librarian` is the ship path, TLS on a reverse proxy you control (Caddy / NPM / Cloudflare Tunnel) is the only published way in; set `LIBRARIAN_TRUST_PROXY_HEADERS=1` only on that hop. This release does not change the container listen address.
 
 ### Guest / IoT Wi‑Fi
 
@@ -65,7 +67,7 @@ SPA ──no session──► /login (foyer) or /join?token=
 |----|----------|----------|-------------------|--------|---------------|
 | **S1** | Critical | Control-plane routes without a session. | Unauthenticated `curl` to Hall / settings / queue. | **Mitigated** | Explicit handshake allowlist; no `/api/auth/` wildcard. |
 | **S2** | Critical | Session secret fell back to a public default. | Forge `librarian_session` cookies for any `user_id`. | **Mitigated** | Public `librarian-dev-session-secret` refuses to start; empty env auto-generates under `/config/session_secret` (0600). Still set `LIBRARIAN_SESSION_SECRET` in production. |
-| **S3** | Critical | App binds `0.0.0.0:8793` in Docker. | Reach the control plane from any host interface / accidental WAN map. | **Open** | Do not port-forward bare 8793; put TLS on a reverse proxy and set proxy trust only there. |
+| **S3** | Critical | App binds `0.0.0.0:8793` in Docker. | Reach the control plane from any host interface / accidental WAN map. | **Accepted** (P3-MED-02, 0.5.22) | Bind unchanged. Exit is Hub reverse-proxy-only (TLS in front; proxy trust only there). Do not port-forward bare 8793. |
 | **S9** | Medium | Session cookie `Secure` from spoofed proto. | Weaker cookie story; CSRF edge cases on a “HTTPS” lie. | **Mitigated** | `Secure` only on socket HTTPS or trusted forwarded proto. |
 | **S11** | Medium | Settings JSON stores indexer / SAB / Hardcover keys in plaintext under `/config`. | Read volume / backup → fleet credentials. | **Mitigated** | File mode `0600` on every save. Restrict who can mount `/config`. |
 | **S13** | Low | Image historically ran as root. | Container breakout has root inside the image. | **Mitigated** | Entrypoint `chown`s `/config` and drops via `gosu` to `PUID`/`PGID` (Unraid 99/100). |
@@ -75,7 +77,7 @@ SPA ──no session──► /login (foyer) or /join?token=
 
 ## Operator checklist
 
-1. **Do not expose bare `8793` to the internet.** Put TLS on Caddy/NPM/Cloudflare Tunnel in front.
+1. **Do not expose bare `8793` to the internet.** Put TLS on Caddy/NPM/Cloudflare Tunnel in front. The accepted bind (`0.0.0.0`) stays until **Hub reverse-proxy-only** is the exit (S3 / P3-MED-02).
 2. Set **`LIBRARIAN_TRUST_PROXY_HEADERS=1` only behind that trusted proxy.** Untrusted `X-Forwarded-*` is ignored for client IP, rate limits, `Secure` cookies, and any “this is HTTPS” decision.
 3. Set **`LIBRARIAN_SESSION_SECRET`** to a long random value (or accept auto-generated secret under Config). Invite HMACs use this secret. Never commit it. The public development default is refused.
 4. Set **`LIBRARIAN_OWNER_PASSWORD`** (≥ 8) in the Unraid template / `.env`. Do not log it.

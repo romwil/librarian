@@ -14,10 +14,10 @@ Active staged plan (agent pickup): `~/.cursor/plans/librarian_unified_recommend_
 | --- | --- |
 | **Date** | 2026-09-29 |
 | **Branch** | `main` |
-| **Version** | **0.5.21** |
-| **Arc** | Living-library Phases **0–5** complete; Phase R/D done. Review-2026-09-29 remediation: **F1–F4** shipped through **0.5.21**; F5 next. |
+| **Version** | **0.5.22** |
+| **Arc** | Living-library Phases **0–5** complete; Phase R/D done. Review-2026-09-29 remediation **F1–F5** complete through **0.5.22**. |
 | **Green** | pytest coverage floor **70%**; frontend `npm test`; Playwright e2e on **8794**. LAN truth `http://10.10.1.202:8793`. |
-| **Next** | F5 `findings-closeout` → 0.5.22. Quiet-hours / Ask-the-house polish when touching mail surfaces; Hub deferred. |
+| **Next** | Remediation arc complete. Quiet-hours / Ask-the-house polish when touching mail surfaces. Hub reverse-proxy-only remains the exit for the accepted `0.0.0.0:8793` bind (P3-MED-02 / S3); Hub publish itself stays deferred. |
 | **Automat** | Host `./docker-run.sh` only. Hub `romwil/librarian` deferred. Never bind **8788 / 8790 / 8791 / 8792**. |
 
 ---
@@ -70,9 +70,9 @@ Remediation first (2026-09-25 review Critical/High), then Top-10 delight. Each s
 | **F2** | `hall-and-engine-calm` | **0.5.19** | **done** — Hall defers local_gaps + `GET /api/gaps/local`; atomic progress; me `count_works`; rate-limit eviction; Audnexus prune |
 | **F3** | `edge-delivery` | **0.5.20** | **done** — Maintain dock multiplex status + idle calm; Find stub covers omitted; auth timing + foyer `/api/features` split |
 | **F4** | `catalog-decouple` | **0.5.21** | **done** — catalog split into hall/search/works/queue/reader_media; `make_job` + thin progress re-exports; NYT list routes removed; `#bagging` kept |
-| **F5** | `findings-closeout` | 0.5.22 | pending — P3-MED-02 docs track; close review register |
+| **F5** | `findings-closeout` | **0.5.22** | **done** — P3-MED-02 accepted bind documented (Hub reverse-proxy-only exit; listen stays `0.0.0.0`); review register closed |
 
-Phase D Top-10 sequence complete through **0.5.14** (D1–D7). Review-2026-09-29 remediation: **F1–F4** shipped; F5 next.
+Phase D Top-10 sequence complete through **0.5.14** (D1–D7). Review-2026-09-29 remediation arc **complete** (F1–F5, **0.5.18–0.5.22**). Bind stays `0.0.0.0:8793`; the exit is Hub reverse-proxy-only ([SECURITY.md](SECURITY.md) S3).
 
 ---
 
@@ -145,7 +145,7 @@ Medium findings stay in the review doc; pick up opportunistically inside R\* lan
 
 ## 6. Later / blue sky
 
-- [ ] Hub `romwil/librarian` published (+ real pull-only rollout; not Automat path now)
+- [ ] Hub `romwil/librarian` published (+ real pull-only rollout; not Automat path now). **Hub reverse-proxy-only** is the exit for the accepted `0.0.0.0:8793` bind (P3-MED-02 / S3); the listen address does not change before that path is the only one.
 - [ ] Full MusicBrainz / Open Library dumps for typeahead (v1 is catalog + optional bounded MB from owned artists)
 - [ ] OIDC / Plex sign-in (not v1)
 - [ ] Shared Python package with Smart Map: **contract first**; thin shared lib only if mutagen + filename agreement proves high reuse

@@ -1,6 +1,23 @@
 {
-  "generated_at": "2026-09-30T03:19:24Z",
+  "generated_at": "2026-09-30T03:23:38Z",
   "releases": [
+    {
+      "version": "0.5.22",
+      "date": "2026-09-29",
+      "summary": "",
+      "highlights": [
+        "**Findings closeout.** The 2026-09-29 review register is closed: code remediations shipped in 0.5.18–0.5.21, and the all-interfaces bind stays accepted with Hub reverse-proxy-only as the exit. Why this feels alive: the lamp’s perimeter is named and finished, not left as an open list."
+      ],
+      "sections": [
+        {
+          "title": "Changed",
+          "bullets": [
+            "**P3-MED-02** — Docker listen stays `0.0.0.0:8793` (accepted). [SECURITY.md](docs/SECURITY.md) S3 and the roadmap record Hub reverse-proxy-only as the exit.",
+            "Review [`review-2026-09-29`](docs/reviews/review-2026-09-29.md): every finding heading **Closed** (16 IDs, 0.5.18–0.5.22)."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.5.21",
       "date": "2026-09-29",
