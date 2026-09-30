@@ -6,6 +6,7 @@ Plan: [librarian_automat_rss](file:///Users/willrompala/.cursor/plans/librarian_
 
 ## Shipped
 
+- **2026-09-29** — Sprint **F3** `edge-delivery` → **0.5.20**: Maintain dock multiplex status + idle calm (P2-MED-05); Find stub covers omitted until shelved (P4-MED-02); timing-safe malformed salt + foyer vs ops `/api/features` (P3-MED-01, P4-MED-01).
 - **2026-09-29** — Sprint **F2** `hall-and-engine-calm` → **0.5.19**: Hall defers `local_gaps` + `GET /api/gaps/local` soft-fill (P2-HIGH-01); atomic progress writes; me `count_works`; rate-limit eviction; Audnexus prune (P2-MED-01..04).
 - **2026-09-29** — Sprint **F1** `disclosure-and-ssrf` → **0.5.18**: SSRF allowlist default on enrich/organize/CAA; strip `files[].path`; `public_work` on promote/enrich/Review mutations (P3-HIGH-01, P4-HIGH-01/02).
 - **2026-09-28** — Patch **0.5.17** Stacks unstuck (`idx_files_work_id`) + Maintain dock collapses idle chips and progressive-loads desk cards.

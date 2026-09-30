@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.5.20] — 2026-09-29
+
+### Highlights
+
+- **Edge delivery.** Maintain’s dock multiplexes job status and stays quiet when idle; Find stubs keep third-party cover URLs out of the browser until shelved; foyer features stay minimal while ops posture moves behind auth. Why this feels alive: the lamp’s edge is calm — no idle chatter, no naked CDN art, no foyer overshare.
+
 ### Fixed
 
 - **P2-MED-05** — Maintain dock multiplexes `GET /api/maintain/jobs/status` and probes only on mount / job wake / visibility — no idle four-poll while collapsed.
