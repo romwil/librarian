@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [0.5.21] — 2026-09-29
+
+### Highlights
+
+- **Catalog decouple.** The catalog god-router splits into Hall, Search, works, queue, and reader media; progress jobs share one `make_job` factory; unused NYT list routes are gone and `#bagging` still opens Shelving. Why this feels alive: the stacks read the same, and the lamp’s wiring is a room you can walk through.
+
+### Changed
+
+- **P1-HIGH-01** — `catalog.py` splits into `hall`, `search`, `works`, `queue`, and `reader_media`; `create_app` composes the five registrars. Routes, auth, and responses stay the same.
+- **P1-MED-01** — seven `*_progress` modules collapse into a `make_job` factory; existing imports stay as thin re-exports.
+- **P1-MED-02** — Review module docstring uses the Holds desk name; unused NYT list routes are removed; Settings `#bagging` still maps to Shelving.
+
 ## [0.5.20] — 2026-09-29
 
 ### Highlights
