@@ -55,6 +55,12 @@ describe("reading room calm", () => {
     assert.match(styles, /padding-inline:\s*max\(var\(--gutter\),\s*calc\(\(100% - 42rem\) \/ 2\)\)/);
   });
 
+  it("drops the work-page transform while the reader is open so the volume can fill the window", () => {
+    const styles = readFileSync(join(root, "src/styles.css"), "utf8");
+    assert.match(styles, /body:has\(\.reader\) \.work-page\s*\{[^}]*animation:\s*none/s);
+    assert.match(styles, /body:has\(\.reader\) \.work-page\s*\{[^}]*transform:\s*none/s);
+  });
+
   it("motion respects reduced-motion for calm open", () => {
     const motion = readFileSync(join(root, "src/styles/motion.css"), "utf8");
     assert.match(motion, /\.reader\.reader-calm/);

@@ -35,6 +35,53 @@ export function pageTurnSide(clientX, width, { left = 1 / 3, right = 2 / 3 } = {
   return "";
 }
 
+/** Reflowable volumes scroll. Fixed-layout pages and PDF keep their own surface. */
+export function readerFlow(engine, fixedLayout = false) {
+  if (fixedLayout) return "";
+  if (engine === "epub" || engine === "cbz") return "scrolled";
+  return "";
+}
+
+/** Pixel delta from a wheel or trackpad tick. Pinch-zoom (ctrl) stays with the browser. */
+export function readerWheelDelta(event) {
+  if (!event || event.ctrlKey) return 0;
+  const y = Number(event.deltaY) || 0;
+  const x = Number(event.deltaX) || 0;
+  const raw = Math.abs(y) >= Math.abs(x) ? y : x;
+  if (!raw) return 0;
+  if (event.deltaMode === 1) return raw * 16;
+  if (event.deltaMode === 2) return raw * 800;
+  return raw;
+}
+
+/**
+ * Move a scrolled Foliate renderer by `delta` pixels.
+ * At the edge of a section, hand the tick to the next or previous spine item
+ * so a long book does not stop at the chapter break.
+ */
+export function scrollReader(renderer, delta) {
+  if (!renderer || !Number.isFinite(delta) || delta === 0) return false;
+  if (typeof renderer.containerPosition !== "number") return false;
+  const start = Number.isFinite(renderer.start) ? renderer.start : Math.abs(renderer.containerPosition);
+  const size = Number.isFinite(renderer.size) ? renderer.size : 0;
+  const viewSize = Number.isFinite(renderer.viewSize) ? renderer.viewSize : 0;
+  if (size > 0 && viewSize > 0) {
+    const max = Math.max(0, viewSize - size);
+    if (delta > 0 && start >= max - 1) {
+      if (renderer.atEnd) return false;
+      renderer.next?.();
+      return true;
+    }
+    if (delta < 0 && start <= 1) {
+      if (renderer.atStart) return false;
+      renderer.prev?.();
+      return true;
+    }
+  }
+  renderer.containerPosition += delta;
+  return true;
+}
+
 const EXT_RANK = { ".epub": 0, ".cbz": 1, ".pdf": 2 };
 
 export function fileExtension(name) {

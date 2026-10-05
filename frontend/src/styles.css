@@ -1809,6 +1809,14 @@ body:has(.peek) .topbar {
 body:has(.reader) {
   overflow: hidden;
 }
+/* page-settle ends on translateY(0) with fill-mode both. That leftover transform
+   is a containing block, so this fixed reader sizes to the work article.
+   A tall work page then lays the volume out taller than the window, and the
+   hidden body overflow clips it with no scrollbar. Clear it while a volume is open. */
+body:has(.reader) .work-page {
+  animation: none;
+  transform: none;
+}
 body:has(.reader) .topbar,
 body:has(.listen-room) .topbar {
   z-index: 1;

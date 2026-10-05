@@ -9,6 +9,9 @@ import {
   filenameFromDisposition,
   pageTurnSide,
   primaryReadingFile,
+  readerFlow,
+  readerWheelDelta,
+  scrollReader,
   readerCtaLabel,
   readerEngine,
   readerOpenError,
@@ -116,5 +119,61 @@ describe("in-app reader", () => {
     assert.equal(pageTurnSide(290, 300), "right");
     assert.equal(pageTurnSide(150, 300), "");
     assert.equal(pageTurnSide(0, 0), "");
+  });
+
+  it("scrolls reflowable prose and comics, and leaves fixed-layout and PDF alone", () => {
+    assert.equal(readerFlow("epub"), "scrolled");
+    assert.equal(readerFlow("cbz"), "scrolled");
+    assert.equal(readerFlow("epub", true), "");
+    assert.equal(readerFlow("pdf"), "");
+    assert.equal(readerFlow(""), "");
+  });
+
+  it("turns wheel and trackpad ticks into pixels, and ignores pinch-zoom", () => {
+    assert.equal(readerWheelDelta({ deltaY: 120, deltaX: 0, deltaMode: 0 }), 120);
+    assert.equal(readerWheelDelta({ deltaY: 0, deltaX: -40, deltaMode: 0 }), -40);
+    assert.equal(readerWheelDelta({ deltaY: 2, deltaMode: 1 }), 32);
+    assert.equal(readerWheelDelta({ deltaY: 1, deltaMode: 2 }), 800);
+    assert.equal(readerWheelDelta({ deltaY: 80, ctrlKey: true }), 0);
+    assert.equal(readerWheelDelta(null), 0);
+  });
+
+  it("scrolls the open section and steps to the next spine item only at the edge", () => {
+    const mid = { containerPosition: 400, start: 400, size: 700, viewSize: 4000, atEnd: false, atStart: false };
+    assert.equal(scrollReader(mid, 80), true);
+    assert.equal(mid.containerPosition, 480);
+
+    const end = {
+      containerPosition: 3300,
+      start: 3300,
+      size: 700,
+      viewSize: 4000,
+      atEnd: false,
+      atStart: false,
+      next() {
+        this.stepped = "next";
+      },
+    };
+    assert.equal(scrollReader(end, 40), true);
+    assert.equal(end.stepped, "next");
+    assert.equal(end.containerPosition, 3300);
+
+    const done = { ...end, atEnd: true, stepped: "" };
+    assert.equal(scrollReader(done, 40), false);
+
+    const top = {
+      containerPosition: 0,
+      start: 0,
+      size: 700,
+      viewSize: 4000,
+      atEnd: false,
+      atStart: false,
+      prev() {
+        this.stepped = "prev";
+      },
+    };
+    assert.equal(scrollReader(top, -30), true);
+    assert.equal(top.stepped, "prev");
+    assert.equal(scrollReader({ containerPosition: 10 }, 0), false);
   });
 });

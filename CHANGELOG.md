@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Reading room prose scrolls with the wheel, trackpad, and touch. A tall work page no longer pins the open volume to the article, which clipped the page under the window.
+
 ## [0.5.22] — 2026-09-29
 
 ### Highlights
