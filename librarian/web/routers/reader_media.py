@@ -14,6 +14,7 @@ from librarian.auth import require_role
 from librarian.convert import convert_ebook
 from librarian.ingest import PathDenied, confined_serve_path
 from librarian.listen import extract_chapters
+from librarian.opds_tokens import parse_file_token
 from librarian.serve import (
     existing_file_paths,
     is_inline_media,
@@ -81,6 +82,19 @@ def register_reader_media_routes(app: FastAPI, deps: WebDeps) -> None:
             raise HTTPException(status_code=404, detail="File not found")
         return _media_file_or_404(str(chosen), detail="File not found")
 
+    def _opds_scoped_file(request: Request, work_id: str) -> str:
+        """Return the file id a valid acquisition token may read, or '' when no token was sent."""
+        raw = str(request.query_params.get("token") or "").strip()
+        if not raw:
+            return ""
+        payload = parse_file_token(raw, data_dir=root)
+        if payload is None or payload["work_id"] != work_id:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        requested = str(request.query_params.get("file") or "").strip()
+        if requested and requested != payload["file_id"]:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        return payload["file_id"]
+
     @app.get("/api/works/{work_id}/download")
     def work_download(
         work_id: str,
@@ -89,7 +103,14 @@ def register_reader_media_routes(app: FastAPI, deps: WebDeps) -> None:
         inline: int = 0,
         file: str = "",
     ):
-        require_role(request.state.user, "owner", "op", "reader")
+        scoped = _opds_scoped_file(request, work_id)
+        if scoped:
+            # The token is the credential. Serve that file only — no convert, no zip of siblings.
+            file = scoped
+            format = ""
+            inline = 0
+        else:
+            require_role(request.state.user, "owner", "op", "reader")
         work = db.get_work(work_id)
         if work is None:
             raise HTTPException(status_code=404, detail="Work not found")

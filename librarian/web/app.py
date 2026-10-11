@@ -16,6 +16,7 @@ from librarian.auth import has_real_owner, is_public_handshake, seed_env_owner, 
 from librarian.config import load_merged_settings
 from librarian.db import Database
 from librarian.indexers.sync import sync_nzbfinder
+from librarian.opds_tokens import is_acquisition_download
 from librarian.poller import JobPoller
 from librarian.progress_job import BackgroundJobSlot
 from librarian.sessions import (
@@ -30,6 +31,7 @@ from librarian.web.routers import (
     register_ingest_routes,
     register_maintain_routes,
     register_notification_routes,
+    register_opds_routes,
     register_queue_routes,
     register_reader_media_routes,
     register_review_routes,
@@ -115,6 +117,10 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             app.state.owner_ready = has_real_owner(db)
         if not app.state.owner_ready:
             return JSONResponse({"detail": "Owner has not been seeded"}, status_code=503)
+        # OPDS acquisition presents a file token and must not require the session cookie.
+        if is_acquisition_download(method, path, request.query_params.get("token") or ""):
+            request.state.user = None
+            return await call_next(request)
         user = user_from_request(request, db)
         if user is None:
             return JSONResponse({"detail": "Authentication required"}, status_code=401)
@@ -132,6 +138,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
     register_maintain_routes(app, deps)
     register_settings_routes(app, deps)
     register_notification_routes(app, deps)
+    register_opds_routes(app, deps)
 
     @app.get("/release-notes.json")
     def release_notes():
