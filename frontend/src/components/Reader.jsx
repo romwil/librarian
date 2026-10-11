@@ -5,8 +5,11 @@ import {
   EPUB_READER_STYLES,
   pageTurnSide,
   readerEngine,
+  readerFlow,
   readerOpenError,
+  readerWheelDelta,
   readingFileName,
+  scrollReader,
   workDownloadUrl,
 } from "../reader.js";
 import {
@@ -166,10 +169,53 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
       await view.open(file);
       // Light page surface before first section paint (stored even if no doc yet).
       if (engine === "epub") view.renderer?.setStyles?.(EPUB_READER_STYLES);
+      const flow = readerFlow(engine, view.isFixedLayout);
+      if (flow) view.renderer?.setAttribute("flow", flow);
       view.addEventListener("relocate", (event) => persist(event.detail));
-      // Click zones live in each section document (iframe); host clicks never see them.
+      const touch = { x: 0, y: 0, active: false };
+      function onReaderWheel(event) {
+        const renderer = view.renderer;
+        if (!renderer || renderer.getAttribute("flow") !== "scrolled") return;
+        const delta = readerWheelDelta(event);
+        if (!delta) return;
+        event.preventDefault();
+        scrollReader(renderer, delta);
+      }
+      function onTouchStart(event) {
+        const point = event.touches?.[0];
+        if (!point || event.touches.length !== 1) {
+          touch.active = false;
+          return;
+        }
+        touch.x = point.screenX;
+        touch.y = point.screenY;
+        touch.active = true;
+      }
+      function onTouchMove(event) {
+        const renderer = view.renderer;
+        if (!touch.active || !renderer || renderer.getAttribute("flow") !== "scrolled") return;
+        const point = event.touches?.[0];
+        if (!point || event.touches.length !== 1) return;
+        const selection = event.target?.ownerDocument?.getSelection?.();
+        if (selection && !selection.isCollapsed && String(selection).trim()) return;
+        const dx = touch.x - point.screenX;
+        const dy = touch.y - point.screenY;
+        touch.x = point.screenX;
+        touch.y = point.screenY;
+        const delta = Math.abs(dy) >= Math.abs(dx) ? dy : dx;
+        if (!delta) return;
+        event.preventDefault();
+        scrollReader(renderer, delta);
+      }
+      // Click and scroll zones live in each section document (iframe); host events never see them.
       view.addEventListener("load", ({ detail }) => {
-        detail?.doc?.addEventListener("click", onPagePointer);
+        const doc = detail?.doc;
+        if (!doc) return;
+        doc.addEventListener("click", onPagePointer);
+        if (view.renderer?.getAttribute("flow") !== "scrolled") return;
+        doc.addEventListener("wheel", onReaderWheel, { passive: false });
+        doc.addEventListener("touchstart", onTouchStart, { passive: true });
+        doc.addEventListener("touchmove", onTouchMove, { passive: false });
       });
       const lastLocation = progress?.position || "";
       await view.init(lastLocation ? { lastLocation } : {});
@@ -210,7 +256,7 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
           <p className="kicker">Reading room</p>
           <h1 id="reader-title">{work.title}</h1>
         </div>
-        <p className="muted reader-esc">Click edges or ← → · Esc closes</p>
+        <p className="muted reader-esc">Scroll to read · edges or ← → turn · Esc closes</p>
         <button type="button" className="cta ghost compact" onClick={onClose} data-testid="reader-close">
           Close
         </button>
