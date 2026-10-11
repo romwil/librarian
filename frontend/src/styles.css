@@ -2513,6 +2513,34 @@ button.cover {
   content: "▾ ";
 }
 
+/* Same disclosure voice as Advanced — catalog rails and beyond-doors, asked for. */
+.shelf-more {
+  margin: var(--space-2) 0 var(--space-8);
+}
+.shelf-more-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  width: fit-content;
+  margin: var(--space-4) var(--gutter) var(--space-2);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.shelf-more-toggle span {
+  color: var(--gilt);
+}
+.shelf-more-panel[hidden] {
+  display: none;
+}
+
 .font-mono {
   font-family: var(--font-mono);
 }

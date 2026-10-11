@@ -121,6 +121,9 @@ export const FIND_BEYOND_CTA = "Find beyond the shelves";
 /** Quiet door to empty Find (Discover) — Hall / idle Search, not a nav tab. */
 export const DISCOVER_CTA = "What's trending";
 
+/** Closed disclosure under Hall and Search. The shelves stay; they wait until asked. */
+export const MORE_SHELVES_LABEL = "More shelves";
+
 export const ADD_TO_LIBRARY_LEDE =
   "Point at a dump folder or file under /data — not a library root. If Librarian is sure, it files the volume. If not, it waits in Review. Empty dumps say why they Failed.";
 

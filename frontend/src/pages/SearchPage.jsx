@@ -4,6 +4,7 @@ import { api } from "../api.js";
 import { kindCountFromFacets, kindShelfTotalLine } from "../browse.js";
 import QueryForm from "../components/QueryForm.jsx";
 import Rail from "../components/Rail.jsx";
+import ShelfMore from "../components/ShelfMore.jsx";
 import { DISCOVER_CTA, FIND_BEYOND_CTA, FIELD_HELP, humanError, searchStatusLine } from "../copy.js";
 import {
   buildFindSearchParams,
@@ -176,21 +177,6 @@ export default function SearchPage() {
           </div>
         </div>
       ) : null}
-      {showDiscoverDoor ? (
-        <p className="find-cta-block">
-          <Link className="muted" to={discoverHref({ kind })} data-testid="discover-door">
-            {DISCOVER_CTA}
-          </Link>
-        </p>
-      ) : null}
-      {showFindCta ? (
-        <div className="find-cta-block">
-          <p className="kicker">Not on these shelves?</p>
-          <Link className="cta" to={findHref(ctaFields)} data-testid="find-beyond-cta">
-            {FIND_BEYOND_CTA}
-          </Link>
-        </div>
-      ) : null}
       <Rail
         title="In the stacks"
         kicker={phase === "local" ? "Searching the shelves…" : "Local catalog · click cover to peek"}
@@ -198,6 +184,25 @@ export default function SearchPage() {
         empty={composed ? (phase === "local" ? "Searching the shelves…" : "Nothing on the shelves yet.") : "Start typing."}
         role={user?.role}
       />
+      {showDiscoverDoor || showFindCta ? (
+        <ShelfMore>
+          {showDiscoverDoor ? (
+            <p className="find-cta-block">
+              <Link className="muted" to={discoverHref({ kind })} data-testid="discover-door">
+                {DISCOVER_CTA}
+              </Link>
+            </p>
+          ) : null}
+          {showFindCta ? (
+            <div className="find-cta-block">
+              <p className="kicker">Not on these shelves?</p>
+              <Link className="cta" to={findHref(ctaFields)} data-testid="find-beyond-cta">
+                {FIND_BEYOND_CTA}
+              </Link>
+            </div>
+          ) : null}
+        </ShelfMore>
+      ) : null}
     </div>
   );
 }

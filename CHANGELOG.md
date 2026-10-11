@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 - Reading room prose scrolls with the wheel, trackpad, and touch. A tall work page no longer pins the open volume to the article, which clipped the page under the window.
+- Hall and Search keep the living shelves and local hits in the first screen. Named shelves, the kind rails, gifts, and the doors beyond the shelves wait under More shelves.
 
 ## [0.5.22] — 2026-09-29
 

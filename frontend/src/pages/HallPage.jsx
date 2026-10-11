@@ -4,6 +4,7 @@ import { api } from "../api.js";
 import { browseHref, kindShelfTotalLine } from "../browse.js";
 import NamedShelves from "../components/NamedShelves.jsx";
 import Rail from "../components/Rail.jsx";
+import ShelfMore from "../components/ShelfMore.jsx";
 import SeriesCatchUp from "../components/SeriesCatchUp.jsx";
 import TonightShelf from "../components/TonightShelf.jsx";
 import { DISCOVER_CTA, emptyHallCopy, humanError, setupComplete } from "../copy.js";
@@ -155,51 +156,53 @@ function HallShelves({ role, owner, configured, lampPeriod }) {
       />
       <Rail title="What’s New" kicker="Recently organized" items={hall?.whats_new} />
       <Rail title="Favorites" items={hall?.favorites} seeAllTo={browseHref({ shelf: "favorites" })} />
-      <NamedShelves
-        shelves={hall?.named_shelves}
-        presence={hall?.named_shelves_presence}
-        onChanged={() => setReloadToken((value) => value + 1)}
-      />
-      <Rail
-        title="Books"
-        kicker={kindShelfTotalLine("book", counts.book) || undefined}
-        items={hall?.areas?.books}
-        seeAllTo={browseHref({ kind: "book" })}
-      />
-      <Rail
-        title="Magazines"
-        kicker={kindShelfTotalLine("magazine", counts.magazine) || "Issue date on the gilt caption"}
-        items={hall?.areas?.magazines}
-        seeAllTo={browseHref({ kind: "magazine" })}
-      />
-      <Rail
-        title="Comics"
-        kicker={kindShelfTotalLine("comic", counts.comic) || "Series and issue, square-ish"}
-        items={hall?.areas?.comics}
-        seeAllTo={browseHref({ kind: "comic" })}
-      />
-      <Rail
-        title="Audiobooks"
-        kicker={kindShelfTotalLine("audiobook", counts.audiobook) || "Listen — not a book spine"}
-        items={hall?.areas?.audiobooks}
-        seeAllTo={browseHref({ kind: "audiobook" })}
-      />
-      <Rail
-        title="Incoming Music"
-        kicker={kindShelfTotalLine("music", counts.music) || "Promote lives in peek"}
-        items={hall?.areas?.incoming_music}
-        seeAllTo={browseHref({ kind: "music" })}
-      />
-      <Rail
-        title={gapsGiftTitle()}
-        kicker={gapsGiftKicker(hall)}
-        items={(hall?.gaps || []).map((item) => ({ ...item, gap: true }))}
-        empty={
-          hall && !hall.gaps_pending
-            ? "The runs on these shelves feel whole tonight."
-            : undefined
-        }
-      />
+      <ShelfMore>
+        <NamedShelves
+          shelves={hall?.named_shelves}
+          presence={hall?.named_shelves_presence}
+          onChanged={() => setReloadToken((value) => value + 1)}
+        />
+        <Rail
+          title="Books"
+          kicker={kindShelfTotalLine("book", counts.book) || undefined}
+          items={hall?.areas?.books}
+          seeAllTo={browseHref({ kind: "book" })}
+        />
+        <Rail
+          title="Magazines"
+          kicker={kindShelfTotalLine("magazine", counts.magazine) || "Issue date on the gilt caption"}
+          items={hall?.areas?.magazines}
+          seeAllTo={browseHref({ kind: "magazine" })}
+        />
+        <Rail
+          title="Comics"
+          kicker={kindShelfTotalLine("comic", counts.comic) || "Series and issue, square-ish"}
+          items={hall?.areas?.comics}
+          seeAllTo={browseHref({ kind: "comic" })}
+        />
+        <Rail
+          title="Audiobooks"
+          kicker={kindShelfTotalLine("audiobook", counts.audiobook) || "Listen — not a book spine"}
+          items={hall?.areas?.audiobooks}
+          seeAllTo={browseHref({ kind: "audiobook" })}
+        />
+        <Rail
+          title="Incoming Music"
+          kicker={kindShelfTotalLine("music", counts.music) || "Promote lives in peek"}
+          items={hall?.areas?.incoming_music}
+          seeAllTo={browseHref({ kind: "music" })}
+        />
+        <Rail
+          title={gapsGiftTitle()}
+          kicker={gapsGiftKicker(hall)}
+          items={(hall?.gaps || []).map((item) => ({ ...item, gap: true }))}
+          empty={
+            hall && !hall.gaps_pending
+              ? "The runs on these shelves feel whole tonight."
+              : undefined
+          }
+        />
+      </ShelfMore>
     </div>
   );
 }
