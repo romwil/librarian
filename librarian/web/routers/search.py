@@ -24,6 +24,7 @@ from librarian.nyt_books import normalize_list_date
 from librarian.rate_limit import enforce_rate_limit
 from librarian.search_forgive import search_with_forgiveness
 from librarian.suggest import SUGGEST_FIELDS, suggest_items
+from librarian.web.availability import annotate_browse_availability
 from librarian.web.deps import WebDeps
 from librarian.web.schemas import (
     FinishSetEtaPayload,
@@ -163,8 +164,10 @@ def register_search_routes(app: FastAPI, deps: WebDeps) -> None:
             )
         except ValueError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
+        items = public_works(page["items"])
+        annotate_browse_availability(db, items)
         return {
-            "items": public_works(page["items"]),
+            "items": items,
             "total": page["total"],
             "offset": page["offset"],
             "limit": page["limit"],

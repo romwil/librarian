@@ -138,6 +138,9 @@ export default function AppChrome({ user, features, reviewCount = 0, inboxUnread
           <NavLink to="/browse" className={({ isActive }) => (isActive ? "is-current" : undefined)} title="Browse the stacks">
             Stacks
           </NavLink>
+          <NavLink to="/wanted" className={({ isActive }) => (isActive ? "is-current" : undefined)} title="Wanted">
+            Wanted
+          </NavLink>
           {owner ? (
             <NavLink to="/people" className={({ isActive }) => (isActive ? "is-current" : undefined)}>
               People

@@ -41,6 +41,7 @@ from librarian.serve import (
     can_read_work,
     existing_file_paths,
 )
+from librarian.web.availability import wanted_for_book
 from librarian.web.deps import WebDeps
 from librarian.web.schemas import (
     ApplyMatchPayload,
@@ -135,6 +136,7 @@ def register_works_routes(app: FastAPI, deps: WebDeps) -> None:
             ),
             "komga": komga_payload(work, settings()),
             "audiobook": audiobook,
+            "wanted": wanted_for_book(db, work),
             "favorite": db.is_favorite(request.state.user["id"], work_id),
             "related": related,
             "progress": progress,

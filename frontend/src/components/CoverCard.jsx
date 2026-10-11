@@ -1,5 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { api } from "../api.js";
+import { bookAvailability } from "../availability.js";
+import AvailabilityActions from "./AvailabilityActions.jsx";
 import {
   clothFor,
   coverCaption,
@@ -63,6 +66,39 @@ export default function CoverCard({ work, onRequest, badge, beyond = false, role
   const tip = coverTip(item);
   const host = beyond ? beyondHostName(work) : "";
   const beads = isGap ? gapBeadModel(work) : [];
+  const [wantedRow, setWantedRow] = useState(null);
+  const [availabilityBusy, setAvailabilityBusy] = useState(false);
+  const availability = bookAvailability({
+    work: { ...work, wanted: wantedRow || work.wanted },
+    role,
+    beyond,
+  });
+
+  async function addWanted() {
+    if (!availability.addBody || availabilityBusy) return;
+    setAvailabilityBusy(true);
+    try {
+      const result = await api.addWanted(availability.addBody);
+      if (result?.item) setWantedRow(result.item);
+    } catch {
+      /* the desk and peek surface the error; the card stays Wanted */
+    } finally {
+      setAvailabilityBusy(false);
+    }
+  }
+
+  async function dismissWanted() {
+    if (!availability.wantedId || availabilityBusy) return;
+    setAvailabilityBusy(true);
+    try {
+      const result = await api.dismissWanted(availability.wantedId);
+      if (result?.item) setWantedRow(result.item);
+    } catch {
+      /* keep the row visible so dismiss can be retried */
+    } finally {
+      setAvailabilityBusy(false);
+    }
+  }
 
   function onClick(event) {
     if (isGap) {
@@ -138,6 +174,13 @@ export default function CoverCard({ work, onRequest, badge, beyond = false, role
           ))}
         </div>
       ) : null}
+      <AvailabilityActions
+        view={availability}
+        shelfVerbs
+        busy={availabilityBusy}
+        onAdd={addWanted}
+        onDismiss={dismissWanted}
+      />
     </div>
   );
 }

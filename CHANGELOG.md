@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Browse cards, peek, and the work page say Read, Listen, Download, or Wanted. The Wanted desk lists companion misses and hand-added titles; only an owner or op can add or dismiss.
 - Ebook apps can browse shelved books, magazines, and comics over OPDS 1.2. Catalog links and each acquisition URL carry a signed token, and the download stays jailed under the data directory.
 - Wanted remembers a missing audiobook and files one Asked slip when a later search hits. Confirm still sends it to SABnzbd.
 - Reading room prose scrolls with the wheel, trackpad, and touch. A tall work page no longer pins the open volume to the article, which clipped the page under the window.
