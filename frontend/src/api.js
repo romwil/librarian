@@ -95,6 +95,9 @@ export const api = {
   removeFromShelf: (shelfId, workId) =>
     request(`/shelves/${encodeURIComponent(shelfId)}/works/${encodeURIComponent(workId)}`, { method: "DELETE" }),
   requestItem: (item) => request("/request", { method: "POST", body: JSON.stringify(item) }),
+  wanted: () => request("/wanted"),
+  addWanted: (body) => request("/wanted", { method: "POST", body: JSON.stringify(body || {}) }),
+  dismissWanted: (id) => request(`/wanted/${encodeURIComponent(id)}/dismiss`, { method: "POST" }),
   review: () => request("/review"),
   reviewApply: (id, body) => request(`/review/${id}/apply`, { method: "POST", body: JSON.stringify(body) }),
   reviewSkip: (id) => request(`/review/${id}/skip`, { method: "POST" }),

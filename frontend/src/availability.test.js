@@ -1,0 +1,89 @@
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+import { bookAvailability } from "./availability.js";
+
+const book = {
+  id: "book-1",
+  kind: "book",
+  title: "Circe",
+  author: "Madeline Miller",
+  isbn: "9780316556347",
+};
+
+const miss = {
+  applicable: true,
+  shelved: null,
+  find: { kind: "audiobook", title: "Circe", author: "Madeline Miller", isbn: "9780316556347" },
+};
+
+describe("availability chip", () => {
+  it("offers Listen when the companion audiobook is on the shelf", () => {
+    const view = bookAvailability({
+      work: book,
+      audiobook: {
+        applicable: true,
+        shelved: { id: "audio-1", title: "Circe" },
+        find: miss.find,
+      },
+      role: "reader",
+    });
+    assert.equal(view.verb, "listen");
+    assert.equal(view.chip, "Listen");
+    assert.equal(view.listenHref, "/works/audio-1?listen=1");
+    assert.equal(view.readHref, "/works/book-1?read=1");
+    assert.equal(view.downloadHref, "/api/works/book-1/download");
+    assert.equal(view.canAdd, false);
+    assert.equal(view.searchHref, "");
+  });
+
+  it("says the audiobook is wanted and keeps search and find for a miss", () => {
+    const view = bookAvailability({ work: book, audiobook: miss, role: "reader" });
+    assert.equal(view.verb, "want");
+    assert.equal(view.chip, "Wanted");
+    assert.equal(view.note, "The audiobook is wanted");
+    assert.match(view.searchHref, /\/search\?/);
+    assert.match(view.searchHref, /kind=audiobook/);
+    assert.match(view.searchHref, /title=Circe/);
+    assert.match(view.findHref, /\/find\?/);
+    assert.match(view.findHref, /kind=audiobook/);
+    assert.equal(view.downloadHref, "/api/works/book-1/download");
+    assert.equal(view.canAdd, false);
+    assert.equal(view.canDismiss, false);
+  });
+
+  it("lets an owner add when no row exists, and dismiss an open row", () => {
+    const open = bookAvailability({ work: book, audiobook: miss, role: "owner" });
+    assert.equal(open.canAdd, true);
+    assert.equal(open.addBody.kind, "audiobook");
+    assert.equal(open.addBody.work_id, "book-1");
+
+    const asked = bookAvailability({
+      work: book,
+      audiobook: miss,
+      wanted: { id: "w1", status: "asked", kind: "audiobook" },
+      role: "op",
+    });
+    assert.equal(asked.canAdd, false);
+    assert.equal(asked.canDismiss, true);
+    assert.equal(asked.wantedId, "w1");
+    assert.equal(asked.note, "Asked");
+  });
+
+  it("hides Wanted after the house dismisses the audiobook", () => {
+    const view = bookAvailability({
+      work: book,
+      audiobook: miss,
+      wanted: { id: "w1", status: "dismissed" },
+      role: "owner",
+    });
+    assert.equal(view.verb, "read");
+    assert.equal(view.chip, "Read");
+    assert.equal(view.canAdd, false);
+    assert.equal(view.canDismiss, false);
+  });
+
+  it("stays quiet for comics and for titles beyond the shelves", () => {
+    assert.equal(bookAvailability({ work: { ...book, kind: "comic" }, audiobook: miss }).show, false);
+    assert.equal(bookAvailability({ work: book, audiobook: miss, beyond: true }).show, false);
+  });
+});
