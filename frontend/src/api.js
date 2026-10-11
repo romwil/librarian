@@ -150,6 +150,14 @@ export const api = {
   updateRss: (id, body) => request(`/rss/${id}`, { method: "PUT", body: JSON.stringify(body) }),
   deleteRss: (id) => request(`/rss/${id}`, { method: "DELETE" }),
   pollRss: () => request("/rss/poll", { method: "POST" }),
+  noted: ({ period = "daily", preset = "hardcover-fiction", date = "current" } = {}) => {
+    const params = new URLSearchParams();
+    if (period) params.set("period", period);
+    if (preset) params.set("preset", preset);
+    if (date) params.set("date", date);
+    return request(`/noted?${params.toString()}`);
+  },
+  addWanted: (body) => request("/wanted", { method: "POST", body: JSON.stringify(body) }),
   discover: (extras = {}) => {
     const params = new URLSearchParams();
     if (extras.kind) params.set("kind", extras.kind);

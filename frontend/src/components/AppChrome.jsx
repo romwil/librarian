@@ -130,6 +130,9 @@ export default function AppChrome({ user, features, reviewCount = 0, inboxUnread
           <NavLink to="/search" className={({ isActive }) => (isActive ? "is-current" : undefined)}>
             Search
           </NavLink>
+          <NavLink to="/noted" className={({ isActive }) => (isActive ? "is-current" : undefined)} title="New & noted">
+            Noted
+          </NavLink>
           <NavLink to="/browse?shelf=favorites" className={({ isActive }) => (isActive ? "is-current" : undefined)}>
             Favorites
           </NavLink>
