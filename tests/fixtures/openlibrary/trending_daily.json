@@ -1,0 +1,23 @@
+{
+  "query": "/trending/daily.json",
+  "works": [
+    {
+      "key": "/works/OL27448W",
+      "title": "The Left Hand of Darkness",
+      "author_name": ["Ursula K. Le Guin"],
+      "cover_i": 101,
+      "isbn": ["9780441172719", "not-an-isbn"]
+    },
+    {
+      "key": "/works/OL9W",
+      "title": "Untitled Draft",
+      "author_name": [],
+      "isbn": ["9780441172710"]
+    },
+    {
+      "key": "/works/OL0W",
+      "title": "",
+      "author_name": ["Skip Me"]
+    }
+  ]
+}

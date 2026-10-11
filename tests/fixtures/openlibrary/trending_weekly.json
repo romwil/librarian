@@ -1,0 +1,11 @@
+{
+  "query": "/trending/weekly.json",
+  "works": [
+    {
+      "key": "/works/OL88W",
+      "title": "Weekly Only",
+      "author_name": ["Ada Lovelace"],
+      "cover_i": 0
+    }
+  ]
+}

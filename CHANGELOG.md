@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- New & noted gathers Open Library trending, curated bestseller lists, and Discover latest for books and audiobooks, so a title can be searched, found beyond the shelves, or added to Wanted.
 - Browse cards, peek, and the work page say Read, Listen, Download, or Wanted. The Wanted desk lists companion misses and hand-added titles; only an owner or op can add or dismiss.
 - Ebook apps can browse shelved books, magazines, and comics over OPDS 1.2. Catalog links and each acquisition URL carry a signed token, and the download stays jailed under the data directory.
 - Wanted remembers a missing audiobook and files one Asked slip when a later search hits. Confirm still sends it to SABnzbd.

@@ -4,6 +4,7 @@ from librarian.web.routers.auth import register_auth_routes
 from librarian.web.routers.hall import register_hall_routes
 from librarian.web.routers.ingest import register_ingest_routes
 from librarian.web.routers.maintain import register_maintain_routes
+from librarian.web.routers.noted import register_noted_routes
 from librarian.web.routers.notifications import register_notification_routes
 from librarian.web.routers.opds import register_opds_routes
 from librarian.web.routers.queue import register_queue_routes
@@ -19,6 +20,7 @@ __all__ = [
     "register_hall_routes",
     "register_ingest_routes",
     "register_maintain_routes",
+    "register_noted_routes",
     "register_notification_routes",
     "register_opds_routes",
     "register_queue_routes",

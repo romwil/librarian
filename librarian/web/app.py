@@ -30,6 +30,7 @@ from librarian.web.routers import (
     register_hall_routes,
     register_ingest_routes,
     register_maintain_routes,
+    register_noted_routes,
     register_notification_routes,
     register_opds_routes,
     register_queue_routes,
@@ -139,6 +140,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
     register_maintain_routes(app, deps)
     register_settings_routes(app, deps)
     register_wanted_routes(app, deps)
+    register_noted_routes(app, deps)
     register_notification_routes(app, deps)
     register_opds_routes(app, deps)
 
