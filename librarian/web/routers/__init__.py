@@ -11,6 +11,7 @@ from librarian.web.routers.reader_media import register_reader_media_routes
 from librarian.web.routers.review import register_review_routes
 from librarian.web.routers.search import register_search_routes
 from librarian.web.routers.settings import register_settings_routes
+from librarian.web.routers.wanted import register_wanted_routes
 from librarian.web.routers.works import register_works_routes
 
 __all__ = [
@@ -25,5 +26,6 @@ __all__ = [
     "register_review_routes",
     "register_search_routes",
     "register_settings_routes",
+    "register_wanted_routes",
     "register_works_routes",
 ]
