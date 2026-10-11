@@ -3599,6 +3599,88 @@ button.cover {
   margin-top: var(--space-6);
   justify-content: center;
 }
+.availability {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  margin-top: 8px;
+  max-width: 100%;
+  font-size: 12px;
+  line-height: 1.35;
+}
+.availability-note {
+  margin: 0;
+  color: var(--muted);
+}
+.availability-verb {
+  font-weight: 650;
+  margin-right: 0.4em;
+}
+.availability-aside {
+  color: var(--muted);
+}
+.availability-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+.availability-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.availability.is-cta {
+  margin-top: 0;
+  gap: 8px;
+}
+.availability.is-cta .availability-links {
+  display: contents;
+}
+.peek-actions .availability.is-cta,
+.work-hero .cta-row .availability.is-cta {
+  display: contents;
+}
+.wanted-page {
+  width: min(760px, calc(100% - 2 * var(--gutter)));
+  margin: 0 auto;
+  padding-bottom: var(--space-8);
+}
+.wanted-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.wanted-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid color-mix(in srgb, var(--muted) 25%, transparent);
+}
+.wanted-title {
+  margin: 0 0 4px;
+  font-size: 1.05rem;
+}
+.wanted-add {
+  margin-top: var(--space-6);
+  display: grid;
+  gap: var(--space-3);
+  max-width: 28rem;
+}
+.wanted-add h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
 .browse-genre-stub {
   margin-top: 0;
 }

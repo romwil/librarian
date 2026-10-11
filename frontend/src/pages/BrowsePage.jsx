@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useOutletContext, useSearchParams } from "react-router-dom";
 import { api } from "../api.js";
 import {
   BROWSE_LETTERS,
@@ -41,6 +41,8 @@ function BrowseFacetFold({ id, label, open, activeLabel, onToggle, children, tes
 }
 
 export default function BrowsePage() {
+  const { user } = useOutletContext() || {};
+  const role = user?.role || "reader";
   const [params, setParams] = useSearchParams();
   const filters = useMemo(() => browseFiltersFromSearchParams(params), [params]);
   const [facets, setFacets] = useState(null);
@@ -145,7 +147,10 @@ export default function BrowsePage() {
       <section className="browse-hero">
         <p className="kicker">Stacks</p>
         <h1>{heading}</h1>
-        <p className="lede">Browse by author, kind, or series — no search required.</p>
+        <p className="lede">
+          Browse by author, kind, or series — no search required.{" "}
+          <Link to="/wanted">Wanted</Link> keeps what is still missing.
+        </p>
         <div className="chip-row browse-kinds" data-testid="browse-kinds">
           <button
             type="button"
@@ -334,7 +339,7 @@ export default function BrowsePage() {
         ) : items.length ? (
           <div className="browse-grid" data-testid="browse-grid">
             {items.map((work) => (
-              <CoverCard key={work.id} work={work} />
+              <CoverCard key={work.id} work={work} role={role} />
             ))}
           </div>
         ) : (

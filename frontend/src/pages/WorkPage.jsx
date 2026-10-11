@@ -7,7 +7,8 @@ import { coverWashStyle, coverWashUrl, isInboundJob } from "../cover.js";
 import { canPromoteIncomingMusic, humanError, peekMediaNote } from "../copy.js";
 import { looksLikeHtml, sanitizeDescriptionHtml } from "../description.js";
 import { findHref, gapFindFields } from "../find.js";
-import { companionAudiobookView } from "../audiobookCompanion.js";
+import { bookAvailability } from "../availability.js";
+import AvailabilityActions from "../components/AvailabilityActions.jsx";
 import { isIncompleteOwnedPartSet, ownedPartSetStatusLine, partSetFindFields } from "../findParts.js";
 import { useAlbumPlayer } from "../hooks/useAlbumPlayer.js";
 import { finishRitualCopy, finishWhisperInvite, hallLampPeriod } from "../lib/lampRituals.js";
@@ -178,7 +179,12 @@ export default function WorkPage() {
   const incompleteParts = isIncompleteOwnedPartSet(work.part_set);
   const findMissingHref = incompleteParts ? findHref(partSetFindFields(work)) : "";
   const partStatus = incompleteParts ? ownedPartSetStatusLine(work.part_set) : "";
-  const audiobookCta = companionAudiobookView(data.audiobook);
+  const availability = bookAvailability({
+    work,
+    audiobook: data.audiobook,
+    wanted: data.wanted,
+    role: user?.role || "reader",
+  });
   const readLabel = readerCtaLabel(work) || "Read";
   const canCatalog = user?.role === "owner" || user?.role === "op";
   const canEnrichKind = work.kind === "book" || work.kind === "audiobook";
@@ -352,6 +358,28 @@ export default function WorkPage() {
     }
   }
 
+  async function addWanted() {
+    if (!availability.addBody) return;
+    setError("");
+    try {
+      const result = await api.addWanted(availability.addBody);
+      setData((prev) => (prev ? { ...prev, wanted: result.item } : prev));
+    } catch (err) {
+      setError(humanError(err));
+    }
+  }
+
+  async function dismissWanted() {
+    if (!availability.wantedId) return;
+    setError("");
+    try {
+      const result = await api.dismissWanted(availability.wantedId);
+      setData((prev) => (prev ? { ...prev, wanted: result.item } : prev));
+    } catch (err) {
+      setError(humanError(err));
+    }
+  }
+
   async function favorite() {
     const next = await api.favorite(work.id);
     setData({ ...data, favorite: next.favorite });
@@ -457,20 +485,11 @@ export default function WorkPage() {
                 {readLabel}
               </a>
             ) : null}
-            {audiobookCta.show && audiobookCta.shelved ? (
-              <Link
-                className="cta outline compact"
-                to={audiobookCta.listenHref}
-                data-testid="work-audiobook-listen"
-              >
-                {audiobookCta.secondaryLabel}
-              </Link>
-            ) : null}
-            {audiobookCta.show && !audiobookCta.shelved ? (
-              <Link className="cta outline compact" to={audiobookCta.findHref} data-testid="work-find-audiobook">
-                {audiobookCta.primaryLabel}
-              </Link>
-            ) : null}
+            <AvailabilityActions
+              view={availability}
+              onAdd={addWanted}
+              onDismiss={dismissWanted}
+            />
             {canListen && playerLink?.href ? (
               <a
                 className="cta outline compact"

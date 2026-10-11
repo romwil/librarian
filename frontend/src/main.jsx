@@ -5,6 +5,7 @@ import App from "./App.jsx";
 import { WorkPeekProvider } from "./components/WorkPeekProvider.jsx";
 import HallPage from "./pages/HallPage.jsx";
 import BrowsePage from "./pages/BrowsePage.jsx";
+import WantedPage from "./pages/WantedPage.jsx";
 import JoinPage from "./pages/JoinPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
 import PeoplePage from "./pages/PeoplePage.jsx";
@@ -29,6 +30,7 @@ createRoot(document.getElementById("root")).render(
           <Route path="/" element={<App />}>
             <Route index element={<HallPage />} />
             <Route path="browse" element={<BrowsePage />} />
+            <Route path="wanted" element={<WantedPage />} />
             <Route path="search" element={<SearchPage />} />
             <Route path="find" element={<FindPage />} />
             <Route path="works/:id" element={<WorkPage />} />

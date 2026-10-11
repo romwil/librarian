@@ -23,7 +23,8 @@ import { beyondHostName, findHref } from "../find.js";
 import { isIncompleteOwnedPartSet, partSetFindFields } from "../findParts.js";
 import { canListenInApp, workListenPath } from "../listen.js";
 import { canOpenInlineMedia, canReadInApp, readerCtaLabel, workReaderPath } from "../reader.js";
-import { companionAudiobookView } from "../audiobookCompanion.js";
+import { bookAvailability } from "../availability.js";
+import AvailabilityActions from "./AvailabilityActions.jsx";
 import PlexampToast from "./PlexampToast.jsx";
 
 export default function WorkPeek({ work, onClose, onRequest }) {
@@ -36,6 +37,8 @@ export default function WorkPeek({ work, onClose, onRequest }) {
   const [detail, setDetail] = useState(null);
   const [promoting, setPromoting] = useState(false);
   const [plexamp, setPlexamp] = useState(null);
+  const [wantedRow, setWantedRow] = useState(null);
+  const [availabilityBusy, setAvailabilityBusy] = useState(false);
 
   useEffect(() => {
     setJobStatus(work?.job_status || "");
@@ -119,8 +122,42 @@ export default function WorkPeek({ work, onClose, onRequest }) {
     : "";
   const incompleteParts = isIncompleteOwnedPartSet(catalog.part_set);
   const findMissingHref = incompleteParts ? findHref(partSetFindFields(catalog)) : "";
-  const audiobookCta = companionAudiobookView(detailMatches ? detail?.audiobook : null);
+  const availability = bookAvailability({
+    work: catalog,
+    audiobook: detailMatches ? detail?.audiobook : null,
+    wanted: wantedRow || (detailMatches ? detail?.wanted : null),
+    role,
+    beyond,
+  });
   const readLabel = readerCtaLabel(catalog) || "Read";
+
+  async function addWanted() {
+    if (!availability.addBody || availabilityBusy) return;
+    setAvailabilityBusy(true);
+    setError("");
+    try {
+      const result = await api.addWanted(availability.addBody);
+      if (result?.item) setWantedRow(result.item);
+    } catch (err) {
+      setError(humanError(err));
+    } finally {
+      setAvailabilityBusy(false);
+    }
+  }
+
+  async function dismissWanted() {
+    if (!availability.wantedId || availabilityBusy) return;
+    setAvailabilityBusy(true);
+    setError("");
+    try {
+      const result = await api.dismissWanted(availability.wantedId);
+      if (result?.item) setWantedRow(result.item);
+    } catch (err) {
+      setError(humanError(err));
+    } finally {
+      setAvailabilityBusy(false);
+    }
+  }
 
   async function favorite() {
     if (!catalog.id) return;
@@ -311,32 +348,13 @@ export default function WorkPeek({ work, onClose, onRequest }) {
                         {readLabel}
                       </a>
                     ) : null}
-                    {audiobookCta.show && audiobookCta.shelved ? (
-                      <Link
-                        className="cta outline compact"
-                        to={audiobookCta.listenHref}
-                        onClick={(event) => {
-                          if (event.metaKey || event.ctrlKey) return;
-                          onClose();
-                        }}
-                        data-testid="peek-audiobook-listen"
-                      >
-                        {audiobookCta.secondaryLabel}
-                      </Link>
-                    ) : null}
-                    {audiobookCta.show && !audiobookCta.shelved ? (
-                      <Link
-                        className="cta outline compact"
-                        to={audiobookCta.findHref}
-                        onClick={(event) => {
-                          if (event.metaKey || event.ctrlKey) return;
-                          onClose();
-                        }}
-                        data-testid="peek-find-audiobook"
-                      >
-                        {audiobookCta.primaryLabel}
-                      </Link>
-                    ) : null}
+                    <AvailabilityActions
+                      view={availability}
+                      onFollow={onClose}
+                      onAdd={addWanted}
+                      onDismiss={dismissWanted}
+                      busy={availabilityBusy}
+                    />
                     {canListen && playerLink?.href ? (
                       <a
                         className="cta outline compact"

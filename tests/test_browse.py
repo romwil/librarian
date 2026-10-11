@@ -209,3 +209,62 @@ def test_browse_excludes_resolved_shells_without_files(tmp_path, monkeypatch):
     assert hall.json()["kind_counts"]["audiobook"] == 1
     audio_titles = [row["title"] for row in hall.json()["areas"]["audiobooks"]]
     assert audio_titles == ["Backstage at the Lincoln Assassination"]
+
+
+def test_browse_annotates_listen_and_wanted(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    _login(client)
+    db = Database(tmp_path / "librarian.db")
+    dune = _shelve(
+        db,
+        db.upsert_work(
+            {
+                "kind": "book",
+                "title": "Dune",
+                "author": "Frank Herbert",
+                "isbn": "9780441172719",
+                "folder_path": str(tmp_path / "dune-book"),
+            }
+        ),
+    )
+    audio = _shelve(
+        db,
+        db.upsert_work(
+            {
+                "kind": "audiobook",
+                "title": "Dune",
+                "author": "Frank Herbert",
+                "isbn": "9780441172719",
+                "folder_path": str(tmp_path / "dune-audio"),
+            }
+        ),
+        filename="Dune.m4b",
+    )
+    circe = _shelve(
+        db,
+        db.upsert_work(
+            {
+                "kind": "book",
+                "title": "Circe",
+                "author": "Madeline Miller",
+                "folder_path": str(tmp_path / "circe-book"),
+            }
+        ),
+        filename="Circe.epub",
+    )
+    from librarian.wanted import add_wanted
+
+    row = add_wanted(db, {"work_id": circe["id"], "kind": "audiobook", "title": "Circe"})
+
+    browse = client.get("/api/browse", params={"kind": "book"})
+    assert browse.status_code == 200
+    by_title = {item["title"]: item for item in browse.json()["items"]}
+    assert by_title["Dune"]["audiobook"]["shelved"]["id"] == audio["id"]
+    assert by_title["Circe"]["audiobook"]["shelved"] is None
+    assert by_title["Circe"]["wanted"]["id"] == row["id"]
+    assert by_title["Circe"]["wanted"]["status"] == "wanted"
+
+    detail = client.get(f"/api/works/{circe['id']}")
+    assert detail.status_code == 200
+    assert detail.json()["wanted"]["status"] == "wanted"
+    assert client.get(f"/api/works/{dune['id']}").json()["audiobook"]["shelved"]["id"] == audio["id"]
