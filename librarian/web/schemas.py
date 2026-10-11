@@ -219,3 +219,11 @@ class NamedShelfSharePayload(BaseModel):
     shared: bool = True
 
 
+class WantedAddPayload(BaseModel):
+    title: str = ""
+    author: str = ""
+    isbn: str = ""
+    kind: str = "audiobook"
+    work_id: str = ""
+
+

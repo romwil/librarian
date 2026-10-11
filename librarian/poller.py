@@ -80,6 +80,18 @@ class JobPoller:
             match_audiobooks(self.db, settings)
         except Exception:
             logger.exception("ABS match tick failed")
+        try:
+            from librarian.wanted_sweep import sweep_wanted_audiobooks
+
+            sweep_wanted_audiobooks(self.db)
+        except Exception:
+            logger.exception("Wanted sweep tick failed")
+        try:
+            from librarian.wanted_search import poll_wanted
+
+            count += poll_wanted(self.db, settings)
+        except Exception:
+            logger.exception("Wanted search tick failed")
         self._tick_count += 1
         if self._tick_count % _ENRICH_EVERY_TICKS == 0:
             try:

@@ -284,6 +284,7 @@ def poll_job(
     if status == "failed":
         reason = str(snapshot.get("fail_message") or snapshot.get("sab_status") or "Failed")
         updated = db.update_job(job_id, status="failed", error=reason, **sab_fields)
+        _release_wanted_after_failure(db, job_id)
         return updated or job
     if status == "completed":
         raw = Path(str(snapshot.get("storage") or job.get("storage_path") or ""))
@@ -314,6 +315,7 @@ def poll_job(
                 error=MISSING_FOLDER_ERROR + f" ({storage})",
                 **sab_fields,
             )
+            _release_wanted_after_failure(db, job_id)
             return updated or job
         db.update_job(job_id, status="identifying", error=None, **sab_fields)
         item = find_identity_item(job)
@@ -339,6 +341,13 @@ def poll_job(
         )
         return updated or job
     return job
+
+
+def _release_wanted_after_failure(db: Database, job_id: str) -> None:
+    """A failed download returns its Wanted row to the backoff clock."""
+    from librarian.wanted_search import release_failed_wanted
+
+    release_failed_wanted(db, job_id)
 
 
 def poll_active_jobs(db: Database, settings: Settings, *, sab: Optional[SABClient] = None) -> int:
