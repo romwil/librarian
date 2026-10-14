@@ -244,6 +244,24 @@ def test_maybe_unpack_skips_rar_continuations(tmp_path):
     assert calls[0][-1] == str(part1)
 
 
+def test_maybe_unpack_archives_accepts_a_rar_file_path(tmp_path):
+    folder = tmp_path / "Bits and Pieces"
+    folder.mkdir()
+    archive = folder / "Bits and Pieces.rar"
+    archive.write_bytes(b"Rar!\x00")
+    calls = []
+
+    def runner(argv, timeout=300):
+        calls.append(list(argv))
+        (folder / "Bits and Pieces.epub").write_bytes(b"epub")
+        return SimpleNamespace(returncode=0)
+
+    result = maybe_unpack_archives(archive, runner=runner, unar="/usr/bin/unar")
+    assert result["unpacked"] is True
+    assert calls[0][:4] == ["/usr/bin/unar", "-o", str(folder), "-f"]
+    assert calls[0][4] == str(archive)
+
+
 def test_maybe_unpack_archives_noop_without_archives(tmp_path):
     folder = tmp_path / "empty"
     folder.mkdir()

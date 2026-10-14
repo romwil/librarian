@@ -46,7 +46,10 @@ const SAB_COPY = [
   [/returned non-json|unexpected payload/i, "SABnzbd answered strangely. Check the downloader URL."],
   [/did not return nzo_id/i, "SABnzbd did not accept the NZB. Try another result."],
   [/url fetching failed|maximum retries/i, "The downloader could not fetch the NZB from the indexer. Delete the stuck line and request again."],
-  [/sabnzbd/i, "The downloader did not answer. Check the SABnzbd URL in Settings."],
+  [
+    /did not answer|connection refused|connecterror|timed out|timeout|name or service not known|failed to establish|network is unreachable|all connection attempts failed|nodename nor servname/i,
+    "The downloader did not answer. Check the SABnzbd URL in Settings.",
+  ],
 ];
 
 export const FIELD_HELP = {
@@ -312,6 +315,15 @@ export function humanError(error, context = "") {
   if (llm) return llm;
   const indexer = matchCopy(raw, INDEXER_COPY);
   if (indexer) return indexer;
+  // Unpack / Apply guidance mentions SABnzbd as a place to fix archives.
+  // That is not a reachability failure — keep it ahead of the downloader copy.
+  if (
+    /already exists at the library destination|will not overwrite|Archives are still here|No book, comic, or audio file|No complete folder|Could not match a file in this dump/i.test(
+      raw,
+    )
+  ) {
+    return raw;
+  }
   const sab = matchCopy(raw, SAB_COPY);
   if (sab) return sab;
   if (/authentication required/i.test(raw)) return "Sign in to continue.";
@@ -333,14 +345,6 @@ export function humanError(error, context = "") {
       "Couldn't write into the library shelf — a folder is locked for the lamp " +
       "(PUID ownership under the books root). Fix permissions, then try again."
     );
-  }
-  // Known Apply / Review guidance — keep verbatim even when slightly long.
-  if (
-    /already exists at the library destination|will not overwrite|Archives are still here|No book, comic, or audio file|No complete folder|Could not match a file in this dump/i.test(
-      raw,
-    )
-  ) {
-    return raw;
   }
   // Bare 500 / empty body / sterile status text — never show "Internal Server Error".
   if (
