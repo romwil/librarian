@@ -16,12 +16,13 @@ from librarian.config import Settings
 from librarian.db import Database
 from librarian.indexers.query import build_job_payload
 from librarian.indexers.rank import heuristic_rank
-from librarian.kinds import search_category_for_kind
+from librarian.kinds import ALL_KINDS, search_category_for_kind
 from librarian.nzbfinder import NZBFinderClient, NZBFinderError
 from librarian.wanted import (
     BASE_BACKOFF_SECONDS,
     SLOW_AFTER_MISSES,
     STATUS_ASKED,
+    WantedError,
     is_confident_hit,
     is_junk_multidisc,
 )
@@ -154,6 +155,224 @@ def _file_asked(
     return db.claim_and_create_wanted_job(str(row["id"]), job, now=now)
 
 
+def _consider_row(
+    db: Database,
+    row: Mapping[str, Any],
+    *,
+    now: float,
+    run_search: SearchFn,
+) -> Dict[str, Any]:
+    """One Wanted row, same rules as the poller. Does not call SABnzbd."""
+    fresh = db.get_wanted(str(row.get("id") or ""))
+    wanted_id = str((fresh or row).get("id") or "")
+    if fresh is None or fresh.get("status") == "dismissed":
+        return {"id": wanted_id, "outcome": "missing", "searched": False}
+    if fresh.get("status") == STATUS_ASKED:
+        return {
+            "id": wanted_id,
+            "outcome": "already_asked",
+            "job_id": fresh.get("job_id"),
+            "note": "Already on a slip",
+            "searched": False,
+        }
+    if fresh.get("status") != "wanted":
+        return {"id": wanted_id, "outcome": "skipped", "searched": False}
+    if float(fresh.get("next_search_at") or 0) > now:
+        return {
+            "id": wanted_id,
+            "outcome": "not_due",
+            "next_search_at": fresh.get("next_search_at"),
+            "searched": False,
+        }
+    sought = sought_for_row(fresh)
+    if not sought["q"] or not sought["cat"]:
+        db.postpone_wanted(str(fresh["id"]), now=now, delay=BASE_BACKOFF_SECONDS)
+        return {"id": wanted_id, "outcome": "skipped", "searched": False}
+    try:
+        hits = run_search(sought)
+    except NZBFinderError as error:
+        logger.info("Wanted search skipped for %s: %s", fresh.get("id"), error)
+        db.postpone_wanted(str(fresh["id"]), now=now, delay=BASE_BACKOFF_SECONDS)
+        note = str(error)
+        outcome = "downloader" if "sabnzbd" in note.lower() else "indexer_error"
+        return {
+            "id": wanted_id,
+            "outcome": outcome,
+            "note": note,
+            "searched": True,
+        }
+    outcome, hit = choose_hit(sought, list(hits or []))
+    if outcome == "hit" and hit is not None:
+        job = _file_asked(db, fresh, hit, sought, now=now)
+        if job is None:
+            current = db.get_wanted(wanted_id) or fresh
+            return {
+                "id": wanted_id,
+                "outcome": "already_asked",
+                "job_id": current.get("job_id"),
+                "note": "Already on a slip",
+                "searched": True,
+            }
+        return {
+            "id": wanted_id,
+            "outcome": "hit",
+            "job_id": job.get("id"),
+            "note": "A hit is on a slip",
+            "searched": True,
+        }
+    _note_miss(db, str(fresh["id"]), now=now, from_status="wanted")
+    return {
+        "id": wanted_id,
+        "outcome": "miss",
+        "note": "Nothing found",
+        "searched": True,
+    }
+
+
+def _open_search(
+    settings: Settings,
+    search: Optional[SearchFn],
+) -> tuple[SearchFn, Optional[NZBFinderClient], bool]:
+    if search is not None:
+        return search, None, False
+    token = _text(getattr(settings, "nzbfinder_api_token", ""))
+    muted = bool(getattr(settings, "nzbfinder_muted", False))
+    if not token or muted:
+        raise WantedError("Beyond the shelves needs an NZBFinder token in Settings.")
+    finder = NZBFinderClient(
+        str(getattr(settings, "nzbfinder_url", "") or ""),
+        token,
+    )
+
+    def _default_search(sought: Mapping[str, Any]) -> List[Dict[str, Any]]:
+        return nzbfinder_search(finder, sought)
+
+    return _default_search, finder, True
+
+
+def search_wanted_selection(
+    db: Database,
+    settings: Settings,
+    *,
+    ids: Optional[List[str]] = None,
+    all_rows: bool = False,
+    kind: str = "",
+    now: Optional[float] = None,
+    search: Optional[SearchFn] = None,
+) -> List[Dict[str, Any]]:
+    """Search the chosen rows, or every open row of one kind. Same work as the poller."""
+    moment = time.time() if now is None else float(now)
+    chosen = [str(item or "").strip() for item in (ids or []) if str(item or "").strip()]
+    if chosen:
+        rows = []
+        for wanted_id in chosen:
+            row = db.get_wanted(wanted_id)
+            rows.append(row or {"id": wanted_id, "status": "dismissed"})
+    elif all_rows:
+        kind_key = _text(kind).lower()
+        if kind_key and kind_key not in ALL_KINDS:
+            raise WantedError("Unknown Wanted kind")
+        rows = db.list_wanted(kind=kind_key or None)
+    else:
+        raise WantedError("Choose rows or search all")
+    if not rows:
+        return []
+    run_search, finder, own_client = _open_search(settings, search)
+    results: List[Dict[str, Any]] = []
+    try:
+        for row in rows:
+            result = _consider_row(db, row, now=moment, run_search=run_search)
+            result.pop("searched", None)
+            results.append(result)
+    finally:
+        if own_client and finder is not None:
+            finder.close()
+    return results
+
+
+def beyond_wanted(
+    db: Database,
+    settings: Settings,
+    wanted_id: str,
+    *,
+    data_dir: Any = None,
+) -> Dict[str, Any]:
+    """Indexer search for one Wanted row. Shows hits. Does not file a slip."""
+    from librarian.indexers.rank import search_and_rank
+    from librarian.indexers.scrub import public_indexer_hit, public_indexer_hits
+    from librarian.llm import friendly_llm_error
+
+    row = db.get_wanted(str(wanted_id or "").strip())
+    if row is None or row.get("status") == "dismissed":
+        raise WantedError("Wanted row not found")
+    sought = sought_for_row(row)
+    ranked = search_and_rank(
+        settings,
+        data_dir=data_dir,
+        kind=sought["kind"],
+        q=sought["q"],
+        title=sought["title"],
+        author=sought["author"],
+        isbn=sought["isbn"],
+    )
+    beyond_error = ranked.get("error")
+    if beyond_error:
+        beyond_error = friendly_llm_error(RuntimeError(str(beyond_error)))
+    pick = ranked.get("pick")
+    return {
+        "id": row.get("id"),
+        "hits": public_indexer_hits(list(ranked.get("hits") or [])),
+        "candidates": public_indexer_hits(list(ranked.get("candidates") or [])),
+        "pick": public_indexer_hit(pick) if isinstance(pick, dict) else None,
+        "beyond_error": beyond_error,
+        "rank_method": str(ranked.get("rank_method") or ""),
+        "rank_reason": str(ranked.get("rank_reason") or ""),
+    }
+
+
+def ask_wanted_hit(
+    db: Database,
+    wanted_id: str,
+    hit: Mapping[str, Any],
+    *,
+    now: Optional[float] = None,
+) -> Dict[str, Any]:
+    """File one Asked slip for a hit the house picked. A second call does not enqueue."""
+    from librarian.wanted import public_wanted
+
+    moment = time.time() if now is None else float(now)
+    row = db.get_wanted(str(wanted_id or "").strip())
+    if row is None or row.get("status") == "dismissed":
+        raise WantedError("Wanted row not found")
+    if row.get("status") == STATUS_ASKED:
+        return {
+            "outcome": "already_asked",
+            "note": "Already on a slip",
+            "job_id": row.get("job_id"),
+            "item": public_wanted(row),
+        }
+    if row.get("status") != "wanted":
+        raise WantedError("Wanted row not found")
+    if not _text(hit.get("guid") or hit.get("indexer_guid")):
+        raise WantedError("This release is missing its id")
+    sought = sought_for_row(row)
+    job = _file_asked(db, row, hit, sought, now=moment)
+    fresh = db.get_wanted(str(row["id"])) or row
+    if job is None:
+        return {
+            "outcome": "already_asked",
+            "note": "Already on a slip",
+            "job_id": fresh.get("job_id"),
+            "item": public_wanted(fresh),
+        }
+    return {
+        "outcome": "hit",
+        "note": "A hit is on a slip",
+        "job_id": job.get("id"),
+        "item": public_wanted(fresh),
+    }
+
+
 def poll_wanted(
     db: Database,
     settings: Settings,
@@ -193,27 +412,9 @@ def poll_wanted(
     calls = 0
     try:
         for row in due:
-            fresh = db.get_wanted(str(row["id"]))
-            if fresh is None or fresh.get("status") != "wanted":
-                continue
-            if float(fresh.get("next_search_at") or 0) > moment:
-                continue
-            sought = sought_for_row(fresh)
-            if not sought["q"] or not sought["cat"]:
-                db.postpone_wanted(str(fresh["id"]), now=moment, delay=BASE_BACKOFF_SECONDS)
-                continue
-            calls += 1
-            try:
-                hits = run_search(sought)
-            except NZBFinderError as error:
-                logger.info("Wanted search skipped for %s: %s", fresh.get("id"), error)
-                db.postpone_wanted(str(fresh["id"]), now=moment, delay=BASE_BACKOFF_SECONDS)
-                continue
-            outcome, hit = choose_hit(sought, list(hits or []))
-            if outcome == "hit" and hit is not None:
-                _file_asked(db, fresh, hit, sought, now=moment)
-                continue
-            _note_miss(db, str(fresh["id"]), now=moment, from_status="wanted")
+            result = _consider_row(db, row, now=moment, run_search=run_search)
+            if result.get("searched"):
+                calls += 1
     finally:
         if own_client and finder is not None:
             finder.close()

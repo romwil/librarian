@@ -231,3 +231,23 @@ class WantedAddPayload(BaseModel):
     work_id: str = ""
 
 
+class WantedSearchPayload(BaseModel):
+    ids: List[str] = []
+    all: bool = False
+    kind: str = ""
+
+
+class WantedAskPayload(BaseModel):
+    guid: str = ""
+    title: str = ""
+    author: str = ""
+    isbn: str = ""
+    category: str = ""
+    download_url: str = ""
+    size: str = ""
+    host_id: str = ""
+    kind: str = ""
+    book_title: str = ""
+    category_name: str = ""
+
+

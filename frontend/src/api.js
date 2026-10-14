@@ -95,9 +95,21 @@ export const api = {
   removeFromShelf: (shelfId, workId) =>
     request(`/shelves/${encodeURIComponent(shelfId)}/works/${encodeURIComponent(workId)}`, { method: "DELETE" }),
   requestItem: (item) => request("/request", { method: "POST", body: JSON.stringify(item) }),
-  wanted: () => request("/wanted"),
+  wanted: ({ kind = "", page = 1, pageSize = 50, status = "" } = {}) => {
+    const params = new URLSearchParams();
+    if (kind) params.set("kind", kind);
+    if (status) params.set("status", status);
+    if (page) params.set("page", String(page));
+    if (pageSize) params.set("page_size", String(pageSize));
+    const qs = params.toString();
+    return request(`/wanted${qs ? `?${qs}` : ""}`);
+  },
   addWanted: (body) => request("/wanted", { method: "POST", body: JSON.stringify(body || {}) }),
   dismissWanted: (id) => request(`/wanted/${encodeURIComponent(id)}/dismiss`, { method: "POST" }),
+  searchWanted: (body) => request("/wanted/search", { method: "POST", body: JSON.stringify(body || {}) }),
+  wantedBeyond: (id) => request(`/wanted/${encodeURIComponent(id)}/beyond`, { method: "POST" }),
+  askWanted: (id, hit) =>
+    request(`/wanted/${encodeURIComponent(id)}/ask`, { method: "POST", body: JSON.stringify(hit || {}) }),
   review: () => request("/review"),
   reviewApply: (id, body) => request(`/review/${id}/apply`, { method: "POST", body: JSON.stringify(body) }),
   reviewSkip: (id) => request(`/review/${id}/skip`, { method: "POST" }),

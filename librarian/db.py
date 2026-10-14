@@ -1860,16 +1860,74 @@ class Database:
             ).fetchone()
         return self._wanted_from_row(row)
 
-    def list_wanted(self, *, status: Optional[str] = None) -> List[Dict[str, Any]]:
+    def _wanted_where(
+        self,
+        *,
+        status: Optional[str] = None,
+        kind: Optional[str] = None,
+        include_dismissed: bool = False,
+    ) -> tuple[str, List[Any]]:
+        clauses: List[str] = []
+        args: List[Any] = []
         if status:
-            sql = "SELECT * FROM wanted WHERE status = ? ORDER BY updated_at DESC"
-            args: List[Any] = [status]
-        else:
-            sql = "SELECT * FROM wanted WHERE status != 'dismissed' ORDER BY updated_at DESC"
-            args = []
+            clauses.append("status = ?")
+            args.append(status)
+        elif not include_dismissed:
+            clauses.append("status != 'dismissed'")
+        if kind:
+            clauses.append("kind = ?")
+            args.append(kind)
+        return " AND ".join(clauses) or "1 = 1", args
+
+    def list_wanted(
+        self,
+        *,
+        status: Optional[str] = None,
+        kind: Optional[str] = None,
+        limit: Optional[int] = None,
+        offset: int = 0,
+        include_dismissed: bool = False,
+    ) -> List[Dict[str, Any]]:
+        where, args = self._wanted_where(
+            status=status, kind=kind, include_dismissed=include_dismissed
+        )
+        sql = f"SELECT * FROM wanted WHERE {where} ORDER BY updated_at DESC, id ASC"
+        if limit is not None:
+            sql += " LIMIT ? OFFSET ?"
+            args.extend([max(0, int(limit)), max(0, int(offset))])
         with self._connect() as conn:
             rows = conn.execute(sql, args).fetchall()
         return [self._wanted_from_row(row) or {} for row in rows]
+
+    def count_wanted(
+        self,
+        *,
+        status: Optional[str] = None,
+        kind: Optional[str] = None,
+        include_dismissed: bool = False,
+    ) -> int:
+        where, args = self._wanted_where(
+            status=status, kind=kind, include_dismissed=include_dismissed
+        )
+        with self._connect() as conn:
+            row = conn.execute(f"SELECT COUNT(*) AS n FROM wanted WHERE {where}", args).fetchone()
+        return int(row["n"] if row is not None else 0)
+
+    def distinct_wanted_kinds(
+        self,
+        *,
+        status: Optional[str] = None,
+        include_dismissed: bool = False,
+    ) -> List[str]:
+        where, args = self._wanted_where(
+            status=status, include_dismissed=include_dismissed
+        )
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"SELECT DISTINCT kind FROM wanted WHERE {where} ORDER BY kind ASC",
+                args,
+            ).fetchall()
+        return [str(row["kind"]) for row in rows if row["kind"]]
 
     def list_due_wanted(self, *, now: float, limit: int) -> List[Dict[str, Any]]:
         with self._connect() as conn:
