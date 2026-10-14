@@ -75,6 +75,16 @@ test("a comic turns from the cover to the next page", async ({ page }) => {
   await expect.poll(async () => (await sectionIndex()).index, { timeout: 20_000 }).toBe(0);
   expect((await sectionIndex()).flow).not.toBe("scrolled");
 
+  const stage = reader.getByTestId("reader-stage");
+  const box = await stage.boundingBox();
+  if (!box) throw new Error("reading room stage has no box");
+  // Black letterbox: right third of the host stage, outside the page image.
+  await page.mouse.click(box.x + box.width * 0.9, box.y + box.height * 0.5);
+  await expect.poll(async () => (await sectionIndex()).index, { timeout: 10_000 }).toBe(1);
+
+  await page.mouse.click(box.x + box.width * 0.08, box.y + box.height * 0.5);
+  await expect.poll(async () => (await sectionIndex()).index, { timeout: 10_000 }).toBe(0);
+
   await reader.getByRole("button", { name: "Next page" }).click();
   await expect.poll(async () => (await sectionIndex()).index, { timeout: 10_000 }).toBe(1);
 

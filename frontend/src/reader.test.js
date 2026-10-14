@@ -7,7 +7,9 @@ import {
   EPUB_PAGE_SURFACE,
   EPUB_READER_STYLES,
   filenameFromDisposition,
+  comicTurnSide,
   pageTurnSide,
+  pageTurnTarget,
   primaryReadingFile,
   comicSpreadMode,
   readerChromeHint,
@@ -122,6 +124,30 @@ describe("in-app reader", () => {
     assert.equal(pageTurnSide(290, 300), "right");
     assert.equal(pageTurnSide(150, 300), "");
     assert.equal(pageTurnSide(0, 0), "");
+  });
+
+  it("turns stage letterbox edges and image edges as different targets", () => {
+    const stage = { left: 0, width: 900 };
+    const image = { left: 300, width: 300 };
+    assert.equal(pageTurnTarget(40, stage), "left");
+    assert.equal(pageTurnTarget(860, stage), "right");
+    assert.equal(pageTurnTarget(450, stage), "");
+    assert.equal(pageTurnTarget(40, null), "");
+    assert.equal(pageTurnTarget(40, { left: 0, width: 0 }), "");
+
+    // The cover's left edge sits in the stage center. Viewport x against the
+    // image width alone (as if the image started at x=0) points the wrong way.
+    assert.equal(pageTurnSide(310, image.width), "right");
+    assert.equal(pageTurnTarget(310, image), "left");
+    assert.equal(pageTurnTarget(580, image), "right");
+    assert.equal(pageTurnTarget(450, image), "");
+
+    assert.equal(comicTurnSide(40, stage, image), "left");
+    assert.equal(comicTurnSide(860, stage, image), "right");
+    assert.equal(comicTurnSide(310, stage, image), "left");
+    assert.equal(comicTurnSide(580, stage, image), "right");
+    assert.equal(comicTurnSide(450, stage, image), "");
+    assert.equal(comicTurnSide(450, stage, null), "");
   });
 
   it("scrolls reflowable prose and leaves comics, fixed-layout, and PDF on a page surface", () => {

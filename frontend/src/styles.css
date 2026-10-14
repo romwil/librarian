@@ -1912,11 +1912,15 @@ html[data-theme="lights-up"] .reader.reader-calm {
   min-height: 0;
   background: var(--workspace-base);
 }
+/* Painted hit layer. A fully transparent control is skipped by WebKit, so taps
+   on the black letterbox fell through to the book and never turned. */
 .reader-turns {
   position: absolute;
   inset: 0;
-  z-index: 2;
-  pointer-events: none;
+  z-index: 4;
+  pointer-events: auto;
+  background-color: rgb(255 255 255 / 0.01);
+  touch-action: manipulation;
 }
 .reader-turn {
   position: absolute;
@@ -1926,10 +1930,11 @@ html[data-theme="lights-up"] .reader.reader-calm {
   margin: 0;
   padding: 0;
   border: 0;
-  background: transparent;
+  background-color: rgb(255 255 255 / 0.01);
   color: transparent;
   pointer-events: auto;
   cursor: pointer;
+  touch-action: manipulation;
 }
 .reader-turn.is-left {
   left: 0;
