@@ -252,6 +252,11 @@ export const api = {
       }),
     }),
   reviewRegrab: (id) => request(`/review/${id}/regrab`),
+  reviewRetrieve: (id, intent) =>
+    request(`/review/${id}/retrieve`, {
+      method: "POST",
+      body: JSON.stringify({ intent }),
+    }),
   quietHours: () => request("/settings/quiet-hours"),
   saveQuietHours: (body) => request("/settings/quiet-hours", { method: "PUT", body: JSON.stringify(body) }),
 };

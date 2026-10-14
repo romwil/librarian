@@ -116,6 +116,21 @@ export const FIELD_HELP = {
   sab_tv_category: "SABnzbd category Sonarr watches. Default tv.",
 };
 
+/** ? help on Holds desk slip actions. Matches what each control actually does. */
+export const SLIP_ACTION_HELP = {
+  repair:
+    "Repair the archives already in this complete folder with par2, then unpack with unar. This does not shelve the volume.",
+  retry:
+    "Organize this complete folder again with the identity already on the slip, unpacking rar/7z with unar when archives remain. It does not ask the downloader to fetch the same grab, and it does not look for a different release.",
+  regrab:
+    "Run the remembered search again on this slip — the stored title, author, and rank — and take a better release here. Same book, a smarter pick. It stays on this slip and does not open Find.",
+  requestNew:
+    "Search for a different release of this title, such as an English retail EPUB when the accepted hit is the wrong language, and retrieve it on this slip. It is not a smarter re-pick of the remembered search, and it does not open Find.",
+  apply:
+    "File the identity in this form and unpack rar/7z from the complete folder with unar, then shelve the volume when the files are readable.",
+  skip: "Leave this slip without grabbing a release or unpacking the folder.",
+};
+
 export const FIND_BEYOND_CTA = "Find beyond the shelves";
 
 /** Quiet door to empty Find (Discover) — Hall / idle Search, not a nav tab. */

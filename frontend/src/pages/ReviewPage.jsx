@@ -2,9 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api.js";
 import { busyLabel, doneLabel, ticketStatusNote } from "../actionBusy.js";
-import { FieldLabel } from "../components/FieldHelp.jsx";
+import FieldHelp, { FieldLabel } from "../components/FieldHelp.jsx";
 import JobProgress from "../components/JobProgress.jsx";
-import { FIELD_HELP, emptyReviewCopy, humanError } from "../copy.js";
+import { FIELD_HELP, SLIP_ACTION_HELP, emptyReviewCopy, humanError } from "../copy.js";
 import { requestBodyFromHit } from "../find.js";
 import SearchTraceDisclosure from "../components/SearchTraceDisclosure.jsx";
 import { useProgressJob } from "../hooks/useProgressJob.js";
@@ -32,7 +32,6 @@ import {
   reviewBulkRowVisible,
   reviewDiagnosisCopy,
   reviewExtraFilesProgressVisible,
-  reviewFindHref,
   reviewProgressDwellRemainingMs,
   reviewPurgeProgressVisible,
   reviewReasonCopy,
@@ -62,7 +61,6 @@ export default function ReviewPage() {
   const [quietNote, setQuietNote] = useState("");
   const [suggestNotes, setSuggestNotes] = useState({});
   const focusRef = useRef(null);
-  const autoRegrabTried = useRef(new Set());
   const autoMatchTried = useRef(new Set());
   const autoSuggestTried = useRef(new Set());
   const reloadRef = useRef(() => {});
@@ -224,8 +222,9 @@ export default function ReviewPage() {
     setErrors((prev) => ({ ...prev, [work.id]: "" }));
     setTicketNote(work.id, busyLabel(action));
     try {
-      await runner();
-      setTicketNote(work.id, successNote || doneLabel(action));
+      const returned = await runner();
+      const noted = returned && typeof returned.note === "string" ? returned.note : "";
+      setTicketNote(work.id, noted || successNote || doneLabel(action));
     } catch (err) {
       const message = humanError(err);
       setErrors((prev) => ({ ...prev, [work.id]: message }));
@@ -290,11 +289,14 @@ export default function ReviewPage() {
     }
   }
 
-  async function loadRegrab(work) {
+  async function retrieveRelease(work, intent) {
+    const action = intent === "new_version" ? "requestNew" : "regrab";
     try {
-      await runTicketAction(work, "regrab", async () => {
-        const data = await api.reviewRegrab(work.id);
+      await runTicketAction(work, action, async () => {
+        const data = await api.reviewRetrieve(work.id, intent);
         setRegrabs((prev) => ({ ...prev, [work.id]: data }));
+        if (data?.sab_error) throw new Error(data.sab_error);
+        return { note: data?.note || "" };
       });
     } catch {
       /* note already set */
@@ -339,19 +341,6 @@ export default function ReviewPage() {
       autoMatchTried.current.add(work.id);
       loadAuthorityMatches(work);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [works]);
-
-  useEffect(() => {
-    for (const work of works) {
-      const actions = reviewActionsFromWork(work);
-      if (!actions.canRegrab) continue;
-      if (autoRegrabTried.current.has(work.id)) continue;
-      if (regrabs[work.id]) continue;
-      autoRegrabTried.current.add(work.id);
-      loadRegrab(work);
-    }
-    // Auto-fetch once per slip when can_regrab; manual Smart re-grab still refreshes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [works]);
 
@@ -757,7 +746,6 @@ export default function ReviewPage() {
           const shelf = work.shelf_work;
           const diagnosis = reviewDiagnosisCopy(work);
           const actions = reviewActionsFromWork(work);
-          const findTo = reviewFindHref(work);
           const workBusy = Boolean(busy[work.id]);
           const activeAction = typeof busy[work.id] === "string" ? busy[work.id] : "";
           const statusNote = ticketStatusNote(busy, actionNotes, work.id) || suggestNotes[work.id] || "";
@@ -918,49 +906,64 @@ export default function ReviewPage() {
                     </button>
                   ) : null}
                   {actions.canRepair ? (
-                    <button
-                      type="button"
-                      className={recommendedMotionCtaClass(work, "repair")}
-                      disabled={workBusy}
-                      aria-busy={activeAction === "repair" || undefined}
-                      onClick={() => repair(work)}
-                      data-testid="review-repair"
-                    >
-                      {activeAction === "repair" ? busyLabel("repair") : "Repair"}
-                    </button>
+                    <span className="cta-help">
+                      <button
+                        type="button"
+                        className={recommendedMotionCtaClass(work, "repair")}
+                        disabled={workBusy}
+                        aria-busy={activeAction === "repair" || undefined}
+                        onClick={() => repair(work)}
+                        data-testid="review-repair"
+                      >
+                        {activeAction === "repair" ? busyLabel("repair") : "Repair"}
+                      </button>
+                      <FieldHelp label="Repair">{SLIP_ACTION_HELP.repair}</FieldHelp>
+                    </span>
                   ) : null}
                   {actions.canRetry ? (
-                    <button
-                      type="button"
-                      className={recommendedMotionCtaClass(work, "retry")}
-                      disabled={workBusy}
-                      aria-busy={activeAction === "retry" || undefined}
-                      onClick={() => retry(work)}
-                      data-testid="review-retry"
-                    >
-                      {activeAction === "retry" ? busyLabel("retry") : "Retry"}
-                    </button>
+                    <span className="cta-help">
+                      <button
+                        type="button"
+                        className={recommendedMotionCtaClass(work, "retry")}
+                        disabled={workBusy}
+                        aria-busy={activeAction === "retry" || undefined}
+                        onClick={() => retry(work)}
+                        data-testid="review-retry"
+                      >
+                        {activeAction === "retry" ? busyLabel("retry") : "Retry"}
+                      </button>
+                      <FieldHelp label="Retry">{SLIP_ACTION_HELP.retry}</FieldHelp>
+                    </span>
                   ) : null}
                   {actions.canRegrab ? (
-                    <button
-                      type="button"
-                      className={recommendedMotionCtaClass(work, "regrab")}
-                      disabled={workBusy}
-                      aria-busy={activeAction === "regrab" || undefined}
-                      onClick={() => loadRegrab(work)}
-                      data-testid="review-regrab"
-                    >
-                      {activeAction === "regrab" ? busyLabel("regrab") : "Smart re-grab"}
-                    </button>
+                    <span className="cta-help">
+                      <button
+                        type="button"
+                        className={recommendedMotionCtaClass(work, "regrab")}
+                        disabled={workBusy}
+                        aria-busy={activeAction === "regrab" || undefined}
+                        onClick={() => retrieveRelease(work, "regrab")}
+                        data-testid="review-regrab"
+                      >
+                        {activeAction === "regrab" ? busyLabel("regrab") : "Smart re-grab"}
+                      </button>
+                      <FieldHelp label="Smart re-grab">{SLIP_ACTION_HELP.regrab}</FieldHelp>
+                    </span>
                   ) : null}
                   {actions.canRequestNew ? (
-                    <Link
-                      className={recommendedMotionCtaClass(work, "request_new")}
-                      to={findTo}
-                      data-testid="review-request-new"
-                    >
-                      Request new version
-                    </Link>
+                    <span className="cta-help">
+                      <button
+                        type="button"
+                        className={recommendedMotionCtaClass(work, "request_new")}
+                        disabled={workBusy}
+                        aria-busy={activeAction === "requestNew" || undefined}
+                        onClick={() => retrieveRelease(work, "new_version")}
+                        data-testid="review-request-new"
+                      >
+                        {activeAction === "requestNew" ? busyLabel("requestNew") : "Request new version"}
+                      </button>
+                      <FieldHelp label="Request new version">{SLIP_ACTION_HELP.requestNew}</FieldHelp>
+                    </span>
                   ) : null}
                 </div>
               )}
@@ -1016,22 +1019,24 @@ export default function ReviewPage() {
                   {regrabs[work.id].candidates.map((candidate, index) => (
                     <li key={candidate.guid || candidate.title}>
                       <span>{candidate.diff || candidate.title}</span>
-                      <button
-                        type="button"
-                        className={index === 0 ? "cta compact" : "cta compact outline"}
-                        disabled={workBusy}
-                        aria-busy={activeAction === "request" || undefined}
-                        onClick={() => requestRegrab(work, candidate)}
-                        data-testid="regrab-request"
-                      >
-                        {activeAction === "request" ? busyLabel("request") : "Request this"}
-                      </button>
+                      {regrabs[work.id]?.queued || regrabs[work.id]?.already_active ? null : (
+                        <button
+                          type="button"
+                          className={index === 0 ? "cta compact" : "cta compact outline"}
+                          disabled={workBusy}
+                          aria-busy={activeAction === "request" || undefined}
+                          onClick={() => requestRegrab(work, candidate)}
+                          data-testid="regrab-request"
+                        >
+                          {activeAction === "request" ? busyLabel("request") : "Request this"}
+                        </button>
+                      )}
                     </li>
                   ))}
                 </ul>
-              ) : regrabs[work.id]?.ready && !regrabs[work.id]?.candidates?.length ? (
+              ) : regrabs[work.id]?.searched && !regrabs[work.id]?.candidates?.length ? (
                 <p className="muted" data-testid="regrab-empty">
-                  No alternate releases yet — try Request new version on Find.
+                  {regrabs[work.id].note || "No other release turned up for this slip."}
                 </p>
               ) : null}
               <form
@@ -1108,34 +1113,40 @@ export default function ReviewPage() {
                 </div>
                 {errors[work.id] ? <p className="alert field-wide">{errors[work.id]}</p> : null}
                 <div className="cta-row field-wide">
-                  <button
-                    type="submit"
-                    className={recommendedMotionCtaClass(work, "apply", { compact: false })}
-                    disabled={!canApply || workBusy}
-                    aria-busy={activeAction === "apply" || undefined}
-                    title={
-                      collision && !canApply
-                        ? "Change title, author, series, or folder so the destination is free — Apply will not overwrite."
-                        : undefined
-                    }
-                    data-testid="review-apply"
-                  >
-                    {activeAction === "apply" ? busyLabel("apply") : "Apply"}
-                  </button>
-                  <button
-                    type="button"
-                    className={
-                      actions.recommendedMotion === "skip"
-                        ? recommendedMotionCtaClass(work, "skip", { compact: false })
-                        : "cta ghost"
-                    }
-                    disabled={workBusy}
-                    aria-busy={activeAction === "skip" || undefined}
-                    onClick={() => skip(work)}
-                    data-testid="review-skip"
-                  >
-                    {activeAction === "skip" ? busyLabel("skip") : "Skip"}
-                  </button>
+                  <span className="cta-help">
+                    <button
+                      type="submit"
+                      className={recommendedMotionCtaClass(work, "apply", { compact: false })}
+                      disabled={!canApply || workBusy}
+                      aria-busy={activeAction === "apply" || undefined}
+                      title={
+                        collision && !canApply
+                          ? "Change title, author, series, or folder so the destination is free — Apply will not overwrite."
+                          : undefined
+                      }
+                      data-testid="review-apply"
+                    >
+                      {activeAction === "apply" ? busyLabel("apply") : "Apply"}
+                    </button>
+                    <FieldHelp label="Apply">{SLIP_ACTION_HELP.apply}</FieldHelp>
+                  </span>
+                  <span className="cta-help">
+                    <button
+                      type="button"
+                      className={
+                        actions.recommendedMotion === "skip"
+                          ? recommendedMotionCtaClass(work, "skip", { compact: false })
+                          : "cta ghost"
+                      }
+                      disabled={workBusy}
+                      aria-busy={activeAction === "skip" || undefined}
+                      onClick={() => skip(work)}
+                      data-testid="review-skip"
+                    >
+                      {activeAction === "skip" ? busyLabel("skip") : "Skip"}
+                    </button>
+                    <FieldHelp label="Skip">{SLIP_ACTION_HELP.skip}</FieldHelp>
+                  </span>
                 </div>
               </form>
             </li>
