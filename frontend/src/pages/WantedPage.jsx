@@ -111,6 +111,21 @@ export default function WantedPage() {
                 </p>
               </div>
               <div className="cta-row compact">
+                {row.bookShelf ? (
+                  <Link className="cta compact" to={row.bookShelf.href} data-testid="wanted-book-shelf">
+                    {row.bookShelf.label}
+                  </Link>
+                ) : null}
+                {row.audioShelf ? (
+                  <Link className="cta compact" to={row.audioShelf.href} data-testid="wanted-audio-shelf">
+                    {row.audioShelf.label}
+                  </Link>
+                ) : null}
+                {row.audioShelf ? (
+                  <Link className="cta outline compact" to={row.audioShelf.listenHref} data-testid="wanted-listen">
+                    Listen
+                  </Link>
+                ) : null}
                 <Link className="cta outline compact" to={row.searchHref}>
                   Search the shelves
                 </Link>

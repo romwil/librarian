@@ -3,6 +3,7 @@
 from librarian.audiobook_match import (
     audiobook_find_fields,
     companion_audiobook_payload,
+    match_catalog_work,
     match_companion_audiobook,
 )
 
@@ -56,6 +57,33 @@ def test_match_by_series_index():
     ]
     hit = match_companion_audiobook(book, audiobooks)
     assert hit and hit["id"] == "a2"
+
+
+def test_catalog_match_uses_series_and_refuses_title_only():
+    sought = {
+        "title": "Dune Messiah",
+        "author": "",
+        "isbn": "",
+        "series_name": "Dune",
+        "series_index": "2",
+    }
+    shelves = [
+        {"id": "b1", "kind": "book", "title": "Dune", "author": "Frank Herbert", "series_name": "Dune", "series_index": "1"},
+        {
+            "id": "b2",
+            "kind": "book",
+            "title": "Messiah Unabridged",
+            "author": "Frank Herbert",
+            "series_name": "Dune",
+            "series_index": "2.0",
+        },
+    ]
+    hit = match_catalog_work(sought, shelves)
+    assert hit and hit["id"] == "b2"
+    assert match_catalog_work({"title": "Dune", "author": "", "isbn": ""}, shelves) is None
+    assert (
+        match_catalog_work({"title": "Dune", "author": "Someone Else", "isbn": ""}, shelves) is None
+    )
 
 
 def test_title_only_does_not_match():

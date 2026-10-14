@@ -501,3 +501,83 @@ def test_add_wanted_with_work_id_copies_catalog_fields(tmp_path, monkeypatch):
     assert item["kind"] == "audiobook"
     missing = client.post("/api/wanted", json={"work_id": "missing-work", "kind": "book"})
     assert missing.status_code == 404
+
+
+def test_owned_book_is_not_inserted_and_missing_audiobook_still_is(tmp_path, monkeypatch):
+    client = _owner_client(tmp_path, monkeypatch)
+    database = Database(tmp_path / "librarian.db")
+    try:
+        book = _shelve(
+            database,
+            kind="book",
+            title="Atomic Habits",
+            author="James Clear",
+            isbn="9780735211292",
+        )
+        _shelve(
+            database,
+            kind="audiobook",
+            title="Messiah Unabridged",
+            author="Someone Else",
+            series_name="Dune",
+            series_index="2",
+        )
+        series_book = database.upsert_work(
+            {
+                "kind": "book",
+                "title": "Dune Messiah",
+                "author": "",
+                "series_name": "Dune",
+                "series_index": "2",
+            }
+        )
+    finally:
+        database.close()
+
+    refused = client.post(
+        "/api/wanted",
+        json={"title": "Atomic Habits", "author": "James Clear", "isbn": "9780735211292", "kind": "book"},
+    )
+    assert refused.status_code == 409
+    detail = refused.json()["detail"]
+    assert detail["detail"] == "Already on the shelf"
+    assert detail["work_id"] == book["id"]
+    assert detail["kind"] == "book"
+
+    database = Database(tmp_path / "librarian.db")
+    try:
+        assert database.list_wanted() == []
+    finally:
+        database.close()
+
+    title_only = client.post("/api/wanted", json={"title": "Atomic Habits", "kind": "book"})
+    assert title_only.status_code == 200
+
+    audio = client.post(
+        "/api/wanted",
+        json={"title": "Atomic Habits", "author": "James Clear", "isbn": "9780735211292", "kind": "audiobook"},
+    )
+    assert audio.status_code == 200
+    assert audio.json()["item"]["kind"] == "audiobook"
+    assert audio.json()["item"]["shelved_book"]["id"] == book["id"]
+    assert audio.json()["item"]["shelved_audiobook"] is None
+    assert audio.json()["item"]["shelved"] is None
+
+    listed = client.get("/api/wanted")
+    assert listed.status_code == 200
+    habits = next(row for row in listed.json()["items"] if row["kind"] == "audiobook")
+    assert habits["shelved_book"]["id"] == book["id"]
+    assert habits["shelved_audiobook"] is None
+
+    series_refused = client.post("/api/wanted", json={"work_id": series_book["id"], "kind": "audiobook"})
+    assert series_refused.status_code == 409
+    assert series_refused.json()["detail"]["kind"] == "audiobook"
+
+    database = Database(tmp_path / "librarian.db")
+    try:
+        rows = database.list_wanted()
+        assert all(not (row["kind"] == "book" and row["author"] == "James Clear") for row in rows)
+        assert any(row["kind"] == "audiobook" and row["title"] == "Atomic Habits" for row in rows)
+        assert all(row["work_id"] != series_book["id"] for row in rows)
+    finally:
+        database.close()

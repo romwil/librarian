@@ -20,6 +20,7 @@ from librarian.kinds import NEWZNAB_AUDIOBOOK, NEWZNAB_COMIC, NEWZNAB_MAGAZINE
 from librarian.lists import curated_list_payload
 from librarian.llm import LLMClient
 from librarian.nyt_books import normalize_list_date, normalize_list_name
+from librarian.owned import annotate_noted_lanes
 
 logger = logging.getLogger(__name__)
 
@@ -515,9 +516,11 @@ def noted_desk(
             configured=True,
         )
     discover = discover_lane(settings, transport=discover_transport)
+    lanes = [trending, bestsellers, discover]
+    annotate_noted_lanes(db, lanes)
     return {
         "period": slug_period,
         "preset": list_slug,
         "date": when,
-        "lanes": [trending, bestsellers, discover],
+        "lanes": lanes,
     }

@@ -2,9 +2,21 @@
 
 import { findHref, searchHref } from "./find.js";
 import { canManageWanted } from "./availability.js";
+import { workListenPath } from "./listen.js";
 
 function trimmed(value) {
   return String(value || "").trim();
+}
+
+function shelfLink(stub, label) {
+  const id = trimmed(stub?.id);
+  if (!id) return null;
+  return {
+    id,
+    href: `/works/${encodeURIComponent(id)}`,
+    label,
+    listenHref: workListenPath(id),
+  };
 }
 
 export function wantedRowModel(item = {}, role = "reader") {
@@ -14,6 +26,11 @@ export function wantedRowModel(item = {}, role = "reader") {
   const isbn = trimmed(item.isbn);
   const fields = { kind, title, author, isbn };
   const status = trimmed(item.status) || "wanted";
+  const bookShelf = shelfLink(item.shelved_book, kind === "book" ? "On the shelf" : "Book on the shelf");
+  const audioShelf = shelfLink(
+    item.shelved_audiobook,
+    kind === "audiobook" ? "On the shelf" : "Audiobook on the shelf",
+  );
   return {
     id: trimmed(item.id),
     title,
@@ -26,6 +43,8 @@ export function wantedRowModel(item = {}, role = "reader") {
     searchHref: searchHref(fields),
     findHref: findHref(fields),
     canDismiss: canManageWanted(role) && Boolean(trimmed(item.id)) && status !== "dismissed",
+    bookShelf,
+    audioShelf,
   };
 }
 

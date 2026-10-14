@@ -322,3 +322,57 @@ def test_noted_api_cards_can_be_wanted_without_sab(tmp_path, monkeypatch):
     blob = json.dumps(body)
     assert "secret" not in blob
     assert "download_url" not in blob
+
+
+def _shelve(db: Database, **fields):
+    work = db.upsert_work(fields)
+    db.add_file(
+        {
+            "work_id": work["id"],
+            "path": f"/data/{work['id']}.bin",
+            "filename": f"{work['id']}.bin",
+            "kind": work["kind"],
+            "size": 12,
+        }
+    )
+    return work
+
+
+def test_noted_desk_marks_a_shelved_book_and_still_offers_the_missing_audiobook(tmp_path, monkeypatch):
+    _patch_discover(monkeypatch)
+    monkeypatch.setenv("NZBFINDER_API_TOKEN", "tok")
+    db = Database(tmp_path / "t.db")
+    try:
+        book = _shelve(
+            db,
+            kind="book",
+            title="The Left Hand of Darkness",
+            author="Ursula K. Le Guin",
+            isbn="",
+        )
+        _shelve(db, kind="book", title="Untitled Draft", author="Not The Author", isbn="")
+        audio = _shelve(db, kind="audiobook", title="Project Hail Mary", author="Andy Weir", isbn="")
+        desk = noted_desk(
+            Settings(nzbfinder_api_token="tok"),
+            db,
+            ol_transport=_ol_transport()[0],
+            data_dir=tmp_path,
+        )
+    finally:
+        db.close()
+    trending = _lane(desk, "trending")["items"]
+    left = trending[0]
+    assert left["shelved"]["id"] == book["id"]
+    assert left["shelved_audiobook"] is None
+    assert left["wanted"]["kinds"] == ["audiobook"]
+    untitled = trending[1]
+    assert untitled["author"] == ""
+    assert untitled["shelved"] is None
+    assert untitled["shelved_audiobook"] is None
+    assert untitled["wanted"]["kinds"] == ["book", "audiobook"]
+    hail = next(
+        row for row in _lane(desk, "discover")["items"] if row["title"] == "Project Hail Mary"
+    )
+    assert hail["shelved_audiobook"]["id"] == audio["id"]
+    assert hail["shelved"] is None
+    assert hail["wanted"]["kinds"] == ["book"]
