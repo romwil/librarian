@@ -201,16 +201,70 @@ def dismiss_wanted(db: Database, wanted_id: str, *, now: Optional[float] = None)
     return row
 
 
+DEFAULT_WANTED_PAGE_SIZE = 50
+MAX_WANTED_PAGE_SIZE = 200
+
+_KNOWN_STATUSES = {STATUS_WANTED, STATUS_ASKED, STATUS_DISMISSED}
+
+
 def list_wanted(db: Database, *, status: str = "") -> list[Dict[str, Any]]:
     key = _clean(status).lower()
     if key == "all":
-        rows: list[Dict[str, Any]] = []
-        for name in (STATUS_WANTED, STATUS_ASKED, STATUS_DISMISSED):
-            rows.extend(db.list_wanted(status=name))
-        rows.sort(key=lambda item: float(item.get("updated_at") or 0), reverse=True)
-        return rows
+        return db.list_wanted(include_dismissed=True)
     if key:
-        if key not in {STATUS_WANTED, STATUS_ASKED, STATUS_DISMISSED}:
+        if key not in _KNOWN_STATUSES:
             raise WantedError("Unknown Wanted status")
         return db.list_wanted(status=key)
     return db.list_wanted()
+
+
+def page_wanted(
+    db: Database,
+    *,
+    status: str = "",
+    kind: str = "",
+    page: int = 1,
+    page_size: int = DEFAULT_WANTED_PAGE_SIZE,
+) -> Dict[str, Any]:
+    """One page of Wanted rows. Kind narrows the set before the page window."""
+    key = _clean(status).lower()
+    kind_key = _clean(kind).lower()
+    if kind_key and kind_key not in ALL_KINDS:
+        raise WantedError("Unknown Wanted kind")
+    include_dismissed = key == "all"
+    status_arg: Optional[str] = None
+    if key and not include_dismissed:
+        if key not in _KNOWN_STATUSES:
+            raise WantedError("Unknown Wanted status")
+        status_arg = key
+    try:
+        page_no = int(page)
+    except (TypeError, ValueError):
+        page_no = 1
+    page_no = max(1, page_no)
+    try:
+        size = int(page_size)
+    except (TypeError, ValueError):
+        size = DEFAULT_WANTED_PAGE_SIZE
+    if size < 1:
+        size = DEFAULT_WANTED_PAGE_SIZE
+    size = min(size, MAX_WANTED_PAGE_SIZE)
+    scope = {
+        "status": status_arg,
+        "include_dismissed": include_dismissed,
+    }
+    total = db.count_wanted(kind=kind_key or None, **scope)
+    rows = db.list_wanted(
+        kind=kind_key or None,
+        limit=size,
+        offset=(page_no - 1) * size,
+        **scope,
+    )
+    kinds = db.distinct_wanted_kinds(**scope)
+    return {
+        "items": rows,
+        "total": total,
+        "page": page_no,
+        "page_size": size,
+        "kinds": kinds,
+    }

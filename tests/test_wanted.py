@@ -639,3 +639,149 @@ def test_subtitle_shelf_title_blocks_wanted_for_that_kind_only(tmp_path, monkeyp
     assert audio.status_code == 200
     assert audio.json()["item"]["shelved_book"]["id"] == book["id"]
     assert audio.json()["item"]["shelved_audiobook"] is None
+
+
+def _open_row(database: Database, *, title: str, kind: str, updated_at: float, status: str = "wanted"):
+    from librarian.wanted import dedupe_key
+
+    key = dedupe_key(kind=kind, title=title, author="Ada")
+    return database.insert_wanted(
+        {
+            "dedupe_key": key,
+            "title": title,
+            "author": "Ada",
+            "isbn": "",
+            "kind": kind,
+            "status": status,
+            "miss_streak": 0,
+            "next_search_at": NOW,
+            "created_at": updated_at,
+            "updated_at": updated_at,
+        }
+    )
+
+
+def test_wanted_list_pages_after_kind_and_stays_a_cheap_read(tmp_path, monkeypatch):
+    def boom(*_args, **_kwargs):
+        raise AssertionError("ShelfIndex does not belong on the Wanted list")
+
+    monkeypatch.setattr("librarian.web.routers.wanted.ShelfIndex", boom)
+    client = _owner_client(tmp_path, monkeypatch)
+    database = Database(tmp_path / "librarian.db")
+    try:
+        first = _open_row(database, title="One", kind="book", updated_at=300)
+        second = _open_row(database, title="Two", kind="book", updated_at=200)
+        third = _open_row(database, title="Three", kind="book", updated_at=100)
+        _open_row(database, title="Heard", kind="audiobook", updated_at=400)
+    finally:
+        database.close()
+
+    books = client.get("/api/wanted", params={"kind": "book", "page": 1, "page_size": 2})
+    assert books.status_code == 200
+    body = books.json()
+    assert body["total"] == 3
+    assert body["page"] == 1
+    assert [row["id"] for row in body["items"]] == [first["id"], second["id"]]
+    assert all(row["kind"] == "book" for row in body["items"])
+    assert "audiobook" in body["kinds"]
+    assert "book" in body["kinds"]
+
+    page_two = client.get("/api/wanted", params={"kind": "book", "page": 2, "page_size": 2})
+    assert [row["id"] for row in page_two.json()["items"]] == [third["id"]]
+    assert first["id"] not in [row["id"] for row in page_two.json()["items"]]
+    assert second["id"] not in [row["id"] for row in page_two.json()["items"]]
+
+
+def test_wanted_search_respects_kind_ids_and_asked_lock(tmp_path, monkeypatch):
+    from librarian.config import Settings, save_settings
+    from librarian.sabnzbd import SABClient
+    from librarian.wanted_search import search_wanted_selection
+
+    client = _owner_client(tmp_path, monkeypatch)
+    save_settings(tmp_path, Settings(nzbfinder_api_token="token", nzbfinder_url="https://indexer.test"))
+    database = Database(tmp_path / "librarian.db")
+    calls = []
+
+    def search(sought):
+        calls.append(dict(sought))
+        return []
+
+    def boom(*_args, **_kwargs):
+        raise AssertionError("SABnzbd was called")
+
+    monkeypatch.setattr(SABClient, "addfile", boom)
+    try:
+        book = _open_row(database, title="Paper", kind="book", updated_at=30)
+        other = _open_row(database, title="Voice", kind="audiobook", updated_at=20)
+        asked = _open_row(database, title="Slip", kind="book", updated_at=10, status="asked")
+        settings = Settings(nzbfinder_api_token="token")
+        by_kind = search_wanted_selection(
+            database, settings, all_rows=True, kind="book", now=NOW, search=search
+        )
+        assert [item["title"] for item in calls] == ["Paper"]
+        outcomes = {row["id"]: row["outcome"] for row in by_kind}
+        assert outcomes[asked["id"]] == "already_asked"
+        assert outcomes[book["id"]] == "miss"
+        assert other["id"] not in outcomes
+        calls.clear()
+        by_ids = search_wanted_selection(
+            database, settings, ids=[other["id"]], now=NOW, search=search
+        )
+        assert [item["title"] for item in calls] == ["Voice"]
+        assert [row["id"] for row in by_ids] == [other["id"]]
+        calls.clear()
+        again = search_wanted_selection(
+            database,
+            settings,
+            ids=[asked["id"], book["id"]],
+            now=NOW + 10**9,
+            search=search,
+        )
+        assert [item["title"] for item in calls] == ["Paper"]
+        assert any(row["id"] == asked["id"] and row["outcome"] == "already_asked" for row in again)
+
+        http_calls = []
+
+        class Finder:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            def search(self, _query, cat="", kind=None, limit=25):
+                http_calls.append(kind)
+                return []
+
+            def close(self):
+                return None
+
+        monkeypatch.setattr("librarian.wanted_search.NZBFinderClient", Finder)
+        found = client.post("/api/wanted/search", json={"all": True, "kind": "audiobook"})
+        assert found.status_code == 200, found.text
+        assert http_calls == ["audiobook"]
+        assert all(row["id"] != book["id"] for row in found.json()["results"])
+    finally:
+        database.close()
+
+    minted = client.post("/api/invites", json={"role": "reader"})
+    client.post("/api/auth/logout")
+    client.cookies.clear()
+    redeemed = client.post(
+        "/api/invites/redeem/local",
+        json={"token": minted.json()["token"], "username": "reader1", "password": "password123"},
+    )
+    assert redeemed.status_code == 200
+    assert client.post("/api/wanted/search", json={"all": True}).status_code == 403
+
+
+def test_ask_wanted_hit_does_not_enqueue_twice(db, monkeypatch):
+    from librarian.sabnzbd import SABClient
+    from librarian.wanted_search import ask_wanted_hit
+
+    row = _audiobook_want(db)
+    monkeypatch.setattr(SABClient, "addfile", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("SAB")))
+    first = ask_wanted_hit(db, row["id"], {"guid": "guid-1", "title": "Dune"}, now=NOW)
+    assert first["outcome"] == "hit"
+    assert db.get_wanted(row["id"])["status"] == "asked"
+    second = ask_wanted_hit(db, row["id"], {"guid": "guid-2", "title": "Dune again"}, now=NOW + 1)
+    assert second["outcome"] == "already_asked"
+    assert second["note"] == "Already on a slip"
+    assert len(db.list_jobs(limit=10)) == 1
