@@ -88,6 +88,40 @@ def _sab_message(error: BaseException) -> str:
     return text
 
 
+# SAB answered (HTTP, auth, or a probe shape). These are not "did not answer".
+_SAB_ANSWERED = (
+    "api key is not configured",
+    "sabnzbd http",
+    "non-json",
+    "unexpected payload",
+    "returned no version",
+    "did not return nzo_id",
+)
+
+
+def _connection_failure(error: BaseException) -> bool:
+    text = _text(error).lower()
+    if not text:
+        return True
+    return not any(marker in text for marker in _SAB_ANSWERED)
+
+
+def _ensure_downloader(client: SABClient) -> None:
+    """Raise SABError only when version and queue both fail to show SAB is up.
+
+    ``mode=version`` is the light probe. ``mode=queue`` is the fallback when
+    version is missing or rejected but the API still answers. A transport
+    failure stops here so the indexer is not queried.
+    """
+    try:
+        client.version()
+        return
+    except SABError as error:
+        if _connection_failure(error):
+            raise
+    client.queue()
+
+
 def _query(work: Mapping[str, Any]) -> str:
     return " ".join(
         part
@@ -462,7 +496,7 @@ def retrieve_slip_release(
             client = SABClient(settings.sabnzbd_url, settings.sabnzbd_api_key)
             own_sab = True
         try:
-            client.queue()
+            _ensure_downloader(client)
         except SABError as error:
             if own_sab:
                 client.close()

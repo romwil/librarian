@@ -41,6 +41,19 @@ describe("reading room copy", () => {
     assert.match(humanError("NZBFinder api_token is not configured"), /NZBFinder token/);
     assert.match(humanError("NZBFinder returned non-JSON"), /could not read/);
     assert.match(humanError("SABnzbd API key is not configured"), /API key/);
+    assert.match(
+      humanError("SABnzbd did not answer: All connection attempts failed"),
+      /The downloader did not answer/,
+    );
+    const stuck =
+      "Archives are still here after Librarian tried to repair (par2) and unpack (rar/7z). " +
+      "Use Repair, fix in SABnzbd, extract manually, then Retry — or Skip.";
+    assert.equal(humanError(stuck), stuck);
+    assert.doesNotMatch(humanError(stuck), /did not answer/);
+    assert.doesNotMatch(
+      humanError("SABnzbd left archives in this folder. Try Repair, then Retry."),
+      /did not answer/,
+    );
   });
 
   it("does not let the nzbfinder catch-all overwrite a token-missing message on a second pass", () => {

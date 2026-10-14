@@ -223,9 +223,69 @@ def test_unreachable_downloader_does_not_pretend_the_search_ran(tmp_path, monkey
     work = _work(app.state.db)
     resp = client.post(f"/api/review/{work['id']}/retrieve", json={"intent": "new_version"})
     assert resp.status_code == 502
-    assert "sabnzbd" in resp.json()["detail"].lower()
+    detail = resp.json()["detail"].lower()
+    assert "sabnzbd" in detail
+    assert "did not answer" in detail
     assert seen == []
     assert app.state.db.list_jobs(statuses=("queued", "asked", "downloading")) == []
+
+
+def test_version_probe_success_does_not_say_the_downloader_is_down(tmp_path, monkeypatch):
+    seen = []
+    modes = []
+    books = [_hit("guid-en", "Think Again English Retail EPUB")]
+
+    def sab_handler(request: httpx.Request) -> httpx.Response:
+        mode = request.url.params.get("mode")
+        modes.append(mode)
+        if mode == "version":
+            return httpx.Response(200, json={"version": "5.1.3"})
+        if mode == "queue":
+            return httpx.Response(200, json={"queue": {"slots": []}})
+        if request.method == "POST":
+            return httpx.Response(200, json={"nzo_ids": ["nzo-slip"]})
+        return httpx.Response(200, json={"version": "5.1.3"})
+
+    _install(monkeypatch, _indexer(books, [], seen), sab_handler)
+    client, app = _client(tmp_path, monkeypatch, settings=_settings(tmp_path))
+    work = _work(app.state.db)
+    resp = client.post(f"/api/review/{work['id']}/retrieve", json={"intent": "new_version"})
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["sab_error"] is None
+    assert "did not answer" not in str(body.get("note") or "").lower()
+    assert body["queued"] is True
+    assert "version" in modes
+    assert "queue" not in modes
+
+
+def test_queue_probe_succeeds_when_version_mode_is_missing(tmp_path, monkeypatch):
+    seen = []
+    modes = []
+
+    def sab_handler(request: httpx.Request) -> httpx.Response:
+        mode = request.url.params.get("mode")
+        modes.append(mode)
+        if mode == "version":
+            return httpx.Response(200, json={"queue": {"slots": []}})
+        if mode == "queue":
+            return httpx.Response(200, json={"queue": {"slots": []}})
+        if request.method == "POST":
+            return httpx.Response(200, json={"nzo_ids": ["nzo-slip"]})
+        return httpx.Response(200, json={})
+
+    _install(
+        monkeypatch,
+        _indexer([_hit("guid-en", "Think Again English Retail EPUB")], [], seen),
+        sab_handler,
+    )
+    client, app = _client(tmp_path, monkeypatch, settings=_settings(tmp_path))
+    work = _work(app.state.db)
+    resp = client.post(f"/api/review/{work['id']}/retrieve", json={"intent": "new_version"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["sab_error"] is None
+    assert "did not answer" not in resp.text.lower()
+    assert modes[:2] == ["version", "queue"]
 
 
 def test_reader_files_an_asked_slip_without_calling_sab(tmp_path, monkeypatch):

@@ -339,8 +339,18 @@ def archive_is_first_volume(path: Path) -> bool:
     return path.suffix.lower() in ARCHIVE_SUFFIXES
 
 
+def release_folder(folder: Path) -> Path:
+    """Directory that holds the release. A slip sometimes stores the .rar itself."""
+    path = Path(folder)
+    if path.is_file() and archive_is_first_volume(path):
+        return path.parent
+    return path
+
+
 def list_archive_files(folder: Path) -> List[Path]:
     folder = Path(folder)
+    if folder.is_file():
+        return [folder] if archive_is_first_volume(folder) else []
     if not folder.is_dir():
         return []
     found: List[Path] = []

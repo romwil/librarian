@@ -546,6 +546,64 @@ def test_review_retry_force_organizes_after_payload(tmp_path, monkeypatch):
     assert stored["title"] == "The Return of the King"
 
 
+def test_review_retry_unpacks_rar_path_without_calling_sab(tmp_path, monkeypatch):
+    """A complete .rar already on disk unpacks with unar. Retry does not ask SABnzbd."""
+    from types import SimpleNamespace
+
+    from librarian.convert import maybe_unpack_archives
+
+    release = tmp_path / "complete" / "Whoopi Goldberg - Bits and Pieces (retail) (epub)"
+    release.mkdir(parents=True)
+    archive = release / "Whoopi Goldberg - Bits and Pieces (retail) (epub).rar"
+    archive.write_bytes(b"Rar!")
+    settings = Settings(
+        books_root=str(tmp_path / "books"),
+        magazines_root=str(tmp_path / "magazines"),
+        comics_root=str(tmp_path / "comics"),
+        audiobooks_root=str(tmp_path / "audiobooks"),
+        incoming_music_root=str(tmp_path / "incoming"),
+        music_root=str(tmp_path / "music"),
+        complete_root=str(tmp_path / "complete"),
+        sabnzbd_url="http://downloader.test",
+        sabnzbd_api_key="sab-key",
+    )
+    client, app = _client(tmp_path, monkeypatch, settings=settings)
+    db = app.state.db
+    work = db.upsert_work(
+        {
+            "kind": "book",
+            "title": "Bits and Pieces",
+            "author": "Whoopi Goldberg",
+            "isbn": "9798200920259",
+            "review_state": "needs_review",
+            "review_reason": "unpack_stuck",
+            "folder_path": str(archive),
+        }
+    )
+
+    def runner(argv, timeout=300):
+        (release / "Bits and Pieces.epub").write_bytes(b"epub")
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(
+        "librarian.organize.maybe_unpack_archives",
+        lambda folder, **kw: maybe_unpack_archives(folder, runner=runner, unar="/usr/bin/unar"),
+    )
+
+    def forbid_sab(*_args, **_kwargs):
+        raise AssertionError("SABnzbd was called")
+
+    monkeypatch.setattr("librarian.sabnzbd.SABClient.__init__", forbid_sab)
+    resp = client.post(f"/api/review/{work['id']}/retry")
+    assert resp.status_code == 200, resp.text
+    assert "did not answer" not in resp.text.lower()
+    body = resp.json()
+    assert body["organized"] is True
+    stored = db.get_work(work["id"])
+    assert stored["review_state"] == "none"
+    assert stored["title"] == "Bits and Pieces"
+
+
 def test_review_suggest_fail_closed_without_llm(tmp_path, monkeypatch):
     settings = Settings(
         books_root=str(tmp_path / "books"),

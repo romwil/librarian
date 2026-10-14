@@ -8,7 +8,12 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from librarian.config import Settings
-from librarian.convert import maybe_convert_payload, maybe_par2_repair, maybe_unpack_archives
+from librarian.convert import (
+    maybe_convert_payload,
+    maybe_par2_repair,
+    maybe_unpack_archives,
+    release_folder,
+)
 from librarian.covers import ensure_music_cover, fetch_cover
 from librarian.db import Database
 from librarian.delight import in_quiet_hours
@@ -467,6 +472,7 @@ def organize_identified(
     catalog_lookup: Any = None,
     catalog_transport: Any = None,
 ) -> Dict[str, Any]:
+    folder = release_folder(Path(folder))
     llm = llm_client if llm_client is not None else client_from_settings(settings)
     identify_kwargs = {
         "indexer_item": indexer_item,
@@ -1121,6 +1127,7 @@ def repair_review(
     resolved = resolve_storage_path(source, settings.complete_root)
     if not usable_folder(resolved) or not resolved.exists():
         raise ValueError(MISSING_FOLDER_APPLY_ERROR)
+    resolved = release_folder(resolved)
     convert_kwargs = {"runner": convert_runner} if convert_runner is not None else {}
     repaired = maybe_par2_repair(resolved, **convert_kwargs)
     unpacked = maybe_unpack_archives(resolved, **convert_kwargs)

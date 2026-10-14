@@ -237,6 +237,14 @@ class SABClient:
             raise SABError("SABnzbd addfile did not return nzo_id")
         return str(ids[0])
 
+    def version(self) -> str:
+        """Documented ``mode=version``. Raises when the payload has no version."""
+        payload = self._call("version")
+        version = str(payload.get("version") or "").strip()
+        if not version:
+            raise SABError("SABnzbd version probe returned no version")
+        return version
+
     def queue(self, nzo_id: Optional[str] = None) -> List[Dict[str, Any]]:
         params: Dict[str, Any] = {}
         if nzo_id:
