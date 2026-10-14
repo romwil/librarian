@@ -3,13 +3,16 @@ import { api } from "../api.js";
 import { humanError } from "../copy.js";
 import {
   EPUB_READER_STYLES,
+  comicSpreadMode,
   pageTurnSide,
+  readerChromeHint,
   readerEngine,
   readerFlow,
   readerOpenError,
   readerWheelDelta,
   readingFileName,
   scrollReader,
+  turnReaderPage,
   workDownloadUrl,
 } from "../reader.js";
 import {
@@ -53,8 +56,7 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
   }
 
   function turnPage(side) {
-    if (side === "left") viewRef.current?.goLeft?.();
-    else if (side === "right") viewRef.current?.goRight?.();
+    turnReaderPage(viewRef.current, side);
   }
 
   /** Foliate has no click-to-turn; covers are SVG-only so users click and appear stuck. */
@@ -169,6 +171,10 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
       await view.open(file);
       // Light page surface before first section paint (stored even if no doc yet).
       if (engine === "epub") view.renderer?.setStyles?.(EPUB_READER_STYLES);
+      if (engine === "cbz") {
+        comicSpreadMode(view.book);
+        view.renderer?.open?.(view.book);
+      }
       const flow = readerFlow(engine, view.isFixedLayout);
       if (flow) view.renderer?.setAttribute("flow", flow);
       view.addEventListener("relocate", (event) => persist(event.detail));
@@ -256,13 +262,19 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
           <p className="kicker">Reading room</p>
           <h1 id="reader-title">{work.title}</h1>
         </div>
-        <p className="muted reader-esc">Scroll to read · edges or ← → turn · Esc closes</p>
+        <p className="muted reader-esc">{readerChromeHint(engine)}</p>
         <button type="button" className="cta ghost compact" onClick={onClose} data-testid="reader-close">
           Close
         </button>
       </header>
       <div className="reader-stage" data-engine={engine || undefined}>
         {pdfUrl ? <iframe title={work.title} src={pdfUrl} /> : <div className="reader-host" ref={stage} />}
+        {engine === "cbz" ? (
+          <div className="reader-turns">
+            <button type="button" className="reader-turn is-left" aria-label="Previous page" onClick={() => turnPage("left")} />
+            <button type="button" className="reader-turn is-right" aria-label="Next page" onClick={() => turnPage("right")} />
+          </div>
+        ) : null}
         {status ? <p className="lede reader-status">{status}</p> : null}
         {error ? <p className="alert reader-status">{error}</p> : null}
       </div>

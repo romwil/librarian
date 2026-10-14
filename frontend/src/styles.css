@@ -1909,6 +1909,31 @@ html[data-theme="lights-up"] .reader.reader-calm {
   min-height: 0;
   background: var(--workspace-base);
 }
+.reader-turns {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+.reader-turn {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 33.333%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: transparent;
+  pointer-events: auto;
+  cursor: pointer;
+}
+.reader-turn.is-left {
+  left: 0;
+}
+.reader-turn.is-right {
+  right: 0;
+}
 .reader.reader-calm .reader-stage {
   padding: clamp(0.5rem, 2.5vw, 1.75rem) clamp(0.75rem, 4vw, 3.5rem) clamp(1rem, 3vw, 2.25rem);
 }
