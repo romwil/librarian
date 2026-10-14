@@ -1587,6 +1587,9 @@ body:has(.peek) .topbar {
   gap: var(--space-3);
   align-items: center;
 }
+.noted-owned {
+  display: contents;
+}
 .cta-row.compact {
   gap: var(--space-2);
 }

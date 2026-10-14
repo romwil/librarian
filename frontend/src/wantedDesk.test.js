@@ -57,6 +57,38 @@ describe("Wanted desk", () => {
     assert.equal(op.rows[1].canDismiss, true);
   });
 
+  it("shows On the shelf for a format the house already has", () => {
+    const desk = wantedDeskModel({
+      role: "owner",
+      items: [
+        {
+          id: "w-audio",
+          title: "Any Other Name",
+          author: "Craig Johnson",
+          kind: "audiobook",
+          status: "wanted",
+          shelved_book: { id: "book-name", title: "Any Other Name" },
+          shelved_audiobook: null,
+        },
+        {
+          id: "w-owned-audio",
+          title: "Atomic Habits",
+          author: "James Clear",
+          kind: "audiobook",
+          status: "wanted",
+          shelved_audiobook: { id: "audio-atomic" },
+        },
+      ],
+    });
+    assert.equal(desk.rows[0].bookShelf.label, "Book on the shelf");
+    assert.equal(desk.rows[0].bookShelf.href, "/works/book-name");
+    assert.equal(desk.rows[0].audioShelf, null);
+    assert.equal(desk.rows[1].audioShelf.label, "On the shelf");
+    assert.equal(desk.rows[1].audioShelf.href, "/works/audio-atomic");
+    assert.match(desk.rows[1].audioShelf.listenHref, /listen=1/);
+    assert.equal(desk.rows[1].bookShelf, null);
+  });
+
   it("is empty when nothing is still wanted", () => {
     const desk = wantedDeskModel({ items: [{ id: "x", title: "Gone", status: "dismissed" }], role: "owner" });
     assert.equal(desk.empty, true);

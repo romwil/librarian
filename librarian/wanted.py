@@ -14,6 +14,7 @@ from librarian.db import Database
 from librarian.identify import isbn_match_keys
 from librarian.indexers.rank import heuristic_score
 from librarian.kinds import ALL_KINDS
+from librarian.owned import ShelfIndex
 
 STATUS_WANTED = "wanted"
 STATUS_ASKED = "asked"
@@ -38,6 +39,15 @@ _JUNK_MULTIDISC = re.compile(
 
 class WantedError(ValueError):
     """Caller-facing Wanted validation error. Never includes tokens."""
+
+
+class AlreadyShelved(WantedError):
+    """That title and kind already have a file on the shelves."""
+
+    def __init__(self, work_id: str, kind: str) -> None:
+        super().__init__("Already on the shelf")
+        self.work_id = str(work_id or "")
+        self.kind = str(kind or "")
 
 
 def backoff_seconds(streak: int) -> float:
@@ -130,6 +140,9 @@ def add_wanted(db: Database, payload: Mapping[str, Any], *, now: Optional[float]
     title = _clean(payload.get("title"))
     author = _clean(payload.get("author"))
     isbn = _clean(payload.get("isbn"))
+    series_name = ""
+    series_index = ""
+    work: Optional[Dict[str, Any]] = None
     if work_id:
         work = db.get_work(work_id)
         if work is None:
@@ -137,8 +150,23 @@ def add_wanted(db: Database, payload: Mapping[str, Any], *, now: Optional[float]
         title = title or _clean(work.get("title"))
         author = author or _clean(work.get("author"))
         isbn = isbn or _clean(work.get("isbn"))
+        series_name = _clean(work.get("series_name"))
+        series_index = _clean(work.get("series_index"))
     if not title and not isbn:
         raise WantedError("Title or ISBN is required")
+    shelves = ShelfIndex(db)
+    owned = shelves.by_id(kind, work_id) or shelves.of_kind(
+        {
+            "title": title,
+            "author": author,
+            "isbn": isbn,
+            "series_name": series_name,
+            "series_index": series_index,
+        },
+        kind,
+    )
+    if owned and owned.get("id"):
+        raise AlreadyShelved(str(owned["id"]), kind)
     key = dedupe_key(kind=kind, work_id=work_id, title=title, author=author, isbn=isbn)
     existing = db.get_wanted_by_dedupe(key)
     fields = {"title": title, "author": author, "isbn": isbn}

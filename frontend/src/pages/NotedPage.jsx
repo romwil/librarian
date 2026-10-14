@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { api } from "../api.js";
 import WarmLoad from "../components/WarmLoad.jsx";
 import { humanError } from "../copy.js";
-import { notedFindHref, notedSearchHref, notedWantedBody } from "../noted.js";
+import { notedFindHref, notedFormatActions, notedSearchHref, notedWantedBody } from "../noted.js";
 
 const PERIODS = [
   ["daily", "Daily"],
@@ -136,24 +136,41 @@ export default function NotedPage() {
                       <Link className="cta outline compact" to={notedFindHref(item)} data-testid="noted-find">
                         Find beyond
                       </Link>
-                      {payload?.can_add
-                        ? ["book", "audiobook"].map((kind) => {
-                            const key = itemKey(item, kind);
-                            const done = Boolean(saved[key]);
-                            return (
-                              <button
-                                key={kind}
-                                type="button"
-                                className="cta compact"
-                                data-testid={`noted-want-${kind}`}
-                                disabled={done || busy === key}
-                                onClick={() => add(item, kind)}
-                              >
-                                {done ? "Wanted" : `Add to Wanted · ${kind}`}
-                              </button>
-                            );
-                          })
-                        : null}
+                      {notedFormatActions(item).map((action) => {
+                        if (action.owned) {
+                          return (
+                            <span key={action.kind} className="noted-owned">
+                              <Link className="cta compact" to={action.href} data-testid={`noted-shelf-${action.kind}`}>
+                                On the shelf
+                              </Link>
+                              {action.listenHref ? (
+                                <Link
+                                  className="cta outline compact"
+                                  to={action.listenHref}
+                                  data-testid={`noted-listen-${action.kind}`}
+                                >
+                                  Listen
+                                </Link>
+                              ) : null}
+                            </span>
+                          );
+                        }
+                        if (!payload?.can_add) return null;
+                        const key = itemKey(item, action.kind);
+                        const done = Boolean(saved[key]);
+                        return (
+                          <button
+                            key={action.kind}
+                            type="button"
+                            className="cta compact"
+                            data-testid={`noted-want-${action.kind}`}
+                            disabled={done || busy === key}
+                            onClick={() => add(item, action.kind)}
+                          >
+                            {done ? "Wanted" : `Add to Wanted · ${action.kind}`}
+                          </button>
+                        );
+                      })}
                     </div>
                   </li>
                 ))}

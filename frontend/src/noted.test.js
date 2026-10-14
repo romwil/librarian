@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
-import { notedFindHref, notedSearchHref, notedWantedBody } from "./noted.js";
+import { notedFindHref, notedFormatActions, notedSearchHref, notedWantedBody } from "./noted.js";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const pageSrc = readFileSync(join(root, "pages/NotedPage.jsx"), "utf8");
@@ -52,14 +52,43 @@ test("noted cards link to search and find and build a Wanted body", () => {
   assert.equal(notedWantedBody(card, "book").kind, "book");
 });
 
+test("a shelved format becomes On the shelf and the missing format stays Wanted", () => {
+  const actions = notedFormatActions({
+    title: "Atomic Habits",
+    author: "James Clear",
+    shelved: { id: "book-atomic", title: "Atomic Habits" },
+    shelved_audiobook: null,
+  });
+  const book = actions.find((action) => action.kind === "book");
+  const audio = actions.find((action) => action.kind === "audiobook");
+  assert.equal(book.owned, true);
+  assert.equal(book.label, "On the shelf");
+  assert.equal(book.href, "/works/book-atomic");
+  assert.equal(book.listenHref, "");
+  assert.equal(audio.owned, false);
+  assert.equal(audio.label, "Add to Wanted · audiobook");
+
+  const both = notedFormatActions({
+    shelved: { id: "book-1" },
+    shelved_audiobook: { id: "audio-1" },
+  });
+  const ownedAudio = both.find((action) => action.kind === "audiobook");
+  assert.equal(ownedAudio.owned, true);
+  assert.equal(ownedAudio.label, "On the shelf");
+  assert.equal(ownedAudio.href, "/works/audio-1");
+  assert.match(ownedAudio.listenHref, /\/works\/audio-1\?listen=1/);
+});
+
 test("New & noted page searches, finds, and adds to Wanted", () => {
   assert.match(mainSrc, /path="noted"/);
   assert.match(pageSrc, /New & noted/);
   assert.match(pageSrc, /Search the shelves/);
   assert.match(pageSrc, /Find beyond/);
   assert.match(pageSrc, /Add to Wanted/);
-  assert.match(pageSrc, /noted-want-\$\{kind\}/);
-  assert.match(pageSrc, /\["book", "audiobook"\]/);
+  assert.match(pageSrc, /On the shelf/);
+  assert.match(pageSrc, /notedFormatActions/);
+  assert.match(pageSrc, /noted-shelf-\$\{action\.kind\}/);
+  assert.match(pageSrc, /noted-want-\$\{action\.kind\}/);
   assert.match(pageSrc, /api\.addWanted/);
   assert.equal(pageSrc.toLowerCase().includes("sabnzbd"), false);
   assert.equal(pageSrc.toLowerCase().includes("audible"), false);

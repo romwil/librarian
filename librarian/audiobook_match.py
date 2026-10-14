@@ -40,6 +40,35 @@ def audiobook_find_fields(work: Mapping[str, Any]) -> Dict[str, str]:
     }
 
 
+def match_catalog_work(
+    sought: Mapping[str, Any],
+    candidates: List[Mapping[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    """ISBN, then exact title+author, then series name + index. Fail closed."""
+    want_isbn = set(isbn_match_keys(str(sought.get("isbn") or "")))
+    if want_isbn:
+        for row in candidates:
+            if want_isbn.intersection(isbn_match_keys(str(row.get("isbn") or ""))):
+                return dict(row)
+    title_key = _norm_name(sought.get("title"))
+    author_key = _norm_name(sought.get("author"))
+    if title_key and author_key:
+        for row in candidates:
+            if _norm_name(row.get("title")) != title_key:
+                continue
+            if _norm_name(row.get("author")) == author_key:
+                return dict(row)
+    series = _norm_name(sought.get("series_name") or sought.get("series"))
+    index = _index_key(sought.get("series_index"))
+    if series and index:
+        for row in candidates:
+            if _norm_name(row.get("series_name")) != series:
+                continue
+            if _index_key(row.get("series_index")) == index:
+                return dict(row)
+    return None
+
+
 def match_companion_audiobook(
     book: Mapping[str, Any],
     audiobooks: List[Mapping[str, Any]],
@@ -47,30 +76,8 @@ def match_companion_audiobook(
     """Pick the best local audiobook for a book work. None when unsure."""
     if str(book.get("kind") or "") != "book":
         return None
-    want_isbn = set(isbn_match_keys(str(book.get("isbn") or "")))
-    if want_isbn:
-        for row in audiobooks:
-            if str(row.get("kind") or "") not in ("", "audiobook"):
-                continue
-            if want_isbn.intersection(isbn_match_keys(str(row.get("isbn") or ""))):
-                return dict(row)
-    title_key = _norm_name(book.get("title"))
-    author_key = _norm_name(book.get("author"))
-    if title_key and author_key:
-        for row in audiobooks:
-            if _norm_name(row.get("title")) != title_key:
-                continue
-            if _norm_name(row.get("author")) == author_key:
-                return dict(row)
-    series = _norm_name(book.get("series_name"))
-    index = _index_key(book.get("series_index"))
-    if series and index:
-        for row in audiobooks:
-            if _norm_name(row.get("series_name")) != series:
-                continue
-            if _index_key(row.get("series_index")) == index:
-                return dict(row)
-    return None
+    pool = [row for row in audiobooks if str(row.get("kind") or "") in ("", "audiobook")]
+    return match_catalog_work(book, pool)
 
 
 def companion_audiobook_payload(

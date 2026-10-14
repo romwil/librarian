@@ -1,4 +1,5 @@
 import { findHref, searchHref } from "./find.js";
+import { workListenPath } from "./listen.js";
 
 function text(value) {
   return String(value || "").trim();
@@ -30,4 +31,35 @@ export function notedWantedBody(item = {}, kind) {
     isbn: text(wanted.isbn || item.isbn),
     kind: text(kind || wanted.kind || item.kind || "book"),
   };
+}
+
+function ownedStub(stub) {
+  const id = text(stub?.id);
+  if (!id) return null;
+  return { id, href: `/works/${encodeURIComponent(id)}` };
+}
+
+/** Book and audiobook actions for one noted card. Owned formats link to the shelf. */
+export function notedFormatActions(item = {}) {
+  const book = ownedStub(item.shelved);
+  const audio = ownedStub(item.shelved_audiobook);
+  return ["book", "audiobook"].map((kind) => {
+    const owned = kind === "audiobook" ? audio : book;
+    if (owned) {
+      return {
+        kind,
+        owned: true,
+        label: "On the shelf",
+        href: owned.href,
+        listenHref: kind === "audiobook" ? workListenPath(owned.id) : "",
+      };
+    }
+    return {
+      kind,
+      owned: false,
+      label: `Add to Wanted · ${kind}`,
+      href: "",
+      listenHref: "",
+    };
+  });
 }
