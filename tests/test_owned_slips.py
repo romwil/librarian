@@ -238,7 +238,41 @@ def test_new_slip_closes_immediately_when_already_shelved(tmp_path):
     assert db.files_for_work(shelf["id"])
 
 
-def test_review_list_drops_owned_slip_and_notes_it(tmp_path, monkeypatch):
+def test_review_list_leaves_owned_slips_for_the_background_sweep(tmp_path, monkeypatch):
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("LIBRARIAN_OWNER_USERNAME", "owner")
+    monkeypatch.setenv("LIBRARIAN_OWNER_PASSWORD", "password123")
+    clear_session_secret_cache()
+    save_settings(tmp_path, _settings(tmp_path))
+    app = create_app(tmp_path)
+    client = TestClient(app)
+    assert (
+        client.post(
+            "/api/auth/local/login",
+            json={"username": "owner", "password": "password123"},
+        ).status_code
+        == 200
+    )
+    db = app.state.db
+    _shelve(db, tmp_path / "books" / "mart")
+    owned = _slip(db, title="Crying in H Mart", author="Michelle Zauner", isbn=ISBN)
+    kept = _slip(db, title="Think Again", author="Adam Grant", isbn="9781984878106")
+
+    def _refuse_catalog_scan(self, kind):
+        raise AssertionError(f"review list scanned shelved {kind}")
+
+    monkeypatch.setattr(Database, "list_shelved_works", _refuse_catalog_scan)
+    listed = client.get("/api/review")
+    assert listed.status_code == 200
+    body = listed.json()
+    ids = {row["id"] for row in body["works"]}
+    assert owned["id"] in ids
+    assert kept["id"] in ids
+    assert body["owned_slip_note"] == ""
+    assert db.get_work(owned["id"]) is not None
+
+
+def test_review_list_shows_note_after_background_sweep(tmp_path, monkeypatch):
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
     monkeypatch.setenv("LIBRARIAN_OWNER_USERNAME", "owner")
     monkeypatch.setenv("LIBRARIAN_OWNER_PASSWORD", "password123")
@@ -257,6 +291,12 @@ def test_review_list_drops_owned_slip_and_notes_it(tmp_path, monkeypatch):
     shelf, media = _shelve(db, tmp_path / "books" / "mart")
     owned = _slip(db, title="Crying in H Mart", author="Michelle Zauner", isbn=ISBN)
     kept = _slip(db, title="Think Again", author="Adam Grant", isbn="9781984878106")
+    sweep_owned_slips(db)
+
+    def _refuse_catalog_scan(self, kind):
+        raise AssertionError(f"review list scanned shelved {kind}")
+
+    monkeypatch.setattr(Database, "list_shelved_works", _refuse_catalog_scan)
     listed = client.get("/api/review")
     assert listed.status_code == 200
     body = listed.json()

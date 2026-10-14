@@ -39,8 +39,9 @@ def register_wanted_routes(app: FastAPI, deps: WebDeps) -> None:
             rows = list_wanted(db, status=status)
         except WantedError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
-        shelves = ShelfIndex(db)
-        return {"items": [_public(row, shelves) for row in rows]}
+        # Shelf matching loads every shelved work. The list stays a cheap read
+        # so the desk renders while purge/dedupe is fingerprinting. Add still matches.
+        return {"items": [public_wanted(row) for row in rows]}
 
     @app.post("/api/wanted")
     def wanted_add(payload: WantedAddPayload, request: Request):
