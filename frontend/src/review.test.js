@@ -477,6 +477,7 @@ describe("smart Holds desk grouping", () => {
     assert.match(reviewPageSrc, /data-testid="holds-group"/);
     assert.match(reviewPageSrc, /data-testid="hold-slip"/);
     assert.match(reviewPageSrc, /data-testid="hold-slip-recommended"/);
+    assert.match(reviewPageSrc, /data-testid="owned-slip-note"/);
     assert.match(reviewPageSrc, /recommendedMotionCtaClass/);
     assert.doesNotMatch(reviewPageSrc, /bagging/i);
   });

@@ -87,6 +87,9 @@ def register_review_routes(app: FastAPI, deps: WebDeps) -> None:
     @app.get("/api/review")
     def review_list(request: Request):
         require_role(request.state.user, "owner", "op")
+        from librarian.owned_slip import sweep_owned_slips
+
+        swept = sweep_owned_slips(db)
         cfg = settings()
         from librarian.llm_providers import resolve_llm_connection
 
@@ -132,6 +135,7 @@ def register_review_routes(app: FastAPI, deps: WebDeps) -> None:
             "llm_configured": llm_ok,
             "extra_files_count": extra_files_count,
             "needs_review_count": needs_review_count,
+            "owned_slip_note": swept.get("note") or "",
         }
 
     @app.post("/api/review/reprocess-extra-files")

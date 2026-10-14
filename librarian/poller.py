@@ -87,6 +87,12 @@ class JobPoller:
         except Exception:
             logger.exception("Wanted sweep tick failed")
         try:
+            from librarian.owned_slip import sweep_owned_slips
+
+            sweep_owned_slips(self.db)
+        except Exception:
+            logger.exception("Owned slip sweep tick failed")
+        try:
             from librarian.wanted_search import poll_wanted
 
             count += poll_wanted(self.db, settings)

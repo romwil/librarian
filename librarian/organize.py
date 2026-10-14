@@ -187,6 +187,13 @@ def shelf_work_for_collision(db: Database, work: Dict[str, Any]) -> Optional[Dic
     }
 
 
+def _owned_shelf_release(db: Database, work: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Drop a new slip when this title is already a shelved file. None to keep it."""
+    from librarian.owned_slip import release_slip_already_on_shelf
+
+    return release_slip_already_on_shelf(db, work)
+
+
 def _source_folder_value(folder: Path) -> Optional[str]:
     return str(folder) if usable_folder(folder) else None
 
@@ -491,6 +498,20 @@ def organize_identified(
         if identity_overrides:
             parked.update({k: v for k, v in identity_overrides.items() if v is not None})
         work = db.upsert_work(parked)
+        released = _owned_shelf_release(db, work)
+        if released:
+            return {
+                "organized": False,
+                "work": released["work"],
+                "identity": parked,
+                "files": [],
+                "auto_organize": False,
+                "already_on_shelf": True,
+                "reason": released["reason"],
+                "quiet_hours": True,
+                "unpacked": {"unpacked": False},
+                "converted": {"converted": False},
+            }
         return {
             "organized": False,
             "work": work,
@@ -599,6 +620,16 @@ def organize_identified(
                 "indexer_guid": (indexer_item or {}).get("guid"),
             }
         )
+        released = _owned_shelf_release(db, work)
+        if released:
+            return {
+                "work": released["work"],
+                "identity": identity,
+                "organized": False,
+                "already_on_shelf": True,
+                "reason": released["reason"],
+                "files": [str(p) for p in files],
+            }
         # Flat multi-title / Calibre dumps: expand into per-title ingest instead of one
         # confusing extra_files Review slip. Skip when force Apply (peel path) or mixed kinds.
         if (
@@ -681,6 +712,16 @@ def organize_identified(
                 "indexer_guid": (indexer_item or {}).get("guid"),
             }
         )
+        released = _owned_shelf_release(db, work)
+        if released:
+            return {
+                "work": released["work"],
+                "identity": identity,
+                "organized": False,
+                "already_on_shelf": True,
+                "reason": released["reason"],
+                "files": [str(p) for p in files],
+            }
         return {"work": work, "identity": identity, "organized": False, "files": [str(p) for p in files]}
 
     placed: List[str] = []
@@ -702,6 +743,16 @@ def organize_identified(
                 "indexer_guid": (indexer_item or {}).get("guid"),
             }
         )
+        released = _owned_shelf_release(db, work)
+        if released:
+            return {
+                "work": released["work"],
+                "identity": identity,
+                "organized": False,
+                "already_on_shelf": True,
+                "reason": released["reason"],
+                "files": [str(p) for p in files],
+            }
         return {"work": work, "identity": identity, "organized": False, "files": [str(p) for p in files]}
 
     assert folder_path is not None
