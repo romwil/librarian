@@ -566,8 +566,9 @@ def test_owned_book_is_not_inserted_and_missing_audiobook_still_is(tmp_path, mon
     listed = client.get("/api/wanted")
     assert listed.status_code == 200
     habits = next(row for row in listed.json()["items"] if row["kind"] == "audiobook")
-    assert habits["shelved_book"]["id"] == book["id"]
-    assert habits["shelved_audiobook"] is None
+    assert habits["title"] == "Atomic Habits"
+    assert "shelved_book" not in habits
+    assert "shelved_audiobook" not in habits
 
     series_refused = client.post("/api/wanted", json={"work_id": series_book["id"], "kind": "audiobook"})
     assert series_refused.status_code == 409
@@ -581,3 +582,23 @@ def test_owned_book_is_not_inserted_and_missing_audiobook_still_is(tmp_path, mon
         assert all(row["work_id"] != series_book["id"] for row in rows)
     finally:
         database.close()
+
+
+def test_wanted_list_does_not_scan_shelved_works(tmp_path, monkeypatch):
+    client = _owner_client(tmp_path, monkeypatch)
+    added = client.post(
+        "/api/wanted",
+        json={"title": "Kindred", "author": "Octavia Butler", "kind": "audiobook"},
+    )
+    assert added.status_code == 200
+
+    def _refuse_catalog_scan(self, kind):
+        raise AssertionError(f"wanted list scanned shelved {kind}")
+
+    monkeypatch.setattr(Database, "list_shelved_works", _refuse_catalog_scan)
+    listed = client.get("/api/wanted")
+    assert listed.status_code == 200
+    item = listed.json()["items"][0]
+    assert item["id"] == added.json()["item"]["id"]
+    assert item["title"] == "Kindred"
+    assert "shelved_book" not in item

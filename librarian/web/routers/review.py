@@ -88,9 +88,11 @@ def register_review_routes(app: FastAPI, deps: WebDeps) -> None:
     @app.get("/api/review")
     def review_list(request: Request):
         require_role(request.state.user, "owner", "op")
-        from librarian.owned_slip import sweep_owned_slips
+        # Slip pruning scans the catalog and deletes rows. The poller already
+        # sweeps; doing it here stalls the desk while purge is fingerprinting.
+        from librarian.owned_slip import owned_slip_note
 
-        swept = sweep_owned_slips(db)
+        note = owned_slip_note(db)
         cfg = settings()
         from librarian.llm_providers import resolve_llm_connection
 
@@ -136,7 +138,7 @@ def register_review_routes(app: FastAPI, deps: WebDeps) -> None:
             "llm_configured": llm_ok,
             "extra_files_count": extra_files_count,
             "needs_review_count": needs_review_count,
-            "owned_slip_note": swept.get("note") or "",
+            "owned_slip_note": note,
         }
 
     @app.post("/api/review/reprocess-extra-files")
