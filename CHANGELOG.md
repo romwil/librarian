@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Comic reading stays a page surface. A CBZ shows one image at a time, and the stage edges or arrow keys turn to the next page. Reflowable prose still scrolls.
 - New & noted gathers Open Library trending, curated bestseller lists, and Discover latest for books and audiobooks, so a title can be searched, found beyond the shelves, or added to Wanted.
 - Browse cards, peek, and the work page say Read, Listen, Download, or Wanted. The Wanted desk lists companion misses and hand-added titles; only an owner or op can add or dismiss.
 - Ebook apps can browse shelved books, magazines, and comics over OPDS 1.2. Catalog links and each acquisition URL carry a signed token, and the download stays jailed under the data directory.

@@ -9,7 +9,10 @@ import {
   filenameFromDisposition,
   pageTurnSide,
   primaryReadingFile,
+  comicSpreadMode,
+  readerChromeHint,
   readerFlow,
+  turnReaderPage,
   readerWheelDelta,
   scrollReader,
   readerCtaLabel,
@@ -121,12 +124,42 @@ describe("in-app reader", () => {
     assert.equal(pageTurnSide(0, 0), "");
   });
 
-  it("scrolls reflowable prose and comics, and leaves fixed-layout and PDF alone", () => {
+  it("scrolls reflowable prose and leaves comics, fixed-layout, and PDF on a page surface", () => {
     assert.equal(readerFlow("epub"), "scrolled");
-    assert.equal(readerFlow("cbz"), "scrolled");
+    assert.equal(readerFlow("cbz"), "");
+    assert.equal(readerFlow("cbz", true), "");
     assert.equal(readerFlow("epub", true), "");
     assert.equal(readerFlow("pdf"), "");
     assert.equal(readerFlow(""), "");
+    assert.equal(readerChromeHint("epub"), "Scroll to read · edges or ← → turn · Esc closes");
+    assert.equal(readerChromeHint("cbz"), "Edges or ← → turn · Esc closes");
+  });
+
+  it("turns a comic one page at a time from an edge tap or arrow", () => {
+    const book = { rendition: { layout: "pre-paginated" } };
+    comicSpreadMode(book);
+    assert.equal(book.rendition.spread, "none");
+    assert.equal(book.rendition.layout, "pre-paginated");
+    assert.equal(comicSpreadMode(null), null);
+
+    const view = {
+      page: 0,
+      goLeft() {
+        this.page -= 1;
+      },
+      goRight() {
+        this.page += 1;
+      },
+    };
+    turnReaderPage(view, pageTurnSide(290, 300));
+    assert.equal(view.page, 1);
+    turnReaderPage(view, "right");
+    assert.equal(view.page, 2);
+    turnReaderPage(view, pageTurnSide(10, 300));
+    assert.equal(view.page, 1);
+    turnReaderPage(view, pageTurnSide(150, 300));
+    assert.equal(view.page, 1);
+    assert.equal(turnReaderPage(null, "right"), false);
   });
 
   it("turns wheel and trackpad ticks into pixels, and ignores pinch-zoom", () => {

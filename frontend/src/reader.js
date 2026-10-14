@@ -35,11 +35,36 @@ export function pageTurnSide(clientX, width, { left = 1 / 3, right = 2 / 3 } = {
   return "";
 }
 
-/** Reflowable volumes scroll. Fixed-layout pages and PDF keep their own surface. */
+/** Reflowable prose scrolls. Comics, fixed-layout pages, and PDF keep a page surface. */
 export function readerFlow(engine, fixedLayout = false) {
-  if (fixedLayout) return "";
-  if (engine === "epub" || engine === "cbz") return "scrolled";
+  if (fixedLayout || engine === "cbz" || engine === "pdf") return "";
+  if (engine === "epub") return "scrolled";
   return "";
+}
+
+/** One comic image per view. A landscape spread parks the cover on the right and a blank page on the left. */
+export function comicSpreadMode(book) {
+  if (!book) return book;
+  const rendition = book.rendition || {};
+  book.rendition = {
+    ...rendition,
+    layout: rendition.layout || "pre-paginated",
+    spread: "none",
+  };
+  return book;
+}
+
+/** Header hint. Prose can scroll; a comic only turns. */
+export function readerChromeHint(engine) {
+  if (engine === "epub") return "Scroll to read · edges or ← → turn · Esc closes";
+  return "Edges or ← → turn · Esc closes";
+}
+
+/** Left / right page turn. A center tap does not move. */
+export function turnReaderPage(view, side) {
+  if (side === "left") return view?.goLeft?.() ?? false;
+  if (side === "right") return view?.goRight?.() ?? false;
+  return false;
 }
 
 /** Pixel delta from a wheel or trackpad tick. Pinch-zoom (ctrl) stays with the browser. */
