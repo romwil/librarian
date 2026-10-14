@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
+import { SLIP_ACTION_HELP } from "./copy.js";
 import {
   applyBodyFromDraft,
   applySuggestionToDraft,
@@ -170,6 +171,25 @@ describe("review recovery actions", () => {
     assert.equal(actions.canRepair, true);
     assert.equal(actions.canRetry, true);
     assert.equal(reviewFindHref(work), "/find?q=Guardians+Mix&kind=music");
+  });
+
+  it("explains smart re-grab and request new version as different slip actions", () => {
+    assert.notEqual(SLIP_ACTION_HELP.regrab, SLIP_ACTION_HELP.requestNew);
+    assert.match(SLIP_ACTION_HELP.regrab, /remembered search/i);
+    assert.match(SLIP_ACTION_HELP.regrab, /rank/i);
+    assert.match(SLIP_ACTION_HELP.regrab, /does not open Find/i);
+    assert.match(SLIP_ACTION_HELP.requestNew, /different release/i);
+    assert.match(SLIP_ACTION_HELP.requestNew, /English retail EPUB/i);
+    assert.match(SLIP_ACTION_HELP.requestNew, /does not open Find/i);
+    assert.match(reviewPageSrc, /SLIP_ACTION_HELP\.regrab/);
+    assert.match(reviewPageSrc, /SLIP_ACTION_HELP\.requestNew/);
+    assert.match(reviewPageSrc, /reviewRetrieve/);
+    assert.doesNotMatch(reviewPageSrc, /to=\{findTo\}/);
+    assert.doesNotMatch(reviewPageSrc, /Request new version on Find/);
+    assert.match(SLIP_ACTION_HELP.repair, /par2/i);
+    assert.match(SLIP_ACTION_HELP.retry, /does not look for a different release/i);
+    assert.match(SLIP_ACTION_HELP.apply, /unar/i);
+    assert.match(SLIP_ACTION_HELP.skip, /without grabbing/i);
   });
 
   it("exposes canRegrab when repair_fail_count qualifies", () => {

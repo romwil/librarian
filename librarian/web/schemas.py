@@ -50,6 +50,10 @@ class RequestPayload(BaseModel):
     rank_reason: str = ""
 
 
+class ReviewRetrievePayload(BaseModel):
+    intent: str = "regrab"
+
+
 class ReviewApplyPayload(BaseModel):
     title: Optional[str] = None
     author: Optional[str] = None

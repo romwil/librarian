@@ -110,7 +110,98 @@ test.describe("Review / Holds desk", () => {
 
     // One recommended primary CTA on the unpack pile — Repair filled, not a flat ticket queue.
     const unpackGroup = page.locator('[data-testid="holds-group"][data-reason="unpack_stuck"]');
-    await expect(unpackGroup.getByRole("button", { name: "Repair" })).toBeVisible();
+    await expect(unpackGroup.getByRole("button", { name: "Repair", exact: true })).toBeVisible();
     await expect(unpackGroup.getByTestId("hold-slip-recommended")).toContainText("Repair");
+  });
+
+  test("Smart re-grab and Request new version stay on the slip", async ({ page }) => {
+    const calls: string[] = [];
+    await page.route("**/api/review", async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.continue();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          works: [
+            {
+              id: "think-1",
+              title: "Think Again",
+              kind: "book",
+              author: "Adam Grant",
+              review_reason: "unpack_stuck",
+              repair_fail_count: 2,
+              folder_diagnosis: { problem: "unpack_stuck", archive_count: 1, par2_count: 1 },
+              actions: {
+                can_repair: true,
+                can_retry: true,
+                can_regrab: true,
+                recommended_motion: "repair",
+                find_query: "Think Again Adam Grant",
+              },
+            },
+          ],
+          needs_review_count: 1,
+        }),
+      });
+    });
+    await page.route("**/api/review/think-1/retrieve", async (route) => {
+      const body = route.request().postDataJSON() as { intent?: string };
+      calls.push(String(body?.intent || ""));
+      const title =
+        body?.intent === "new_version"
+          ? "Think Again English Retail EPUB"
+          : "Think Again Retail EPUB";
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          intent: body?.intent,
+          searched: true,
+          ready: true,
+          queued: true,
+          already_active: false,
+          note: `Queued ${title}.`,
+          candidates: [{ guid: "g-en", title, diff: title }],
+          chosen: { guid: "g-en", title },
+          sab_error: null,
+        }),
+      });
+    });
+    await page.route("**/api/settings/quiet-hours", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ quiet_hours_enabled: false, active_now: false }),
+      });
+    });
+
+    await page.goto("/review");
+    await dismissWhatsNewIfPresent(page);
+    const slip = page.getByTestId("hold-slip");
+    await expect(slip.getByTestId("review-regrab")).toBeVisible();
+    await expect(slip.getByTestId("review-request-new")).toBeVisible();
+    await expect(slip.getByRole("link", { name: "Request new version" })).toHaveCount(0);
+
+    await slip.getByRole("button", { name: "About Smart re-grab" }).click();
+    await expect(slip.getByRole("tooltip")).toContainText(/remembered search/i);
+    await page.keyboard.press("Escape");
+    await slip.getByRole("button", { name: "About Request new version" }).click();
+    await expect(slip.getByRole("tooltip")).toContainText(/different release/i);
+    await page.keyboard.press("Escape");
+
+    await slip.getByTestId("review-regrab").click();
+    await expect(slip.getByTestId("regrab-candidates")).toContainText("Think Again Retail EPUB");
+    await expect(slip.getByTestId("review-action-note")).toContainText(/Queued Think Again Retail EPUB/);
+    await expect(page).toHaveURL(/\/review/);
+    await expect(page).not.toHaveURL(/\/find/);
+
+    await slip.getByTestId("review-request-new").click();
+    await expect(slip.getByTestId("regrab-candidates")).toContainText("English Retail EPUB");
+    await expect(page).toHaveURL(/\/review/);
+    await expect(page).not.toHaveURL(/\/find/);
+    expect(calls).toEqual(["regrab", "new_version"]);
   });
 });

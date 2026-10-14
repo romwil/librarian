@@ -2615,6 +2615,11 @@ button.cover {
 
 /* ═══════════ Help, wizard, tickets, search status ═══════════ */
 
+.cta-help {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
 .field-help {
   position: relative;
   display: inline-flex;

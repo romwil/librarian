@@ -49,8 +49,9 @@ from librarian.review_reasons import (
     REVIEW_UNKNOWN,
     REVIEW_UNPACK_STUCK,
 )
+from librarian.review_retrieve import SlipDownError, retrieve_slip_release
 from librarian.web.deps import WebDeps
-from librarian.web.schemas import ReviewApplyPayload
+from librarian.web.schemas import ReviewApplyPayload, ReviewRetrievePayload
 from librarian.web.serializers import public_work_admin, public_works_admin
 
 
@@ -290,6 +291,27 @@ def register_review_routes(app: FastAPI, deps: WebDeps) -> None:
             return _shape_review_work_payload(repair_review(db, settings(), work_id=work_id))
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.post("/api/review/{work_id}/retrieve")
+    def review_retrieve(work_id: str, payload: ReviewRetrievePayload, request: Request):
+        """Search and queue another release on this slip. Does not send the household to Find."""
+        require_role(request.state.user, "owner", "op")
+        user = request.state.user
+        try:
+            return retrieve_slip_release(
+                db,
+                settings(),
+                work_id=work_id,
+                intent=payload.intent,
+                role=str(user.get("role") or ""),
+                requested_by=str(user.get("id") or ""),
+                data_dir=root,
+            )
+        except SlipDownError as error:
+            raise HTTPException(status_code=502, detail=error.message) from error
+        except ValueError as error:
+            status = 404 if "not found" in str(error).lower() else 400
+            raise HTTPException(status_code=status, detail=str(error)) from error
 
     @app.get("/api/review/{work_id}/regrab")
     def review_regrab_candidates(work_id: str, request: Request):
