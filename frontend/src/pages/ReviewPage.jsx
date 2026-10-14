@@ -60,6 +60,7 @@ export default function ReviewPage() {
   const [quiet, setQuiet] = useState(null);
   const [quietNote, setQuietNote] = useState("");
   const [suggestNotes, setSuggestNotes] = useState({});
+  const [ownedSlipNote, setOwnedSlipNote] = useState("");
   const focusRef = useRef(null);
   const autoMatchTried = useRef(new Set());
   const autoSuggestTried = useRef(new Set());
@@ -79,6 +80,7 @@ export default function ReviewPage() {
         } else {
           setReviewBacklog(next.length);
         }
+        setOwnedSlipNote(String(data.owned_slip_note || "").trim());
         setDrafts((prev) => {
           const merged = { ...prev };
           next.forEach((work) => {
@@ -573,6 +575,11 @@ export default function ReviewPage() {
       <p className="kicker">Holds desk</p>
       <h1>Sorting returns</h1>
       <p className="lede">{holdsDeskLedeCopy()}</p>
+      {ownedSlipNote ? (
+        <p className="muted" role="status" data-testid="owned-slip-note">
+          {ownedSlipNote}
+        </p>
+      ) : null}
       {quiet ? (
         <details className="more-settings" data-testid="review-quiet-hours">
           <summary className="kicker">Quiet hours</summary>

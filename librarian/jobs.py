@@ -326,7 +326,7 @@ def poll_job(
             indexer_item=item,
             move_source=True,
         )
-        if organized.get("skipped_duplicate"):
+        if organized.get("skipped_duplicate") or organized.get("already_on_shelf"):
             final = "skipped"
         elif organized["organized"] or organized.get("expanded"):
             final = "organized"

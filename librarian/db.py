@@ -265,6 +265,16 @@ CREATE TABLE IF NOT EXISTS wanted (
 );
 CREATE INDEX IF NOT EXISTS idx_wanted_due ON wanted(status, next_search_at);
 CREATE INDEX IF NOT EXISTS idx_wanted_job ON wanted(job_id);
+CREATE TABLE IF NOT EXISTS owned_slip_clearances (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    author TEXT,
+    shelf_work_id TEXT,
+    reason TEXT NOT NULL,
+    created_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_owned_slip_clearances_created
+    ON owned_slip_clearances(created_at DESC);
 """
 
 
@@ -802,6 +812,64 @@ class Database:
 
         self.run_write(_write, label="delete_work")
         return self.get_work(wid) is None
+
+    def record_owned_slip_clearance(
+        self,
+        *,
+        title: str,
+        author: str = "",
+        shelf_work_id: str = "",
+        reason: str,
+        now: Optional[float] = None,
+        keep_seconds: float = 7 * 24 * 3600,
+    ) -> None:
+        """Remember a slip the house already had, so Holds can show a short note."""
+        moment = time.time() if now is None else float(now)
+        cutoff = moment - float(keep_seconds)
+        row_id = uuid.uuid4().hex
+
+        def _write() -> Any:
+            with self._connect() as conn:
+                conn.execute(
+                    "DELETE FROM owned_slip_clearances WHERE created_at < ?",
+                    (cutoff,),
+                )
+                conn.execute(
+                    """
+                    INSERT INTO owned_slip_clearances (
+                        id, title, author, shelf_work_id, reason, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        row_id,
+                        str(title or ""),
+                        str(author or ""),
+                        str(shelf_work_id or "") or None,
+                        str(reason or ""),
+                        moment,
+                    ),
+                )
+
+        self.run_write(_write, label="record_owned_slip_clearance")
+
+    def list_owned_slip_clearances(
+        self,
+        *,
+        since: float,
+        limit: int = 12,
+    ) -> List[Dict[str, Any]]:
+        capped = max(1, min(int(limit or 12), 40))
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM owned_slip_clearances
+                WHERE created_at >= ?
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (float(since), capped),
+            ).fetchall()
+        return [_row_dict(row) or {} for row in rows]
 
     def count_shell_works(self) -> int:
         """Works that are not Review slips and have no registered media files."""
