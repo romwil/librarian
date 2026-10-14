@@ -8,8 +8,10 @@ import {
   EPUB_READER_STYLES,
   filenameFromDisposition,
   comicTurnSide,
+  hostReaderArrow,
   pageTurnSide,
   pageTurnTarget,
+  readerArrowSide,
   primaryReadingFile,
   comicSpreadMode,
   readerChromeHint,
@@ -148,6 +150,38 @@ describe("in-app reader", () => {
     assert.equal(comicTurnSide(580, stage, image), "right");
     assert.equal(comicTurnSide(450, stage, image), "");
     assert.equal(comicTurnSide(450, stage, null), "");
+  });
+
+  it("turns a comic from arrow keys on the host reader, not the page frame", () => {
+    const host = {
+      closest() {
+        return null;
+      },
+      ownerDocument: { defaultView: {} },
+    };
+    assert.equal(hostReaderArrow({ key: "ArrowRight", target: host }), "right");
+    assert.equal(hostReaderArrow({ key: "ArrowDown", target: host }), "right");
+    assert.equal(hostReaderArrow({ key: "ArrowLeft", target: host }), "left");
+    assert.equal(hostReaderArrow({ key: "ArrowUp", target: host }), "left");
+    assert.equal(readerArrowSide("PageDown"), "right");
+    assert.equal(hostReaderArrow({ key: "Escape", target: host }), "");
+
+    const typing = {
+      closest() {
+        return { tagName: "INPUT" };
+      },
+      ownerDocument: { defaultView: {} },
+    };
+    assert.equal(hostReaderArrow({ key: "ArrowRight", target: typing }), "");
+
+    const frame = {
+      closest() {
+        return null;
+      },
+      ownerDocument: { defaultView: { frameElement: {} } },
+    };
+    assert.equal(hostReaderArrow({ key: "ArrowRight", target: frame }), "");
+    assert.equal(hostReaderArrow(null), "");
   });
 
   it("scrolls reflowable prose and leaves comics, fixed-layout, and PDF on a page surface", () => {

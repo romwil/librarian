@@ -83,6 +83,26 @@ export function readerChromeHint(engine) {
   return "Edges or ← → turn · Esc closes";
 }
 
+const COMIC_NEXT_KEYS = new Set(["ArrowRight", "ArrowDown", "PageDown", "Right", "Down", " "]);
+const COMIC_PREV_KEYS = new Set(["ArrowLeft", "ArrowUp", "PageUp", "Left", "Up"]);
+
+/** Arrow key → comic page turn. Space still advances. */
+export function readerArrowSide(key) {
+  const name = String(key || "");
+  if (COMIC_NEXT_KEYS.has(name)) return "right";
+  if (COMIC_PREV_KEYS.has(name)) return "left";
+  return "";
+}
+
+/** Host reading-room keys. A page iframe has its own document and is not this target. */
+export function hostReaderArrow(event) {
+  if (!event) return "";
+  const target = event.target;
+  if (target?.closest?.("input, textarea, select, [contenteditable=true]")) return "";
+  if (target?.ownerDocument?.defaultView?.frameElement) return "";
+  return readerArrowSide(event.key);
+}
+
 /** Left / right page turn. A center tap does not move. */
 export function turnReaderPage(view, side) {
   if (side === "left") return view?.goLeft?.() ?? false;

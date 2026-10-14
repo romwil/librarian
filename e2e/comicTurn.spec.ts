@@ -88,9 +88,17 @@ test("a comic turns from the cover to the next page", async ({ page }) => {
   await reader.getByRole("button", { name: "Next page" }).click();
   await expect.poll(async () => (await sectionIndex()).index, { timeout: 10_000 }).toBe(1);
 
+  await reader.focus();
+  await expect.poll(async () => page.evaluate(() => document.activeElement?.getAttribute("data-testid"))).toBe("reader");
   await page.keyboard.press("ArrowRight");
   await expect.poll(async () => (await sectionIndex()).index, { timeout: 10_000 }).toBe(2);
 
   await page.keyboard.press("ArrowLeft");
+  await expect.poll(async () => (await sectionIndex()).index, { timeout: 10_000 }).toBe(1);
+
+  await page.keyboard.press("ArrowDown");
+  await expect.poll(async () => (await sectionIndex()).index, { timeout: 10_000 }).toBe(2);
+
+  await page.keyboard.press("ArrowUp");
   await expect.poll(async () => (await sectionIndex()).index, { timeout: 10_000 }).toBe(1);
 });

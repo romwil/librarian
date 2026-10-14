@@ -5,7 +5,9 @@ import {
   EPUB_READER_STYLES,
   comicSpreadMode,
   comicTurnSide,
+  hostReaderArrow,
   pageTurnTarget,
+  readerArrowSide,
   readerChromeHint,
   readerEngine,
   readerFlow,
@@ -23,6 +25,7 @@ import {
 } from "../lib/readingRoomCalm.js";
 
 export default function Reader({ work, files = [], fileId = "", progress = null, onClose }) {
+  const dialogRef = useRef(null);
   const stage = useRef(null);
   const viewRef = useRef(null);
   const imageFrame = useRef(null);
@@ -60,6 +63,16 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
 
   function turnPage(side) {
     turnReaderPage(viewRef.current, side);
+  }
+
+  function turnFromHostKey(event) {
+    if (engine !== "cbz") return false;
+    const side = hostReaderArrow(event);
+    if (!side) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    turnPage(side);
+    return true;
   }
 
   /** Foliate has no click-to-turn. Section clicks only see the page image. */
@@ -147,6 +160,10 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
         event.stopPropagation();
         return;
       }
+      if (engine === "cbz") {
+        turnFromHostKey(event);
+        return;
+      }
       if (event.key === "ArrowLeft" || event.key === "PageUp") {
         event.preventDefault();
         turnPage("left");
@@ -156,9 +173,22 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
         turnPage("right");
       }
     }
+    const dialog = dialogRef.current;
+    // Dialog capture covers focus on the host shell. Window covers focus left on the work page.
+    dialog?.addEventListener("keydown", onKey, true);
     window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-  }, [onClose]);
+    return () => {
+      dialog?.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("keydown", onKey, true);
+    };
+  }, [onClose, engine]);
+
+  useEffect(() => {
+    if (engine !== "cbz") return undefined;
+    const dialog = dialogRef.current;
+    dialog?.focus({ preventScroll: true });
+    return undefined;
+  }, [engine, work?.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -262,6 +292,15 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
         const frame = doc.defaultView?.frameElement;
         if (frame) imageFrame.current = frame;
         doc.addEventListener("click", onPagePointer);
+        if (engine === "cbz") {
+          doc.addEventListener("keydown", (event) => {
+            if (event.target?.closest?.("input, textarea, select, [contenteditable=true]")) return;
+            const side = readerArrowSide(event.key);
+            if (!side) return;
+            event.preventDefault();
+            turnPage(side);
+          });
+        }
         if (view.renderer?.getAttribute("flow") !== "scrolled") return;
         doc.addEventListener("wheel", onReaderWheel, { passive: false });
         doc.addEventListener("touchstart", onTouchStart, { passive: true });
@@ -294,10 +333,12 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
 
   return (
     <div
+      ref={dialogRef}
       className={readerCalmClassNames({ chromeDim, reducedMotion })}
       role="dialog"
       aria-modal="true"
       aria-labelledby="reader-title"
+      tabIndex={-1}
       data-testid="reader"
       data-calm="true"
     >
@@ -321,8 +362,22 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
         {pdfUrl ? <iframe title={work.title} src={pdfUrl} /> : <div className="reader-host" ref={stage} />}
         {engine === "cbz" ? (
           <div className="reader-turns">
-            <button type="button" className="reader-turn is-left" data-turn="left" aria-label="Previous page" />
-            <button type="button" className="reader-turn is-right" data-turn="right" aria-label="Next page" />
+            <button
+              type="button"
+              className="reader-turn is-left"
+              data-turn="left"
+              aria-label="Previous page"
+              tabIndex={-1}
+              onMouseDown={(event) => event.preventDefault()}
+            />
+            <button
+              type="button"
+              className="reader-turn is-right"
+              data-turn="right"
+              aria-label="Next page"
+              tabIndex={-1}
+              onMouseDown={(event) => event.preventDefault()}
+            />
           </div>
         ) : null}
         {status ? <p className="lede reader-status">{status}</p> : null}
