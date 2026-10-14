@@ -1833,6 +1833,9 @@ body:has(.reader.reader-calm) .mobile-tabbar {
 body:has(.listen-room) {
   overflow: hidden;
 }
+.reader:focus {
+  outline: none;
+}
 .reader {
   position: fixed;
   inset: 0;
