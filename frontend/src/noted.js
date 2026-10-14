@@ -1,5 +1,6 @@
 import { findHref, searchHref } from "./find.js";
 import { workListenPath } from "./listen.js";
+import { workDownloadUrl, workReaderPath } from "./reader.js";
 
 function text(value) {
   return String(value || "").trim();
@@ -46,12 +47,15 @@ export function notedFormatActions(item = {}) {
   return ["book", "audiobook"].map((kind) => {
     const owned = kind === "audiobook" ? audio : book;
     if (owned) {
+      const book = kind === "book";
       return {
         kind,
         owned: true,
         label: "On the shelf",
         href: owned.href,
         listenHref: kind === "audiobook" ? workListenPath(owned.id) : "",
+        readHref: book ? workReaderPath(owned.id) : "",
+        downloadHref: book ? workDownloadUrl(owned.id) : "",
       };
     }
     return {
@@ -60,6 +64,8 @@ export function notedFormatActions(item = {}) {
       label: `Add to Wanted · ${kind}`,
       href: "",
       listenHref: "",
+      readHref: "",
+      downloadHref: "",
     };
   });
 }

@@ -1,7 +1,8 @@
 """Which book and audiobook formats the house already has on the shelves.
 
-Matching is the companion matcher: ISBN, then title+author, then series+index.
-A title with no author and no ISBN is not a match.
+Matching is the companion matcher: ISBN when both sides have one, then the same
+author with an equal title or a subtitle, then series+index. A title with no
+author and no ISBN is not a match. A shared word is not a match.
 """
 
 from __future__ import annotations

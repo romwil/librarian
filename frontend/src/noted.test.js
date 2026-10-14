@@ -65,8 +65,12 @@ test("a shelved format becomes On the shelf and the missing format stays Wanted"
   assert.equal(book.label, "On the shelf");
   assert.equal(book.href, "/works/book-atomic");
   assert.equal(book.listenHref, "");
+  assert.equal(book.readHref, "/works/book-atomic?read=1");
+  assert.equal(book.downloadHref, "/api/works/book-atomic/download");
   assert.equal(audio.owned, false);
   assert.equal(audio.label, "Add to Wanted · audiobook");
+  assert.equal(audio.readHref, "");
+  assert.equal(audio.downloadHref, "");
 
   const both = notedFormatActions({
     shelved: { id: "book-1" },
@@ -77,6 +81,11 @@ test("a shelved format becomes On the shelf and the missing format stays Wanted"
   assert.equal(ownedAudio.label, "On the shelf");
   assert.equal(ownedAudio.href, "/works/audio-1");
   assert.match(ownedAudio.listenHref, /\/works\/audio-1\?listen=1/);
+  assert.equal(ownedAudio.readHref, "");
+  assert.equal(ownedAudio.downloadHref, "");
+  const ownedBook = both.find((action) => action.kind === "book");
+  assert.equal(ownedBook.readHref, "/works/book-1?read=1");
+  assert.equal(ownedBook.downloadHref, "/api/works/book-1/download");
 });
 
 test("New & noted page searches, finds, and adds to Wanted", () => {
@@ -86,6 +95,10 @@ test("New & noted page searches, finds, and adds to Wanted", () => {
   assert.match(pageSrc, /Find beyond/);
   assert.match(pageSrc, /Add to Wanted/);
   assert.match(pageSrc, /On the shelf/);
+  assert.match(pageSrc, />\s*Read\s*</);
+  assert.match(pageSrc, />\s*Download\s*</);
+  assert.match(pageSrc, /noted-read-\$\{action\.kind\}/);
+  assert.match(pageSrc, /noted-download-\$\{action\.kind\}/);
   assert.match(pageSrc, /notedFormatActions/);
   assert.match(pageSrc, /noted-shelf-\$\{action\.kind\}/);
   assert.match(pageSrc, /noted-want-\$\{action\.kind\}/);
