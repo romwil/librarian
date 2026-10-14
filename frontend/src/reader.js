@@ -35,6 +35,29 @@ export function pageTurnSide(clientX, width, { left = 1 / 3, right = 2 / 3 } = {
   return "";
 }
 
+/**
+ * Turn target for a viewport x against a box (stage letterbox or page image).
+ * `clientX` is viewport space; `box.left` is that box's viewport origin.
+ * A centered cover's left edge is not the stage's left edge.
+ */
+export function pageTurnTarget(clientX, box) {
+  if (!box) return "";
+  const origin = Number(box.left);
+  const width = Number(box.width);
+  if (!Number.isFinite(origin) || !(width > 0)) return "";
+  return pageTurnSide(clientX - origin, width);
+}
+
+/**
+ * Comic tap. The black stage edges use the host surface. A tap that misses
+ * those thirds can still land on the image's own edge.
+ */
+export function comicTurnSide(clientX, stageBox, imageBox) {
+  const stageSide = pageTurnTarget(clientX, stageBox);
+  if (stageSide) return stageSide;
+  return pageTurnTarget(clientX, imageBox);
+}
+
 /** Reflowable prose scrolls. Comics, fixed-layout pages, and PDF keep a page surface. */
 export function readerFlow(engine, fixedLayout = false) {
   if (fixedLayout || engine === "cbz" || engine === "pdf") return "";

@@ -4,7 +4,8 @@ import { humanError } from "../copy.js";
 import {
   EPUB_READER_STYLES,
   comicSpreadMode,
-  pageTurnSide,
+  comicTurnSide,
+  pageTurnTarget,
   readerChromeHint,
   readerEngine,
   readerFlow,
@@ -24,6 +25,8 @@ import {
 export default function Reader({ work, files = [], fileId = "", progress = null, onClose }) {
   const stage = useRef(null);
   const viewRef = useRef(null);
+  const imageFrame = useRef(null);
+  const turnedByPointer = useRef(0);
   const lastLoc = useRef(null);
   const persistTimer = useRef(0);
   const [status, setStatus] = useState("Opening the volume…");
@@ -59,15 +62,54 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
     turnReaderPage(viewRef.current, side);
   }
 
-  /** Foliate has no click-to-turn; covers are SVG-only so users click and appear stuck. */
+  /** Foliate has no click-to-turn. Section clicks only see the page image. */
   function onPagePointer(event) {
     if (event.defaultPrevented) return;
     if (event.target?.closest?.("a[href], button, input, textarea, select, label")) return;
     const doc = event.target?.ownerDocument;
     const selection = doc?.getSelection?.();
     if (selection && !selection.isCollapsed && String(selection).trim()) return;
-    const width = doc?.documentElement?.clientWidth || event.currentTarget?.clientWidth || 0;
-    turnPage(pageTurnSide(event.clientX, width));
+    const frame = doc?.defaultView?.frameElement;
+    if (frame) imageFrame.current = frame;
+    const rect = doc?.documentElement?.getBoundingClientRect?.();
+    const width = rect?.width || doc?.documentElement?.clientWidth || event.currentTarget?.clientWidth || 0;
+    turnPage(pageTurnTarget(event.clientX, { left: rect?.left || 0, width }));
+  }
+
+  function comicSide(event) {
+    const explicit = event.target?.closest?.("[data-turn]")?.getAttribute?.("data-turn");
+    if (explicit === "left" || explicit === "right") return explicit;
+    const stageBox = event.currentTarget?.getBoundingClientRect?.();
+    const imageBox = imageFrame.current?.getBoundingClientRect?.();
+    return comicTurnSide(event.clientX, stageBox, imageBox);
+  }
+
+  /**
+   * CBZ letterbox lives on the host stage, outside the page iframe.
+   * Those taps never reach the section document, so the stage itself turns.
+   */
+  function onComicPointerUp(event) {
+    if (engine !== "cbz") return;
+    if (event.button != null && event.button !== 0) return;
+    if (event.target?.closest?.("a[href], input, textarea, select, label")) return;
+    const side = comicSide(event);
+    if (!side) return;
+    const gesture = turnedByPointer.current + 1;
+    turnedByPointer.current = gesture;
+    window.setTimeout(() => {
+      if (turnedByPointer.current === gesture) turnedByPointer.current = 0;
+    }, 400);
+    turnPage(side);
+  }
+
+  function onComicClick(event) {
+    if (engine !== "cbz") return;
+    if (turnedByPointer.current) {
+      turnedByPointer.current = 0;
+      return;
+    }
+    if (event.target?.closest?.("a[href], input, textarea, select, label")) return;
+    turnPage(comicSide(event));
   }
 
 
@@ -217,6 +259,8 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
       view.addEventListener("load", ({ detail }) => {
         const doc = detail?.doc;
         if (!doc) return;
+        const frame = doc.defaultView?.frameElement;
+        if (frame) imageFrame.current = frame;
         doc.addEventListener("click", onPagePointer);
         if (view.renderer?.getAttribute("flow") !== "scrolled") return;
         doc.addEventListener("wheel", onReaderWheel, { passive: false });
@@ -267,12 +311,18 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
           Close
         </button>
       </header>
-      <div className="reader-stage" data-engine={engine || undefined}>
+      <div
+        className="reader-stage"
+        data-engine={engine || undefined}
+        data-testid="reader-stage"
+        onPointerUp={engine === "cbz" ? onComicPointerUp : undefined}
+        onClick={engine === "cbz" ? onComicClick : undefined}
+      >
         {pdfUrl ? <iframe title={work.title} src={pdfUrl} /> : <div className="reader-host" ref={stage} />}
         {engine === "cbz" ? (
           <div className="reader-turns">
-            <button type="button" className="reader-turn is-left" aria-label="Previous page" onClick={() => turnPage("left")} />
-            <button type="button" className="reader-turn is-right" aria-label="Next page" onClick={() => turnPage("right")} />
+            <button type="button" className="reader-turn is-left" data-turn="left" aria-label="Previous page" />
+            <button type="button" className="reader-turn is-right" data-turn="right" aria-label="Next page" />
           </div>
         ) : null}
         {status ? <p className="lede reader-status">{status}</p> : null}
