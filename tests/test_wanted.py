@@ -602,3 +602,40 @@ def test_wanted_list_does_not_scan_shelved_works(tmp_path, monkeypatch):
     assert item["id"] == added.json()["item"]["id"]
     assert item["title"] == "Kindred"
     assert "shelved_book" not in item
+
+
+def test_subtitle_shelf_title_blocks_wanted_for_that_kind_only(tmp_path, monkeypatch):
+    client = _owner_client(tmp_path, monkeypatch)
+    database = Database(tmp_path / "librarian.db")
+    try:
+        book = _shelve(
+            database,
+            kind="book",
+            title="Atomic Habits: An Easy & Proven Way to Build Good Habits & Break Bad Ones",
+            author="James Clear",
+            isbn="",
+        )
+    finally:
+        database.close()
+
+    refused = client.post(
+        "/api/wanted",
+        json={"title": "Atomic Habits", "author": "James Clear", "kind": "book"},
+    )
+    assert refused.status_code == 409
+    assert refused.json()["detail"]["work_id"] == book["id"]
+    assert refused.json()["detail"]["kind"] == "book"
+
+    shared_word = client.post(
+        "/api/wanted",
+        json={"title": "Atomic", "author": "James Clear", "kind": "book"},
+    )
+    assert shared_word.status_code == 200
+
+    audio = client.post(
+        "/api/wanted",
+        json={"title": "Atomic Habits", "author": "James Clear", "kind": "audiobook"},
+    )
+    assert audio.status_code == 200
+    assert audio.json()["item"]["shelved_book"]["id"] == book["id"]
+    assert audio.json()["item"]["shelved_audiobook"] is None

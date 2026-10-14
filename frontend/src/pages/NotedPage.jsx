@@ -143,6 +143,24 @@ export default function NotedPage() {
                               <Link className="cta compact" to={action.href} data-testid={`noted-shelf-${action.kind}`}>
                                 On the shelf
                               </Link>
+                              {action.readHref ? (
+                                <Link
+                                  className="cta outline compact"
+                                  to={action.readHref}
+                                  data-testid={`noted-read-${action.kind}`}
+                                >
+                                  Read
+                                </Link>
+                              ) : null}
+                              {action.downloadHref ? (
+                                <a
+                                  className="cta outline compact"
+                                  href={action.downloadHref}
+                                  data-testid={`noted-download-${action.kind}`}
+                                >
+                                  Download
+                                </a>
+                              ) : null}
                               {action.listenHref ? (
                                 <Link
                                   className="cta outline compact"

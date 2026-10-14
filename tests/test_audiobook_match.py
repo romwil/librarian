@@ -86,6 +86,56 @@ def test_catalog_match_uses_series_and_refuses_title_only():
     )
 
 
+def test_subtitle_matches_same_author_and_a_shared_word_does_not():
+    shelves = [
+        {
+            "id": "habits",
+            "kind": "book",
+            "title": "Atomic Habits: An Easy & Proven Way to Build Good Habits & Break Bad Ones",
+            "author": "James Clear",
+            "isbn": "",
+        },
+        {"id": "atomic", "kind": "book", "title": "Atomic", "author": "James Clear", "isbn": ""},
+        {"id": "other", "kind": "book", "title": "Atomic Habits", "author": "Ada Lovelace", "isbn": ""},
+    ]
+    hit = match_catalog_work({"title": "Atomic Habits", "author": "James Clear", "isbn": ""}, shelves)
+    assert hit and hit["id"] == "habits"
+    reversed_name = match_catalog_work(
+        {"title": "Atomic Habits", "author": "Clear, James", "isbn": ""}, shelves
+    )
+    assert reversed_name and reversed_name["id"] == "habits"
+    short = match_catalog_work({"title": "Atomic", "author": "James Clear", "isbn": ""}, shelves)
+    assert short and short["id"] == "atomic"
+    assert (
+        match_catalog_work(
+            {"title": "Atomic Habits", "author": "James Clear", "isbn": "9780000000002"},
+            [
+                {
+                    "id": "wrong-isbn",
+                    "title": "Atomic Habits: An Easy & Proven Way to Build Good Habits & Break Bad Ones",
+                    "author": "James Clear",
+                    "isbn": "9780735211292",
+                }
+            ],
+        )
+        is None
+    )
+    agreed = match_catalog_work(
+        {"title": "Something Else", "author": "Nobody", "isbn": "9780735211292"},
+        shelves[:1]
+        + [
+            {
+                "id": "by-isbn",
+                "title": "Unrelated",
+                "author": "Other",
+                "isbn": "9780735211292",
+            }
+        ],
+    )
+    # The habits row has no ISBN, so the explicit ISBN on the second row wins.
+    assert agreed and agreed["id"] == "by-isbn"
+
+
 def test_title_only_does_not_match():
     book = {"kind": "book", "title": "Dune", "author": "", "isbn": ""}
     audiobooks = [{"id": "a1", "kind": "audiobook", "title": "Dune", "author": "Frank Herbert"}]

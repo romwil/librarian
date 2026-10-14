@@ -376,3 +376,57 @@ def test_noted_desk_marks_a_shelved_book_and_still_offers_the_missing_audiobook(
     assert hail["shelved_audiobook"]["id"] == audio["id"]
     assert hail["shelved"] is None
     assert hail["wanted"]["kinds"] == ["book"]
+
+
+def test_noted_subtitle_matches_atomic_habits_and_not_a_shared_word(tmp_path, monkeypatch):
+    """Open Library's short title is the shelf title plus a subtitle, same author."""
+    payload = {
+        "works": [
+            {
+                "key": "/works/OL-habits",
+                "title": "Atomic Habits",
+                "author_name": ["James Clear"],
+            },
+            {
+                "key": "/works/OL-atomic",
+                "title": "Atomic",
+                "author_name": ["James Clear"],
+            },
+        ]
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host != "openlibrary.org":
+            return httpx.Response(599, text="refused")
+        return httpx.Response(200, json=payload)
+
+    _patch_discover(monkeypatch)
+    monkeypatch.setenv("NZBFINDER_API_TOKEN", "tok")
+    db = Database(tmp_path / "t.db")
+    try:
+        habits = _shelve(
+            db,
+            kind="book",
+            title="Atomic Habits: An Easy & Proven Way to Build Good Habits & Break Bad Ones",
+            author="James Clear",
+            isbn="",
+        )
+        atomic = _shelve(db, kind="book", title="Atomic", author="James Clear", isbn="")
+        _shelve(db, kind="audiobook", title="Atomic Power", author="James Clear", isbn="")
+        desk = noted_desk(
+            Settings(nzbfinder_api_token="tok"),
+            db,
+            ol_transport=httpx.MockTransport(handler),
+            data_dir=tmp_path,
+        )
+    finally:
+        db.close()
+    items = {row["title"]: row for row in _lane(desk, "trending")["items"]}
+    habits_card = items["Atomic Habits"]
+    assert habits_card["shelved"]["id"] == habits["id"]
+    assert habits_card["shelved_audiobook"] is None
+    assert habits_card["wanted"]["kinds"] == ["audiobook"]
+    atomic_card = items["Atomic"]
+    assert atomic_card["shelved"]["id"] == atomic["id"]
+    assert atomic_card["shelved"]["id"] != habits["id"]
+    assert atomic_card["shelved_audiobook"] is None
