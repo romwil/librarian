@@ -21,10 +21,11 @@ ALREADY_ON_SHELF = "Already on the shelf"
 OWNED_KINDS = (KIND_BOOK, KIND_AUDIOBOOK, KIND_MAGAZINE, KIND_COMIC)
 NOTE_WINDOW_S = 7 * 24 * 3600
 SWEEP_LIMIT = 8000
+_NON_ALNUM = re.compile(r"[^a-z0-9]+")
 
 
 def _norm_name(value: Any) -> str:
-    return re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
+    return _NON_ALNUM.sub("", str(value or "").lower())
 
 
 def _index_key(value: Any) -> str:
@@ -34,6 +35,60 @@ def _index_key(value: Any) -> str:
     return text.lower()
 
 
+class _OwnedCatalog:
+    """First-wins indexes so a sweep matches in one pass, not slips × shelves."""
+
+    def __init__(self) -> None:
+        self.by_isbn: Dict[str, tuple] = {}
+        self.by_title_author: Dict[tuple, Dict[str, Any]] = {}
+        self.by_series: Dict[tuple, Dict[str, Any]] = {}
+
+    @classmethod
+    def build(cls, owned: Sequence[Mapping[str, Any]]) -> "_OwnedCatalog":
+        catalog = cls()
+        for rank, row in enumerate(owned):
+            if str(row.get("kind") or "") not in OWNED_KINDS:
+                continue
+            stored = dict(row)
+            for key in isbn_match_keys(str(row.get("isbn") or "")):
+                catalog.by_isbn.setdefault(key, (rank, stored))
+            title_key = _norm_name(row.get("title"))
+            author_key = _norm_name(row.get("author"))
+            if title_key and author_key:
+                catalog.by_title_author.setdefault((title_key, author_key), stored)
+            series = _norm_name(row.get("series_name"))
+            index = _index_key(row.get("series_index"))
+            if series and index:
+                catalog.by_series.setdefault((series, index), stored)
+        return catalog
+
+    def match(self, slip: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
+        want_isbn = isbn_match_keys(str(slip.get("isbn") or ""))
+        if want_isbn:
+            best: Optional[tuple] = None
+            for key in want_isbn:
+                hit = self.by_isbn.get(key)
+                if hit is None:
+                    continue
+                if best is None or hit[0] < best[0]:
+                    best = hit
+            if best is not None:
+                return dict(best[1])
+        title_key = _norm_name(slip.get("title"))
+        author_key = _norm_name(slip.get("author"))
+        if title_key and author_key:
+            row = self.by_title_author.get((title_key, author_key))
+            if row is not None:
+                return dict(row)
+        series = _norm_name(slip.get("series_name"))
+        index = _index_key(slip.get("series_index"))
+        if series and index:
+            row = self.by_series.get((series, index))
+            if row is not None:
+                return dict(row)
+        return None
+
+
 def match_owned_media(
     slip: Mapping[str, Any],
     owned: Sequence[Mapping[str, Any]],
@@ -41,34 +96,7 @@ def match_owned_media(
     """Pick a shelved work this slip duplicates. None when unsure."""
     slip_id = str(slip.get("id") or "")
     rows = [row for row in owned if str(row.get("id") or "") != slip_id]
-    want_isbn = set(isbn_match_keys(str(slip.get("isbn") or "")))
-    if want_isbn:
-        for row in rows:
-            if str(row.get("kind") or "") not in OWNED_KINDS:
-                continue
-            if want_isbn.intersection(isbn_match_keys(str(row.get("isbn") or ""))):
-                return dict(row)
-    title_key = _norm_name(slip.get("title"))
-    author_key = _norm_name(slip.get("author"))
-    if title_key and author_key:
-        for row in rows:
-            if str(row.get("kind") or "") not in OWNED_KINDS:
-                continue
-            if _norm_name(row.get("title")) != title_key:
-                continue
-            if _norm_name(row.get("author")) == author_key:
-                return dict(row)
-    series = _norm_name(slip.get("series_name"))
-    index = _index_key(slip.get("series_index"))
-    if series and index:
-        for row in rows:
-            if str(row.get("kind") or "") not in OWNED_KINDS:
-                continue
-            if _norm_name(row.get("series_name")) != series:
-                continue
-            if _index_key(row.get("series_index")) == index:
-                return dict(row)
-    return None
+    return _OwnedCatalog.build(rows).match(slip)
 
 
 def owned_media_rows(db: Database) -> List[Dict[str, Any]]:
@@ -110,13 +138,21 @@ def _drop_owned_slip(
     owned: Sequence[Mapping[str, Any]],
 ) -> Optional[Dict[str, Any]]:
     """Delete one open slip that matches owned media. Leave the shelf alone."""
+    hit = match_owned_media(slip, owned)
+    if hit is None:
+        return None
+    return _drop_matched_slip(db, slip, hit)
+
+
+def _drop_matched_slip(
+    db: Database,
+    slip: Mapping[str, Any],
+    hit: Mapping[str, Any],
+) -> Optional[Dict[str, Any]]:
     if str(slip.get("review_state") or "") != "needs_review":
         return None
     slip_id = str(slip.get("id") or "")
     if not slip_id or db.files_for_work(slip_id):
-        return None
-    hit = match_owned_media(slip, owned)
-    if hit is None:
         return None
     shelf_id = str(hit.get("id") or "")
     shelf = db.get_work(shelf_id)
@@ -146,11 +182,14 @@ def _drop_owned_slip(
 
 def sweep_owned_slips(db: Database, *, limit: int = SWEEP_LIMIT) -> Dict[str, Any]:
     """Clear open slips the catalog already owns. Returns the desk note."""
-    owned = owned_media_rows(db)
-    slips = db.list_works(review_state="needs_review", limit=max(1, int(limit)))
+    owned, slips = db.load_owned_slip_sweep(kinds=OWNED_KINDS, limit=max(1, int(limit)))
+    catalog = _OwnedCatalog.build(owned)
     cleared: List[Dict[str, Any]] = []
     for slip in slips:
-        dropped = _drop_owned_slip(db, slip, owned)
+        hit = catalog.match(slip)
+        if hit is None:
+            continue
+        dropped = _drop_matched_slip(db, slip, hit)
         if dropped is not None:
             cleared.append(
                 {

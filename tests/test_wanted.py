@@ -134,6 +134,22 @@ def test_sweep_marks_unmatched_book_and_isbn_match_clears(db):
     assert db.list_wanted() == []
 
 
+def test_idle_sweep_does_not_reconnect_per_book(db, monkeypatch):
+    for index in range(30):
+        _shelve(db, kind="book", title=f"Title {index}", author=f"Author {index}", isbn="")
+    assert sweep_wanted_audiobooks(db, now=NOW) == 30
+    calls = {"n": 0}
+    original = Database._connect
+
+    def counting(self):
+        calls["n"] += 1
+        return original(self)
+
+    monkeypatch.setattr(Database, "_connect", counting)
+    assert sweep_wanted_audiobooks(db, now=NOW) == 0
+    assert calls["n"] <= 4
+
+
 def test_sweep_does_not_call_the_indexer(db, monkeypatch):
     _shelve(db, kind="book", title="Dune", author="Frank Herbert", isbn=DUNE_ISBN)
 

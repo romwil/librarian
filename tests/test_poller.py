@@ -128,3 +128,18 @@ def test_poller_tick_polls_active_job(tmp_path):
     poller.start()
     assert poller.is_running is False  # SKIP_APP_BOOT=1 in tests
     poller.stop()
+
+
+def test_poller_loop_waits_between_ticks(tmp_path, monkeypatch):
+    db = Database(tmp_path / "librarian.db")
+    poller = JobPoller(db, lambda: Settings(), interval=12.5)
+    waits = []
+
+    def fake_wait(timeout=None):
+        waits.append(timeout)
+        return True
+
+    monkeypatch.setattr(poller._stop, "wait", fake_wait)
+    monkeypatch.setattr(poller, "tick", lambda: (_ for _ in ()).throw(AssertionError("tick")))
+    poller._loop()
+    assert waits == [12.5]

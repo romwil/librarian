@@ -9,7 +9,7 @@ from __future__ import annotations
 import time
 from typing import Any, Dict, List, Optional
 
-from librarian.audiobook_match import match_companion_audiobook
+from librarian.audiobook_match import match_prepared_catalog, prepare_catalog_candidates
 from librarian.db import Database
 from librarian.kinds import KIND_AUDIOBOOK, KIND_BOOK
 from librarian.wanted import STATUS_WANTED, dedupe_key
@@ -20,17 +20,25 @@ def sweep_wanted_audiobooks(db: Database, *, now: Optional[float] = None) -> int
     moment = time.time() if now is None else float(now)
     books = db.list_shelved_works(KIND_BOOK)
     audiobooks: List[Dict[str, Any]] = db.list_shelved_works(KIND_AUDIOBOOK)
+    pool = prepare_catalog_candidates(
+        [row for row in audiobooks if str(row.get("kind") or "") in ("", "audiobook")]
+    )
+    known = {
+        str(row.get("dedupe_key") or ""): row
+        for row in db.list_wanted(include_dismissed=True)
+    }
     created = 0
     for book in books:
         key = dedupe_key(kind=KIND_AUDIOBOOK, work_id=str(book.get("id") or ""))
-        existing = db.get_wanted_by_dedupe(key)
-        if match_companion_audiobook(book, audiobooks) is not None:
+        existing = known.get(key)
+        if match_prepared_catalog(book, pool) is not None:
             if existing is not None:
                 db.delete_wanted(str(existing["id"]))
+                known.pop(key, None)
             continue
         if existing is not None:
             continue
-        db.insert_wanted(
+        inserted = db.insert_wanted(
             {
                 "dedupe_key": key,
                 "work_id": book.get("id"),
@@ -45,5 +53,6 @@ def sweep_wanted_audiobooks(db: Database, *, now: Optional[float] = None) -> int
                 "updated_at": moment,
             }
         )
+        known[key] = inserted
         created += 1
     return created
