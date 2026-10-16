@@ -102,6 +102,7 @@ def fetch_cover_with_fallback(
     identity: Mapping[str, Any],
     *,
     indexer_cover_url: str = "",
+    hardcover_token: str = "",
     transport: Optional[httpx.BaseTransport] = None,
     client: Optional[httpx.Client] = None,
     require_safe_url: bool = True,
@@ -113,6 +114,7 @@ def fetch_cover_with_fallback(
         preferred,
         identity,
         indexer_cover_url=indexer_cover_url,
+        hardcover_token=hardcover_token,
         transport=transport,
         client=client,
         require_safe_url=require_safe_url,
@@ -129,6 +131,7 @@ def fetch_cover_with_fallback(
         owned,
         identity,
         indexer_cover_url=indexer_cover_url,
+        hardcover_token=hardcover_token,
         transport=transport,
         client=client,
         require_safe_url=require_safe_url,
@@ -484,7 +487,9 @@ def apply_enrichment(
 
     cover = str(updated.get("cover_path") or "").strip()
     cover_ok = bool(cover) and Path(cover).is_file()
-    if (not cover_ok or replace) and (found.cover_url or extract_isbn(str(updated.get("isbn") or ""))):
+    isbn = extract_isbn(str(updated.get("isbn") or ""))
+    title = str(updated.get("title") or "").strip()
+    if (not cover_ok or replace) and (found.cover_url or isbn or title):
         if replace and cover_ok:
             # Allow Fix match to refresh a wrong cover when a URL is present.
             try:
@@ -496,8 +501,17 @@ def apply_enrichment(
             written = fetch_cover_with_fallback(
                 updated,
                 data_dir,
-                {"isbn": updated.get("isbn") or "", "title": updated.get("title") or ""},
+                {
+                    "isbn": updated.get("isbn") or "",
+                    "title": updated.get("title") or "",
+                    "author": updated.get("author") or "",
+                    "kind": updated.get("kind") or "",
+                    "asin": updated.get("asin") or "",
+                    "narrator": updated.get("narrator") or "",
+                    "year": updated.get("year") if isinstance(updated.get("year"), int) else None,
+                },
                 indexer_cover_url=found.cover_url,
+                hardcover_token=str(getattr(settings, "hardcover_api_token", "") or ""),
                 transport=transport,
                 client=client,
                 require_safe_url=True,

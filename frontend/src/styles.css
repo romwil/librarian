@@ -72,8 +72,8 @@
   --rail-magazine-h: 210px;
   --rail-comic: 160px;
   --rail-comic-h: 176px;
-  --rail-audio-w: 210px;
-  --rail-audio-h: 132px;
+  --rail-audio-w: var(--rail-cover-w);
+  --rail-audio-h: var(--rail-cover-w);
   --rail-gap: 16px;
   --hero-search-max: 42rem;
   --hero-search-h: 3.25rem;
@@ -668,6 +668,9 @@ input {
 .cover-unit-audiobook {
   width: var(--rail-audio-w);
   flex-basis: var(--rail-audio-w);
+}
+.cover-unit-audiobook .cover-caption {
+  white-space: pre-line;
 }
 .cover-unit-music,
 .cover-unit:has(.cover.is-square) {

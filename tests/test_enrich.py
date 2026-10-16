@@ -1121,7 +1121,8 @@ def test_apply_enrichment_blocks_unsafe_automatic_cover_and_atmosphere(tmp_path)
         data_dir=tmp_path,
         transport=httpx.MockTransport(handler),
     )
-    assert captured == []
+    assert captured
+    assert all("169.254.169.254" not in url and "127.0.0.1" not in url for url in captured)
     assert not row.get("cover_path")
     assert not row.get("atmosphere_path")
     assert not (folder / "cover.jpg").exists()
