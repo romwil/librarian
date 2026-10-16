@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   DISCOVER_CTA,
+  TRENDING_BOOKS_LABEL,
   FIND_BEYOND_CTA,
   ADD_TO_LIBRARY_LEDE,
   canPromoteIncomingMusic,
@@ -82,6 +83,7 @@ describe("reading room copy", () => {
   it("summarizes Find beyond the shelves without mixing in local hits", () => {
     assert.equal(FIND_BEYOND_CTA, "Find beyond the shelves");
     assert.equal(DISCOVER_CTA, "What's trending");
+    assert.equal(TRENDING_BOOKS_LABEL, "Trending books");
     assert.equal(findStatusLine({ q: "" }), "Peruse trending on the indexers, or name a title to find.");
     assert.match(findStatusLine({ q: "dune", phase: "beyond" }), /finding dune · looking beyond/);
     assert.equal(findStatusLine({ q: "dune", kind: "book", beyondCount: 11, phase: "done" }), "finding dune · book · 11 beyond");

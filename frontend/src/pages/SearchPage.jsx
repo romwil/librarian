@@ -6,7 +6,14 @@ import QueryForm from "../components/QueryForm.jsx";
 import Rail from "../components/Rail.jsx";
 import SearchModeControl, { normalizeSearchMode } from "../components/SearchModeControl.jsx";
 import ShelfMore from "../components/ShelfMore.jsx";
-import { DISCOVER_CTA, FIND_BEYOND_CTA, FIELD_HELP, humanError, searchStatusLine } from "../copy.js";
+import {
+  DISCOVER_CTA,
+  FIND_BEYOND_CTA,
+  FIELD_HELP,
+  TRENDING_BOOKS_LABEL,
+  humanError,
+  searchStatusLine,
+} from "../copy.js";
 import {
   buildFindSearchParams,
   composeSearchQuery,
@@ -171,6 +178,11 @@ export default function SearchPage() {
 
   return (
     <div className="search-page page-settle">
+      <p className="find-cta-block" data-testid="trending-books-door">
+        <Link className="cta outline" to="/noted">
+          {TRENDING_BOOKS_LABEL}
+        </Link>
+      </p>
       <SearchModeControl mode={activeMode} onMode={onMode} />
       <QueryForm
         inputId="hall-search"

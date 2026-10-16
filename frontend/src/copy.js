@@ -136,6 +136,9 @@ export const SLIP_ACTION_HELP = {
 
 export const FIND_BEYOND_CTA = "Find beyond the shelves";
 
+/** Search door to New & noted — trending books and the bestseller list. */
+export const TRENDING_BOOKS_LABEL = "Trending books";
+
 /** Quiet door to empty Find (Discover) — Hall / idle Search, not a nav tab. */
 export const DISCOVER_CTA = "What's trending";
 

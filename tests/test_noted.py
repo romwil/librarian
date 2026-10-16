@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 
 import httpx
@@ -193,6 +194,70 @@ def test_missing_llm_leaves_trending_and_discover(tmp_path, monkeypatch):
     assert "download_url" not in blob
     assert "api_token" not in blob
     assert "Saga 001" not in blob
+
+
+def test_cooldown_skips_the_bestseller_call_and_a_quiet_indexer_does_not_hold_the_desk(
+    tmp_path, monkeypatch
+):
+    """A rate-limit sleep or a hung indexer feed must not leave New & noted warming."""
+    monkeypatch.setattr("librarian.noted.seconds_until_llm_ready", lambda: 90.0)
+    monkeypatch.setattr("librarian.noted.NOTE_LANE_WAIT_S", 0.3)
+
+    def hang(*_args, **_kwargs):
+        time.sleep(5)
+        return [], [], None
+
+    def boom(*_args, **_kwargs):
+        raise AssertionError("bestseller lane called the language model during cooldown")
+
+    monkeypatch.setattr("librarian.noted.discover_beyond", hang)
+    monkeypatch.setattr("librarian.llm.LLMClient.chat_raw", boom)
+    started = time.monotonic()
+    desk = noted_desk(
+        Settings(llm_api_key="k", llm_base_url="http://llm.test", llm_model="m"),
+        Database(tmp_path / "t.db"),
+        ol_transport=_ol_transport()[0],
+        data_dir=tmp_path,
+    )
+    elapsed = time.monotonic() - started
+    assert elapsed < 2.0
+    assert _lane(desk, "bestsellers")["empty_reason"] == "rate_limited"
+    assert _lane(desk, "bestsellers")["items"] == []
+    assert _lane(desk, "trending")["items"][0]["title"] == "The Left Hand of Darkness"
+    assert _lane(desk, "discover")["items"] == []
+    assert _lane(desk, "discover")["empty_reason"] == "unavailable"
+
+
+def test_discover_lane_asks_one_feed_per_kind(tmp_path, monkeypatch):
+    calls = []
+
+    def latest(self, cat, *, limit=25, path="search"):
+        calls.append(str(cat))
+        cat_id = str(cat)
+        if cat_id == "3030":
+            return [AUDIO_HIT]
+        return [BOOK_HIT]
+
+    clear_discover_cache()
+    monkeypatch.setattr("librarian.nzbfinder.NZBFinderClient.capabilities", lambda self: CAPS)
+    monkeypatch.setattr("librarian.nzbfinder.NZBFinderClient.latest", latest)
+    monkeypatch.setattr(
+        "librarian.nzbfinder.NZBFinderClient.fetch_rss_category",
+        lambda self, cat, *, limit=25: (_ for _ in ()).throw(NZBFinderError("rss should not run")),
+    )
+    monkeypatch.setenv("NZBFINDER_API_TOKEN", "tok")
+    desk = noted_desk(
+        Settings(nzbfinder_api_token="tok"),
+        Database(tmp_path / "t.db"),
+        ol_transport=_ol_transport()[0],
+        data_dir=tmp_path,
+    )
+    assert calls.count("7020") == 1
+    assert calls.count("3030") == 1
+    assert len(calls) == 2
+    titles = {(row["kind"], row["title"]) for row in _lane(desk, "discover")["items"]}
+    assert ("book", "Piranesi") in titles
+    assert ("audiobook", "Project Hail Mary") in titles
 
 
 def test_open_library_outage_keeps_the_other_lanes(tmp_path):

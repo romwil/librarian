@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Search keeps a Trending books door to New & noted. That desk lists Open Library trending and the bestseller list even when an indexer feed or the language model is quiet, instead of sitting on a warming skeleton.
 - Comic reading stays a page surface. A CBZ shows one image at a time, and the stage edges or arrow keys turn to the next page. Reflowable prose still scrolls.
 - New & noted gathers Open Library trending, curated bestseller lists, and Discover latest for books and audiobooks, so a title can be searched, found beyond the shelves, or added to Wanted.
 - Browse cards, peek, and the work page say Read, Listen, Download, or Wanted. The Wanted desk lists companion misses and hand-added titles; only an owner or op can add or dismiss.

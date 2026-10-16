@@ -9,7 +9,10 @@ route and does not call SABnzbd.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Mapping, Optional, Sequence
+import time
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeout
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
 
 import httpx
 
@@ -18,7 +21,12 @@ from librarian.identify import tidy_title, validated_isbn
 from librarian.indexers.discover import discover_beyond
 from librarian.kinds import NEWZNAB_AUDIOBOOK, NEWZNAB_COMIC, NEWZNAB_MAGAZINE
 from librarian.lists import curated_list_payload
-from librarian.llm import LLMClient
+from librarian.llm import (
+    LLM_RATE_LIMIT_COPY,
+    LLMClient,
+    client_from_settings,
+    seconds_until_llm_ready,
+)
 from librarian.nyt_books import normalize_list_date, normalize_list_name
 from librarian.owned import annotate_noted_lanes
 
@@ -29,7 +37,11 @@ PERIODS = ("daily", "weekly")
 TRENDING_LIMIT = 20
 DISCOVER_LIMIT = 12
 DISCOVER_ITEM_CAP = 24
+DISCOVER_FEEDS_PER_KIND = 1
 BOOK_FAMILY = 7000
+# The desk must paint even when a lane's host is quiet. Abandoned HTTP may finish later.
+NOTE_LANE_WAIT_S = 8.0
+NOTE_LLM_TIMEOUT_S = 12.0
 
 LANE_TRENDING = "trending"
 LANE_BESTSELLERS = "bestsellers"
@@ -411,6 +423,7 @@ def discover_lane(
                 kind=kind,
                 limit=DISCOVER_LIMIT,
                 transport=transport,
+                max_feeds=DISCOVER_FEEDS_PER_KIND,
             )
         except Exception as error:  # noqa: BLE001 — one host failure must not drop the other lanes
             logger.info("Discover latest failed for %s: %s", kind, error)
@@ -475,6 +488,58 @@ def discover_lane(
     }
 
 
+def _take_lane(future: Any, fallback: Callable[[], Dict[str, Any]], *, wait: float) -> Dict[str, Any]:
+    try:
+        return future.result(timeout=max(0.05, float(wait)))
+    except FuturesTimeout:
+        logger.info("New & noted lane exceeded %.1fs", wait)
+        return fallback()
+    except Exception as error:  # noqa: BLE001 — one lane must not drop the desk
+        logger.info("New & noted lane failed: %s", error)
+        return fallback()
+
+
+def _bestsellers_for_desk(
+    settings: Any,
+    db: Any,
+    *,
+    preset: str,
+    date: str,
+    data_dir: Any,
+    llm: Optional[LLMClient],
+) -> Dict[str, Any]:
+    """Name the bestseller list without sleeping through a process-wide cooldown."""
+    if llm is None and seconds_until_llm_ready() > 1:
+        probe = client_from_settings(settings, timeout=NOTE_LLM_TIMEOUT_S)
+        if probe is not None:
+            probe.close()
+            return _empty_lane(
+                LANE_BESTSELLERS,
+                source="llm",
+                label="Bestsellers",
+                empty_reason="rate_limited",
+                empty_copy=LLM_RATE_LIMIT_COPY,
+                configured=True,
+            )
+    created: Optional[LLMClient] = None
+    client = llm
+    if client is None:
+        created = client_from_settings(settings, timeout=NOTE_LLM_TIMEOUT_S)
+        client = created
+    try:
+        return bestsellers_lane(
+            settings,
+            db,
+            preset=preset,
+            date=date,
+            data_dir=data_dir,
+            llm=client,
+        )
+    finally:
+        if created is not None:
+            created.close()
+
+
 def noted_desk(
     settings: Any,
     db: Any,
@@ -495,27 +560,58 @@ def noted_desk(
     if not when:
         raise NotedError("Date must be YYYY-MM-DD or current")
     list_slug = normalize_list_name(preset) or "hardcover-fiction"
-    trending = trending_lane(slug_period, transport=ol_transport)
+    started = time.monotonic()
+    pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="noted")
+    trending_future = pool.submit(trending_lane, slug_period, transport=ol_transport)
+    discover_future = pool.submit(discover_lane, settings, transport=discover_transport)
     try:
-        bestsellers = bestsellers_lane(
-            settings,
-            db,
-            preset=list_slug,
-            date=when,
-            data_dir=data_dir,
-            llm=llm,
+        try:
+            bestsellers = _bestsellers_for_desk(
+                settings,
+                db,
+                preset=list_slug,
+                date=when,
+                data_dir=data_dir,
+                llm=llm,
+            )
+        except Exception as error:  # noqa: BLE001 — bestseller failure must leave the other lanes up
+            logger.info("Bestseller lane failed: %s", error)
+            bestsellers = _empty_lane(
+                LANE_BESTSELLERS,
+                source="llm",
+                label="Bestsellers",
+                empty_reason="error",
+                empty_copy="Curated bestseller lists are unavailable right now.",
+                configured=True,
+            )
+        remaining = NOTE_LANE_WAIT_S - (time.monotonic() - started)
+        trending = _take_lane(
+            trending_future,
+            lambda: _empty_lane(
+                LANE_TRENDING,
+                source="open_library",
+                label="Open Library trending",
+                empty_reason="unavailable",
+                empty_copy="Open Library trending is unavailable right now.",
+                configured=True,
+            ),
+            wait=remaining,
         )
-    except Exception as error:  # noqa: BLE001 — bestseller failure must leave the other lanes up
-        logger.info("Bestseller lane failed: %s", error)
-        bestsellers = _empty_lane(
-            LANE_BESTSELLERS,
-            source="llm",
-            label="Bestsellers",
-            empty_reason="error",
-            empty_copy="Curated bestseller lists are unavailable right now.",
-            configured=True,
+        remaining = NOTE_LANE_WAIT_S - (time.monotonic() - started)
+        discover = _take_lane(
+            discover_future,
+            lambda: _empty_lane(
+                LANE_DISCOVER,
+                source="discover",
+                label="Discover latest",
+                empty_reason="unavailable",
+                empty_copy="Discover latest is unavailable right now.",
+                configured=True,
+            ),
+            wait=remaining,
         )
-    discover = discover_lane(settings, transport=discover_transport)
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
     lanes = [trending, bestsellers, discover]
     annotate_noted_lanes(db, lanes)
     return {

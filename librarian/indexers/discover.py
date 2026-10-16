@@ -310,6 +310,7 @@ def discover_beyond(
     limit: Optional[int] = None,
     extra: Optional[bool] = None,
     transport: Optional[Any] = None,
+    max_feeds: Optional[int] = None,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], Optional[str]]:
     """Fetch allowed category feeds from every enabled host. Fail closed per host."""
     allow_extra = bool(settings.show_extra_categories) if extra is None else bool(extra)
@@ -337,6 +338,12 @@ def discover_beyond(
             host_feeds = category_feeds(caps, extra=allow_extra)
             categories = merge_category_lists(categories, host_feeds)
             wanted = _wanted_feeds(host_feeds, kind=kind, cat=cat)
+            if max_feeds is not None:
+                try:
+                    cap = int(max_feeds)
+                except (TypeError, ValueError):
+                    cap = MAX_FEEDS
+                wanted = wanted[: max(0, cap)]
             path = trending_path(caps)
             for feed in wanted:
                 try:
