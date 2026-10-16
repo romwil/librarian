@@ -52,10 +52,10 @@ export function persistUiFontStep(step, storage = globalThis.localStorage) {
 }
 
 export function normalizeUiTheme(theme) {
-  const cleaned = String(theme ?? "system")
+  const cleaned = String(theme ?? "lights_up")
     .trim()
     .toLowerCase();
-  return THEME_PREFS.has(cleaned) ? cleaned : "system";
+  return THEME_PREFS.has(cleaned) ? cleaned : "lights_up";
 }
 
 /**
@@ -93,9 +93,9 @@ export function loadStoredUiTheme(storage = globalThis.localStorage) {
     if (current != null && String(current).trim() !== "") {
       return normalizeUiTheme(current);
     }
-    return "system";
+    return "lights_up";
   } catch {
-    return "system";
+    return "lights_up";
   }
 }
 

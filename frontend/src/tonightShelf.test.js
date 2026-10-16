@@ -20,13 +20,14 @@ test("Tonight’s Shelf keeps lamp presence copy and alive chrome", () => {
   assert.match(tonightSrc, /aria-label="Tonight’s shelf"/);
 });
 
-test("Continue rails on Hall use lamp presence kickers", () => {
-  assert.match(hallSrc, /Where you left the lamp/);
-  assert.match(hallSrc, /Volumes waiting under the lamp/);
-  assert.match(hallSrc, /presence/);
-  assert.match(railSrc, /presence = false/);
-  assert.match(railSrc, /is-continue-presence/);
-  assert.match(railSrc, /cover-settle/);
+test("Continue rails on Hall render only when they have items", () => {
+  assert.match(hallSrc, /continueRailItems\(hall\?\.continue\)/);
+  assert.match(hallSrc, /continueRailItems\(hall\?\.continue_listening\)/);
+  assert.match(hallSrc, /title="Continue reading"/);
+  assert.match(hallSrc, /title="Continue listening"/);
+  assert.doesNotMatch(hallSrc, /empty=\{hall/);
+  assert.match(railSrc, /if \(!items\?\.length\)/);
+  assert.match(railSrc, /return empty \?/);
 });
 
 test("motion tokens include breath and cover-settle with reduced-motion", () => {
@@ -45,12 +46,9 @@ test("Tonight’s Shelf surface uses lamp atmosphere in styles", () => {
   assert.match(stylesSrc, /var\(--lamp\)/);
 });
 
-test("Hall ships lamp rituals chrome (dawn/dusk + welcome-back)", () => {
-  assert.match(hallSrc, /hall-lamp-ritual/);
-  assert.match(hallSrc, /data-lamp-period/);
-  assert.match(hallSrc, /hall-welcome-back/);
-  assert.match(hallSrc, /welcomeBackCopy/);
-  assert.match(hallSrc, /hallLampPeriod/);
+test("Hall leaves lamp-wash rituals off the collection page", () => {
+  assert.doesNotMatch(hallSrc, /hall-lamp-ritual/);
+  assert.doesNotMatch(hallSrc, /welcomeBackCopy/);
   assert.match(motionSrc, /data-lamp-period="dawn"/);
   assert.match(motionSrc, /data-lamp-period="dusk"/);
   assert.match(motionSrc, /peek-ritual/);

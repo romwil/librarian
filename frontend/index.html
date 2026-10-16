@@ -16,9 +16,9 @@
           var KEY = "librarian.ui_theme";
           var FONT_KEY = "librarian.ui_font_step";
           var STEPS = ["15px", "16px", "17px", "18.5px", "20px", "22px"];
-          var stored = localStorage.getItem(KEY) || "system";
+          var stored = localStorage.getItem(KEY) || "lights_up";
           if (stored !== "lights_up" && stored !== "lights_down" && stored !== "system") {
-            stored = "system";
+            stored = "lights_up";
           }
           var effective = stored;
           if (stored === "system") {
@@ -37,8 +37,8 @@
           document.documentElement.style.setProperty("--base-font-size", STEPS[step]);
           document.documentElement.dataset.fontStep = String(step);
         } catch (e) {
-          document.documentElement.setAttribute("data-theme", "lights-down");
-          document.documentElement.style.colorScheme = "dark";
+          document.documentElement.setAttribute("data-theme", "lights-up");
+          document.documentElement.style.colorScheme = "light";
         }
       })();
     </script>
