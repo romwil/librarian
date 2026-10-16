@@ -35,6 +35,7 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
   const [status, setStatus] = useState("Opening the volume…");
   const [error, setError] = useState("");
   const [pdfUrl, setPdfUrl] = useState("");
+  const [fixedLayout, setFixedLayout] = useState(false);
   const [chromeDim, setChromeDim] = useState(false);
   const reducedMotion = prefersReducedMotion();
   const engine = readerEngine(files, fileId);
@@ -197,6 +198,7 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
 
     async function open() {
       setError("");
+      setFixedLayout(false);
       setStatus("Opening the volume…");
       if (!engine) {
         throw Object.assign(new Error("This file isn’t a readable EPUB, CBZ, or PDF."), { status: 422 });
@@ -247,7 +249,9 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
         comicSpreadMode(view.book);
         view.renderer?.open?.(view.book);
       }
-      const flow = readerFlow(engine, view.isFixedLayout);
+      const fixed = Boolean(view.isFixedLayout);
+      if (!cancelled) setFixedLayout(fixed);
+      const flow = readerFlow(engine, fixed);
       if (flow) view.renderer?.setAttribute("flow", flow);
       view.addEventListener("relocate", (event) => persist(event.detail));
       const touch = { x: 0, y: 0, active: false };
@@ -347,7 +351,9 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
           <p className="kicker">Reading room</p>
           <h1 id="reader-title">{work.title}</h1>
         </div>
-        <p className="muted reader-esc">{readerChromeHint(engine)}</p>
+        <p className="muted reader-esc" data-testid="reader-hint">
+          {readerChromeHint(engine, fixedLayout)}
+        </p>
         <button type="button" className="cta ghost compact" onClick={onClose} data-testid="reader-close">
           Close
         </button>

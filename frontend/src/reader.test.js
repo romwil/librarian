@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 import {
   canOpenInlineMedia,
@@ -20,6 +23,7 @@ import {
   readerWheelDelta,
   scrollReader,
   readerCtaLabel,
+  workPrimaryVerb,
   readerEngine,
   readerOpenError,
   readingFileName,
@@ -191,8 +195,24 @@ describe("in-app reader", () => {
     assert.equal(readerFlow("epub", true), "");
     assert.equal(readerFlow("pdf"), "");
     assert.equal(readerFlow(""), "");
-    assert.equal(readerChromeHint("epub"), "Scroll to read · edges or ← → turn · Esc closes");
-    assert.equal(readerChromeHint("cbz"), "Edges or ← → turn · Esc closes");
+    assert.equal(readerChromeHint("epub"), "Scroll to read · Esc closes");
+    assert.equal(readerChromeHint("epub", false), "Scroll to read · Esc closes");
+    assert.equal(readerChromeHint("epub", true), "Edges or arrows turn · Esc closes");
+    assert.equal(readerChromeHint("cbz"), "Edges or arrows turn · Esc closes");
+    assert.equal(readerChromeHint("pdf"), "Edges or arrows turn · Esc closes");
+    assert.equal(/scroll/i.test(readerChromeHint("epub", true)), false);
+    assert.equal(/scroll/i.test(readerChromeHint("cbz")), false);
+    assert.equal(/scroll/i.test(readerChromeHint("pdf")), false);
+    assert.equal(/edge|arrow/i.test(readerChromeHint("epub")), false);
+  });
+
+  it("gives the title one verb: Listen, Read, Play, Download, or Want", () => {
+    assert.equal(workPrimaryVerb({ canListen: true, canRead: true, canDownload: true, canWant: true }), "Listen");
+    assert.equal(workPrimaryVerb({ canRead: true, canDownload: true, canWant: true }), "Read");
+    assert.equal(workPrimaryVerb({ canPlay: true, canDownload: true }), "Play");
+    assert.equal(workPrimaryVerb({ canDownload: true, canWant: true }), "Download");
+    assert.equal(workPrimaryVerb({ canWant: true }), "Want");
+    assert.equal(workPrimaryVerb({}), "");
   });
 
   it("turns a comic one page at a time from an edge tap or arrow", () => {
@@ -268,5 +288,25 @@ describe("in-app reader", () => {
     assert.equal(scrollReader(top, -30), true);
     assert.equal(top.stepped, "prev");
     assert.equal(scrollReader({ containerPosition: 10 }, 0), false);
+  });
+});
+
+describe("work page", () => {
+  const workSrc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "pages/WorkPage.jsx"), "utf8");
+
+  it("puts one verb and the file before the series, catalog, whispers, and enrich", () => {
+    const verbAt = workSrc.indexOf('data-testid="work-primary"');
+    const fileAt = workSrc.indexOf('data-testid="work-file"');
+    const filesAt = workSrc.indexOf('data-testid="work-files"');
+    const moreAt = workSrc.indexOf('data-testid="work-more"');
+    assert.ok(verbAt > 0 && fileAt > verbAt && filesAt > fileAt && moreAt > filesAt);
+    const folded = workSrc.slice(moreAt);
+    const open = workSrc.slice(0, moreAt);
+    for (const mark of ["series-ribbon", "work-catalog", "work-enrich", "family-whispers"]) {
+      assert.equal(open.includes(mark), false, mark);
+      assert.ok(folded.includes(mark), mark);
+    }
+    assert.match(workSrc, /workPrimaryVerb\(/);
+    assert.match(workSrc.slice(Math.max(0, moreAt - 80), moreAt), /<details/);
   });
 });
