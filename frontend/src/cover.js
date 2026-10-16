@@ -285,9 +285,12 @@ export function coverOverlay(work) {
     const durationParts = work.parts || work.series_index;
     const duration = work.duration || work.runtime;
     const part = partHint(work?.title);
+    const narrator = String(work.narrator || "").trim();
     return {
       title,
-      byline: beyond ? beyondByline(work, work.author || "Audiobook") : work.author || "Audiobook",
+      byline: beyond
+        ? beyondByline(work, narrator || work.author || "Audiobook")
+        : narrator || work.author || "Audiobook",
       chip:
         [duration, durationParts ? `${durationParts} parts` : "", part ? `Part ${part}` : ""].filter(Boolean).join(" · ") ||
         (beyond ? "" : "Listen"),
@@ -329,7 +332,9 @@ export function coverCaption(work) {
     return [work.series_name, work.series_index].filter(Boolean).join(" #") || work.title || "";
   }
   if (work.kind === "audiobook") {
-    return [work.title, work.duration || work.runtime].filter(Boolean).join(" · ") || "Untitled";
+    const title = work.title || "Untitled";
+    const narrator = String(work.narrator || "").trim();
+    return narrator ? `${title}\n${narrator}` : title;
   }
   if (work.kind === "music") {
     return work.music_state === "incoming" ? `${work.title || "Album"} · incoming` : work.title || "Untitled";

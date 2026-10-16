@@ -785,6 +785,7 @@ def organize_identified(
         Path(folder_path),
         identity,
         indexer_cover_url=cover_url,
+        hardcover_token=str(getattr(settings, "hardcover_api_token", "") or ""),
         transport=cover_transport,
         require_safe_url=True,
     )

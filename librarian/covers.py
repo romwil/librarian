@@ -7,7 +7,7 @@ import logging
 import zipfile
 from pathlib import Path
 from typing import Any, Mapping, Optional
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urlencode, urljoin, urlparse
 
 import httpx
 
@@ -18,6 +18,11 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_USER_AGENT = f"Librarian/{__version__} (+https://github.com/romwil/librarian)"
 OPENLIB_ISBN_COVER = "https://covers.openlibrary.org/b/isbn/{isbn}-L.jpg"
+GOOGLE_BOOKS_ISBN_COVER = (
+    "https://books.google.com/books/content?vid=ISBN{isbn}&printsec=frontcover&img=1"
+)
+AUDNEXUS_BOOK = "https://api.audnex.us/books/{asin}?region=us"
+AUDIBLE_CATALOG = "https://api.audible.com/1.0/catalog/products"
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
 MIN_IMAGE_BYTES = 64
 
@@ -30,6 +35,10 @@ _ALLOWED_COVER_HOST_SUFFIXES = (
     "static.comicvine.com",
     "upload.wikimedia.org",
     "wikipedia.org",
+    "books.google.com",
+    "googleusercontent.com",
+    "media-amazon.com",
+    "ssl-images-amazon.com",
 )
 _MAX_COVER_REDIRECTS = 5
 
@@ -151,19 +160,210 @@ def download_image(
             http.close()
 
 
+def _get_json(
+    url: str,
+    *,
+    transport: Optional[httpx.BaseTransport] = None,
+    client: Optional[httpx.Client] = None,
+) -> Any:
+    """GET JSON from a fixed catalog host. Empty on any failure."""
+    if not url:
+        return None
+    own = client is None
+    http = client or httpx.Client(timeout=20.0, transport=transport, follow_redirects=True)
+    try:
+        response = http.get(
+            url,
+            headers={"User-Agent": DEFAULT_USER_AGENT, "Accept": "application/json"},
+        )
+    except httpx.HTTPError:
+        return None
+    finally:
+        if own:
+            http.close()
+    if response.status_code >= 400:
+        return None
+    try:
+        return response.json()
+    except ValueError:
+        return None
+
+
+def _catalog_image(raw: Mapping[str, Any]) -> str:
+    cover = str(raw.get("image") or raw.get("cover") or "").strip()
+    images = raw.get("product_images")
+    if not cover and isinstance(images, dict):
+        for key in ("500", "1000", "300", "large"):
+            candidate = str(images.get(key) or "").strip()
+            if candidate:
+                cover = candidate
+                break
+    return cover if cover.startswith("http") else ""
+
+
+def _openlibrary_title_cover_url(
+    identity: Mapping[str, Any],
+    *,
+    transport: Optional[httpx.BaseTransport] = None,
+    client: Optional[httpx.Client] = None,
+) -> str:
+    """Open Library cover by title and author. Only when the work has no ISBN."""
+    if extract_isbn(str(identity.get("isbn") or "")):
+        return ""
+    title = str(identity.get("title") or "").strip()
+    if not title:
+        return ""
+    from librarian.enrich import lookup_author
+    from librarian.openlibrary import OpenLibraryClient
+
+    author = lookup_author(identity)
+    year = identity.get("year") if isinstance(identity.get("year"), int) else None
+    library = OpenLibraryClient(transport=transport, client=client)
+    try:
+        found = library.lookup_by_title(title, author, year=year)
+    except Exception:
+        logger.warning("Open Library title cover lookup failed", exc_info=True)
+        return ""
+    finally:
+        library.close()
+    return str(found.get("cover_url") or "").strip()
+
+
+def _hardcover_cover_url(
+    identity: Mapping[str, Any],
+    *,
+    hardcover_token: str = "",
+    transport: Optional[httpx.BaseTransport] = None,
+    client: Optional[httpx.Client] = None,
+) -> str:
+    token = str(hardcover_token or "").strip()
+    if not token:
+        return ""
+    from librarian.enrich import lookup_author
+    from librarian.hardcover import HardcoverClient, HardcoverError
+
+    title = str(identity.get("title") or "").strip()
+    author = lookup_author(identity)
+    isbn = extract_isbn(str(identity.get("isbn") or ""))
+    if not isbn and not title:
+        return ""
+    hardcover = HardcoverClient(token, transport=transport, client=client)
+    try:
+        found = hardcover.lookup_by_isbn(isbn) if isbn else {}
+        if not found and title:
+            found = hardcover.lookup_by_title(title, author)
+    except (HardcoverError, httpx.HTTPError):
+        return ""
+    except Exception:
+        logger.warning("Hardcover cover lookup failed", exc_info=True)
+        return ""
+    finally:
+        hardcover.close()
+    return str((found or {}).get("cover_url") or "").strip()
+
+
+def _audnexus_cover_url(
+    identity: Mapping[str, Any],
+    *,
+    transport: Optional[httpx.BaseTransport] = None,
+    client: Optional[httpx.Client] = None,
+) -> str:
+    """Audnexus / Audible cover for an audiobook. Skip when the hit does not match."""
+    if str(identity.get("kind") or "").strip().lower() != "audiobook":
+        return ""
+    from librarian.audnexus import is_valid_asin, jaccard
+    from librarian.enrich import lookup_author
+
+    asin = str(identity.get("asin") or "").strip().upper()
+    if is_valid_asin(asin):
+        payload = _get_json(
+            AUDNEXUS_BOOK.format(asin=asin),
+            transport=transport,
+            client=client,
+        )
+        if isinstance(payload, dict):
+            return _catalog_image(payload)
+        return ""
+
+    title = str(identity.get("title") or "").strip()
+    author = lookup_author(identity)
+    if not title and not author:
+        return ""
+    params = {
+        "num_results": "5",
+        "products_sort_by": "Relevance",
+        "response_groups": "media,product_attrs,contributors",
+    }
+    if title:
+        params["title"] = title
+    if author:
+        params["author"] = author
+    payload = _get_json(
+        f"{AUDIBLE_CATALOG}?{urlencode(params)}",
+        transport=transport,
+        client=client,
+    )
+    products = payload.get("products") if isinstance(payload, dict) else None
+    if not isinstance(products, list):
+        return ""
+    for product in products:
+        if not isinstance(product, dict):
+            continue
+        image = _catalog_image(product)
+        if not image:
+            continue
+        got = str(product.get("title") or "")
+        if title and jaccard(title, got) < 0.45 and title.lower() not in got.lower():
+            continue
+        return image
+    return ""
+
+
+class _CoverUnwritable(Exception):
+    """Shelf folder rejected cover.jpg. Stop; do not keep fetching art."""
+
+
+def _try_cover_url(
+    dest: Path,
+    url: str,
+    *,
+    transport: Optional[httpx.BaseTransport] = None,
+    client: Optional[httpx.Client] = None,
+    require_safe_url: bool = True,
+) -> Optional[Path]:
+    if not str(url or "").strip():
+        return None
+    data = download_image(
+        url,
+        transport=transport,
+        client=client,
+        require_safe_url=require_safe_url,
+    )
+    if not data:
+        return None
+    try:
+        dest.write_bytes(data)
+    except OSError:
+        logger.warning("Cannot write cover %s", dest, exc_info=True)
+        raise _CoverUnwritable from None
+    return dest
+
+
 def fetch_cover(
     folder: Path,
     identity: Mapping[str, Any],
     *,
     indexer_cover_url: str = "",
+    hardcover_token: str = "",
     transport: Optional[httpx.BaseTransport] = None,
     client: Optional[httpx.Client] = None,
     require_safe_url: bool = True,
 ) -> Optional[Path]:
-    """Write cover.jpg from indexer URL, Open Library ISBN, or CBZ page 1.
+    """Write cover.jpg from a real image URL or the first CBZ page.
 
-    Fail-soft on filesystem errors (PermissionError / other OSError): log and
-    return None so callers can fall back to an owned cache or skip art.
+    Order: indexer URL, Open Library ISBN, Open Library title+author when there
+    is no ISBN, Hardcover when a token is set, Audnexus for audiobooks, Google
+    Books by ISBN, then CBZ page 1. Fail-soft. Never invents art.
     """
     folder = Path(folder)
     try:
@@ -179,6 +379,40 @@ def fetch_cover(
         logger.warning("Cannot stat cover %s", dest, exc_info=True)
         return None
 
+    download_kwargs = {
+        "transport": transport,
+        "client": client,
+        "require_safe_url": require_safe_url,
+    }
+    try:
+        return _fetch_cover_sources(
+            folder,
+            dest,
+            identity,
+            indexer_cover_url=indexer_cover_url,
+            hardcover_token=hardcover_token,
+            **download_kwargs,
+        )
+    except _CoverUnwritable:
+        return None
+
+
+def _fetch_cover_sources(
+    folder: Path,
+    dest: Path,
+    identity: Mapping[str, Any],
+    *,
+    indexer_cover_url: str = "",
+    hardcover_token: str = "",
+    transport: Optional[httpx.BaseTransport] = None,
+    client: Optional[httpx.Client] = None,
+    require_safe_url: bool = True,
+) -> Optional[Path]:
+    download_kwargs = {
+        "transport": transport,
+        "client": client,
+        "require_safe_url": require_safe_url,
+    }
     urls: list[str] = []
     cover_url = str(indexer_cover_url or identity.get("cover") or "").strip()
     if cover_url:
@@ -186,21 +420,40 @@ def fetch_cover(
     isbn = extract_isbn(str(identity.get("isbn") or ""))
     if isbn:
         urls.append(OPENLIB_ISBN_COVER.format(isbn=isbn))
-
     for url in urls:
-        data = download_image(
-            url,
-            transport=transport,
-            client=client,
-            require_safe_url=require_safe_url,
+        written = _try_cover_url(dest, url, **download_kwargs)
+        if written is not None:
+            return written
+
+    if not isbn:
+        ol_title = _openlibrary_title_cover_url(identity, transport=transport, client=client)
+        written = _try_cover_url(dest, ol_title, **download_kwargs)
+        if written is not None:
+            return written
+
+    hardcover = _hardcover_cover_url(
+        identity,
+        hardcover_token=hardcover_token,
+        transport=transport,
+        client=client,
+    )
+    written = _try_cover_url(dest, hardcover, **download_kwargs)
+    if written is not None:
+        return written
+
+    audnexus = _audnexus_cover_url(identity, transport=transport, client=client)
+    written = _try_cover_url(dest, audnexus, **download_kwargs)
+    if written is not None:
+        return written
+
+    if isbn:
+        written = _try_cover_url(
+            dest,
+            GOOGLE_BOOKS_ISBN_COVER.format(isbn=isbn),
+            **download_kwargs,
         )
-        if data:
-            try:
-                dest.write_bytes(data)
-            except OSError:
-                logger.warning("Cannot write cover %s", dest, exc_info=True)
-                return None
-            return dest
+        if written is not None:
+            return written
 
     try:
         cbz_paths = sorted(folder.glob("*.cbz"))

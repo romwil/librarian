@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import {
   clothFor,
@@ -117,6 +118,28 @@ describe("reading room cover helpers", () => {
       /Radarr is not configured/,
     );
     assert.equal(jobNeedsYouReason({ status: "failed", error: "boom" }), "");
+  });
+
+  it("draws audiobook chips square, with the narrator under the title", () => {
+    const css = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
+    const width = css.match(/--rail-audio-w:\s*([^;]+);/)[1].trim();
+    const height = css.match(/--rail-audio-h:\s*([^;]+);/)[1].trim();
+    const book = css.match(/--rail-cover-w:\s*([^;]+);/)[1].trim();
+    assert.equal(width, "var(--rail-cover-w)");
+    assert.equal(height, "var(--rail-cover-w)");
+    assert.equal(width, height);
+    assert.equal(book, "148px");
+    const caption = coverCaption({
+      kind: "audiobook",
+      title: "Project Hail Mary",
+      narrator: "Ray Porter",
+      duration: "16h",
+    });
+    assert.equal(caption, "Project Hail Mary\nRay Porter");
+    assert.equal(
+      coverOverlay({ kind: "audiobook", title: "Project Hail Mary", narrator: "Ray Porter" }).byline,
+      "Ray Porter",
+    );
   });
 
   it("uses issue dates and numbers as gilt captions", () => {
