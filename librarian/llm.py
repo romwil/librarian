@@ -482,6 +482,12 @@ def _retry_after_seconds(response: httpx.Response) -> Optional[float]:
         return None
 
 
+def seconds_until_llm_ready() -> float:
+    """Seconds the process will sleep before the next LLM call. Zero when idle."""
+    remaining = _RATE_LIMIT_UNTIL - time.monotonic()
+    return remaining if remaining > 0 else 0.0
+
+
 def reset_llm_rate_limit_state() -> None:
     """Test helper — clear process cooldown between cases."""
     global _RATE_LIMIT_UNTIL
@@ -502,6 +508,7 @@ def client_from_settings(
     settings: Settings,
     *,
     transport: Optional[httpx.BaseTransport] = None,
+    timeout: float = 60.0,
 ) -> Optional[LLMClient]:
     from librarian.llm_providers import recommended_model, resolve_llm_connection
 
@@ -515,6 +522,7 @@ def client_from_settings(
         model,
         provider=resolved["provider"],
         transport=transport,
+        timeout=timeout,
     )
     if not client.configured():
         client.close()

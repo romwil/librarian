@@ -8,6 +8,7 @@ import { notedFindHref, notedFormatActions, notedSearchHref, notedWantedBody } f
 
 const root = dirname(fileURLToPath(import.meta.url));
 const pageSrc = readFileSync(join(root, "pages/NotedPage.jsx"), "utf8");
+const searchSrc = readFileSync(join(root, "pages/SearchPage.jsx"), "utf8");
 const mainSrc = readFileSync(join(root, "main.jsx"), "utf8");
 
 const card = {
@@ -86,6 +87,15 @@ test("a shelved format becomes On the shelf and the missing format stays Wanted"
   const ownedBook = both.find((action) => action.kind === "book");
   assert.equal(ownedBook.readHref, "/works/book-1?read=1");
   assert.equal(ownedBook.downloadHref, "/api/works/book-1/download");
+});
+
+test("Search keeps a Trending books door to New & noted", () => {
+  assert.match(searchSrc, /trending-books-door/);
+  assert.match(searchSrc, /TRENDING_BOOKS_LABEL/);
+  assert.match(searchSrc, /to="\/noted"/);
+  const doorAt = searchSrc.indexOf("trending-books-door");
+  const moreAt = searchSrc.indexOf("<ShelfMore>");
+  assert.ok(doorAt > 0 && moreAt > doorAt);
 });
 
 test("New & noted page searches, finds, and adds to Wanted", () => {

@@ -36,7 +36,12 @@ export default function NotedPage() {
       })
       .catch((err) => {
         if (!alive) return;
-        setError(humanError(err));
+        const aborted = err?.name === "AbortError" || err?.name === "TimeoutError";
+        setError(
+          aborted
+            ? "New & noted took too long. The lists did not load — try again."
+            : humanError(err),
+        );
         setLoading(false);
       });
     return () => {

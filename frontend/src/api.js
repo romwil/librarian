@@ -177,7 +177,7 @@ export const api = {
     if (period) params.set("period", period);
     if (preset) params.set("preset", preset);
     if (date) params.set("date", date);
-    return request(`/noted?${params.toString()}`);
+    return request(`/noted?${params.toString()}`, { signal: AbortSignal.timeout(20000) });
   },
   addWanted: (body) => request("/wanted", { method: "POST", body: JSON.stringify(body) }),
   discover: (extras = {}) => {
