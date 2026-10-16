@@ -310,6 +310,16 @@ def _fts_query(q: str) -> str:
     return " AND ".join(f'"{token}"' for token in tokens)
 
 
+def _fts_column_query(column: str, q: str) -> str:
+    """FTS5 query locked to one column so a title search cannot hit the author."""
+    if column not in {"title", "author"}:
+        return ""
+    tokens = re.findall(r"[A-Za-z0-9]+", q or "")
+    if not tokens:
+        return ""
+    return " AND ".join(f'{column} : "{token}"' for token in tokens)
+
+
 JOB_EXTRA_COLUMNS = {
     "sab_status": "TEXT",
     "nzo_name": "TEXT",
@@ -1455,6 +1465,110 @@ class Database:
                   AND {self._HAS_FILES_SQL.format(alias="w")}
                   AND w.review_state != 'needs_review'
                 ORDER BY rank
+                LIMIT ?
+                """,
+                args,
+            ).fetchall()
+        return [_row_dict(row) or {} for row in rows]
+
+    def search_works_mode(
+        self,
+        query: str,
+        mode: str,
+        *,
+        limit: int = 24,
+        kind: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Shelf search locked to one field. Unknown modes return nothing."""
+        key = str(mode or "").strip().lower()
+        text = str(query or "").strip()
+        if key in {"title", "author"}:
+            match = _fts_column_query(key, text)
+            if not match:
+                return []
+            return self.search_works_raw(match, limit=limit, kind=kind)
+        if key == "isbn":
+            return self._search_works_isbn(text, limit=limit, kind=kind)
+        if key == "series":
+            return self._search_works_text_column(
+                "series_name", text, limit=limit, kind=kind, how="prefix"
+            )
+        if key == "narrator":
+            return self._search_works_text_column(
+                "narrator", text, limit=limit, kind=kind, how="contains"
+            )
+        return []
+
+    def _search_works_isbn(
+        self, query: str, *, limit: int, kind: Optional[str]
+    ) -> List[Dict[str, Any]]:
+        from librarian.identify import isbn_match_keys
+
+        want = set(isbn_match_keys(query))
+        if not want:
+            return []
+        kind_sql = ""
+        args: List[Any] = []
+        if kind:
+            kind_sql = " AND w.kind = ?"
+            args.append(kind)
+        has_files = self._HAS_FILES_SQL.format(alias="w")
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT w.* FROM works w
+                WHERE w.isbn IS NOT NULL AND trim(w.isbn) != ''
+                  AND {has_files}
+                  AND w.review_state != 'needs_review'
+                  {kind_sql}
+                """,
+                args,
+            ).fetchall()
+        hits: List[Dict[str, Any]] = []
+        for row in rows:
+            item = _row_dict(row) or {}
+            if want.intersection(isbn_match_keys(str(item.get("isbn") or ""))):
+                hits.append(item)
+            if len(hits) >= int(limit):
+                break
+        return hits
+
+    def _search_works_text_column(
+        self,
+        column: str,
+        query: str,
+        *,
+        limit: int,
+        kind: Optional[str],
+        how: str,
+    ) -> List[Dict[str, Any]]:
+        if column not in {"series_name", "narrator"}:
+            return []
+        needle = str(query or "").strip()
+        if not needle:
+            return []
+        escaped = needle.casefold().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        like = f"%{escaped}%" if how == "contains" else f"{escaped}%"
+        kind_sql = ""
+        args: List[Any] = [needle.casefold(), like]
+        if kind:
+            kind_sql = " AND w.kind = ?"
+            args.append(kind)
+        args.append(int(limit))
+        has_files = self._HAS_FILES_SQL.format(alias="w")
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT w.* FROM works w
+                WHERE {has_files}
+                  AND w.review_state != 'needs_review'
+                  AND w.{column} IS NOT NULL AND trim(w.{column}) != ''
+                  AND (
+                    lower(trim(w.{column})) = ?
+                    OR lower(w.{column}) LIKE ? ESCAPE '\\'
+                  )
+                  {kind_sql}
+                ORDER BY w.title COLLATE NOCASE
                 LIMIT ?
                 """,
                 args,

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useOutletContext, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useOutletContext, useSearchParams } from "react-router-dom";
 import { api } from "../api.js";
 import QueryForm from "../components/QueryForm.jsx";
 import Rail from "../components/Rail.jsx";
@@ -112,6 +112,7 @@ export default function FindPage() {
   const [discoverError, setDiscoverError] = useState("");
   const openDiscover = shouldShowDiscover(urlFields);
   const browsing = Boolean(discoverCat) && openDiscover;
+  const handoffToSearch = hasFindQuery(urlFields) && !discoverCat && !nytPreset;
   const catalogGap = isCatalogGapQuery(urlFields);
   /** Idle Find or explicit `/find?preset=nyt` — never hide behind a muted link. */
   const showBestsellers = Boolean(nytPreset) || (openDiscover && !browsing);
@@ -134,7 +135,7 @@ export default function FindPage() {
   ]);
 
   useEffect(() => {
-    if (!hasFindQuery(urlFields)) {
+    if (handoffToSearch || !hasFindQuery(urlFields)) {
       setResult({ beyond: [] });
       setChaseHits([]);
       setChaseBySet({});
@@ -182,6 +183,7 @@ export default function FindPage() {
       alive = false;
     };
   }, [
+    handoffToSearch,
     urlFields.q,
     urlFields.kind,
     urlFields.author,
@@ -571,6 +573,10 @@ export default function FindPage() {
         </div>
       </section>
     );
+  }
+
+  if (handoffToSearch) {
+    return <Navigate to={`/search?${params.toString()}#beyond`} replace />;
   }
 
   return (

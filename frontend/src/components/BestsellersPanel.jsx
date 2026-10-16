@@ -76,6 +76,8 @@ export default function BestsellersPanel({ list = "hardcover-fiction", date = "c
   const [requestJobs, setRequestJobs] = useState({});
   const [requestError, setRequestError] = useState("");
   const [batchNote, setBatchNote] = useState("");
+  const [addPhase, setAddPhase] = useState("idle");
+  const [addNote, setAddNote] = useState("");
 
   useEffect(() => {
     setListSlug(list || "hardcover-fiction");
@@ -108,6 +110,8 @@ export default function BestsellersPanel({ list = "hardcover-fiction", date = "c
     setChasePhase("idle");
     setRequestJobs({});
     setBatchNote("");
+    setAddPhase("idle");
+    setAddNote("");
     api
       .llmList({ preset: listSlug, date: listDate })
       .then((data) => {
@@ -161,6 +165,7 @@ export default function BestsellersPanel({ list = "hardcover-fiction", date = "c
     (phase === "done" && !books.length ? "No titles on this list yet." : "");
   const emptyCopy = rawEmpty ? humanError(rawEmpty) : "";
   const canRequest = Boolean(payload?.can_request);
+  const canConfirm = Boolean(payload?.can_confirm);
   const chasedCount = Object.keys(chaseByKey).length;
   const batchBusy = chasePhase === "searching" || chasePhase === "requesting";
   const requestedCount = Object.keys(requestJobs).length;
@@ -183,6 +188,35 @@ export default function BestsellersPanel({ list = "hardcover-fiction", date = "c
     const status = data.job?.status || "asked";
     setRequestJobs((prev) => ({ ...prev, [jobKey]: status }));
     return status;
+  }
+
+  async function confirmAddMissing() {
+    if (!missing.length || addPhase === "sending") return;
+    setAddPhase("sending");
+    setAddNote("");
+    setRequestError("");
+    try {
+      const data = await api.addMissing(
+        missing.map((book) => ({
+          title: book.title,
+          author: book.author,
+          isbn: book.isbn || "",
+          series_name: book.series_name || book.series || "",
+          series_index: book.series_index || "",
+        })),
+      );
+      const filed = (data.filed || []).length;
+      const skipped = (data.skipped || []).length;
+      setAddPhase("done");
+      setAddNote(
+        skipped
+          ? `Filed ${filed} on Wanted. ${skipped} already on the shelf.`
+          : `Filed ${filed} on Wanted.`,
+      );
+    } catch (err) {
+      setAddPhase("idle");
+      setRequestError(humanError(err));
+    }
   }
 
   async function requestMissing() {
@@ -344,6 +378,38 @@ export default function BestsellersPanel({ list = "hardcover-fiction", date = "c
         <p className="lede" data-testid="bestsellers-empty">
           {emptyCopy}
         </p>
+      ) : null}
+      {missing.length && phase === "done" && canConfirm ? (
+        <div className="bestsellers-batch" data-testid="bestsellers-add-missing">
+          {addPhase === "confirm" ? (
+            <button
+              type="button"
+              className="cta compact"
+              onClick={confirmAddMissing}
+              data-testid="bestsellers-add-missing-confirm"
+            >
+              {`Confirm ${missing.length} to Wanted`}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="cta outline compact"
+              disabled={addPhase === "sending"}
+              onClick={() => setAddPhase("confirm")}
+              data-testid="bestsellers-add-missing-start"
+            >
+              {addPhase === "sending" ? "Filing…" : "Add all missing"}
+            </button>
+          )}
+          <p className="muted">
+            Files Wanted rows for titles that are not on the shelf. One confirm sends the batch. Nothing is grabbed.
+          </p>
+          {addNote ? (
+            <p className="lede" role="status" data-testid="bestsellers-add-missing-note">
+              {addNote}
+            </p>
+          ) : null}
+        </div>
       ) : null}
       {missing.length && phase === "done" ? (
         <div className="bestsellers-batch" data-testid="bestsellers-batch">

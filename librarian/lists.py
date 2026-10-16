@@ -16,7 +16,12 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 import httpx
 
-from librarian.audiobook_match import audiobook_find_fields, match_companion_audiobook
+from librarian.audiobook_match import (
+    audiobook_find_fields,
+    match_companion_audiobook,
+    match_prepared_catalog,
+    prepare_catalog_candidates,
+)
 from librarian.identify import isbn_match_keys, tidy_title, validated_isbn
 from librarian.indexers.query import strip_secret_query
 from librarian.indexers.scrub import public_indexer_hits
@@ -34,6 +39,8 @@ from librarian.nyt_books import (
     normalize_list_name,
     public_list_name,
 )
+from librarian.owned import ShelfIndex
+from librarian.wanted import AlreadyShelved, add_wanted, public_wanted
 
 logger = logging.getLogger(__name__)
 
@@ -458,6 +465,68 @@ def chase_missing_item(
             "audiobook": _lane_trace(audio_traced, lane="audiobook"),
         },
     }
+
+
+def file_missing_as_wanted(db: Any, items: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
+    """File one Wanted row per list item that is not already on the shelf.
+
+    Owned means ISBN, then title+author (a subtitle counts), then series+index.
+    One call files the whole batch. It does not search, open a Hold slip, or
+    call SABnzbd.
+    """
+    shelves = ShelfIndex(db)
+    prepared = prepare_catalog_candidates(shelves.books)
+    filed: List[Dict[str, Any]] = []
+    skipped: List[Dict[str, Any]] = []
+    for row in items:
+        if not isinstance(row, Mapping):
+            continue
+        title = tidy_title(str(row.get("title") or ""))
+        author = tidy_title(str(row.get("author") or ""))
+        isbn = str(row.get("isbn") or "").strip()
+        series_name = str(row.get("series_name") or row.get("series") or "").strip()
+        series_index = str(row.get("series_index") or "").strip()
+        probe = {
+            "title": title,
+            "author": author,
+            "isbn": isbn,
+            "series_name": series_name,
+            "series_index": series_index,
+            "kind": "book",
+        }
+        owned = match_prepared_catalog(probe, prepared)
+        if owned and owned.get("id"):
+            skipped.append(
+                {
+                    "title": title,
+                    "author": author,
+                    "isbn": isbn,
+                    "work_id": owned.get("id"),
+                    "reason": "on_shelf",
+                }
+            )
+            continue
+        if not title and not isbn:
+            skipped.append({"title": title, "author": author, "isbn": isbn, "reason": "untitled"})
+            continue
+        try:
+            wanted = add_wanted(
+                db,
+                {"kind": "book", "title": title, "author": author, "isbn": isbn},
+            )
+        except AlreadyShelved as error:
+            skipped.append(
+                {
+                    "title": title,
+                    "author": author,
+                    "isbn": isbn,
+                    "work_id": error.work_id,
+                    "reason": "on_shelf",
+                }
+            )
+            continue
+        filed.append(public_wanted(wanted))
+    return {"filed": filed, "skipped": skipped, "jobs_created": 0}
 
 
 def chase_missing_items(
