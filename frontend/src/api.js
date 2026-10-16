@@ -58,11 +58,12 @@ export const api = {
     return request(`/browse/facets${qs ? `?${qs}` : ""}`);
   },
   search: (q, extras = {}) => {
-    const { beyond = false, kind = "", title, author, isbn, series, issue, artist, album, year } = extras;
+    const { beyond = false, kind = "", mode = "", title, author, isbn, series, issue, artist, album, year } = extras;
     const params = new URLSearchParams();
     if (q) params.set("q", q);
     if (beyond) params.set("beyond", "1");
     if (kind) params.set("kind", kind);
+    if (mode) params.set("mode", mode);
     const fields = { title, author, isbn, series, issue, artist, album, year };
     for (const [key, value] of Object.entries(fields)) {
       if (value) params.set(key, value);
@@ -95,6 +96,10 @@ export const api = {
   removeFromShelf: (shelfId, workId) =>
     request(`/shelves/${encodeURIComponent(shelfId)}/works/${encodeURIComponent(workId)}`, { method: "DELETE" }),
   requestItem: (item) => request("/request", { method: "POST", body: JSON.stringify(item) }),
+  addMissing: (items) =>
+    request("/lists/add-missing", { method: "POST", body: JSON.stringify({ items: items || [] }) }),
+  shelvePublicDomain: (edition) =>
+    request("/public-domain/shelve", { method: "POST", body: JSON.stringify(edition || {}) }),
   wanted: ({ kind = "", page = 1, pageSize = 50, status = "" } = {}) => {
     const params = new URLSearchParams();
     if (kind) params.set("kind", kind);

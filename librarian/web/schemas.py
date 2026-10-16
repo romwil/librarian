@@ -237,6 +237,29 @@ class WantedSearchPayload(BaseModel):
     kind: str = ""
 
 
+class AddMissingItem(BaseModel):
+    title: str = ""
+    author: str = ""
+    isbn: str = ""
+    series_name: str = ""
+    series_index: str = ""
+    series: str = ""
+
+
+class AddMissingPayload(BaseModel):
+    items: List[AddMissingItem] = []
+
+
+class PublicDomainShelvePayload(BaseModel):
+    source: str = ""
+    id: str = ""
+    title: str = ""
+    author: str = ""
+    isbn: str = ""
+    download_url: str = ""
+    kind: str = "book"
+
+
 class WantedAskPayload(BaseModel):
     guid: str = ""
     title: str = ""

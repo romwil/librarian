@@ -19,17 +19,26 @@ from librarian.indexers.scrub import (
     public_indexer_hits,
 )
 from librarian.kinds import ALL_KINDS, EXTRA_KINDS
-from librarian.lists import chase_missing_items, curated_list_payload, list_presets
+from librarian.lists import (
+    chase_missing_items,
+    curated_list_payload,
+    file_missing_as_wanted,
+    list_presets,
+)
 from librarian.nyt_books import normalize_list_date
+from librarian.public_domain import PublicDomainError, search_public_domain, shelve_edition
 from librarian.rate_limit import enforce_rate_limit
 from librarian.search_forgive import search_with_forgiveness
+from librarian.search_modes import apply_search_mode, normalize_search_mode
 from librarian.suggest import SUGGEST_FIELDS, suggest_items
 from librarian.web.availability import annotate_browse_availability
 from librarian.web.deps import WebDeps
 from librarian.web.schemas import (
+    AddMissingPayload,
     FinishSetEtaPayload,
     LlmListChasePayload,
     LlmListPayload,
+    PublicDomainShelvePayload,
 )
 from librarian.web.serializers import public_work, public_works
 
@@ -54,12 +63,20 @@ def register_search_routes(app: FastAPI, deps: WebDeps) -> None:
         artist: str = "",
         album: str = "",
         year: str = "",
+        mode: str = "",
     ):
         user = request.state.user
         local_kind = kind if kind in ALL_KINDS else None
         local_q = q.strip()
+        search_mode = normalize_search_mode(mode)
         forgiven = {"local": [], "did_you_mean": [], "forgave": False}
-        if local_q:
+        if local_q and search_mode:
+            forgiven = {
+                "local": db.search_works_mode(local_q, search_mode, limit=24, kind=local_kind),
+                "did_you_mean": [],
+                "forgave": False,
+            }
+        elif local_q:
             forgiven = search_with_forgiveness(db, local_q, limit=24, kind=local_kind)
         local = public_works(forgiven.get("local") or [])
         indexer = []
@@ -76,6 +93,8 @@ def register_search_routes(app: FastAPI, deps: WebDeps) -> None:
             "album": album,
             "year": year,
         }
+        if search_mode:
+            sought = apply_search_mode(sought, search_mode, local_q or q)
         has_beyond_query = bool(beyond) and any(
             str(sought[key] or "").strip() for key in sought if key != "kind"
         )
@@ -110,13 +129,24 @@ def register_search_routes(app: FastAPI, deps: WebDeps) -> None:
                 "rank_reason": rank_reason,
             }
         owner_trace = user["role"] in ("owner", "op")
+        public_domain: List[Dict[str, Any]] = []
+        public_domain_error = None
+        if has_beyond_query:
+            try:
+                public_domain = search_public_domain(local_q or q, mode=search_mode or "title")
+            except Exception as error:  # noqa: BLE001 — lane must not blank the shelf
+                public_domain = []
+                public_domain_error = str(error)
         return {
             "q": q,
+            "mode": search_mode,
             "local": local,
             "did_you_mean": list(forgiven.get("did_you_mean") or []),
             "forgave": bool(forgiven.get("forgave")),
             "beyond": public_indexer_hits(indexer),
             "beyond_error": beyond_error,
+            "public_domain": public_domain,
+            "public_domain_error": public_domain_error,
             "pick": public_indexer_hit(pick) if isinstance(pick, dict) else pick,
             "candidates": public_indexer_hits(candidates),
             "rank_method": rank_method,
@@ -290,6 +320,29 @@ def register_search_routes(app: FastAPI, deps: WebDeps) -> None:
             "can_request": request.state.user["role"] in ("owner", "op", "reader"),
             "can_confirm": request.state.user["role"] in ("owner", "op"),
         }
+
+    @app.post("/api/lists/add-missing")
+    def curated_add_missing(payload: AddMissingPayload, request: Request):
+        """One confirm files Wanted rows for list items not on the shelf.
+
+        Does not search, does not open a slip per title, and does not call SABnzbd.
+        """
+        require_role(request.state.user, "owner", "op")
+        items = [row.model_dump() for row in (payload.items or [])]
+        result = file_missing_as_wanted(db, items)
+        result["can_confirm"] = True
+        return result
+
+    @app.post("/api/public-domain/shelve")
+    def public_domain_shelve(payload: PublicDomainShelvePayload, request: Request):
+        """Shelve one Gutenberg or Standard Ebooks epub. No SABnzbd."""
+        require_role(request.state.user, "owner", "op")
+        try:
+            result = shelve_edition(db, settings(), payload.model_dump())
+        except PublicDomainError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        work = public_work(db.get_work(str(result.get("work_id") or "")))
+        return {**result, "work": work}
 
     @app.post("/api/find/finish-eta")
     def finish_eta(payload: FinishSetEtaPayload, request: Request):
