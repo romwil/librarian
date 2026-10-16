@@ -769,13 +769,17 @@ def progress_ingest_job(db: Database, settings: Settings, job_id: str) -> Dict[s
         )
         return updated or job
     identity = organized.get("identity") or {}
-    work = organized["work"]
-    if organized.get("skipped_duplicate") or organized.get("already_on_shelf"):
+    if organized.get("skipped_unreadable"):
         final = "skipped"
-    elif organized["organized"] or organized.get("expanded"):
-        final = "organized"
+        work = None
     else:
-        final = "review"
+        work = organized.get("work")
+        if organized.get("skipped_duplicate") or organized.get("already_on_shelf"):
+            final = "skipped"
+        elif organized.get("organized") or organized.get("expanded"):
+            final = "organized"
+        else:
+            final = "review"
     updated = db.update_job(
         job_id,
         status=final,

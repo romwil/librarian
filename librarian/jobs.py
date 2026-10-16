@@ -326,16 +326,22 @@ def poll_job(
             indexer_item=item,
             move_source=True,
         )
-        if organized.get("skipped_duplicate") or organized.get("already_on_shelf"):
+        if organized.get("skipped_unreadable"):
             final = "skipped"
-        elif organized["organized"] or organized.get("expanded"):
+            work_id = None
+        elif organized.get("skipped_duplicate") or organized.get("already_on_shelf"):
+            final = "skipped"
+            work_id = organized["work"]["id"]
+        elif organized.get("organized") or organized.get("expanded"):
             final = "organized"
+            work_id = organized["work"]["id"]
         else:
             final = "review"
+            work_id = organized["work"]["id"] if organized.get("work") else None
         updated = db.update_job(
             job_id,
             status=final,
-            work_id=organized["work"]["id"],
+            work_id=work_id,
             error=None,
             **sab_fields,
         )

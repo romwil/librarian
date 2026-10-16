@@ -215,13 +215,23 @@ def test_apply_review_no_payload_raises(tmp_path):
         folder=folder,
         indexer_item={"title": "Mystery", "category": 7020},
     )
-    assert parked["work"]["review_reason"] == "no_payload"
-    assert parked["work"]["folder_path"] == str(folder)
+    assert parked.get("skipped_unreadable") is True
+    assert parked.get("work") is None
+    assert db.count_works(review_state="needs_review") == 0
+    slip = db.upsert_work(
+        {
+            "kind": "book",
+            "title": "Mystery",
+            "review_state": "needs_review",
+            "review_reason": "no_payload",
+            "folder_path": str(folder),
+        }
+    )
     with pytest.raises(ValueError, match="cannot invent"):
         apply_review(
             db,
             _settings(tmp_path),
-            work_id=parked["work"]["id"],
+            work_id=slip["id"],
             folder=folder,
             identity_overrides={"title": "Nope", "kind": "book"},
         )

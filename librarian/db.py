@@ -341,6 +341,7 @@ WORK_EXTRA_COLUMNS = {
     "repair_fail_count": "INTEGER",
     "asin": "TEXT",
     "narrator": "TEXT",
+    "subtitle": "TEXT",
 }
 
 FILE_EXTRA_COLUMNS = {
@@ -1030,6 +1031,97 @@ class Database:
         with self._connect() as conn:
             row = conn.execute(sql, args).fetchone()
         return _row_dict(row)
+
+    def list_shelved_by_isbn(self, isbn: str) -> List[Dict[str, Any]]:
+        digits = re.sub(r"[^0-9Xx]", "", isbn or "").upper()
+        if not digits:
+            return []
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM works
+                WHERE review_state = 'none'
+                  AND isbn IS NOT NULL AND isbn != ''
+                  AND replace(replace(upper(isbn), '-', ''), ' ', '') = ?
+                """,
+                (digits,),
+            ).fetchall()
+        return [_row_dict(row) or {} for row in rows]
+
+    def list_shelved_by_title_author(
+        self, *, kind: str, title: str, author: str
+    ) -> List[Dict[str, Any]]:
+        title_text = str(title or "").strip()
+        author_text = str(author or "").strip()
+        if not title_text or not author_text:
+            return []
+        clauses = [
+            "review_state = 'none'",
+            "lower(title) = lower(?)",
+            "lower(author) = lower(?)",
+            "trim(author) != ''",
+        ]
+        args: List[Any] = [title_text, author_text]
+        if kind:
+            clauses.append("kind = ?")
+            args.append(kind)
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"SELECT * FROM works WHERE {' AND '.join(clauses)}",
+                args,
+            ).fetchall()
+        return [_row_dict(row) or {} for row in rows]
+
+    def list_shelved_by_subtitle(self, subtitle: str) -> List[Dict[str, Any]]:
+        text = str(subtitle or "").strip()
+        if not text:
+            return []
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM works
+                WHERE review_state = 'none'
+                  AND subtitle IS NOT NULL AND trim(subtitle) != ''
+                  AND lower(subtitle) = lower(?)
+                """,
+                (text,),
+            ).fetchall()
+        return [_row_dict(row) or {} for row in rows]
+
+    def list_shelved_by_series(
+        self, *, kind: str, series_name: str, series_index: str
+    ) -> List[Dict[str, Any]]:
+        series = str(series_name or "").strip()
+        index = str(series_index or "").strip()
+        if not series or not index:
+            return []
+        clauses = [
+            "review_state = 'none'",
+            "lower(series_name) = lower(?)",
+            "lower(series_index) = lower(?)",
+        ]
+        args: List[Any] = [series, index]
+        if kind:
+            clauses.append("kind = ?")
+            args.append(kind)
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"SELECT * FROM works WHERE {' AND '.join(clauses)}",
+                args,
+            ).fetchall()
+        return [_row_dict(row) or {} for row in rows]
+
+    def set_work_subtitle(self, work_id: str, subtitle: str) -> None:
+        text = str(subtitle or "").strip()
+
+        def _write() -> None:
+            with self._connect() as conn:
+                conn.execute(
+                    "UPDATE works SET subtitle = ? WHERE id = ?",
+                    (text, work_id),
+                )
+
+        self.run_write(_write, label="set_work_subtitle")
 
     def list_works(
         self,

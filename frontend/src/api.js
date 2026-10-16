@@ -116,6 +116,8 @@ export const api = {
   askWanted: (id, hit) =>
     request(`/wanted/${encodeURIComponent(id)}/ask`, { method: "POST", body: JSON.stringify(hit || {}) }),
   review: () => request("/review"),
+  reviewAcceptClear: (reason) =>
+    request("/review/accept-clear", { method: "POST", body: JSON.stringify({ reason: reason || "" }) }),
   reviewApply: (id, body) => request(`/review/${id}/apply`, { method: "POST", body: JSON.stringify(body) }),
   reviewSkip: (id) => request(`/review/${id}/skip`, { method: "POST" }),
   reviewRepair: (id) => request(`/review/${id}/repair`, { method: "POST" }),

@@ -27,6 +27,8 @@ import {
   reviewProgressDwellRemainingMs,
   reviewPurgeProgressVisible,
   reviewReasonCopy,
+  reviewReasonFourWords,
+  slipRowIsPathClear,
   reviewTerminalProgressStillVisible,
   REVIEW_PROGRESS_DWELL_MS,
   unpackStuckWorks,
@@ -500,5 +502,42 @@ describe("smart Holds desk grouping", () => {
     assert.match(reviewPageSrc, /data-testid="owned-slip-note"/);
     assert.match(reviewPageSrc, /recommendedMotionCtaClass/);
     assert.doesNotMatch(reviewPageSrc, /bagging/i);
+  });
+
+  it("renders a slip as one line: title, four-word reason, one button", () => {
+    const start = reviewPageSrc.indexOf('data-testid="hold-slip-line"');
+    const end = reviewPageSrc.indexOf('data-testid="hold-slip-more"');
+    assert.ok(start >= 0 && end > start);
+    const line = reviewPageSrc.slice(start, end);
+    assert.match(line, /ticket-title/);
+    assert.match(line, /reviewReasonFourWords/);
+    assert.match(line, /data-testid="review-reason-copy"/);
+    const buttons = line.match(/<button/g) || [];
+    assert.equal(buttons.length, 1);
+    assert.match(reviewPageSrc, /Accept the clear ones/);
+    assert.match(reviewPageSrc, /slipRowIsPathClear/);
+    assert.equal(reviewReasonFourWords("unknown_identity").split(/\s+/).length, 4);
+    assert.equal(reviewReasonFourWords("convert_failed"), "Convert failed twice now");
+    assert.equal(
+      slipRowIsPathClear({
+        kind: "book",
+        folder_path: "/data/media/newlib/William W. Johnstone/Fire in the Ashes",
+        folder_diagnosis: { path_clear: true },
+      }),
+      true,
+    );
+    assert.equal(
+      slipRowIsPathClear({
+        kind: "book",
+        folder_path: "/data/inbox/weird-dump",
+        review_reason: "unknown_identity",
+      }),
+      false,
+    );
+    const diagnosis = reviewDiagnosisCopy({
+      review_reason: "low_confidence",
+      folder_diagnosis: {},
+    });
+    assert.equal(diagnosis.whatsWrong, "");
   });
 });

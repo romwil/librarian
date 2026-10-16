@@ -534,6 +534,11 @@ def organize_identified(
     preview = identify_completed(folder, **identify_kwargs)
     kind = str((identity_overrides or {}).get("kind") or preview["identity"].get("kind") or "")
     converted = maybe_convert_payload(folder, kind, **convert_kwargs)
+    # A convert that fails once is tried again. A slip exists only after the second failure.
+    if not converted.get("converted") and kind == KIND_COMIC:
+        again = maybe_convert_payload(folder, kind, **convert_kwargs)
+        if again.get("converted"):
+            converted = again
     result = (
         identify_completed(folder, **identify_kwargs)
         if converted["converted"] or unpacked["unpacked"]
@@ -541,6 +546,11 @@ def organize_identified(
     )
     identity = _merge_identity(dict(result["identity"]), identity_overrides)
     files = [Path(path) for path in result["files"]]
+    from librarian.slip_gate import sign_path_clear_dict
+
+    sign_path_clear_dict(identity, folder, files)
+    if identity.get("confidence") == "high" and not identity.get("review_reason"):
+        result["auto_organize"] = True
     remux_note: Dict[str, Any] = {"remuxed": False}
     if (
         identity.get("kind") == KIND_AUDIOBOOK
@@ -603,6 +613,41 @@ def organize_identified(
         identity["confidence"] = "low"
         result["auto_organize"] = False
     result["identity"] = identity
+    if not force and not files:
+        problem = inspect_complete_folder(folder).get("problem")
+        if problem in {REVIEW_NO_PAYLOAD, REVIEW_UNPACK_STUCK}:
+            return {
+                "organized": False,
+                "skipped_unreadable": True,
+                "work": None,
+                "identity": identity,
+                "files": [],
+                "reason": "unreadable",
+                "unpacked": unpacked,
+                "converted": converted,
+            }
+    if not force:
+        from librarian.slip_gate import shelf_match_for_organize
+
+        shelf_match = shelf_match_for_organize(db, identity)
+        if shelf_match["ambiguous"]:
+            result["auto_organize"] = False
+            identity["_keep_slip"] = True
+        elif shelf_match["drop"] and shelf_match.get("work"):
+            subtitle = str(identity.get("subtitle") or identity.get("comic_subtitle") or "").strip()
+            if subtitle:
+                db.set_work_subtitle(str(shelf_match["work"]["id"]), subtitle)
+            from librarian.owned_slip import ALREADY_ON_SHELF
+
+            return {
+                "work": shelf_match["work"],
+                "identity": identity,
+                "organized": False,
+                "already_on_shelf": True,
+                "skipped_duplicate": True,
+                "reason": ALREADY_ON_SHELF,
+                "files": [str(path) for path in files],
+            }
     source_folder = _source_folder_value(folder)
     payload_names = [path.name for path in files]
     part_fields = _part_fields_for_organize(
@@ -626,7 +671,7 @@ def organize_identified(
                 "indexer_guid": (indexer_item or {}).get("guid"),
             }
         )
-        released = _owned_shelf_release(db, work)
+        released = None if identity.get("_keep_slip") else _owned_shelf_release(db, work)
         if released:
             return {
                 "work": released["work"],

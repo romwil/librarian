@@ -35,6 +35,8 @@ import {
   reviewProgressDwellRemainingMs,
   reviewPurgeProgressVisible,
   reviewReasonCopy,
+  reviewReasonFourWords,
+  slipRowIsPathClear,
   extraFilesWorks,
   unpackStuckWorks,
 } from "../review.js";
@@ -487,6 +489,31 @@ export default function ReviewPage() {
     }
   }
 
+  async function acceptClear(reason) {
+    setBulkNote("");
+    try {
+      const result = await api.reviewAcceptClear(reason);
+      const count = Number(result?.accepted || 0);
+      setBulkNote(count ? `Shelved ${count} clear ones.` : "No path-clear rows left.");
+      reload();
+    } catch (err) {
+      setBulkNote(humanError(err));
+    }
+  }
+
+  function runPrimary(work) {
+    const motion = reviewActionsFromWork(work).recommendedMotion;
+    if (motion === "repair") return repair(work);
+    if (motion === "retry") return retry(work);
+    if (motion === "regrab") return retrieveRelease(work, "regrab");
+    if (motion === "request_new") return retrieveRelease(work, "new_version");
+    if (motion === "skip") return skip(work);
+    if (motion === "suggest") return suggestWithLlm(work);
+    if (motion === "clear_extra_files") return bulkReprocessExtraFiles();
+    if (motion === "wait") return undefined;
+    return apply(work);
+  }
+
   async function bulkPurgeDuplicates() {
     if (purgeRunning) return;
     const visible = works.length;
@@ -739,9 +766,21 @@ export default function ReviewPage() {
                 </h2>
                 <p className="muted holds-group-hint">{group.hint}</p>
               </div>
-              <p className="chip holds-group-motion" data-testid="holds-group-motion">
-                Recommended: {recommendedMotionLabel(group.recommendedMotion)}
-              </p>
+              <div className="cta-row compact">
+                {group.works.some((row) => slipRowIsPathClear(row)) ? (
+                  <button
+                    type="button"
+                    className="cta compact"
+                    data-testid="accept-clear-ones"
+                    onClick={() => acceptClear(group.reason)}
+                  >
+                    Accept the clear ones
+                  </button>
+                ) : null}
+                <p className="chip holds-group-motion" data-testid="holds-group-motion">
+                  Recommended: {recommendedMotionLabel(group.recommendedMotion)}
+                </p>
+              </div>
             </header>
             <ul className="stack holds-group-slips">
               {group.works.map((work) => {
@@ -756,6 +795,9 @@ export default function ReviewPage() {
           const workBusy = Boolean(busy[work.id]);
           const activeAction = typeof busy[work.id] === "string" ? busy[work.id] : "";
           const statusNote = ticketStatusNote(busy, actionNotes, work.id) || suggestNotes[work.id] || "";
+          const slipError = errors[work.id] || "";
+          const visibleNote = statusNote && statusNote !== slipError ? statusNote : "";
+          const primaryLabel = recommendedMotionLabel(actions.recommendedMotion);
           return (
             <li
               key={work.id}
@@ -767,11 +809,27 @@ export default function ReviewPage() {
               data-reason={reason || ""}
               aria-busy={workBusy || undefined}
             >
+              <div className="hold-slip-line" data-testid="hold-slip-line">
+                <strong className="ticket-title">{draft.title || work.title || "Untitled"}</strong>
+                <span className="muted hold-slip-reason" data-testid="review-reason-copy">
+                  {reviewReasonFourWords(reason)}
+                </span>
+                <button
+                  type="button"
+                  className="cta compact"
+                  data-testid="hold-slip-primary"
+                  disabled={workBusy || (actions.recommendedMotion === "apply" && !canApply)}
+                  onClick={() => runPrimary(work)}
+                >
+                  {workBusy ? busyLabel(activeAction || "apply") : primaryLabel}
+                </button>
+              </div>
+              <details className="ticket-diagnosis" data-testid="hold-slip-more">
+                <summary>More</summary>
               <header className="ticket-head">
                 <p className="kicker">{focused ? "From Queue" : "Slip"}</p>
                 <span className="seal">{draft.kind || work.kind}</span>
               </header>
-              <strong className="ticket-title">{draft.title || work.title || "Untitled"}</strong>
               {actions.recommendedMotion ? (
                 <p className="chip is-on" data-testid="hold-slip-recommended">
                   Recommended: {recommendedMotionLabel(actions.recommendedMotion)}
@@ -782,9 +840,6 @@ export default function ReviewPage() {
                   Queued for tonight
                 </p>
               ) : null}
-              <p className="lede" data-testid="review-reason-copy">
-                {reviewReasonCopy(reason, work.folder_diagnosis || {})}
-              </p>
               <details className="ticket-diagnosis" data-testid="review-diagnosis">
                 <summary>About this slip</summary>
                 <div className="empty-note">
@@ -794,9 +849,12 @@ export default function ReviewPage() {
                   <p>
                     <strong>What we tried.</strong> {diagnosis.tried}
                   </p>
-                  <p>
-                    <strong>What’s wrong.</strong> {diagnosis.whatsWrong}
-                  </p>
+                  {diagnosis.whatsWrong &&
+                  diagnosis.whatsWrong !== reviewReasonCopy(reason, work.folder_diagnosis || {}) ? (
+                    <p>
+                      <strong>What’s wrong.</strong> {diagnosis.whatsWrong}
+                    </p>
+                  ) : null}
                   <p>
                     <strong>What to do.</strong> {diagnosis.nextSteps}
                   </p>
@@ -974,9 +1032,9 @@ export default function ReviewPage() {
                   ) : null}
                 </div>
               )}
-              {statusNote ? (
+              {visibleNote ? (
                 <p className="muted" data-testid="review-action-note" role="status">
-                  {statusNote}
+                  {visibleNote}
                 </p>
               ) : null}
               {matchBags[work.id]?.candidates?.length ? (
@@ -1156,6 +1214,7 @@ export default function ReviewPage() {
                   </span>
                 </div>
               </form>
+              </details>
             </li>
           );
               })}
