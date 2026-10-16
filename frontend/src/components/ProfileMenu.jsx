@@ -232,7 +232,7 @@ export default function ProfileMenu({
                   role="menuitem"
                   onClick={() => setOpen(false)}
                 >
-                  Household Settings
+                  Settings
                 </Link>
               ) : null}
               {owner ? (
@@ -247,12 +247,22 @@ export default function ProfileMenu({
               ) : null}
               {op ? (
                 <Link
+                  to="/review"
+                  className="profile-menu-link"
+                  role="menuitem"
+                  onClick={() => setOpen(false)}
+                >
+                  Holds
+                </Link>
+              ) : null}
+              {op ? (
+                <Link
                   to="/queue"
                   className="profile-menu-link"
                   role="menuitem"
                   onClick={() => setOpen(false)}
                 >
-                  Queue
+                  Downloads
                 </Link>
               ) : null}
               </>

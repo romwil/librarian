@@ -19,35 +19,14 @@ test("More shelves is a closed disclosure, not a second visual system", () => {
   assert.match(moreSrc, /\{MORE_SHELVES_LABEL\}/);
 });
 
-test("Hall keeps living shelves first and folds the catalog behind More shelves", () => {
-  const moreAt = hallSrc.indexOf("<ShelfMore>");
-  assert.ok(moreAt > 0);
-  const before = hallSrc.slice(0, moreAt);
-  const after = hallSrc.slice(moreAt);
-  for (const mark of [
-    "TonightShelf",
-    "SeriesCatchUp",
-    "Continue listening",
-    "Volumes waiting under the lamp",
-    "What’s New",
-    'title="Favorites"',
-  ]) {
-    assert.ok(before.includes(mark), mark);
-    assert.equal(after.includes(mark), false, mark);
-  }
-  for (const mark of [
-    "<NamedShelves",
-    'title="Books"',
-    'title="Magazines"',
-    'title="Comics"',
-    'title="Audiobooks"',
-    'title="Incoming Music"',
-    "gapsGiftTitle()",
-  ]) {
-    assert.ok(after.includes(mark), mark);
-    assert.equal(before.includes(mark), false, mark);
-  }
-  assert.match(hallSrc, /<\/ShelfMore>/);
+test("Hall shows the catalog on the page and does not hide it behind More shelves", () => {
+  assert.equal(hallSrc.includes("ShelfMore"), false);
+  assert.match(hallSrc, /HallCollection/);
+  assert.match(hallSrc, /TonightShelf/);
+  assert.match(hallSrc, /Continue reading/);
+  const shelvesAt = hallSrc.indexOf('data-testid="hall-shelves"');
+  const collectionAt = hallSrc.indexOf("<HallCollection");
+  assert.ok(shelvesAt > 0 && collectionAt > shelvesAt);
 });
 
 test("Search shows local hits first and folds beyond-doors behind More shelves", () => {

@@ -32,10 +32,10 @@ test("normalizeUiTheme accepts lights_up lights_down system", () => {
   assert.equal(normalizeUiTheme("system"), "system");
 });
 
-test("normalizeUiTheme defaults invalid values to system", () => {
-  assert.equal(normalizeUiTheme("dark"), "system");
-  assert.equal(normalizeUiTheme(null), "system");
-  assert.equal(normalizeUiTheme(""), "system");
+test("normalizeUiTheme defaults invalid values to paper", () => {
+  assert.equal(normalizeUiTheme("dark"), "lights_up");
+  assert.equal(normalizeUiTheme(null), "lights_up");
+  assert.equal(normalizeUiTheme(""), "lights_up");
 });
 
 test("resolveEffectiveTheme passes through explicit prefs", () => {
@@ -84,13 +84,13 @@ test("applyUiTheme persists preference without document", () => {
   assert.equal(store.get("librarian.ui_theme"), "lights_up");
 });
 
-test("loadStoredUiTheme defaults to system when unset", () => {
+test("loadStoredUiTheme defaults to paper when unset", () => {
   const store = new Map();
   const storage = {
     getItem: (k) => (store.has(k) ? store.get(k) : null),
     setItem: (k, v) => store.set(k, v),
   };
-  assert.equal(loadStoredUiTheme(storage), "system");
+  assert.equal(loadStoredUiTheme(storage), "lights_up");
 });
 
 test("font step persist and load round-trip", () => {

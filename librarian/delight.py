@@ -622,8 +622,8 @@ UI_FONT_STEP_MAX = 5
 
 
 def normalize_ui_theme(value: object) -> str:
-    text = str(value or "system").strip().lower()
-    return text if text in UI_THEME_CHOICES else "system"
+    text = str(value or "lights_up").strip().lower()
+    return text if text in UI_THEME_CHOICES else "lights_up"
 
 
 def normalize_ui_font_step(value: object) -> int:

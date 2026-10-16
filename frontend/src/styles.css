@@ -1,37 +1,37 @@
-/* Librarian Reading Room — paste tokens into the SPA :root.
-   Soul: night library, brass lamp, paper dust, gilt. */
+/* Librarian — warm paper by default. Literata for titles, Source Sans for UI.
+   One accent, on the primary action. Dark theme is opt-in. */
 
 @import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,600;0,7..72,700;1,7..72,400;1,7..72,600&family=Source+Sans+3:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap");
 @import "./styles/motion.css";
 
 :root {
-  /* Fallback night-library colors before FOUC / data-theme apply */
-  color-scheme: dark;
-  --bg: #110d09;
-  --surface: #1a1410;
-  --surface-2: #231b14;
-  --surface-raised: #2a2118;
-  --border-subtle: #3a2e22;
-  --border: #4a3c2c;
-  --text: #f4ead6;
-  --fg: #f4ead6;
-  --muted: #b5a48a;
-  --paper: #e8dcc4;
-  --gilt: #e4c078;
-  --accent: #c9954a;
-  --accent-2: #a87838;
-  --accent-soft: rgba(201, 149, 74, 0.16);
-  --accent-text: #1a1208;
-  --lamp: #f0b85a;
-  --lamp-glow: rgba(240, 184, 90, 0.22);
-  --dust: rgba(232, 220, 196, 0.07);
-  --leather: #6b3e2a;
-  --danger: #c47a6c;
-  --success: #7d9a78;
-  --workspace-base: #0e0b08;
-  --workspace-wash-a: #2a1c10;
-  --workspace-wash-b: #161018;
-  --menu-hover: rgba(244, 234, 214, 0.08);
+  /* Warm paper before a stored theme applies. */
+  color-scheme: light;
+  --bg: #f3ecdf;
+  --surface: #faf6ee;
+  --surface-2: #e9e0d0;
+  --surface-raised: #fffdf8;
+  --border-subtle: #e0d5c4;
+  --border: #cbbfaa;
+  --text: #1c1612;
+  --fg: #1c1612;
+  --muted: #6e6256;
+  --paper: #f3ecdf;
+  --gilt: #cbbfaa;
+  --accent: #8c3a2f;
+  --accent-2: #8c3a2f;
+  --accent-soft: rgba(140, 58, 47, 0.1);
+  --accent-text: #fffdf8;
+  --lamp: #f3ecdf;
+  --lamp-glow: transparent;
+  --dust: transparent;
+  --leather: #6e6256;
+  --danger: #8c3a2f;
+  --success: #3f6b45;
+  --workspace-base: #f3ecdf;
+  --workspace-wash-a: #f3ecdf;
+  --workspace-wash-b: #f3ecdf;
+  --menu-hover: rgba(28, 22, 18, 0.06);
 
   /* —— Type —— */
   --font-display: "Literata", "Palatino Linotype", Palatino, serif;
@@ -112,34 +112,34 @@ html[data-theme="lights-down"] {
   --menu-hover: rgba(244, 234, 214, 0.08);
 }
 
-/* Day hall / Lights Up — warm paper and tan, not flat white */
+/* Paper / Lights Up — warm paper, ink, one accent on the primary action */
 html[data-theme="lights-up"] {
   color-scheme: light;
-  --bg: #f0e6d2;
-  --surface: #f7f0e2;
-  --surface-2: #e8dcc4;
-  --surface-raised: #fbf6eb;
-  --border-subtle: #d4c4a8;
-  --border: #c0ab88;
-  --text: #1a1208;
-  --fg: #1a1208;
-  --muted: #5c4e3a;
-  --paper: #3a2e22;
-  --gilt: #9a6b2f;
-  --accent: #a87838;
-  --accent-2: #8a622e;
-  --accent-soft: rgba(168, 120, 56, 0.16);
-  --accent-text: #fbf6eb;
-  --lamp: #c9954a;
-  --lamp-glow: rgba(201, 149, 74, 0.28);
-  --dust: rgba(58, 46, 34, 0.06);
-  --leather: #8b5340;
-  --danger: #a85a4e;
-  --success: #4f6f4c;
-  --workspace-base: #ebe1cc;
-  --workspace-wash-a: #f5ead4;
-  --workspace-wash-b: #e0d2b6;
-  --menu-hover: rgba(26, 18, 8, 0.06);
+  --bg: #f3ecdf;
+  --surface: #faf6ee;
+  --surface-2: #e9e0d0;
+  --surface-raised: #fffdf8;
+  --border-subtle: #e0d5c4;
+  --border: #cbbfaa;
+  --text: #1c1612;
+  --fg: #1c1612;
+  --muted: #6e6256;
+  --paper: #f3ecdf;
+  --gilt: #cbbfaa;
+  --accent: #8c3a2f;
+  --accent-2: #8c3a2f;
+  --accent-soft: rgba(140, 58, 47, 0.1);
+  --accent-text: #fffdf8;
+  --lamp: #f3ecdf;
+  --lamp-glow: transparent;
+  --dust: transparent;
+  --leather: #6e6256;
+  --danger: #8c3a2f;
+  --success: #3f6b45;
+  --workspace-base: #f3ecdf;
+  --workspace-wash-a: #f3ecdf;
+  --workspace-wash-b: #f3ecdf;
+  --menu-hover: rgba(28, 22, 18, 0.06);
 }
 
 html {
@@ -168,18 +168,16 @@ body {
 }
 
 body {
-  background:
-    radial-gradient(ellipse 90% 55% at 50% -8%, color-mix(in srgb, var(--lamp) 18%, transparent), transparent 58%),
-    radial-gradient(ellipse 50% 40% at 100% 0%, color-mix(in srgb, var(--leather) 22%, transparent), transparent 50%),
-    linear-gradient(180deg, var(--workspace-base) 0%, var(--bg) 42%);
+  background: var(--bg);
 }
 
 a {
-  color: var(--accent);
+  color: var(--text);
   text-decoration: none;
 }
 a:hover {
-  color: var(--gilt);
+  color: var(--text);
+  text-decoration: underline;
 }
 
 button,
@@ -301,7 +299,7 @@ input {
   backdrop-filter: blur(14px);
   border-top: 1px solid var(--border-subtle);
   display: none;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
 }
 .mobile-tabbar a {
   display: grid;
@@ -312,7 +310,7 @@ input {
   font-weight: 600;
 }
 .mobile-tabbar a.is-current {
-  color: var(--gilt);
+  color: var(--text);
 }
 
 @media (max-width: 720px) {
@@ -811,14 +809,14 @@ a.chip {
   color: var(--muted);
 }
 .chip:hover {
-  color: var(--gilt);
-  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
-  background: var(--accent-soft);
+  color: var(--text);
+  border-color: var(--border);
+  background: var(--surface-2);
 }
 .chip.is-on {
-  color: var(--accent-text);
-  background: var(--accent);
-  border-color: var(--accent);
+  color: var(--text);
+  background: var(--surface-raised);
+  border-color: var(--text);
 }
 .chip.is-disabled,
 .chip:disabled {
@@ -854,9 +852,9 @@ a.chip {
   border-color: var(--border);
 }
 .cta.outline {
-  background: var(--accent-soft);
-  color: var(--gilt);
-  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  background: transparent;
+  color: var(--text);
+  border-color: var(--border);
 }
 .cta.compact {
   padding: 6px 12px;
@@ -3586,6 +3584,38 @@ button.cover {
   margin: 0 auto;
   padding: var(--space-8) 0 var(--space-5);
 }
+.hall-collection {
+  width: min(var(--reading-column-max), calc(100% - 2 * var(--gutter)));
+  margin: 0 auto var(--space-8);
+}
+.hall-filters {
+  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+}
+.hall-noted-title {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: var(--rail-cover-w);
+  flex: 0 0 var(--rail-cover-w);
+  min-height: var(--rail-cover-h);
+  padding: 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  text-decoration: none;
+}
+.hall-noted-title strong {
+  font-family: var(--font-display);
+  font-weight: 600;
+}
+.hall-noted-title em {
+  font-style: normal;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
 .browse-hero h1 {
   margin: 0 0 var(--space-2);
   font-family: var(--font-display);

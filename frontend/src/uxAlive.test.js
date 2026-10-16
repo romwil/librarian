@@ -18,7 +18,7 @@ const inboxSrc = readFileSync(join(root, "pages/InboxPage.jsx"), "utf8");
 test("styles.css imports motion tokens", () => {
   assert.match(stylesSrc, /@import\s+"\.\/styles\/motion\.css"/);
   assert.match(stylesSrc, /--fg:\s*#f4ead6/);
-  assert.match(stylesSrc, /html\[data-theme="lights-up"\][\s\S]*--fg:\s*#1a1208/);
+  assert.match(stylesSrc, /html\[data-theme="lights-up"\][\s\S]*--fg:\s*#1c1612/);
 });
 
 test("motion.css ships settle, warm, and presence tokens with reduced-motion", () => {

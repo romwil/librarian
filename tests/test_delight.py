@@ -180,7 +180,8 @@ def test_ambient_and_whisper_sanitize():
     assert normalize_ambient("LAMP") == "lamp"
     assert normalize_ambient("neon") == "off"
     assert normalize_ui_theme("lights_up") == "lights_up"
-    assert normalize_ui_theme("DARK") == "system"
+    assert normalize_ui_theme("DARK") == "lights_up"
+    assert normalize_ui_theme(None) == "lights_up"
     assert normalize_ui_font_step(3) == 3
     assert normalize_ui_font_step(99) == 5
     assert normalize_ui_font_step("nope") == 0
@@ -212,7 +213,7 @@ def test_prefs_whispers_quiet_hours_api(tmp_path, monkeypatch):
     prefs = client.get("/api/prefs")
     assert prefs.status_code == 200
     assert prefs.json()["ambient"] == "off"
-    assert prefs.json()["ui_theme"] == "system"
+    assert prefs.json()["ui_theme"] == "lights_up"
     assert prefs.json()["ui_font_step"] == 0
     saved = client.put("/api/prefs", json={"ambient": "paper", "ui_theme": "lights_up", "ui_font_step": 3})
     assert saved.status_code == 200
@@ -224,7 +225,7 @@ def test_prefs_whispers_quiet_hours_api(tmp_path, monkeypatch):
     assert again.json()["ui_font_step"] == 3
     clamped = client.put("/api/prefs", json={"ui_font_step": 99, "ui_theme": "neon"})
     assert clamped.json()["ui_font_step"] == 5
-    assert clamped.json()["ui_theme"] == "system"
+    assert clamped.json()["ui_theme"] == "lights_up"
 
     quiet = client.put(
         "/api/settings/quiet-hours",
