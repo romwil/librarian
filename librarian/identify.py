@@ -918,6 +918,17 @@ def path_layout_note(folder: Path) -> str:
     return ""
 
 
+def _diagnosis_path_clear(folder: Path) -> bool:
+    try:
+        from librarian.slip_gate import folder_is_path_clear
+    except Exception:
+        return False
+    try:
+        return bool(folder_is_path_clear(Path(folder)))
+    except OSError:
+        return False
+
+
 def diagnose_review_folder(folder: Path, complete_root: str = "") -> Dict[str, Any]:
     """Live diagnosis for a Review slip: what we checked, what’s wrong, optional better path."""
     raw = Path(folder) if usable_folder(folder) else Path()
@@ -991,6 +1002,7 @@ def diagnose_review_folder(folder: Path, complete_root: str = "") -> Dict[str, A
         "suggested_folder": str(suggested) if suggested is not None else None,
         "collection_dump": bool(dump_meta.get("collection_dump")),
         "distinct_title_count": int(dump_meta.get("distinct_title_count") or 0),
+        "path_clear": _diagnosis_path_clear(resolved if usable_folder(resolved) else raw),
     }
 
 
@@ -1181,6 +1193,9 @@ def identify_completed(
         else:
             files = _apply_post_llm_review(identity, folder)
 
+    from librarian.slip_gate import sign_path_clear_book
+
+    sign_path_clear_book(identity, folder, files)
     auto = identity.confidence == "high" and not identity.review_reason
     return {
         "identity": identity.as_dict(),

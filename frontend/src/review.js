@@ -209,7 +209,8 @@ export function extraFilesWorks(works = []) {
 export function reviewDiagnosisCopy(work) {
   const reason = effectiveReviewReason(work);
   const diagnosis = work?.folder_diagnosis || {};
-  const whatsWrong =
+  const longReason = reviewReasonCopy(reason, diagnosis);
+  const rawWrong =
     reason === "unpack_stuck"
       ? `Archives remain (${diagnosis.archive_count || "some"} rar/7z) and no readable media.`
       : reason === "missing_folder"
@@ -218,7 +219,11 @@ export function reviewDiagnosisCopy(work) {
           ? diagnosis.junk_count
             ? `Only non-media files (${diagnosis.junk_count}) — no book, comic, or audio.`
             : "No readable book, comic, or audio file here."
-          : reviewReasonCopy(reason, diagnosis);
+          : longReason;
+  const whatsWrong =
+    rawWrong === longReason && reason !== "unpack_stuck" && reason !== "missing_folder" && reason !== "no_payload"
+      ? ""
+      : rawWrong;
   return {
     meaning: reviewSlipMeaning(reason, diagnosis),
     tried: diagnosis.tried || "Checked the complete folder for files this Librarian can shelve.",
@@ -524,6 +529,69 @@ export const REVIEW_REASON_GROUP_ORDER = [
   "audnexus_ambiguous",
   "audnexus_unmatched",
 ];
+
+const REVIEW_REASON_FOUR_WORDS = {
+  extra_files: "Several titles in folder",
+  unpack_stuck: "Archive still needs unpack",
+  missing_folder: "Folder is not here",
+  no_payload: "Nothing readable to shelve",
+  collision: "Two copies too close",
+  quiet_hours: "Waiting on quiet hours",
+  unknown_identity: "Name does not parse",
+  low_confidence: "Path is not clear",
+  unexpected_kind: "Kind does not match",
+  convert_failed: "Convert failed twice now",
+  comicvine_ambiguous: "Comic Vine match tied",
+  comicvine_unmatched: "Comic Vine found none",
+  audnexus_ambiguous: "Audnexus match is tied",
+  audnexus_unmatched: "Audnexus found no match",
+};
+
+/** Four-word reason for the one-line Holds row. */
+export function reviewReasonFourWords(reason) {
+  const key = String(reason || "").trim();
+  const phrase = REVIEW_REASON_FOUR_WORDS[key];
+  if (phrase) return phrase;
+  const fallback = (key ? key.replace(/_/g, " ") : "Needs a person here").split(/\s+/).filter(Boolean);
+  while (fallback.length < 4) fallback.push("here");
+  return fallback.slice(0, 4).join(" ");
+}
+
+const _STAGING_AUTHORS = new Set([
+  "inbox",
+  "complete",
+  "downloads",
+  "download",
+  "usenet",
+  "newlib",
+  "books",
+  "comics",
+  "magazines",
+  "audiobooks",
+  "music",
+  "incoming",
+  "media",
+  "data",
+  "tmp",
+  "drop",
+  "watch",
+]);
+
+/** True when this slip is still an Author/Title book the house can shelve. */
+export function slipRowIsPathClear(work = {}) {
+  if (work?.folder_diagnosis?.path_clear) return true;
+  const path = String(work?.folder_path || work?.folder || "");
+  const parts = path.split(/[/\\]/).filter(Boolean);
+  if (parts.length < 2) return false;
+  const title = parts[parts.length - 1];
+  const author = parts[parts.length - 2];
+  if (!title || !author) return false;
+  if (author.toLowerCase() === title.toLowerCase()) return false;
+  const authorKey = author.toLowerCase();
+  if (_STAGING_AUTHORS.has(authorKey) || authorKey.includes("migrated") || authorKey.includes("_")) return false;
+  const kind = String(work?.kind || "book");
+  return kind === "book";
+}
 
 /** Short pile heading for the Holds desk (sorting returns). */
 export function reviewReasonGroupLabel(reason) {

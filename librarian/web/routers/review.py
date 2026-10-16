@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import Body, FastAPI, File, HTTPException, Request, UploadFile
 
 from librarian.auth import require_role
 from librarian.delight import rank_regrab_candidates
@@ -203,6 +203,15 @@ def register_review_routes(app: FastAPI, deps: WebDeps) -> None:
             review_state="needs_review", review_reason=REVIEW_EXTRA
         )
         return finished
+
+    @app.post("/api/review/accept-clear")
+    def review_accept_clear(request: Request, body: Optional[Dict[str, Any]] = Body(default=None)):
+        """Shelve path-clear slips in one reason group. Does not delete files."""
+        require_role(request.state.user, "owner", "op")
+        from librarian.slip_gate import accept_path_clear_slips
+
+        reason = str((body or {}).get("reason") or "")
+        return accept_path_clear_slips(db, reason=reason)
 
     @app.post("/api/review/purge-duplicates")
     def review_purge_duplicates(request: Request, limit: int = 0):

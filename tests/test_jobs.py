@@ -277,14 +277,12 @@ def test_unpack_stuck_archives_go_to_review_not_silent_fail(tmp_path):
         nzb=nzb,
     )
     polled = poll_job(db, settings, job["id"], sab=sab)
-    assert polled["status"] == "review"
-    assert polled["work_id"]
+    assert polled["status"] == "skipped"
+    assert not polled.get("work_id")
     assert polled["error"] is None
     assert polled["storage_path"] == str(complete)
-    work = db.get_work(polled["work_id"])
-    assert work["review_state"] == "needs_review"
-    assert work["review_reason"] == "unpack_stuck"
-    assert work["folder_path"] == str(complete)
+    assert db.count_works(review_state="needs_review") == 0
+    assert (complete / "cd1.rar").is_file()
 
 
 def test_unpack_stuck_audiobook_unar_then_organizes(tmp_path, monkeypatch):

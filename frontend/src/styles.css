@@ -3961,6 +3961,27 @@ button.cover {
 .hold-slip {
   /* alias of .ticket — library voice without a ticket-queue feel */
 }
+.hold-slip-line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+.hold-slip-line .ticket-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hold-slip-reason {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.hold-slip-line .cta {
+  flex: 0 0 auto;
+}
 .review-extra-files-progress {
   margin: 0 0 var(--space-5);
 }
