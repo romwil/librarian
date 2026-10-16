@@ -77,10 +77,37 @@ export function comicSpreadMode(book) {
   return book;
 }
 
-/** Header hint. Prose can scroll; a comic only turns. */
-export function readerChromeHint(engine) {
-  if (engine === "epub") return "Scroll to read · edges or ← → turn · Esc closes";
-  return "Edges or ← → turn · Esc closes";
+const READER_SCROLL_HINT = "Scroll to read · Esc closes";
+const READER_TURN_HINT = "Edges or arrows turn · Esc closes";
+
+/**
+ * Header hint for this file. Reflowable prose scrolls.
+ * A comic, a fixed-layout volume, and a PDF turn from the edges or the arrows.
+ */
+export function readerChromeHint(engine, fixedLayout = false) {
+  if (fixedLayout || engine === "cbz" || engine === "pdf") return READER_TURN_HINT;
+  if (engine === "epub") return READER_SCROLL_HINT;
+  return "";
+}
+
+/**
+ * One verb for the title. Listen and Read open the file here.
+ * Download is a file this room cannot open. Want is a title with no file.
+ * Play is the in-house album control when the title is music.
+ */
+export function workPrimaryVerb({
+  canListen = false,
+  canRead = false,
+  canPlay = false,
+  canDownload = false,
+  canWant = false,
+} = {}) {
+  if (canListen) return "Listen";
+  if (canRead) return "Read";
+  if (canPlay) return "Play";
+  if (canDownload) return "Download";
+  if (canWant) return "Want";
+  return "";
 }
 
 const COMIC_NEXT_KEYS = new Set(["ArrowRight", "ArrowDown", "PageDown", "Right", "Down", " "]);

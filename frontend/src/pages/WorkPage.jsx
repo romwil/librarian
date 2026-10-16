@@ -14,7 +14,14 @@ import { useAlbumPlayer } from "../hooks/useAlbumPlayer.js";
 import { finishRitualCopy, finishWhisperInvite, hallLampPeriod } from "../lib/lampRituals.js";
 import { catchUpCtaLabel, catchUpInvitation, missingRibbonBeads } from "../lib/seriesCatchUp.js";
 import { canListenInApp, isAudioFile } from "../listen.js";
-import { canOpenInlineMedia, canReadInApp, readerCtaLabel, workDownloadUrl } from "../reader.js";
+import {
+  canOpenInlineMedia,
+  canReadInApp,
+  primaryReadingFile,
+  readerCtaLabel,
+  workDownloadUrl,
+  workPrimaryVerb,
+} from "../reader.js";
 import Rail from "../components/Rail.jsx";
 import Reader from "../components/Reader.jsx";
 import AudiobookPlayer from "../components/AudiobookPlayer.jsx";
@@ -166,7 +173,6 @@ export default function WorkPage() {
   const canRead = Boolean(data.can_read) && canReadInApp(work, data.files);
   const canListen =
     Boolean(data.listen?.can_listen) && canListenInApp(work, data.files, Boolean(data.can_download));
-  const listenResume = Boolean(String(data.progress?.position || "").trim()) || Number(data.progress?.fraction) > 0;
   const canInlineOpen = canOpenInlineMedia(work, Boolean(data.can_download), canRead);
   const playerLink = data.listen?.player || null;
   const playerNote = data.listen?.player_note || "";
@@ -186,6 +192,20 @@ export default function WorkPage() {
     role: user?.role || "reader",
   });
   const readLabel = readerCtaLabel(work) || "Read";
+  const verb = workPrimaryVerb({
+    canListen,
+    canRead: canRead || (canInlineOpen && Boolean(readerCtaLabel(work))),
+    canPlay: Boolean(album.enabled) && !canListen && !canRead,
+    canDownload: Boolean(data.can_download),
+    canWant: Boolean(availability.canAdd),
+  });
+  const primaryFile =
+    primaryReadingFile(data.files || []) ||
+    (data.files || []).find((file) => file && file.on_disk !== false && (file.filename || file.path)) ||
+    null;
+  const primaryName = String(primaryFile?.filename || primaryFile?.path || "")
+    .split("/")
+    .pop();
   const canCatalog = user?.role === "owner" || user?.role === "op";
   const canEnrichKind = work.kind === "book" || work.kind === "audiobook";
   const ribbonHoles = missingRibbonBeads(data.series_ribbon);
@@ -453,28 +473,23 @@ export default function WorkPage() {
               {mediaNote}
             </p>
           ) : null}
-          <div className="cta-row compact">
-            <button type="button" className="cta outline compact" onClick={favorite}>
-              {data.favorite ? "In Favorites" : "Favorite"}
-            </button>
-            {canListen ? (
+          <div className="cta-row compact" data-testid="work-primary" data-verb={verb || undefined}>
+            {verb === "Listen" ? (
               <button type="button" className="cta compact" onClick={() => openListen()} data-testid="work-listen">
-                {listenResume ? "Continue listening" : "Listen"}
+                Listen
               </button>
-            ) : album.enabled ? (
-              <button
-                type="button"
-                className="cta compact"
-                onClick={album.toggleAlbum}
-                data-testid="album-play"
-              >
+            ) : null}
+            {verb === "Play" ? (
+              <button type="button" className="cta compact" onClick={album.toggleAlbum} data-testid="album-play">
                 {album.active ? "Stop" : "Play"}
               </button>
-            ) : canRead ? (
+            ) : null}
+            {verb === "Read" && canRead ? (
               <button type="button" className="cta compact" onClick={() => openReader()} data-testid="work-open">
-                {readLabel}
+                Read
               </button>
-            ) : canInlineOpen ? (
+            ) : null}
+            {verb === "Read" && !canRead && canInlineOpen ? (
               <a
                 className="cta compact"
                 href={`/api/works/${work.id}/download?inline=1${fmt ? `&format=${encodeURIComponent(fmt)}` : ""}`}
@@ -485,8 +500,147 @@ export default function WorkPage() {
                 {readLabel}
               </a>
             ) : null}
+            {verb === "Download" ? (
+              <a
+                className="cta compact"
+                href={`/api/works/${work.id}/download${fmt ? `?format=${encodeURIComponent(fmt)}` : ""}`}
+                data-testid="work-download"
+              >
+                Download
+              </a>
+            ) : null}
+            {verb === "Want" ? (
+              <button type="button" className="cta compact" onClick={addWanted} data-testid="work-want">
+                Want
+              </button>
+            ) : null}
+            {primaryName ? (
+              <p className="muted font-mono" data-testid="work-file">
+                {primaryName}
+              </p>
+            ) : null}
+          </div>
+        </div>
+      </section>
+      <div className="work-body">
+        {data.files?.length ? (
+          <section data-testid="work-files">
+            <h2 className="kicker">{work.kind === "music" ? "Tracks" : "Files"}</h2>
+            {album.nowPlayingLabel ? (
+              <p className="muted album-now-playing" data-testid="now-playing">
+                Playing · {album.nowPlayingLabel}
+              </p>
+            ) : null}
+            <ul className="file-list">
+              {data.files.map((file) => (
+                <li
+                  key={file.id}
+                  className={String(album.playingId || "") === String(file.id) ? "is-playing" : undefined}
+                >
+                  {file.reading_room ? (
+                    <button
+                      type="button"
+                      className="file-list-open"
+                      onClick={() => openReader(file.id)}
+                      data-testid="reading-room-open"
+                    >
+                      {file.filename}
+                    </button>
+                  ) : (
+                    <span>{file.filename}</span>
+                  )}
+                  {file.reading_room ? (
+                    <button
+                      type="button"
+                      className="chip is-on"
+                      onClick={() => openReader(file.id)}
+                      data-testid="reading-room-badge"
+                    >
+                      Reading Room
+                    </button>
+                  ) : null}
+                  {canListen && file.on_disk !== false && isAudioFile(file) ? (
+                    <button
+                      type="button"
+                      className="chip"
+                      onClick={() => openListen(file.id)}
+                      data-testid="file-listen"
+                    >
+                      Listen
+                    </button>
+                  ) : null}
+                  {album.canPlayFile(file) ? (
+                    <button
+                      type="button"
+                      className="chip"
+                      onClick={() => album.toggleTrack(file.id)}
+                      data-testid="track-play"
+                    >
+                      {String(album.playingId || "") === String(file.id) ? "Stop" : "Play"}
+                    </button>
+                  ) : null}
+                  {data.can_download && file.on_disk !== false ? (
+                    <a
+                      className="chip"
+                      href={workDownloadUrl(work.id, { fileId: file.id })}
+                      data-testid="file-download"
+                    >
+                      Download
+                    </a>
+                  ) : null}
+                  {file.on_disk === false ? <span className="chip">Missing</span> : null}
+                </li>
+              ))}
+            </ul>
+            {work.kind === "music" ? (
+              <audio ref={album.audioRef} preload="none" hidden data-testid="album-audio" />
+            ) : null}
+          </section>
+        ) : null}
+        {work.description ? (
+          <section className="synopsis">
+            <h2>Description</h2>
+            {descriptionHtml ? (
+              <div
+                className="synopsis-body"
+                data-testid="work-description"
+                dangerouslySetInnerHTML={{ __html: descriptionHtml }}
+              />
+            ) : (
+              <p data-testid="work-description">{work.description}</p>
+            )}
+          </section>
+        ) : null}
+        <details className="advanced" data-testid="work-more">
+          <summary>Series, catalog, and notes</summary>
+          <div className="cta-row compact">
+            <button type="button" className="cta outline compact" onClick={favorite}>
+              {data.favorite ? "In Favorites" : "Favorite"}
+            </button>
+            {verb !== "Download" && data.can_download ? (
+              <a
+                className="cta outline compact"
+                href={`/api/works/${work.id}/download${fmt ? `?format=${encodeURIComponent(fmt)}` : ""}`}
+                data-testid="work-download"
+              >
+                Download
+              </a>
+            ) : null}
+            {data.ebook_convert && work.kind === "book" ? (
+              <label className="field" style={{ minWidth: "8rem" }}>
+                <span className="sr-only">Download format</span>
+                <select value={fmt} onChange={(e) => setFmt(e.target.value)} aria-label="Download format">
+                  <option value="">Original</option>
+                  {(data.formats || []).map((item) => (
+                    <option key={item} value={item}>
+                      {item.toUpperCase()}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
             <AvailabilityActions
-              view={availability}
+              view={verb === "Want" ? { ...availability, canAdd: false } : availability}
               onAdd={addWanted}
               onDismiss={dismissWanted}
             />
@@ -512,28 +666,6 @@ export default function WorkPage() {
                 {komgaLink.label || "Open in Komga"}
               </a>
             ) : null}
-            {data.can_download ? (
-              <a
-                className="cta outline compact"
-                href={`/api/works/${work.id}/download${fmt ? `?format=${encodeURIComponent(fmt)}` : ""}`}
-                data-testid="work-download"
-              >
-                Download
-              </a>
-            ) : null}
-            {data.ebook_convert && work.kind === "book" ? (
-              <label className="field" style={{ minWidth: "8rem" }}>
-                <span className="sr-only">Download format</span>
-                <select value={fmt} onChange={(e) => setFmt(e.target.value)} aria-label="Download format">
-                  <option value="">Original</option>
-                  {(data.formats || []).map((item) => (
-                    <option key={item} value={item}>
-                      {item.toUpperCase()}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : null}
             {work.kind !== "music" ? (
               <button
                 type="button"
@@ -558,7 +690,7 @@ export default function WorkPage() {
             ) : null}
             {incompleteParts ? (
               <Link
-                className="cta compact"
+                className="cta outline compact"
                 to={findMissingHref}
                 data-testid="find-missing-parts"
                 title={partStatus || undefined}
@@ -640,9 +772,6 @@ export default function WorkPage() {
               {playerNote}
             </p>
           ) : null}
-        </div>
-      </section>
-      <div className="work-body">
         {(data.series_ribbon || []).length ? (
           <section className="series-ribbon" data-testid="series-ribbon" aria-label="Series progress">
             <h2 className="kicker">Series spine</h2>
@@ -888,20 +1017,6 @@ export default function WorkPage() {
             </p>
           </section>
         ) : null}
-        {work.description ? (
-          <section className="synopsis">
-            <h2>Description</h2>
-            {descriptionHtml ? (
-              <div
-                className="synopsis-body"
-                data-testid="work-description"
-                dangerouslySetInnerHTML={{ __html: descriptionHtml }}
-              />
-            ) : (
-              <p data-testid="work-description">{work.description}</p>
-            )}
-          </section>
-        ) : null}
         <section className="family-whispers" data-testid="family-whispers">
           <h2 className="kicker">Family whispers</h2>
           <p className="muted">A short note for the household — not a social feed.</p>
@@ -930,80 +1045,7 @@ export default function WorkPage() {
           </form>
           {whisperNote ? <p className="alert">{whisperNote}</p> : null}
         </section>
-        {data.files?.length ? (
-          <section>
-            <h2 className="kicker">{work.kind === "music" ? "Tracks" : "Files"}</h2>
-            {album.nowPlayingLabel ? (
-              <p className="muted album-now-playing" data-testid="now-playing">
-                Playing · {album.nowPlayingLabel}
-              </p>
-            ) : null}
-            <ul className="file-list">
-              {data.files.map((file) => (
-                <li
-                  key={file.id}
-                  className={String(album.playingId || "") === String(file.id) ? "is-playing" : undefined}
-                >
-                  {file.reading_room ? (
-                    <button
-                      type="button"
-                      className="file-list-open"
-                      onClick={() => openReader(file.id)}
-                      data-testid="reading-room-open"
-                    >
-                      {file.filename}
-                    </button>
-                  ) : (
-                    <span>{file.filename}</span>
-                  )}
-                  {file.reading_room ? (
-                    <button
-                      type="button"
-                      className="chip is-on"
-                      onClick={() => openReader(file.id)}
-                      data-testid="reading-room-badge"
-                    >
-                      Reading Room
-                    </button>
-                  ) : null}
-                  {canListen && file.on_disk !== false && isAudioFile(file) ? (
-                    <button
-                      type="button"
-                      className="chip"
-                      onClick={() => openListen(file.id)}
-                      data-testid="file-listen"
-                    >
-                      Listen
-                    </button>
-                  ) : null}
-                  {album.canPlayFile(file) ? (
-                    <button
-                      type="button"
-                      className="chip"
-                      onClick={() => album.toggleTrack(file.id)}
-                      data-testid="track-play"
-                    >
-                      {String(album.playingId || "") === String(file.id) ? "Stop" : "Play"}
-                    </button>
-                  ) : null}
-                  {data.can_download && file.on_disk !== false ? (
-                    <a
-                      className="chip"
-                      href={workDownloadUrl(work.id, { fileId: file.id })}
-                      data-testid="file-download"
-                    >
-                      Download
-                    </a>
-                  ) : null}
-                  {file.on_disk === false ? <span className="chip">Missing</span> : null}
-                </li>
-              ))}
-            </ul>
-            {work.kind === "music" ? (
-              <audio ref={album.audioRef} preload="none" hidden data-testid="album-audio" />
-            ) : null}
-          </section>
-        ) : null}
+        </details>
       </div>
       <Rail
         title={work.author ? `More by ${work.author}` : "More on this shelf"}
