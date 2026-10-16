@@ -84,12 +84,54 @@ def _isbn_keys(row: Mapping[str, Any]) -> set[str]:
     return set(isbn_match_keys(str(row.get("isbn") or "")))
 
 
-def _isbn_conflict(sought_keys: set[str], row: Mapping[str, Any]) -> bool:
-    """Both sides have an ISBN and they name different books."""
-    if not sought_keys:
-        return False
-    got = _isbn_keys(row)
-    return bool(got) and not sought_keys.intersection(got)
+def prepare_catalog_candidates(candidates: List[Mapping[str, Any]]) -> List[Dict[str, Any]]:
+    """Normalize each shelf row once so a sweep does not re-regex the pool per book."""
+    prepared: List[Dict[str, Any]] = []
+    for row in candidates:
+        prepared.append(
+            {
+                "row": row,
+                "isbn": _isbn_keys(row),
+                "author": _author_key(row.get("author")),
+                "series": _norm_name(row.get("series_name") or row.get("series")),
+                "index": _index_key(row.get("series_index")),
+            }
+        )
+    return prepared
+
+
+def match_prepared_catalog(
+    sought: Mapping[str, Any],
+    prepared: List[Mapping[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    """Same rules as ``match_catalog_work`` against a pre-normalized pool."""
+    want_isbn = _isbn_keys(sought)
+    if want_isbn:
+        for item in prepared:
+            if want_isbn.intersection(item["isbn"]):
+                return dict(item["row"])
+    author_key = _author_key(sought.get("author"))
+    if author_key and str(sought.get("title") or "").strip():
+        for item in prepared:
+            got = item["isbn"]
+            if want_isbn and got and not want_isbn.intersection(got):
+                continue
+            if item["author"] != author_key:
+                continue
+            if titles_are_same_work(sought.get("title"), item["row"].get("title")):
+                return dict(item["row"])
+    series = _norm_name(sought.get("series_name") or sought.get("series"))
+    index = _index_key(sought.get("series_index"))
+    if series and index:
+        for item in prepared:
+            got = item["isbn"]
+            if want_isbn and got and not want_isbn.intersection(got):
+                continue
+            if item["series"] != series:
+                continue
+            if item["index"] == index:
+                return dict(item["row"])
+    return None
 
 
 def match_catalog_work(
@@ -101,31 +143,7 @@ def match_catalog_work(
     A title with no author is not a match. A longer title that merely shares a
     word is not a subtitle.
     """
-    want_isbn = _isbn_keys(sought)
-    if want_isbn:
-        for row in candidates:
-            if want_isbn.intersection(_isbn_keys(row)):
-                return dict(row)
-    author_key = _author_key(sought.get("author"))
-    if author_key and str(sought.get("title") or "").strip():
-        for row in candidates:
-            if _isbn_conflict(want_isbn, row):
-                continue
-            if _author_key(row.get("author")) != author_key:
-                continue
-            if titles_are_same_work(sought.get("title"), row.get("title")):
-                return dict(row)
-    series = _norm_name(sought.get("series_name") or sought.get("series"))
-    index = _index_key(sought.get("series_index"))
-    if series and index:
-        for row in candidates:
-            if _isbn_conflict(want_isbn, row):
-                continue
-            if _norm_name(row.get("series_name")) != series:
-                continue
-            if _index_key(row.get("series_index")) == index:
-                return dict(row)
-    return None
+    return match_prepared_catalog(sought, prepare_catalog_candidates(candidates))
 
 
 def match_companion_audiobook(

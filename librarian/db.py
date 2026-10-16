@@ -1058,6 +1058,41 @@ class Database:
             rows = conn.execute(sql, args).fetchall()
         return [_row_dict(row) or {} for row in rows]
 
+    def load_owned_slip_sweep(
+        self,
+        *,
+        kinds: Sequence[str],
+        limit: int,
+    ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        """Shelved media and fileless Review slips, one connection for the whole read."""
+        kind_list = [str(kind) for kind in kinds if str(kind)]
+        if not kind_list:
+            return [], []
+        placeholders = ", ".join("?" for _ in kind_list)
+        order_case = " ".join(f"WHEN ? THEN {index}" for index in range(len(kind_list)))
+        owned_sql = f"""
+            SELECT * FROM works
+            WHERE kind IN ({placeholders})
+              AND review_state != 'needs_review'
+              AND {self._HAS_FILES_SQL.format(alias="works")}
+            ORDER BY CASE kind {order_case} ELSE {len(kind_list)} END,
+                     title COLLATE NOCASE
+        """
+        slip_sql = f"""
+            SELECT * FROM works
+            WHERE review_state = 'needs_review'
+              AND NOT {self._HAS_FILES_SQL.format(alias="works")}
+            ORDER BY updated_at DESC
+            LIMIT ?
+        """
+        with self._connect() as conn:
+            owned_rows = conn.execute(owned_sql, [*kind_list, *kind_list]).fetchall()
+            slip_rows = conn.execute(slip_sql, (max(1, int(limit)),)).fetchall()
+        return (
+            [_row_dict(row) or {} for row in owned_rows],
+            [_row_dict(row) or {} for row in slip_rows],
+        )
+
     def list_works_added_since(
         self,
         since_ts: float,

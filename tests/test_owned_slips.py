@@ -306,3 +306,28 @@ def test_review_list_shows_note_after_background_sweep(tmp_path, monkeypatch):
     assert "Already on the shelf" in body["owned_slip_note"]
     assert db.get_work(shelf["id"]) is not None
     assert media.is_file()
+
+
+def test_idle_sweep_reuses_one_connection(tmp_path, monkeypatch):
+    """Non-matching slips must not reopen SQLite once per row."""
+    db = Database(tmp_path / "librarian.db")
+    _shelve(db, tmp_path / "books" / "mart", isbn="")
+    for index in range(20):
+        _slip(db, title=f"Unrelated {index}", author=f"Author {index}", isbn="")
+    calls = {"n": 0}
+    original = db._connect
+
+    def counting():
+        calls["n"] += 1
+        return original()
+
+    monkeypatch.setattr(db, "_connect", counting)
+    sweep_owned_slips(db)
+    first = calls["n"]
+    assert first <= 2
+    calls["n"] = 0
+    for index in range(20, 40):
+        _slip(db, title=f"Also unrelated {index}", author=f"Author {index}", isbn="")
+    calls["n"] = 0
+    sweep_owned_slips(db)
+    assert calls["n"] == first
