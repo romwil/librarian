@@ -112,7 +112,6 @@ export default function ProfileMenu({
         type="button"
         className="profile-menu-trigger"
         data-testid="profile-menu-trigger"
-        aria-label="Library card"
         aria-expanded={open}
         aria-haspopup="menu"
         onClick={() => setOpen((value) => !value)}
@@ -197,6 +196,14 @@ export default function ProfileMenu({
           </div>
 
           <div className="profile-menu-section profile-menu-links">
+            <Link
+              to="/card"
+              className="profile-menu-link"
+              role="menuitem"
+              onClick={() => setOpen(false)}
+            >
+              Your library
+            </Link>
             <Link
               to="/inbox"
               className="profile-menu-link"

@@ -18,22 +18,23 @@ export default function QueryForm({
   inputId = "hall-search",
   draft,
   onDraft,
-  kind,
-  onKindCommit,
-  advanced,
-  onAdvanced,
+  kind = "",
+  onKindCommit = () => {},
+  advanced = {},
+  onAdvanced = () => {},
   onSubmit,
-  placeholder,
+  placeholder = "Title, author, or ISBN",
   ariaLabel = "Search",
   kindHelp = FIELD_HELP.searchKind,
-  advancedSummary = "Advanced",
+  advancedSummary = "More ways to search",
   variant = "search",
   kinds = KINDS,
+  showKindChips = true,
 }) {
   const adv = advanced || { author: "", title: "", isbn: "", series: "", issue: "", artist: "", album: "", year: "" };
   const isFind = variant === "find";
+  const isHero = variant === "hero";
   const shown = visibleFindFields(kind);
-  const hasAdvanced = shown.some((key) => adv[key]);
 
   function renderField(key) {
     const meta = FIELD_META[key];
@@ -74,9 +75,12 @@ export default function QueryForm({
     );
   }
 
+  const qPlaceholder = isFind ? findPlaceholder(kind) || placeholder : placeholder;
+
   return (
     <form
-      className="search-compose"
+      role="search"
+      className={isHero ? "hero-search-form" : "search-compose"}
       onSubmit={(event) => {
         event.preventDefault();
         onSubmit();
@@ -84,36 +88,44 @@ export default function QueryForm({
     >
       <div className="search-hero search-field">
         <span aria-hidden="true">⌕</span>
-        <input
+        <TypeaheadField
           id={inputId}
+          field="q"
+          kind={kind}
           value={draft}
-          onChange={(e) => onDraft(e.target.value)}
-          placeholder={isFind ? findPlaceholder(kind) || placeholder : placeholder}
-          aria-label={ariaLabel}
+          placeholder={qPlaceholder}
+          ariaLabel={ariaLabel}
+          onChange={onDraft}
+          onEnterSubmit={() => {
+            const form = document.getElementById(inputId)?.form;
+            form?.requestSubmit();
+          }}
         />
         <kbd>/</kbd>
       </div>
-      <div className="search-hero chip-row search-compose-chips">
-        {kinds.map(([value, label]) => (
-          <button
-            key={value || "all"}
-            type="button"
-            className={`chip${kind === value ? " is-on" : ""}`}
-            aria-pressed={kind === value}
-            onClick={() => onKindCommit(value)}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-      {isFind ? (
+      {!isHero && showKindChips ? (
+        <div className="search-hero chip-row search-compose-chips">
+          {kinds.map(([value, label]) => (
+            <button
+              key={value || "all"}
+              type="button"
+              className={`chip${kind === value ? " is-on" : ""}`}
+              aria-pressed={kind === value}
+              onClick={() => onKindCommit(value)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {isHero ? null : isFind ? (
         shown.length ? (
           <div className="advanced find-fields" data-testid="find-fields" data-kind={kind || "all"}>
             {shown.map(renderField)}
           </div>
         ) : null
       ) : (
-        <details className="advanced" defaultOpen={hasAdvanced} data-testid="search-advanced" data-kind={kind || "all"}>
+        <details className="advanced" defaultOpen={false} data-testid="search-advanced" data-kind={kind || "all"}>
           <summary className="kicker">{advancedSummary}</summary>
           <div className="advanced-fields">
             <div className="field">
@@ -131,8 +143,8 @@ export default function QueryForm({
         </details>
       )}
       {/* Multiple text fields suppress implicit Enter submit; keep one real submit control. */}
-      <button type="submit" className="sr-only">
-        {isFind ? "Find" : "Search the stacks"}
+      <button type="submit" className={isHero ? "hero-search-submit" : "sr-only"}>
+        {isFind ? "Find" : "Search"}
       </button>
     </form>
   );

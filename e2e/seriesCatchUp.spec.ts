@@ -123,7 +123,7 @@ test.describe("Series catch-up", () => {
     await expect(cta).toBeVisible();
     await cta.click();
 
-    await expect(page).toHaveURL(/\/find\?/);
+    await expect(page).toHaveURL(/\/search\?/);
     const url = new URL(page.url());
     expect(url.searchParams.get("kind")).toBe("comic");
     expect(url.searchParams.get("series")).toBe("Saga");
@@ -147,7 +147,7 @@ test.describe("Series catch-up", () => {
     await page.goto("/");
     await dismissWhatsNewIfPresent(page);
 
-    await expect(page.getByRole("heading", { name: "What are you looking for?" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Hall" })).toBeVisible();
     await expect(page.getByTestId("hall-shelves")).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole("region", { name: "Series catch-up" })).toHaveCount(0);
   });

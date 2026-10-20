@@ -1,14 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link, useOutletContext, useSearchParams } from "react-router-dom";
 import { api } from "../api.js";
-import { kindCountFromFacets, kindShelfTotalLine } from "../browse.js";
 import QueryForm from "../components/QueryForm.jsx";
 import Rail from "../components/Rail.jsx";
 import SearchModeControl, { normalizeSearchMode } from "../components/SearchModeControl.jsx";
-import ShelfMore from "../components/ShelfMore.jsx";
 import {
-  DISCOVER_CTA,
-  FIND_BEYOND_CTA,
   FIELD_HELP,
   TRENDING_BOOKS_LABEL,
   humanError,
@@ -17,12 +13,19 @@ import {
 import {
   buildFindSearchParams,
   composeSearchQuery,
-  discoverHref,
   emptyFindFields,
   findFieldsFromSearchParams,
   pruneFieldsForKind,
 } from "../find.js";
 import { didYouMeanList, didYouMeanPresence, searchForgave } from "../lib/searchForgive.js";
+import {
+  FORMAT_FACETS,
+  WHERE_FACETS,
+  applySearchFacets,
+  countSearchFacets,
+  emptyFacetSelection,
+  yearFacetEntries,
+} from "../searchFacets.js";
 
 function fieldsFromState(draft, kind, advanced) {
   return pruneFieldsForKind(kind, {
@@ -31,6 +34,35 @@ function fieldsFromState(draft, kind, advanced) {
     q: draft,
     kind,
   });
+}
+
+function FacetGroup({ legend, options, value, onChange, counts, always }) {
+  const visible = options.filter(([key]) => always || value === key || (counts[key] || 0) > 0);
+  if (!visible.length) return null;
+  return (
+    <fieldset className="search-facet">
+      <legend>{legend}</legend>
+      <ul className="search-facet-list">
+        {visible.map(([key, label]) => {
+          const n = counts[key] || 0;
+          const on = value === key;
+          return (
+            <li key={key}>
+              <button
+                type="button"
+                className={`chip${on ? " is-on" : ""}`}
+                aria-pressed={on}
+                onClick={() => onChange(on ? "" : key)}
+              >
+                {label}
+                {n ? <span className="search-facet-count">{n}</span> : null}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </fieldset>
+  );
 }
 
 export default function SearchPage() {
@@ -46,7 +78,7 @@ export default function SearchPage() {
   const [result, setResult] = useState({ local: [] });
   const [phase, setPhase] = useState("idle");
   const [error, setError] = useState("");
-  const [kindFacets, setKindFacets] = useState(null);
+  const [facet, setFacet] = useState(emptyFacetSelection);
 
   useEffect(() => {
     const next = fieldsFromState(fields.q, fields.kind, fields);
@@ -56,19 +88,8 @@ export default function SearchPage() {
   }, [fields.q, fields.kind, fields.author, fields.title, fields.isbn, fields.series, fields.year, fields.issue, fields.artist, fields.album]);
 
   useEffect(() => {
-    let alive = true;
-    api
-      .browseFacets()
-      .then((data) => {
-        if (alive) setKindFacets(data);
-      })
-      .catch(() => {
-        if (alive) setKindFacets(null);
-      });
-    return () => {
-      alive = false;
-    };
-  }, []);
+    setFacet(emptyFacetSelection());
+  }, [composed, fields.kind, mode, fields.author, fields.title, fields.isbn, fields.series, fields.year, fields.issue, fields.artist, fields.album]);
 
   useEffect(() => {
     if (!composed) {
@@ -167,25 +188,19 @@ export default function SearchPage() {
     localCount: result.local?.length || 0,
     phase,
   });
-  const activeKind = composed ? fields.kind : kind;
-  const kindTotal = kindCountFromFacets(kindFacets, activeKind);
-  const kindTotalLine = activeKind ? kindShelfTotalLine(activeKind, kindTotal) : "";
-  const showFindCta = Boolean(composed) && phase !== "idle" && phase !== "local";
-  const showDiscoverDoor = !composed;
-  const ctaFields = fieldsFromState(draft.trim() || fields.q, kind, advanced);
   const suggestions = didYouMeanList(result);
   const forgiveNote = didYouMeanPresence(suggestions);
+  const counts = countSearchFacets(result);
+  const filtered = applySearchFacets(result, facet);
+  const yearEntries = yearFacetEntries(counts.years);
+  const yearOptions = yearEntries.map(([year, count]) => [year, year]);
+  const yearCounts = Object.fromEntries(yearEntries);
 
   return (
     <div className="search-page page-settle">
-      <p className="find-cta-block" data-testid="trending-books-door">
-        <Link className="cta outline" to="/noted">
-          {TRENDING_BOOKS_LABEL}
-        </Link>
-      </p>
-      <SearchModeControl mode={activeMode} onMode={onMode} />
+      <h1 className="sr-only">Search</h1>
       <QueryForm
-        inputId="hall-search"
+        inputId="find-search"
         draft={draft}
         onDraft={setDraft}
         kind={kind}
@@ -193,105 +208,120 @@ export default function SearchPage() {
         advanced={advanced}
         onAdvanced={setAdvanced}
         onSubmit={() => commitSearch()}
-        placeholder="In the stacks"
-        ariaLabel="Search the stacks"
+        placeholder="Title, author, or ISBN"
+        ariaLabel="Search"
         kindHelp={FIELD_HELP.searchKind}
+        advancedSummary="More ways to search"
+        showKindChips={false}
       />
-      {kindTotalLine ? (
-        <p className="kind-shelf-total muted" data-testid="kind-shelf-total">
-          {kindTotalLine}
+      {!composed ? (
+        <p className="search-noted-door muted" data-testid="trending-books-door">
+          <Link to="/noted">{TRENDING_BOOKS_LABEL}</Link>
+          {" / "}
+          <Link to="/noted">New & noted</Link>
         </p>
-      ) : null}
-      <p className="search-status" aria-live="polite" data-testid="search-status">
-        {status}
-        {searchForgave(result) ? " · the lamp forgave a typo" : ""}
-      </p>
-      {error ? (
-        <p className="callout" role="status" data-testid="search-error">
-          {error}
-        </p>
-      ) : null}
-      {suggestions.length ? (
-        <div className="search-forgive" data-testid="search-did-you-mean">
-          <p className="kicker">{forgiveNote}</p>
-          <div className="cta-row">
-            {suggestions.map((title) => (
-              <button
-                key={title}
-                type="button"
-                className="cta outline compact"
-                onClick={() => onDidYouMean(title)}
-              >
-                {title}
-              </button>
-            ))}
+      ) : (
+        <div className="search-with-facets">
+          <aside className="search-facets" aria-label="Filters">
+            <FacetGroup
+              legend="Format"
+              options={FORMAT_FACETS}
+              value={facet.format}
+              onChange={(format) => setFacet((prev) => ({ ...prev, format }))}
+              counts={counts.formats}
+            />
+            <FacetGroup
+              legend="Where"
+              options={WHERE_FACETS}
+              value={facet.where}
+              onChange={(where) => setFacet((prev) => ({ ...prev, where }))}
+              counts={counts.where}
+              always
+            />
+            {yearEntries.length ? (
+              <FacetGroup
+                legend="Year"
+                options={yearOptions}
+                value={facet.year}
+                onChange={(year) => setFacet((prev) => ({ ...prev, year }))}
+                counts={yearCounts}
+              />
+            ) : null}
+          </aside>
+          <div className="search-results">
+            <SearchModeControl mode={activeMode} onMode={onMode} />
+            <p className="search-status" aria-live="polite" data-testid="search-status">
+              {status}
+              {searchForgave(result) ? " · matched a close spelling" : ""}
+            </p>
+            {error ? (
+              <p className="callout" role="status" data-testid="search-error">
+                {error}
+              </p>
+            ) : null}
+            {suggestions.length ? (
+              <div className="search-forgive" data-testid="search-did-you-mean">
+                <p className="kicker">{forgiveNote}</p>
+                <div className="cta-row">
+                  {suggestions.map((title) => (
+                    <button
+                      key={title}
+                      type="button"
+                      className="cta outline compact"
+                      onClick={() => onDidYouMean(title)}
+                    >
+                      {title}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            <Rail
+              title="On the shelf"
+              kicker={phase === "local" ? "Searching…" : "Local catalog · click cover to peek"}
+              items={filtered.local}
+              empty={phase === "local" ? "Searching…" : "Nothing on the shelf yet."}
+              role={user?.role}
+            />
+            <section id="beyond" className="search-beyond" data-testid="search-beyond">
+              <h2>Beyond</h2>
+              <Rail
+                title="Usenet"
+                kicker="NZBFinder and the extra indexers in Settings"
+                items={filtered.beyond || []}
+                empty={phase === "local" ? "Looking beyond the shelves…" : "Nothing on Usenet for this search."}
+                beyond
+                role={user?.role}
+              />
+              <div className="public-domain-lane" data-testid="public-domain-lane">
+                <p className="kicker">Public domain</p>
+                {(filtered.public_domain || []).length ? (
+                  <ul>
+                    {(filtered.public_domain || []).map((edition) => (
+                      <li key={`${edition.source}-${edition.id || edition.download_url}`}>
+                        <span>
+                          {edition.title}
+                          {edition.author ? ` · ${edition.author}` : ""} ·{" "}
+                          {edition.source === "standard_ebooks" ? "Standard Ebooks" : "Project Gutenberg"}
+                        </span>
+                        {edition.shelved ? (
+                          <span>On the shelf</span>
+                        ) : (
+                          <button type="button" className="cta compact" onClick={() => shelveEdition(edition)}>
+                            Shelve
+                          </button>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="muted">No public-domain edition matches this search.</p>
+                )}
+              </div>
+            </section>
           </div>
         </div>
-      ) : null}
-      <Rail
-        title="In the stacks"
-        kicker={phase === "local" ? "Searching the shelves…" : "Local catalog · click cover to peek"}
-        items={result.local}
-        empty={composed ? (phase === "local" ? "Searching the shelves…" : "Nothing on the shelves yet.") : "Start typing."}
-        role={user?.role}
-      />
-      {composed && phase !== "idle" ? (
-        <section id="beyond" className="search-beyond" data-testid="search-beyond">
-          <h2>Beyond</h2>
-          <Rail
-            title="Usenet"
-            kicker="NZBFinder and the extra indexers in Settings"
-            items={result.beyond || []}
-            empty={phase === "local" ? "Looking beyond the shelves…" : "Nothing on Usenet for this search."}
-            beyond
-            role={user?.role}
-          />
-          <div className="public-domain-lane" data-testid="public-domain-lane">
-            <p className="kicker">Public domain</p>
-            {(result.public_domain || []).length ? (
-              <ul>
-                {(result.public_domain || []).map((edition) => (
-                  <li key={`${edition.source}-${edition.id || edition.download_url}`}>
-                    <span>
-                      {edition.title}
-                      {edition.author ? ` · ${edition.author}` : ""} ·{" "}
-                      {edition.source === "standard_ebooks" ? "Standard Ebooks" : "Project Gutenberg"}
-                    </span>
-                    {edition.shelved ? (
-                      <span>On the shelf</span>
-                    ) : (
-                      <button type="button" className="cta compact" onClick={() => shelveEdition(edition)}>
-                        Shelve
-                      </button>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="muted">No public-domain edition matches this search.</p>
-            )}
-          </div>
-        </section>
-      ) : null}
-      {showDiscoverDoor || showFindCta ? (
-        <ShelfMore>
-          {showDiscoverDoor ? (
-            <p className="find-cta-block">
-              <Link className="muted" to={discoverHref({ kind })} data-testid="discover-door">
-                {DISCOVER_CTA}
-              </Link>
-            </p>
-          ) : null}
-          {showFindCta ? (
-            <div className="find-cta-block">
-              <p className="kicker">Not on these shelves?</p>
-              <a className="cta" href="#beyond" data-testid="find-beyond-cta">
-                {FIND_BEYOND_CTA}
-              </a>
-            </div>
-          ) : null}
-        </ShelfMore>
-      ) : null}
+      )}
     </div>
   );
 }

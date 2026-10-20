@@ -121,6 +121,22 @@ def register_hall_routes(app: FastAPI, deps: WebDeps) -> None:
             "owner_ready": True,
             "empty": not recent and not any(areas.values()),
         }
+
+    @app.get("/api/library-card")
+    def library_card(request: Request):
+        user = request.state.user
+        continue_rows = db.continue_works(user["id"], limit=18)
+        continue_split = split_continue_rails(continue_rows)
+        finished = db.finished_works(user["id"], limit=18)
+        favorites = db.favorite_works(user["id"], limit=18)
+        return {
+            "continue": continue_split["reading"],
+            "continue_listening": continue_split["listening"],
+            "finished": public_works(finished),
+            "favorites": public_works(favorites),
+            "wanted_count": db.count_wanted(),
+        }
+
     @app.get("/api/shelves")
     def list_shelves(request: Request):
         require_role(request.state.user, "owner", "op", "reader")

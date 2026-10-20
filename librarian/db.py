@@ -2725,6 +2725,28 @@ class Database:
             out.append(data)
         return out
 
+    def finished_works(self, user_id: str, *, limit: int = 18) -> List[Dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT w.*, p.fraction, p.position, p.updated_at AS progress_at
+                FROM progress p
+                JOIN works w ON w.id = p.work_id
+                WHERE p.user_id = ? AND p.fraction >= 1
+                  AND {self._HAS_FILES_SQL.format(alias="w")}
+                ORDER BY p.updated_at DESC
+                LIMIT ?
+                """,
+                (user_id, int(limit)),
+            ).fetchall()
+        out = []
+        for row in rows:
+            data = _row_dict(row) or {}
+            data["has_cover"] = bool(data.get("cover_path"))
+            data["progress"] = 100
+            out.append(data)
+        return out
+
     def upsert_indexer(self, indexer: Dict[str, Any]) -> Dict[str, Any]:
         now = time.time()
         indexer_id = str(indexer.get("id") or "nzbfinder")

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { bookAvailability } from "./availability.js";
+import { bookAvailability, catalogStatus } from "./availability.js";
 
 const book = {
   id: "book-1",
@@ -44,7 +44,7 @@ describe("availability chip", () => {
     assert.match(view.searchHref, /\/search\?/);
     assert.match(view.searchHref, /kind=audiobook/);
     assert.match(view.searchHref, /title=Circe/);
-    assert.match(view.findHref, /\/find\?/);
+    assert.match(view.findHref, /\/search\?/);
     assert.match(view.findHref, /kind=audiobook/);
     assert.equal(view.downloadHref, "/api/works/book-1/download");
     assert.equal(view.canAdd, false);
@@ -85,5 +85,34 @@ describe("availability chip", () => {
   it("stays quiet for comics and for titles beyond the shelves", () => {
     assert.equal(bookAvailability({ work: { ...book, kind: "comic" }, audiobook: miss }).show, false);
     assert.equal(bookAvailability({ work: book, audiobook: miss, beyond: true }).show, false);
+  });
+});
+
+describe("catalog status", () => {
+  it("says Read on the shelf and Listen for audiobooks", () => {
+    const print = catalogStatus({ work: book, role: "reader" });
+    assert.equal(print.status, "On the shelf");
+    assert.equal(print.verb, "Read");
+    assert.equal(print.readHref, "/works/book-1?read=1");
+    const audio = catalogStatus({ work: { ...book, kind: "audiobook" }, role: "reader" });
+    assert.equal(audio.verb, "Listen");
+    assert.equal(audio.listenHref, "/works/book-1?listen=1");
+  });
+
+  it("offers Want to keepers and Ask the house to readers when beyond", () => {
+    const owner = catalogStatus({ work: { title: "Dune", kind: "book" }, role: "owner", beyond: true });
+    assert.equal(owner.status, "Not on the shelf");
+    assert.equal(owner.verb, "Want");
+    assert.equal(owner.canAdd, true);
+    const reader = catalogStatus({ work: { title: "Dune", kind: "book" }, role: "reader", beyond: true });
+    assert.equal(reader.verb, "Ask the house");
+    assert.equal(reader.canAdd, false);
+  });
+
+  it("names Asked, On the way, and Needs you", () => {
+    assert.equal(catalogStatus({ work: { ...book, job_status: "asked" } }).status, "Asked");
+    assert.equal(catalogStatus({ work: { ...book, job_status: "queued" } }).status, "On the way");
+    assert.equal(catalogStatus({ work: { ...book, review_state: "needs_review" } }).status, "Needs you");
+    assert.equal(catalogStatus({ work: { ...book, review_state: "needs_review" } }).verb, "");
   });
 });

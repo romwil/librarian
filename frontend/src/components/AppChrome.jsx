@@ -79,10 +79,14 @@ export default function AppChrome({ user, features, reviewCount = 0, inboxUnread
 
   return (
     <div className={`room ambient-${ambient}`} data-ambient={ambient}>
+      <a className="skip-link" href="#main">
+        Skip to library
+      </a>
       <header className="topbar">
         <NavLink to="/" className="brand" end>
           Librarian
         </NavLink>
+        {features?.household_name ? <span className="sr-only">{features.household_name}</span> : null}
         <nav className="nav-links" aria-label="Library">
           <NavLink to="/" end className={({ isActive }) => (isActive ? "is-current" : undefined)}>
             Hall
@@ -119,8 +123,14 @@ export default function AppChrome({ user, features, reviewCount = 0, inboxUnread
           />
         </div>
       </header>
-      <main>{children}</main>
-      <nav className="mobile-tabbar" aria-label="Mobile">
+      <main id="main" tabIndex={-1}>
+        {children}
+      </main>
+      <nav
+        className="mobile-tabbar"
+        aria-label="Mobile"
+        style={{ "--tab-count": op ? 5 : 4 }}
+      >
         <NavLink to="/" end className={({ isActive }) => (isActive ? "is-current" : undefined)}>
           Hall
         </NavLink>
@@ -130,8 +140,15 @@ export default function AppChrome({ user, features, reviewCount = 0, inboxUnread
         <NavLink to="/wanted" className={({ isActive }) => (isActive ? "is-current" : undefined)}>
           Wanted
         </NavLink>
+        <NavLink to="/card" className={({ isActive }) => (isActive ? "is-current" : undefined)}>
+          Library card
+        </NavLink>
+        {op ? (
+          <NavLink to="/review" className={({ isActive }) => (isActive ? "is-current" : undefined)}>
+            Holds
+          </NavLink>
+        ) : null}
       </nav>
-      {features?.household_name ? <span className="sr-only">{features.household_name}</span> : null}
     </div>
   );
 }

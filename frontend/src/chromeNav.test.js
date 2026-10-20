@@ -38,8 +38,22 @@ test("account menu holds theme, lamp, People, Maintain, and Settings", () => {
   assert.equal(chromeSrc.includes("ambient-toggle"), false);
 });
 
-test("/browse redirects to Hall", () => {
+test("mobile tab bar is Hall, Search, Wanted, Library card", () => {
+  assert.match(chromeSrc, /mobile-tabbar/);
+  assert.match(chromeSrc, />\s*Library card\s*</);
+  assert.match(chromeSrc, /to="\/card"/);
+  assert.match(chromeSrc, /--tab-count/);
+  assert.match(chromeSrc, /id="main"/);
+  assert.match(chromeSrc, /Skip to library/);
+  assert.equal(chromeSrc.includes("bag-glyph"), false);
+});
+
+test("/browse redirects to Hall and /find redirects to Search", () => {
   assert.match(mainSrc, /function BrowseToHall/);
   assert.match(mainSrc, /path="browse" element=\{<BrowseToHall/);
   assert.match(mainSrc, /pathname: "\/"/);
+  assert.match(mainSrc, /function FindToSearch/);
+  assert.match(mainSrc, /path="find" element=\{<FindToSearch/);
+  assert.match(mainSrc, /pathname: "\/search"/);
+  assert.match(mainSrc, /path="card"/);
 });

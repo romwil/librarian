@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import {
   clothFor,
+  coverAltText,
   coverCaption,
   coverClassNames,
   coverDisplayTitle,
@@ -30,6 +31,11 @@ describe("reading room cover helpers", () => {
   it("picks a stable cloth color from the title", () => {
     assert.equal(clothFor("Piranesi"), clothFor("Piranesi"));
     assert.notEqual(clothFor("Piranesi"), clothFor("Circe"));
+  });
+
+  it("names cover art as title (author)", () => {
+    assert.equal(coverAltText({ title: "Circe", author: "Madeline Miller" }), "Circe (Madeline Miller)");
+    assert.equal(coverAltText({ title: "Circe" }), "Circe");
   });
 
   it("opens peek on a plain click and not a modifier click", () => {

@@ -26,20 +26,20 @@ import {
 } from "./find.js";
 
 describe("Find query builder", () => {
-  it("builds /find with q and kind", () => {
-    assert.equal(findHref({ q: "dune", kind: "book" }), "/find?q=dune&kind=book");
+  it("builds /search with q and kind", () => {
+    assert.equal(findHref({ q: "dune", kind: "book" }), "/search?q=dune&kind=book");
   });
 
   it("adds advanced author, title, and isbn when used", () => {
     assert.equal(
       findHref({ q: "dune", kind: "book", author: "Herbert", title: "Dune", isbn: "9780441172719" }),
-      "/find?q=dune&kind=book&author=Herbert&title=Dune&isbn=9780441172719",
+      "/search?q=dune&kind=book&author=Herbert&title=Dune&isbn=9780441172719",
     );
   });
 
-  it("leaves /find empty when there is no query", () => {
-    assert.equal(findHref({}), "/find");
-    assert.equal(findHref({ q: "  ", kind: "" }), "/find");
+  it("leaves /search empty when there is no query", () => {
+    assert.equal(findHref({}), "/search");
+    assert.equal(findHref({ q: "  ", kind: "" }), "/search");
   });
 
   it("shows Discover when Find has no query", () => {
@@ -123,7 +123,7 @@ describe("Find query builder", () => {
     });
     assert.equal(
       findHref(gapFindFields({ series_name: "Saga", missing_index: "54", kind: "comic" })),
-      "/find?q=Saga+54&kind=comic&series=Saga&issue=54",
+      "/search?q=Saga+54&kind=comic&series=Saga&issue=54",
     );
     assert.equal(
       findHref(
@@ -134,7 +134,7 @@ describe("Find query builder", () => {
           year: 2026,
         }),
       ),
-      "/find?q=Linux+Magazin+2026-09&kind=magazine&title=Linux+Magazin+2026-09&year=2026",
+      "/search?q=Linux+Magazin+2026-09&kind=magazine&title=Linux+Magazin+2026-09&year=2026",
     );
   });
 
@@ -188,7 +188,7 @@ describe("Find query builder", () => {
           year: 1969,
         }),
       ),
-      "/find?q=Dune+2&kind=book&author=Frank+Herbert&title=Dune+Messiah&year=1969",
+      "/search?q=Dune+2&kind=book&author=Frank+Herbert&title=Dune+Messiah&year=1969",
     );
   });
 
@@ -205,7 +205,7 @@ describe("Find query builder", () => {
     assert.equal(fields.artist, "Miles");
     assert.equal(fields.album, "Kind of Blue");
     assert.equal(fields.isbn, "");
-    assert.equal(findHref(fields), "/find?q=Kind+of+Blue+2&kind=music&artist=Miles&album=Kind+of+Blue");
+    assert.equal(findHref(fields), "/search?q=Kind+of+Blue+2&kind=music&artist=Miles&album=Kind+of+Blue");
   });
 
   it("builds a local search href with the same fields", () => {
@@ -300,10 +300,10 @@ describe("catalog gap fan-out", () => {
 
 describe("NYT bestsellers presets", () => {
   it("builds Find deep links for list and date", () => {
-    assert.equal(bestsellersHref(), "/find?preset=nyt&list=hardcover-fiction");
+    assert.equal(bestsellersHref(), "/noted?preset=nyt&list=hardcover-fiction");
     assert.equal(
       bestsellersHref({ list: "hardcover-nonfiction", date: "2024-01-07" }),
-      "/find?preset=nyt&list=hardcover-nonfiction&date=2024-01-07",
+      "/noted?preset=nyt&list=hardcover-nonfiction&date=2024-01-07",
     );
     assert.deepEqual(bestsellersFromSearchParams(new URLSearchParams("preset=nyt&list=hardcover-fiction")), {
       list: "hardcover-fiction",
@@ -320,7 +320,7 @@ describe("NYT bestsellers presets", () => {
     );
     assert.equal(
       nytHitFindHref({ title: "Dune", author: "Frank Herbert", isbn: "9780441172719" }),
-      "/find?q=Frank+Herbert+Dune&kind=book&author=Frank+Herbert&title=Dune&isbn=9780441172719",
+      "/search?q=Frank+Herbert+Dune&kind=book&author=Frank+Herbert&title=Dune&isbn=9780441172719",
     );
   });
 });

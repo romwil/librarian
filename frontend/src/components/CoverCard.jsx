@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api.js";
-import { bookAvailability } from "../availability.js";
+import { bookAvailability, catalogStatus } from "../availability.js";
 import AvailabilityActions from "./AvailabilityActions.jsx";
+import CatalogVerb from "./CatalogVerb.jsx";
 import {
   clothFor,
+  coverAltText,
   coverCaption,
   coverClassNames,
   coverOverlay,
@@ -73,12 +75,18 @@ export default function CoverCard({ work, onRequest, badge, beyond = false, role
     role,
     beyond,
   });
+  const catalog = catalogStatus({
+    work: { ...work, wanted: wantedRow || work.wanted },
+    role,
+    beyond,
+  });
+  const wantBody = availability.addBody || catalog.addBody;
 
   async function addWanted() {
-    if (!availability.addBody || availabilityBusy) return;
+    if (!wantBody || availabilityBusy) return;
     setAvailabilityBusy(true);
     try {
-      const result = await api.addWanted(availability.addBody);
+      const result = await api.addWanted(wantBody);
       if (result?.item) setWantedRow(result.item);
     } catch {
       /* the desk and peek surface the error; the card stays Wanted */
@@ -138,16 +146,24 @@ export default function CoverCard({ work, onRequest, badge, beyond = false, role
         style={{ "--cloth": work.cloth || clothFor(tip || work.title), "--progress": `${work.progress || 0}%` }}
         onClick={onClick}
         title={tip || undefined}
-        aria-label={isGap ? `Find ${caption} beyond the shelves` : tip || caption}
+        aria-label={hasArt && !isGap ? undefined : isGap ? `Find ${caption} beyond the shelves` : tip || caption}
       >
-        <span className="cover-meta">
+        <span className="cover-meta" aria-hidden="true">
           <strong>{overlay.title}</strong>
           <em>{overlay.byline}</em>
         </span>
-        {overlay.chip ? <span className="cover-chip">{overlay.chip}</span> : null}
+        {overlay.chip ? (
+          <span className="cover-chip" aria-hidden="true">
+            {overlay.chip}
+          </span>
+        ) : null}
         {kind === "audiobook" ? <span className="cover-wave" aria-hidden="true" /> : null}
-        {hasArt ? <img src={art} alt="" onError={() => setArtFailed(true)} /> : null}
-        {chip ? <span className={`live-chip${tone ? ` ${tone}` : ""}`}>{chip}</span> : null}
+        {hasArt ? <img src={art} alt={coverAltText(work)} onError={() => setArtFailed(true)} /> : null}
+        {chip ? (
+          <span className={`live-chip${tone ? ` ${tone}` : ""}`} aria-hidden="true">
+            {chip}
+          </span>
+        ) : null}
       </button>
       <p className="cover-caption" title={tip || undefined}>
         {caption}
@@ -174,13 +190,17 @@ export default function CoverCard({ work, onRequest, badge, beyond = false, role
           ))}
         </div>
       ) : null}
-      <AvailabilityActions
-        view={availability}
-        shelfVerbs
-        busy={availabilityBusy}
-        onAdd={addWanted}
-        onDismiss={dismissWanted}
-      />
+      {availability.show ? (
+        <AvailabilityActions
+          view={availability}
+          shelfVerbs
+          busy={availabilityBusy}
+          onAdd={addWanted}
+          onDismiss={dismissWanted}
+        />
+      ) : (
+        <CatalogVerb view={catalog} busy={availabilityBusy} onAdd={addWanted} />
+      )}
     </div>
   );
 }

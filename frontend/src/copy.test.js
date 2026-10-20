@@ -91,8 +91,12 @@ describe("reading room copy", () => {
   });
 
   it("keeps Hall and Review empty states human", () => {
-    assert.equal(emptyHallCopy({ owner: true }).title, "Open the stacks");
+    assert.equal(emptyHallCopy({ owner: true }).title, "The shelves are waiting");
     assert.equal(emptyHallCopy({ configured: true }).title, "The shelves are still bare");
+    assert.doesNotMatch(emptyHallCopy({ owner: true }).title, /stacks|lamp/i);
+    assert.doesNotMatch(emptyHallCopy({ owner: true }).lede, /stacks|lamp/i);
+    assert.doesNotMatch(emptyHallCopy({ configured: true }).lede, /stacks|lamp/i);
+    assert.doesNotMatch(emptyHallCopy({ owner: false }).lede, /stacks|lamp/i);
     assert.match(emptyReviewCopy(), /Holds desk is empty/);
   });
 

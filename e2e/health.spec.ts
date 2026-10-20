@@ -14,7 +14,7 @@ test.describe("health / shell", () => {
     await expect(page.getByRole("heading", { name: "The Reading Room" })).toBeVisible();
     await expect(page.getByText("Household library")).toBeVisible();
     await loginAsOwner(page);
-    await expect(page.getByRole("heading", { name: "What are you looking for?" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Hall" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Hall" }).first()).toBeVisible();
   });
 });

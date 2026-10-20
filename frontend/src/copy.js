@@ -155,14 +155,14 @@ export function emptyHallCopy({ owner = false, configured = false } = {}) {
   if (configured) {
     return {
       title: "The shelves are still bare",
-      lede: "The lamp is lit. Find a volume beyond the shelves, or wait for the first organize to land.",
+      lede: "Find a volume beyond the shelves, or wait for the first organize to land.",
     };
   }
   return {
-    title: "Open the stacks",
+    title: "The shelves are waiting",
     lede: owner
       ? "Add an indexer and library roots in Settings. The Hall stays quiet and open while you do."
-      : "Ask the owner to add an indexer. Covers will land here under the lamp.",
+      : "Ask the owner to add an indexer. Covers will land here.",
   };
 }
 

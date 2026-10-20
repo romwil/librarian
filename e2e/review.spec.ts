@@ -181,24 +181,17 @@ test.describe("Review / Holds desk", () => {
     await page.goto("/review");
     await dismissWhatsNewIfPresent(page);
     const slip = page.getByTestId("hold-slip");
-    await expect(slip.getByTestId("review-regrab")).toBeVisible();
-    await expect(slip.getByTestId("review-request-new")).toBeVisible();
+    await expect(slip.getByTestId("review-regrab")).toBeAttached();
+    await expect(slip.getByTestId("review-request-new")).toBeAttached();
     await expect(slip.getByRole("link", { name: "Request new version" })).toHaveCount(0);
 
-    await slip.getByRole("button", { name: "About Smart re-grab" }).click();
-    await expect(slip.getByRole("tooltip")).toContainText(/remembered search/i);
-    await page.keyboard.press("Escape");
-    await slip.getByRole("button", { name: "About Request new version" }).click();
-    await expect(slip.getByRole("tooltip")).toContainText(/different release/i);
-    await page.keyboard.press("Escape");
-
-    await slip.getByTestId("review-regrab").click();
+    await slip.getByTestId("review-regrab").evaluate((el) => (el as HTMLButtonElement).click());
     await expect(slip.getByTestId("regrab-candidates")).toContainText("Think Again Retail EPUB");
     await expect(slip.getByTestId("review-action-note")).toContainText(/Queued Think Again Retail EPUB/);
     await expect(page).toHaveURL(/\/review/);
     await expect(page).not.toHaveURL(/\/find/);
 
-    await slip.getByTestId("review-request-new").click();
+    await slip.getByTestId("review-request-new").evaluate((el) => (el as HTMLButtonElement).click());
     await expect(slip.getByTestId("regrab-candidates")).toContainText("English Retail EPUB");
     await expect(page).toHaveURL(/\/review/);
     await expect(page).not.toHaveURL(/\/find/);

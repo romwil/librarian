@@ -1,6 +1,7 @@
 /** One verb cluster for a shelved book: Read, Listen, Download, or Want. */
 
 import { audiobookFindHref } from "./audiobookCompanion.js";
+import { isInboundJob } from "./cover.js";
 import { searchHref } from "./find.js";
 import { workListenPath } from "./listen.js";
 import { workDownloadUrl, workReaderPath } from "./reader.js";
@@ -13,6 +14,7 @@ function hidden() {
   return {
     show: false,
     verb: "",
+    status: "",
     chip: "",
     note: "",
     readHref: "",
@@ -34,6 +36,17 @@ function shelfSearchHref(work, find = {}) {
     author: find.author || work.author || "",
     isbn: find.isbn || work.isbn || "",
   });
+}
+
+function wantedBody(work) {
+  const kind = work.kind && work.kind !== "gap" ? work.kind : "book";
+  return {
+    work_id: work.id || "",
+    title: work.title || "",
+    author: work.author || "",
+    isbn: work.isbn || "",
+    kind,
+  };
 }
 
 /**
@@ -60,6 +73,7 @@ export function bookAvailability({ work = {}, audiobook = null, wanted = null, r
     return {
       show: true,
       verb: "listen",
+      status: "On the shelf",
       chip: "Listen",
       note: "",
       readHref,
@@ -78,6 +92,7 @@ export function bookAvailability({ work = {}, audiobook = null, wanted = null, r
     return {
       show: true,
       verb: "read",
+      status: "On the shelf",
       chip: "Read",
       note: "",
       readHref,
@@ -96,6 +111,7 @@ export function bookAvailability({ work = {}, audiobook = null, wanted = null, r
   return {
     show: true,
     verb: "want",
+    status: "On the shelf",
     chip: "Wanted",
     note: openRow?.status === "asked" ? "Asked" : "The audiobook is wanted",
     readHref,
@@ -113,5 +129,69 @@ export function bookAvailability({ work = {}, audiobook = null, wanted = null, r
       isbn: work.isbn || "",
       kind: "audiobook",
     },
+  };
+}
+
+/**
+ * Status + one verb for any catalog kind.
+ * On the shelf → Read or Listen. Not on the shelf → Want (owner/op) or Ask the house.
+ * Asked / On the way / Needs you replace the verb.
+ */
+export function catalogStatus({ work = {}, role = "reader", beyond = false } = {}) {
+  if (work.gap || work.kind === "gap") return hidden();
+
+  const manage = canManageWanted(role);
+  const kind = work.kind || "book";
+  const addBody = wantedBody(work);
+
+  if (work.review_state === "needs_review" || work.job_status === "review") {
+    return {
+      ...hidden(),
+      show: true,
+      status: "Needs you",
+      verb: "",
+      chip: "Needs you",
+    };
+  }
+  if (work.job_status === "asked") {
+    return {
+      ...hidden(),
+      show: true,
+      status: "Asked",
+      verb: "",
+      chip: "Asked",
+    };
+  }
+  if (isInboundJob(work.job_status)) {
+    return {
+      ...hidden(),
+      show: true,
+      status: "On the way",
+      verb: "",
+      chip: "On the way",
+    };
+  }
+
+  if (beyond || !work.id) {
+    return {
+      ...hidden(),
+      show: true,
+      status: "Not on the shelf",
+      verb: manage ? "Want" : "Ask the house",
+      chip: manage ? "Want" : "Ask the house",
+      canAdd: manage,
+      addBody,
+    };
+  }
+
+  const listen = kind === "audiobook";
+  return {
+    ...hidden(),
+    show: true,
+    status: "On the shelf",
+    verb: listen ? "Listen" : kind === "music" ? "" : "Read",
+    chip: listen ? "Listen" : kind === "music" ? "On the shelf" : "Read",
+    readHref: listen || kind === "music" ? "" : workReaderPath(work.id),
+    listenHref: listen ? workListenPath(work.id) : "",
   };
 }

@@ -91,8 +91,7 @@ test.describe("Library availability", () => {
     await page.getByTestId("wanted-add-submit").click();
     const row = page.getByTestId("wanted-row").filter({ hasText: title });
     await expect(row).toBeVisible();
-    await expect(row.getByRole("link", { name: "Search the shelves" })).toBeVisible();
-    await expect(row.getByRole("link", { name: "Find beyond" })).toBeVisible();
+    await expect(row.getByRole("button", { name: "Find beyond" })).toBeVisible();
     await row.getByTestId("wanted-dismiss").click();
     await expect(row).toHaveCount(0);
   });
