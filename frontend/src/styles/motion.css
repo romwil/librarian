@@ -42,7 +42,8 @@
 .admin-room.page-settle,
 .hall-page.page-settle,
 .work-page.page-settle {
-  animation: page-settle var(--motion-settle) both;
+  /* backwards: start translated; drop leftover transform so Hall doesn't steal menu clicks */
+  animation: page-settle var(--motion-settle) backwards;
 }
 
 /* 2. Lamp warm: skeleton shimmer while shelves/desks load */

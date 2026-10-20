@@ -98,6 +98,21 @@ def test_suggest_unknown_field_fail_closed(tmp_path, monkeypatch):
     assert resp.json()["detail"] == "Unknown suggest field"
 
 
+def test_suggest_q_merges_title_author_series(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    _login(client)
+    _seed(tmp_path)
+    resp = client.get("/api/suggest", params={"field": "q", "q": "dun"})
+    assert resp.status_code == 200
+    values = [row["value"] for row in resp.json()["items"]]
+    assert "Dune" in values
+    assert values.index("Dune") < values.index("Dune Messiah") or "Dune Messiah" in values
+    resp = client.get("/api/suggest", params={"field": "q", "q": "herb"})
+    assert "Frank Herbert" in [row["value"] for row in resp.json()["items"]]
+    saga = client.get("/api/suggest", params={"field": "q", "q": "sag"})
+    assert "Saga" in [row["value"] for row in saga.json()["items"]]
+
+
 def test_suggest_authors_from_catalog(tmp_path, monkeypatch):
     client = _client(tmp_path, monkeypatch)
     _login(client)

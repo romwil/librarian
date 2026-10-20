@@ -10,8 +10,7 @@ test.describe("Gaps as gifts", () => {
   test("Hall gaps rail speaks as gifts", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByTestId("hall-shelves")).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByRole("heading", { name: "Gaps as gifts" })).toBeHidden();
-    await page.getByRole("button", { name: "More shelves" }).click();
-    await expect(page.getByRole("heading", { name: "Gaps as gifts" })).toBeVisible();
+    await expect(page.getByRole("search")).toBeVisible();
+    await expect(page.getByRole("button", { name: "More shelves" })).toHaveCount(0);
   });
 });

@@ -14,6 +14,13 @@ const CLOTHS = [
   "#4a2c22",
 ];
 
+export function coverAltText(work = {}) {
+  const title = String(work.title || "").trim();
+  const author = String(work.author || "").trim();
+  if (!title) return author || "";
+  return author ? `${title} (${author})` : title;
+}
+
 export function clothFor(title) {
   const text = String(title || "");
   let hash = 0;

@@ -17,7 +17,7 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set
 from librarian.db import Database
 from librarian.kinds import ALL_KINDS
 
-SUGGEST_FIELDS = frozenset({"author", "title", "series", "artist", "album", "year"})
+SUGGEST_FIELDS = frozenset({"author", "title", "series", "artist", "album", "year", "q"})
 CACHE_DIR_NAME = "suggest-cache"
 CACHE_VERSION = 1
 MAX_CACHE_VALUES = 5000
@@ -234,8 +234,36 @@ def suggest_items(
         capped = DEFAULT_LIMIT
     needle = _norm(q)
 
+    if key == "q":
+        items: List[Dict[str, Any]] = []
+        seen: Set[str] = set()
+        for src in ("title", "author", "series"):
+            for value in db.suggest_values(field=src, kind=kind_key, q=needle, limit=capped):
+                fold = _fold(value)
+                if fold in seen:
+                    continue
+                seen.add(fold)
+                items.append({"value": value, "meta": "catalog"})
+                if len(items) >= capped:
+                    return items[:capped]
+        if len(items) < capped:
+            for src in ("title", "author", "series"):
+                for value in load_cache_field(data_dir, src):
+                    if not _matches(needle, value):
+                        continue
+                    fold = _fold(value)
+                    if fold in seen:
+                        continue
+                    seen.add(fold)
+                    items.append({"value": value, "meta": "cache"})
+                    if len(items) >= capped:
+                        break
+                if len(items) >= capped:
+                    break
+        return items[:capped]
+
     catalog = db.suggest_values(field=key, kind=kind_key, q=needle, limit=capped)
-    items: List[Dict[str, Any]] = [{"value": value, "meta": "catalog"} for value in catalog]
+    items = [{"value": value, "meta": "catalog"} for value in catalog]
     seen = {_fold(value) for value in catalog}
 
     if len(items) < capped:

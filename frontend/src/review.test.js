@@ -172,7 +172,7 @@ describe("review recovery actions", () => {
     const actions = reviewActionsFromWork(work);
     assert.equal(actions.canRepair, true);
     assert.equal(actions.canRetry, true);
-    assert.equal(reviewFindHref(work), "/find?q=Guardians+Mix&kind=music");
+    assert.equal(reviewFindHref(work), "/search?q=Guardians+Mix&kind=music");
   });
 
   it("explains smart re-grab and request new version as different slip actions", () => {

@@ -7,8 +7,9 @@ import { coverWashStyle, coverWashUrl, isInboundJob } from "../cover.js";
 import { canPromoteIncomingMusic, humanError, peekMediaNote } from "../copy.js";
 import { looksLikeHtml, sanitizeDescriptionHtml } from "../description.js";
 import { findHref, gapFindFields } from "../find.js";
-import { bookAvailability } from "../availability.js";
+import { bookAvailability, catalogStatus } from "../availability.js";
 import AvailabilityActions from "../components/AvailabilityActions.jsx";
+import CatalogVerb from "../components/CatalogVerb.jsx";
 import { isIncompleteOwnedPartSet, ownedPartSetStatusLine, partSetFindFields } from "../findParts.js";
 import { useAlbumPlayer } from "../hooks/useAlbumPlayer.js";
 import { finishRitualCopy, finishWhisperInvite, hallLampPeriod } from "../lib/lampRituals.js";
@@ -191,13 +192,17 @@ export default function WorkPage() {
     wanted: data.wanted,
     role: user?.role || "reader",
   });
+  const status = catalogStatus({
+    work,
+    role: user?.role || "reader",
+  });
   const readLabel = readerCtaLabel(work) || "Read";
   const verb = workPrimaryVerb({
     canListen,
     canRead: canRead || (canInlineOpen && Boolean(readerCtaLabel(work))),
     canPlay: Boolean(album.enabled) && !canListen && !canRead,
     canDownload: Boolean(data.can_download),
-    canWant: Boolean(availability.canAdd),
+    canWant: Boolean(availability.canAdd) || Boolean(status.canAdd),
   });
   const primaryFile =
     primaryReadingFile(data.files || []) ||
@@ -379,10 +384,11 @@ export default function WorkPage() {
   }
 
   async function addWanted() {
-    if (!availability.addBody) return;
+    const body = availability.addBody || status.addBody;
+    if (!body) return;
     setError("");
     try {
-      const result = await api.addWanted(availability.addBody);
+      const result = await api.addWanted(body);
       setData((prev) => (prev ? { ...prev, wanted: result.item } : prev));
     } catch (err) {
       setError(humanError(err));
@@ -449,7 +455,7 @@ export default function WorkPage() {
               </Link>
             ) : null}
             {work.isbn ? <span className="chip font-mono">{work.isbn}</span> : null}
-            {work.review_state === "needs_review" ? <span className="chip">Review</span> : null}
+            {work.review_state === "needs_review" ? <span className="chip">Needs you</span> : null}
             {work.music_state === "incoming" ? <span className="chip">Incoming</span> : null}
             {isInboundJob(work.job_status) ? <span className="chip">On the way</span> : null}
             {data.file_count > 1 ? <span className="chip">{data.file_count} files</span> : null}
@@ -514,12 +520,84 @@ export default function WorkPage() {
                 Want
               </button>
             ) : null}
+            {work.kind !== "music" ? (
+              <button
+                type="button"
+                className={`cta ghost compact${finishRitual ? " finish-ritual-active" : ""}`}
+                onClick={beginFinishCeremony}
+                data-testid="work-finished"
+                aria-expanded={finishCeremony}
+                disabled={finishCeremony || finishSaving}
+              >
+                Finished
+              </button>
+            ) : null}
             {primaryName ? (
               <p className="muted font-mono" data-testid="work-file">
                 {primaryName}
               </p>
             ) : null}
           </div>
+          {finishCeremony ? (
+            <div
+              className="finish-ceremony"
+              data-testid="finish-ceremony"
+              role="region"
+              aria-label="Finished ceremony"
+            >
+              <p className="finish-ritual-note" data-testid="finish-ritual-note" role="status">
+                {finishRitualCopy(hallLampPeriod())}
+              </p>
+              <p className="finish-whisper-invite muted">{finishWhisperInvite()}</p>
+              <form
+                className="finish-ceremony-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  completeFinish({ withWhisper: true });
+                }}
+              >
+                <label className="sr-only" htmlFor="finish-whisper-body">
+                  Quiet note for the house
+                </label>
+                <input
+                  id="finish-whisper-body"
+                  value={finishWhisper}
+                  onChange={(e) => setFinishWhisper(e.target.value)}
+                  maxLength={280}
+                  placeholder="A soft word for the shelf…"
+                  disabled={finishSaving}
+                  data-testid="finish-whisper-input"
+                />
+                <div className="finish-ceremony-actions">
+                  <button
+                    type="submit"
+                    className="cta compact"
+                    disabled={finishSaving || !finishWhisper.trim()}
+                    data-testid="finish-whisper-submit"
+                  >
+                    Whisper to the house
+                  </button>
+                  <button
+                    type="button"
+                    className="cta ghost compact"
+                    disabled={finishSaving}
+                    onClick={() => completeFinish({ withWhisper: false })}
+                    data-testid="finish-just-finished"
+                  >
+                    Just finished
+                  </button>
+                  <button
+                    type="button"
+                    className="cta ghost compact"
+                    disabled={finishSaving}
+                    onClick={cancelFinishCeremony}
+                  >
+                    Not yet
+                  </button>
+                </div>
+              </form>
+            </div>
+          ) : null}
         </div>
       </section>
       <div className="work-body">
@@ -639,11 +717,18 @@ export default function WorkPage() {
                 </select>
               </label>
             ) : null}
-            <AvailabilityActions
-              view={verb === "Want" ? { ...availability, canAdd: false } : availability}
-              onAdd={addWanted}
-              onDismiss={dismissWanted}
-            />
+            {availability.show ? (
+              <AvailabilityActions
+                view={verb === "Want" ? { ...availability, canAdd: false } : availability}
+                onAdd={addWanted}
+                onDismiss={dismissWanted}
+              />
+            ) : (
+              <CatalogVerb
+                view={verb && verb !== "Want" ? { ...status, verb: "", canAdd: false } : { ...status, canAdd: verb !== "Want" && status.canAdd }}
+                onAdd={addWanted}
+              />
+            )}
             {canListen && playerLink?.href ? (
               <a
                 className="cta outline compact"
@@ -665,18 +750,6 @@ export default function WorkPage() {
               >
                 {komgaLink.label || "Open in Komga"}
               </a>
-            ) : null}
-            {work.kind !== "music" ? (
-              <button
-                type="button"
-                className={`cta ghost compact${finishRitual ? " finish-ritual-active" : ""}`}
-                onClick={beginFinishCeremony}
-                data-testid="work-finished"
-                aria-expanded={finishCeremony}
-                disabled={finishCeremony || finishSaving}
-              >
-                Finished
-              </button>
             ) : null}
             {canPromoteIncomingMusic(work, user.role) ? (
               <button type="button" className="cta ghost compact" onClick={promote}>
@@ -702,66 +775,6 @@ export default function WorkPage() {
               Back to The Hall
             </Link>
           </div>
-          {finishCeremony ? (
-            <div
-              className="finish-ceremony"
-              data-testid="finish-ceremony"
-              role="region"
-              aria-label="Finished ceremony"
-            >
-              <p className="finish-ritual-note" data-testid="finish-ritual-note" role="status">
-                {finishRitualCopy(hallLampPeriod())}
-              </p>
-              <p className="finish-whisper-invite muted">{finishWhisperInvite()}</p>
-              <form
-                className="finish-ceremony-form"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  completeFinish({ withWhisper: true });
-                }}
-              >
-                <label className="sr-only" htmlFor="finish-whisper-body">
-                  Quiet note for the house
-                </label>
-                <input
-                  id="finish-whisper-body"
-                  value={finishWhisper}
-                  onChange={(e) => setFinishWhisper(e.target.value)}
-                  maxLength={280}
-                  placeholder="A soft word for the shelf…"
-                  disabled={finishSaving}
-                  data-testid="finish-whisper-input"
-                />
-                <div className="finish-ceremony-actions">
-                  <button
-                    type="submit"
-                    className="cta compact"
-                    disabled={finishSaving || !finishWhisper.trim()}
-                    data-testid="finish-whisper-submit"
-                  >
-                    Whisper to the house
-                  </button>
-                  <button
-                    type="button"
-                    className="cta ghost compact"
-                    disabled={finishSaving}
-                    onClick={() => completeFinish({ withWhisper: false })}
-                    data-testid="finish-just-finished"
-                  >
-                    Just finished
-                  </button>
-                  <button
-                    type="button"
-                    className="cta ghost compact"
-                    disabled={finishSaving}
-                    onClick={cancelFinishCeremony}
-                  >
-                    Not yet
-                  </button>
-                </div>
-              </form>
-            </div>
-          ) : null}
           {finishRitual && !finishCeremony ? (
             <p className="finish-ritual-note" data-testid="finish-ritual-note" role="status">
               {finishRitualCopy(hallLampPeriod())}

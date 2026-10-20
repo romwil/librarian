@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { Link, useOutletContext } from "react-router-dom";
+import { Link, useNavigate, useOutletContext } from "react-router-dom";
 import { api } from "../api.js";
 import HallCollection from "../components/HallCollection.jsx";
+import QueryForm from "../components/QueryForm.jsx";
 import Rail from "../components/Rail.jsx";
 import SeriesCatchUp from "../components/SeriesCatchUp.jsx";
 import TonightShelf from "../components/TonightShelf.jsx";
@@ -151,7 +152,9 @@ function HallRails({ role, owner, configured }) {
 
 export default function HallPage() {
   const { user } = useOutletContext();
+  const navigate = useNavigate();
   const [configured, setConfigured] = useState(false);
+  const [draft, setDraft] = useState("");
   const owner = user?.role === "owner";
 
   useEffect(() => {
@@ -172,8 +175,20 @@ export default function HallPage() {
 
   return (
     <div className="hall hall-page page-settle" data-testid="hall">
-      <header className="browse-hero">
+      <header className="hero-search-block">
         <h1>Hall</h1>
+        <QueryForm
+          variant="hero"
+          inputId="hall-search"
+          draft={draft}
+          onDraft={setDraft}
+          onSubmit={() => {
+            const q = draft.trim();
+            navigate(q ? `/search?q=${encodeURIComponent(q)}` : "/search");
+          }}
+          placeholder="Title, author, or ISBN"
+          ariaLabel="Search"
+        />
       </header>
       <HallRails role={user?.role} owner={owner} configured={configured} />
     </div>

@@ -33,6 +33,7 @@ describe("TypeaheadField", () => {
     assert.equal(mod.isTypeaheadField("artist"), true);
     assert.equal(mod.isTypeaheadField("album"), true);
     assert.equal(mod.isTypeaheadField("year"), true);
+    assert.equal(mod.isTypeaheadField("q"), true);
     assert.equal(mod.isTypeaheadField("isbn"), false);
     assert.equal(mod.isTypeaheadField("issue"), false);
   });

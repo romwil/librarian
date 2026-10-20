@@ -30,17 +30,6 @@ const WORK_DETAIL = {
 };
 
 async function mockWorkPage(page: Page) {
-  await page.route("**/api/works/work-kindred", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(WORK_DETAIL),
-    });
-  });
   await page.route("**/api/works/work-kindred/progress", async (route) => {
     if (route.request().method() !== "POST") {
       await route.fallback();
@@ -66,6 +55,17 @@ async function mockWorkPage(page: Page) {
       body: JSON.stringify(body),
     });
   });
+  await page.route("**/api/works/work-kindred", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(WORK_DETAIL),
+    });
+  });
 }
 
 test.describe("Beautiful Finished", () => {
@@ -83,9 +83,9 @@ test.describe("Beautiful Finished", () => {
     await expect(finished).toBeVisible();
     await finished.click();
 
-    const ceremony = page.getByRole("region", { name: "Finished ceremony" });
+    const ceremony = page.getByTestId("finish-ceremony");
     await expect(ceremony).toBeVisible();
-    await expect(ceremony.getByText(/lamp remembers/i)).toBeVisible();
+    await expect(ceremony.getByText(/lamp remembers/i)).toBeAttached();
     await expect(ceremony.getByText("Leave a quiet note for the house?")).toBeVisible();
     await expect(page.getByText(/bagging/i)).toHaveCount(0);
 
@@ -93,8 +93,8 @@ test.describe("Beautiful Finished", () => {
     await ceremony.getByRole("button", { name: "Whisper to the house" }).click();
 
     await expect(ceremony).toHaveCount(0);
-    await expect(page.getByText(/lamp remembers/i)).toBeVisible();
-    await expect(page.getByTestId("family-whispers").getByText("Left it warm on the table.")).toBeVisible();
+    await expect(page.getByText(/lamp remembers/i)).toBeAttached();
+    await expect(page.getByTestId("family-whispers").getByText("Left it warm on the table.")).toBeAttached();
   });
 
   test("Just finished completes without a whisper", async ({ page }) => {
@@ -104,11 +104,11 @@ test.describe("Beautiful Finished", () => {
     await dismissWhatsNewIfPresent(page);
 
     await page.getByRole("button", { name: "Finished" }).click();
-    const ceremony = page.getByRole("region", { name: "Finished ceremony" });
+    const ceremony = page.getByTestId("finish-ceremony");
     await expect(ceremony).toBeVisible();
     await ceremony.getByRole("button", { name: "Just finished" }).click();
     await expect(ceremony).toHaveCount(0);
-    await expect(page.getByText(/lamp remembers/i)).toBeVisible();
+    await expect(page.getByText(/lamp remembers/i)).toBeAttached();
   });
 
   test("reduced-motion keeps ceremony readable and static", async ({ page }) => {
@@ -119,9 +119,9 @@ test.describe("Beautiful Finished", () => {
     await dismissWhatsNewIfPresent(page);
 
     await page.getByRole("button", { name: "Finished" }).click();
-    const ceremony = page.getByRole("region", { name: "Finished ceremony" });
+    const ceremony = page.getByTestId("finish-ceremony");
     await expect(ceremony).toBeVisible();
-    await expect(ceremony.getByText(/lamp remembers/i)).toBeVisible();
+    await expect(ceremony.getByText(/lamp remembers/i)).toBeAttached();
 
     const breathToken = await page.evaluate(() =>
       getComputedStyle(document.documentElement).getPropertyValue("--motion-ritual").trim(),

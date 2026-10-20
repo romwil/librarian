@@ -29,16 +29,12 @@ test("Hall shows the catalog on the page and does not hide it behind More shelve
   assert.ok(shelvesAt > 0 && collectionAt > shelvesAt);
 });
 
-test("Search shows local hits first and folds beyond-doors behind More shelves", () => {
-  const railAt = searchSrc.indexOf('title="In the stacks"');
-  const moreAt = searchSrc.indexOf("<ShelfMore>");
+test("Search shows local hits first, then Beyond, without More shelves", () => {
+  const railAt = searchSrc.indexOf('title="On the shelf"');
+  const beyondAt = searchSrc.indexOf("search-beyond");
   assert.ok(railAt > 0);
-  assert.ok(moreAt > railAt);
-  const folded = searchSrc.slice(moreAt);
-  assert.match(folded, /discover-door/);
-  assert.match(folded, /find-beyond-cta/);
-  assert.match(folded, /FIND_BEYOND_CTA/);
-  assert.match(folded, /DISCOVER_CTA/);
-  assert.equal(searchSrc.slice(0, moreAt).includes("find-beyond-cta"), false);
-  assert.equal(searchSrc.slice(0, moreAt).includes("discover-door"), false);
+  assert.ok(beyondAt > railAt);
+  assert.equal(searchSrc.includes("ShelfMore"), false);
+  assert.equal(searchSrc.includes("discover-door"), false);
+  assert.equal(searchSrc.includes("find-beyond-cta"), false);
 });

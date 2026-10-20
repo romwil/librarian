@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.5.23] — 2026-10-20
+
+### Highlights
+
+- **Catalog hunt.** Hall has a wide search that opens results; Search leads with what’s on the shelf, then beyond. Covers say Read, Listen, or Want, and Your library gathers continue, finished, favorites, and Wanted. A skip link lands in the library, and axe-core now walks the chrome.
+
 - Search keeps a Trending books door to New & noted. That desk lists Open Library trending and the bestseller list even when an indexer feed or the language model is quiet, instead of sitting on a warming skeleton.
 - Comic reading stays a page surface. A CBZ shows one image at a time, and the stage edges or arrow keys turn to the next page. Reflowable prose still scrolls.
 - New & noted gathers Open Library trending, curated bestseller lists, and Discover latest for books and audiobooks, so a title can be searched, found beyond the shelves, or added to Wanted.

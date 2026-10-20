@@ -17,7 +17,11 @@ test("Hall is the collection — kind, shelf, and sort, then covers", () => {
   assert.equal(hallSrc.includes("CelebrationBanner"), false);
   assert.equal(hallSrc.includes("celebration-banner"), false);
   assert.equal(hallSrc.includes("ShelfMore"), false);
-  assert.equal(hallSrc.includes("What are you looking for?"), false);
+  assert.match(hallSrc, /hero-search-block/);
+  assert.match(hallSrc, /variant="hero"/);
+  assert.match(hallSrc, /id="hall-search"|inputId="hall-search"/);
+  assert.match(hallSrc, /Title, author, or ISBN/);
+  assert.match(hallSrc, /\/search\?q=/);
   assert.match(hallSrc, /HallCollection/);
   assert.match(hallSrc, /title="Continue reading"/);
   assert.match(hallSrc, /title="Continue listening"/);

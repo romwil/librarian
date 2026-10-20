@@ -1,6 +1,23 @@
 {
-  "generated_at": "2026-09-30T03:23:38Z",
+  "generated_at": "2026-10-20T22:28:48Z",
   "releases": [
+    {
+      "version": "0.5.23",
+      "date": "2026-10-20",
+      "summary": "",
+      "highlights": [
+        "**Catalog hunt.** Hall has a wide search that opens results; Search leads with what’s on the shelf, then beyond. Covers say Read, Listen, or Want, and Your library gathers continue, finished, favorites, and Wanted. A skip link lands in the library, and axe-core now walks the chrome.",
+        "Search keeps a Trending books door to New & noted. That desk lists Open Library trending and the bestseller list even when an indexer feed or the language model is quiet, instead of sitting on a warming skeleton.",
+        "Comic reading stays a page surface. A CBZ shows one image at a time, and the stage edges or arrow keys turn to the next page. Reflowable prose still scrolls.",
+        "New & noted gathers Open Library trending, curated bestseller lists, and Discover latest for books and audiobooks, so a title can be searched, found beyond the shelves, or added to Wanted.",
+        "Browse cards, peek, and the work page say Read, Listen, Download, or Wanted. The Wanted desk lists companion misses and hand-added titles; only an owner or op can add or dismiss.",
+        "Ebook apps can browse shelved books, magazines, and comics over OPDS 1.2. Catalog links and each acquisition URL carry a signed token, and the download stays jailed under the data directory.",
+        "Wanted remembers a missing audiobook and files one Asked slip when a later search hits. Confirm still sends it to SABnzbd.",
+        "Reading room prose scrolls with the wheel, trackpad, and touch. A tall work page no longer pins the open volume to the article, which clipped the page under the window.",
+        "Hall and Search keep the living shelves and local hits in the first screen. Named shelves, the kind rails, gifts, and the doors beyond the shelves wait under More shelves."
+      ],
+      "sections": []
+    },
     {
       "version": "0.5.22",
       "date": "2026-09-29",

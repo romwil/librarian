@@ -33,6 +33,12 @@ def test_continue_rail_orders_unfinished(tmp_path, monkeypatch):
     rail = client.get("/api/hall").json()["continue"]
     assert [row["title"] for row in rail] == ["Kindred"]
     assert rail[0]["progress"] == 40
+    card = client.get("/api/library-card")
+    assert card.status_code == 200
+    body = card.json()
+    assert [row["title"] for row in body["continue"]] == ["Kindred"]
+    assert [row["title"] for row in body["finished"]] == ["Dune"]
+    assert body["wanted_count"] == 0
 
 
 def test_reader_forbidden_on_indexer_ping(tmp_path, monkeypatch):

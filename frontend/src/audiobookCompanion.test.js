@@ -31,7 +31,7 @@ describe("audiobook companion CTAs", () => {
     assert.match(view.findHref, /title=Dune/);
     assert.equal(
       audiobookFindHref({ kind: "audiobook", title: "Dune", author: "Frank Herbert", isbn: "9780441172719" }),
-      "/find?kind=audiobook&author=Frank+Herbert&title=Dune&isbn=9780441172719",
+      "/search?kind=audiobook&author=Frank+Herbert&title=Dune&isbn=9780441172719",
     );
   });
 });

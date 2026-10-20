@@ -42,7 +42,7 @@ const card = {
 test("noted cards link to search and find and build a Wanted body", () => {
   assert.match(notedSearchHref(card), /^\/search\?/);
   assert.match(notedSearchHref(card), /title=Dune/);
-  assert.match(notedFindHref(card), /^\/find\?/);
+  assert.match(notedFindHref(card), /^\/search\?/);
   assert.match(notedFindHref(card), /kind=book/);
   assert.deepEqual(notedWantedBody(card, "audiobook"), {
     title: "Dune",
@@ -93,9 +93,9 @@ test("Search keeps a Trending books door to New & noted", () => {
   assert.match(searchSrc, /trending-books-door/);
   assert.match(searchSrc, /TRENDING_BOOKS_LABEL/);
   assert.match(searchSrc, /to="\/noted"/);
-  const doorAt = searchSrc.indexOf("trending-books-door");
-  const moreAt = searchSrc.indexOf("<ShelfMore>");
-  assert.ok(doorAt > 0 && moreAt > doorAt);
+  assert.equal(searchSrc.includes("ShelfMore"), false);
+  assert.equal(searchSrc.includes("DISCOVER_CTA"), false);
+  assert.match(searchSrc, /On the shelf/);
 });
 
 test("New & noted page searches, finds, and adds to Wanted", () => {

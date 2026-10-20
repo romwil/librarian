@@ -4,7 +4,7 @@ import { findHref } from "./find.js";
 import { workListenPath } from "./listen.js";
 
 export function audiobookFindHref(find = {}) {
-  if (!find || typeof find !== "object") return "/find?kind=audiobook";
+  if (!find || typeof find !== "object") return "/search?kind=audiobook";
   return findHref({ ...find, kind: "audiobook" });
 }
 

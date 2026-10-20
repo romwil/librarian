@@ -66,11 +66,12 @@ test.describe("Hall", () => {
 
   test("loads The Hall with shelves region", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByText("The Hall").first()).toBeVisible();
-    await expect(page.getByRole("heading", { name: "What are you looking for?" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Hall" })).toBeVisible();
+    await expect(page.getByRole("search")).toBeVisible();
+    await expect(page.getByLabel("Search")).toBeVisible();
     // Fresh e2e DATA_DIR: empty Hall CTA (Visual State Triad — Empty/Unlit).
     await expect(
-      page.getByRole("heading", { name: /Open the stacks|The shelves are still bare/ }),
+      page.getByRole("heading", { name: /The shelves are waiting|The shelves are still bare/ }),
     ).toBeVisible({ timeout: 30_000 });
   });
 
@@ -78,10 +79,10 @@ test.describe("Hall", () => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto("/");
     await dismissWhatsNewIfPresent(page);
-    await expect(page.getByRole("heading", { name: "What are you looking for?" })).toBeVisible();
-    await expect(page.getByLabel("Search the stacks")).toBeVisible();
+    await expect(page.getByRole("search")).toBeVisible();
+    await expect(page.getByLabel("Search")).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: /Open the stacks|The shelves are still bare/ }),
+      page.getByRole("heading", { name: /The shelves are waiting|The shelves are still bare/ }),
     ).toBeVisible({ timeout: 30_000 });
   });
 
@@ -95,8 +96,7 @@ test.describe("Hall", () => {
     await expect(page.getByRole("heading", { name: "Pick up where you left the lamp" })).toBeVisible();
     await expect(page.getByText("The room kept your place.")).toBeVisible();
     await expect(shelf.getByRole("button", { name: /The Lamp Novel/ })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Continue", exact: true })).toBeVisible();
-    await expect(page.getByText("Volumes waiting under the lamp")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Continue reading" })).toBeVisible();
   });
 
   test("Tonight’s Shelf respects reduced-motion", async ({ page }) => {
@@ -117,12 +117,40 @@ test.describe("Hall", () => {
     await page.goto("/");
     await dismissWhatsNewIfPresent(page);
 
-    await expect(
-      page.getByText(/Dawn in the Hall|Day in the Hall|Dusk in the Hall|Night in the Hall/),
-    ).toBeAttached();
-    await expect(page.getByText(/Welcome back —/)).toBeVisible({ timeout: 30_000 });
-    // Tonight’s Shelf must not regress under rituals.
+    await expect(page.getByRole("search")).toBeVisible();
     await expect(page.getByRole("region", { name: "Tonight’s shelf" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Continue", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Continue reading" })).toBeVisible();
+  });
+
+  test("Hall search opens Search results", async ({ page }) => {
+    await page.route("**/api/search**", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          q: "dune",
+          local: [],
+          beyond: [],
+          public_domain: [],
+          did_you_mean: [],
+          forgave: false,
+        }),
+      });
+    });
+    await page.goto("/");
+    await dismissWhatsNewIfPresent(page);
+    await page.getByRole("search").getByLabel("Search").fill("dune");
+    await page.getByRole("search").getByRole("button", { name: "Search" }).click();
+    await expect(page).toHaveURL(/\/search\?q=dune/);
+    await expect(page.getByRole("heading", { name: "On the shelf" })).toBeVisible();
+  });
+
+  test("skip link moves to the library main", async ({ page }) => {
+    await page.goto("/");
+    await dismissWhatsNewIfPresent(page);
+    await page.getByRole("link", { name: "Skip to library" }).focus();
+    await expect(page.getByRole("link", { name: "Skip to library" })).toBeFocused();
+    await page.getByRole("link", { name: "Skip to library" }).press("Enter");
+    await expect(page.getByRole("main")).toBeFocused();
   });
 });

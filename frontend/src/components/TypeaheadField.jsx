@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { api } from "../api.js";
 
 const DEBOUNCE_MS = 180;
-const TYPEAHEAD_FIELDS = new Set(["author", "title", "series", "artist", "album", "year"]);
+const TYPEAHEAD_FIELDS = new Set(["author", "title", "series", "artist", "album", "year", "q"]);
 
 export function isTypeaheadField(field) {
   return TYPEAHEAD_FIELDS.has(field);
@@ -15,6 +15,8 @@ export default function TypeaheadField({
   value = "",
   onChange,
   className,
+  placeholder,
+  ariaLabel,
   onEnterSubmit,
 }) {
   const listId = useId();
@@ -84,6 +86,8 @@ export default function TypeaheadField({
         aria-controls={listId}
         aria-activedescendant={active >= 0 ? `${listId}-${active}` : undefined}
         autoComplete="off"
+        placeholder={placeholder}
+        aria-label={ariaLabel}
         value={value}
         onChange={(event) => {
           const next = event.target.value;

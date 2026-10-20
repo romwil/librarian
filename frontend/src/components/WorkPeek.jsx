@@ -4,6 +4,7 @@ import { api } from "../api.js";
 import { browseHref } from "../browse.js";
 import {
   clothFor,
+  coverAltText,
   coverClassNames,
   coverDisplayTitle,
   coverOverlay,
@@ -23,8 +24,9 @@ import { beyondHostName, findHref } from "../find.js";
 import { isIncompleteOwnedPartSet, partSetFindFields } from "../findParts.js";
 import { canListenInApp, workListenPath } from "../listen.js";
 import { canOpenInlineMedia, canReadInApp, readerCtaLabel, workReaderPath } from "../reader.js";
-import { bookAvailability } from "../availability.js";
+import { bookAvailability, catalogStatus } from "../availability.js";
 import AvailabilityActions from "./AvailabilityActions.jsx";
+import CatalogVerb from "./CatalogVerb.jsx";
 import PlexampToast from "./PlexampToast.jsx";
 
 export default function WorkPeek({ work, onClose, onRequest }) {
@@ -129,14 +131,20 @@ export default function WorkPeek({ work, onClose, onRequest }) {
     role,
     beyond,
   });
+  const status = catalogStatus({
+    work: catalog,
+    role,
+    beyond,
+  });
+  const wantBody = availability.addBody || status.addBody;
   const readLabel = readerCtaLabel(catalog) || "Read";
 
   async function addWanted() {
-    if (!availability.addBody || availabilityBusy) return;
+    if (!wantBody || availabilityBusy) return;
     setAvailabilityBusy(true);
     setError("");
     try {
-      const result = await api.addWanted(availability.addBody);
+      const result = await api.addWanted(wantBody);
       if (result?.item) setWantedRow(result.item);
     } catch (err) {
       setError(humanError(err));
@@ -239,13 +247,17 @@ export default function WorkPeek({ work, onClose, onRequest }) {
               style={{ "--cloth": catalog.cloth || clothFor(catalog.title) }}
               aria-hidden="true"
             >
-              <span className="cover-meta">
+              <span className="cover-meta" aria-hidden="true">
                 <strong>{overlay.title}</strong>
                 <em>{overlay.byline}</em>
               </span>
-              {overlay.chip ? <span className="cover-chip">{overlay.chip}</span> : null}
+              {overlay.chip ? (
+                <span className="cover-chip" aria-hidden="true">
+                  {overlay.chip}
+                </span>
+              ) : null}
               {kind === "audiobook" ? <span className="cover-wave" aria-hidden="true" /> : null}
-              {hasArt ? <img src={art} alt="" onError={() => setArtFailed(true)} /> : null}
+              {hasArt ? <img src={art} alt={coverAltText(catalog)} onError={() => setArtFailed(true)} /> : null}
             </div>
             <div className="peek-copy">
               <h1 id="peek-title" title={catalog.title !== displayTitle ? catalog.title : undefined}>
@@ -277,7 +289,7 @@ export default function WorkPeek({ work, onClose, onRequest }) {
                   </Link>
                 ) : null}
                 {catalog.isbn ? <span className="chip font-mono">{catalog.isbn}</span> : null}
-                {catalog.review_state === "needs_review" ? <span className="chip">Review</span> : null}
+                {catalog.review_state === "needs_review" ? <span className="chip">Needs you</span> : null}
                 {catalog.music_state === "incoming" ? <span className="chip">Incoming</span> : null}
                 {isInboundJob(catalog.job_status) ? <span className="chip">On the way</span> : null}
                 {fileCount > 1 ? <span className="chip">{fileCount} files</span> : null}
@@ -348,13 +360,26 @@ export default function WorkPeek({ work, onClose, onRequest }) {
                         {readLabel}
                       </a>
                     ) : null}
-                    <AvailabilityActions
-                      view={availability}
-                      onFollow={onClose}
-                      onAdd={addWanted}
-                      onDismiss={dismissWanted}
-                      busy={availabilityBusy}
-                    />
+                    {availability.show ? (
+                      <AvailabilityActions
+                        view={availability}
+                        onFollow={onClose}
+                        onAdd={addWanted}
+                        onDismiss={dismissWanted}
+                        busy={availabilityBusy}
+                      />
+                    ) : (
+                      <CatalogVerb
+                        view={
+                          canListen || canRead || canInlineOpen
+                            ? { ...status, verb: "", canAdd: false }
+                            : status
+                        }
+                        onFollow={onClose}
+                        onAdd={addWanted}
+                        busy={availabilityBusy}
+                      />
+                    )}
                     {canListen && playerLink?.href ? (
                       <a
                         className="cta outline compact"

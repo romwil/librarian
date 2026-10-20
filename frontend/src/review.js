@@ -194,7 +194,7 @@ export function reviewFindHref(work = {}) {
   if (q) params.set("q", q);
   if (kind) params.set("kind", kind);
   const qs = params.toString();
-  return qs ? `/find?${qs}` : "/find";
+  return qs ? `/search?${qs}` : "/search";
 }
 
 export function unpackStuckWorks(works = []) {

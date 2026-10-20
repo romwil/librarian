@@ -113,7 +113,7 @@ export function bestsellersHref({ list = "hardcover-fiction", date = "current" }
   params.set("list", slug);
   const when = trimmed(date) || "current";
   if (when && when !== "current") params.set("date", when);
-  return `/find?${params.toString()}`;
+  return `/noted${params.toString() ? `?${params.toString()}` : ""}`;
 }
 
 export function bestsellersFromSearchParams(params) {
@@ -228,7 +228,7 @@ export function findFieldsFromSearchParams(params) {
 
 export function findHref(fields = {}) {
   const qs = buildFindSearchParams(fields, { prune: true }).toString();
-  return qs ? `/find?${qs}` : "/find";
+  return qs ? `/search?${qs}` : "/search";
 }
 
 export function searchHref(fields = {}) {

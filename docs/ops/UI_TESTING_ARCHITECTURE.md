@@ -38,7 +38,7 @@ asserts. Front-end unit and e2e extend that discipline to the DOM.
 | --- | --- | --- |
 | Unit / contract / fuzz | Node’s built-in runner (`cd frontend && npm test` / `node --test`) | Focused **Vitest migration sprint** — do not boil-the-ocean mid-feature |
 | Journey / visual / concurrency | Playwright scaffolded on dedicated port **8794** (product **8793**) | Grow matrix + adversarial journeys per release-tier cadence below |
-| Access / semantic | Not wired yet | Add axe-core (dependency + smoke import in e2e) in a small dedicated patch; note for next patch release rather than cutting a release solely for scaffolding |
+| Access / semantic | Playwright `@axe-core/playwright` on **:8794** (`e2e/axe.spec.ts` — Hall, login, Search, Work, Holds, Settings, Library card; Lights Up and Lights Down) | Grow the axe matrix with new chrome |
 
 Until Vitest lands, treat `npm test` as the triad’s Layer 1 stand-in: same rigor (DOM/contract truth,
 boundary fuzz on touched utilities), different runner.

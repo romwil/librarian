@@ -85,8 +85,11 @@ describe("QueryForm kinds", () => {
     assert.equal(music.includes(">ISBN<"), false);
     assert.equal(music.includes(">Author<"), false);
     assert.equal(music.includes(">Series<"), false);
-    assert.match(music, />Advanced</);
+    assert.match(music, />More ways to search</);
+    assert.equal(music.includes(">Advanced<"), false);
     assert.equal(music.includes("same page"), false);
+    assert.match(music, /role="search"/);
+    assert.match(music, />Search</);
 
     const comic = renderForm(QueryForm, { variant: "search", kind: "comic" });
     assert.match(comic, /data-kind="comic"/);
@@ -122,5 +125,16 @@ describe("QueryForm kinds", () => {
     assert.match(music, />Album</);
     assert.equal(music.includes("search-advanced"), false);
     assert.equal(music.includes(">ISBN<"), false);
+  });
+
+  it("hero variant is just the field", async () => {
+    const QueryForm = await loadQueryForm();
+    const html = renderForm(QueryForm, { variant: "hero", placeholder: "Title, author, or ISBN" });
+    assert.match(html, /role="search"/);
+    assert.match(html, /Title, author, or ISBN/);
+    assert.match(html, />Search</);
+    assert.equal(html.includes("search-compose-chips"), false);
+    assert.equal(html.includes("search-advanced"), false);
+    assert.equal(html.includes("More ways to search"), false);
   });
 });

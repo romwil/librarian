@@ -31,7 +31,7 @@ export default function NotificationsPage() {
   return (
     <div className="admin-room notifications-page" data-testid="notifications-page">
       <header className="settings-layout-head">
-        <p className="kicker">Profile</p>
+        <p className="kicker">Library card</p>
         <h1>Notifications</h1>
         <p className="lede">
           Choose what lands in your inbox, opt into the library letter, and when email may leave the house.

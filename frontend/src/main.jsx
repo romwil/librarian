@@ -10,7 +10,6 @@ import LoginPage from "./pages/LoginPage.jsx";
 import PeoplePage from "./pages/PeoplePage.jsx";
 import QueuePage from "./pages/QueuePage.jsx";
 import ReviewPage from "./pages/ReviewPage.jsx";
-import FindPage from "./pages/FindPage.jsx";
 import SearchPage from "./pages/SearchPage.jsx";
 import MaintainPage from "./pages/MaintainPage.jsx";
 import SettingsPage from "./pages/SettingsPage.jsx";
@@ -18,11 +17,17 @@ import InboxPage from "./pages/InboxPage.jsx";
 import NotificationsPage from "./pages/NotificationsPage.jsx";
 import NotedPage from "./pages/NotedPage.jsx";
 import WorkPage from "./pages/WorkPage.jsx";
+import CardPage from "./pages/CardPage.jsx";
 import "./styles.css";
 
 function BrowseToHall() {
   const { search } = useLocation();
   return <Navigate to={{ pathname: "/", search }} replace />;
+}
+
+function FindToSearch() {
+  const { search } = useLocation();
+  return <Navigate to={{ pathname: "/search", search }} replace />;
 }
 
 createRoot(document.getElementById("root")).render(
@@ -38,7 +43,8 @@ createRoot(document.getElementById("root")).render(
             <Route path="wanted" element={<WantedPage />} />
             <Route path="search" element={<SearchPage />} />
             <Route path="noted" element={<NotedPage />} />
-            <Route path="find" element={<FindPage />} />
+            <Route path="find" element={<FindToSearch />} />
+            <Route path="card" element={<CardPage />} />
             <Route path="works/:id" element={<WorkPage />} />
             <Route path="review" element={<ReviewPage />} />
             <Route path="queue" element={<QueuePage />} />

@@ -39,6 +39,7 @@ export const api = {
     request("/invites/redeem/local", { method: "POST", body: JSON.stringify({ token, username, password }) }),
   mintInvite: (role) => request("/invites", { method: "POST", body: JSON.stringify({ role }) }),
   hall: () => request("/hall"),
+  libraryCard: () => request("/library-card"),
   gapsLocal: () => request("/gaps/local"),
   browse: (filters = {}) => {
     const params = new URLSearchParams();
@@ -179,7 +180,6 @@ export const api = {
     if (date) params.set("date", date);
     return request(`/noted?${params.toString()}`, { signal: AbortSignal.timeout(20000) });
   },
-  addWanted: (body) => request("/wanted", { method: "POST", body: JSON.stringify(body) }),
   discover: (extras = {}) => {
     const params = new URLSearchParams();
     if (extras.kind) params.set("kind", extras.kind);
