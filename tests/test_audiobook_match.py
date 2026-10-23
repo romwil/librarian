@@ -151,7 +151,9 @@ def test_non_book_not_applicable():
     assert payload["shelved"] is None
 
 
-def test_payload_find_prefill_and_shelved():
+def test_payload_find_prefill_and_shelved(tmp_path):
+    cover = tmp_path / "cover.jpg"
+    cover.write_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 80)
     book = {"kind": "book", "title": "Dune", "author": "Frank Herbert", "isbn": "9780441172719"}
     audiobooks = [
         {
@@ -160,7 +162,7 @@ def test_payload_find_prefill_and_shelved():
             "title": "Dune",
             "author": "Frank Herbert",
             "isbn": "9780441172719",
-            "cover_path": "/tmp/cover.jpg",
+            "cover_path": str(cover),
         }
     ]
     payload = companion_audiobook_payload(book, audiobooks=audiobooks)

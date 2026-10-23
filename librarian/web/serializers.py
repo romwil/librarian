@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, Optional, Sequence
 
+from librarian.covers import cover_file_ok
 from librarian.delight import cover_story
 
 # Catalog metadata + computed presentation — never filesystem paths.
@@ -68,7 +69,10 @@ def public_work(row: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     if row is None:
         return None
     data = _pick(row, _PUBLIC_WORK_KEYS)
-    data["has_cover"] = bool(row.get("cover_path") or row.get("has_cover"))
+    if "cover_path" in row:
+        data["has_cover"] = cover_file_ok(row)
+    else:
+        data["has_cover"] = bool(row.get("has_cover"))
     story = cover_story(row)
     if story:
         data["cover_story"] = story

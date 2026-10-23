@@ -14,7 +14,13 @@ from typing import Any, Dict, List, Mapping, Optional, Protocol
 import httpx
 
 from librarian.config import Settings
-from librarian.covers import assert_safe_cover_url, download_image, fetch_cover, looks_like_image
+from librarian.covers import (
+    assert_safe_cover_url,
+    cover_file_ok,
+    download_image,
+    fetch_cover,
+    looks_like_image,
+)
 from librarian.db import Database
 from librarian.hardcover import HardcoverClient, HardcoverError
 from librarian.identify import extract_isbn
@@ -106,6 +112,7 @@ def fetch_cover_with_fallback(
     transport: Optional[httpx.BaseTransport] = None,
     client: Optional[httpx.Client] = None,
     require_safe_url: bool = True,
+    replace: bool = False,
 ) -> Optional[Path]:
     """Write cover to the shelf folder, or fall back to DATA_DIR/covers/{id}."""
     preferred = work_cover_folder(work, data_dir)
@@ -118,6 +125,7 @@ def fetch_cover_with_fallback(
         transport=transport,
         client=client,
         require_safe_url=require_safe_url,
+        replace=replace,
     )
     if written is not None:
         return written
@@ -135,6 +143,7 @@ def fetch_cover_with_fallback(
         transport=transport,
         client=client,
         require_safe_url=require_safe_url,
+        replace=replace,
     )
 
 
@@ -251,7 +260,7 @@ def enrichment_from_mapping(data: Mapping[str, Any]) -> Enrichment:
         series_name=str(data.get("series_name") or "").strip(),
         series_index=str(data.get("series_index") or "").strip(),
         year=parsed_year,
-        cover_url=str(data.get("cover_url") or "").strip(),
+        cover_url=str(data.get("cover_url") or data.get("cover") or "").strip(),
         atmosphere_url=str(data.get("atmosphere_url") or "").strip(),
         art_attribution=str(data.get("art_attribution") or "").strip(),
         synopsis_source=synopsis_source,
@@ -277,8 +286,7 @@ def missing_enrichment_count(work: Mapping[str, Any]) -> int:
         missing += 1
     if work.get("year") in (None, ""):
         missing += 1
-    cover = str(work.get("cover_path") or "").strip()
-    if not (cover and Path(cover).is_file()):
+    if not cover_file_ok(work):
         missing += 1
     if not str(work.get("genre") or "").strip():
         missing += 1
@@ -303,6 +311,7 @@ def lookup_enrichment(
     """Hardcover first when a token is saved; Open Library then Wikipedia fill holes."""
     isbn = extract_isbn(str(work.get("isbn") or ""))
     title = str(work.get("title") or "").strip()
+    kind = str(work.get("kind") or "").strip()
     # Placeholder "Unknown Author" must not be sent — OL/Audible treat it as a filter
     # and return zero hits for otherwise matchable titles.
     author = lookup_author(work)
@@ -332,6 +341,9 @@ def lookup_enrichment(
                         openlib.lookup_by_title(title, author, year=work_year)
                     ),
                 )
+        if kind == KIND_AUDIOBOOK:
+            # Print jackets from HC/OL must not beat square Audnexus art in fetch_cover.
+            merged.cover_url = ""
         if not str(work.get("description") or "").strip() and not merged.description:
             wiki = fetch_book_page(
                 title,
@@ -351,20 +363,17 @@ def lookup_enrichment(
                         synopsis_source="wikipedia",
                         atmosphere_url=art_url,
                         art_attribution=attribution,
-                        cover_url=art_url if not merged.cover_url else "",
                         source="wikipedia",
                     ),
                 )
-        cover_ok = bool(str(work.get("cover_path") or "").strip()) and Path(
-            str(work.get("cover_path") or "")
-        ).is_file()
+        cover_ok = cover_file_ok(work)
         if (
             not cover_ok
             and not merged.cover_url
             and not str(work.get("atmosphere_path") or "").strip()
             and not merged.atmosphere_url
         ):
-            # Wikimedia art only when HC/OL left cover and atmosphere empty.
+            # Wikimedia art is atmosphere / last-resort — never a kind-specific jacket URL.
             wiki = fetch_book_page(
                 title,
                 author=author,
@@ -382,7 +391,6 @@ def lookup_enrichment(
                         Enrichment(
                             atmosphere_url=art_url,
                             art_attribution=attribution,
-                            cover_url=art_url,
                             source="wikipedia",
                         ),
                     )
@@ -399,8 +407,7 @@ def _still_needs(found: Enrichment, work: Mapping[str, Any]) -> bool:
         return True
     if work.get("year") in (None, "") and found.year is None:
         return True
-    cover = str(work.get("cover_path") or "").strip()
-    if not (cover and Path(cover).is_file()) and not found.cover_url:
+    if not cover_file_ok(work) and not found.cover_url:
         return True
     if not str(work.get("series_name") or "").strip() and not found.series_name:
         return True
@@ -495,41 +502,33 @@ def apply_enrichment(
         else owned_folder
     )
 
-    cover = str(updated.get("cover_path") or "").strip()
-    cover_ok = bool(cover) and Path(cover).is_file()
+    cover_ok = cover_file_ok(updated)
     isbn = extract_isbn(str(updated.get("isbn") or ""))
     title = str(updated.get("title") or "").strip()
     if (not cover_ok or replace) and (found.cover_url or isbn or title):
-        if replace and cover_ok:
-            # Allow Fix match to refresh a wrong cover when a URL is present.
-            try:
-                Path(cover).unlink(missing_ok=True)
-            except OSError:
-                pass
-            cover_ok = False
-        if not cover_ok:
-            written = fetch_cover_with_fallback(
-                updated,
-                data_dir,
-                {
-                    "isbn": updated.get("isbn") or "",
-                    "title": updated.get("title") or "",
-                    "author": updated.get("author") or "",
-                    "kind": updated.get("kind") or "",
-                    "asin": updated.get("asin") or "",
-                    "narrator": updated.get("narrator") or "",
-                    "year": updated.get("year") if isinstance(updated.get("year"), int) else None,
-                },
-                indexer_cover_url=found.cover_url,
-                hardcover_token=str(getattr(settings, "hardcover_api_token", "") or ""),
-                transport=transport,
-                client=client,
-                require_safe_url=True,
-            )
-            if written is not None:
-                updated["cover_path"] = str(written)
-                changed = True
-                cover_ok = True
+        written = fetch_cover_with_fallback(
+            updated,
+            data_dir,
+            {
+                "isbn": updated.get("isbn") or "",
+                "title": updated.get("title") or "",
+                "author": updated.get("author") or "",
+                "kind": updated.get("kind") or "",
+                "asin": updated.get("asin") or "",
+                "narrator": updated.get("narrator") or "",
+                "year": updated.get("year") if isinstance(updated.get("year"), int) else None,
+            },
+            indexer_cover_url=found.cover_url,
+            hardcover_token=str(getattr(settings, "hardcover_api_token", "") or ""),
+            transport=transport,
+            client=client,
+            require_safe_url=True,
+            replace=replace,
+        )
+        if written is not None:
+            updated["cover_path"] = str(written)
+            changed = True
+            cover_ok = True
 
     if found.atmosphere_url and found.art_attribution:
         atmosphere = dest_folder / "atmosphere.jpg"
@@ -1003,12 +1002,51 @@ def list_comicvine_match_candidates(
     return out
 
 
+def _write_matched_cover(
+    db: Database,
+    work: Mapping[str, Any],
+    *,
+    data_dir: Path,
+    cover_url: str = "",
+    identity: Optional[Mapping[str, Any]] = None,
+    transport: Optional[httpx.BaseTransport] = None,
+    replace: bool = False,
+) -> Dict[str, Any]:
+    """Download an allowlisted cover for Fix-match / import. May replace a local file."""
+    payload = dict(work)
+    if not replace and cover_file_ok(payload):
+        return dict(work)
+    written = fetch_cover_with_fallback(
+        payload,
+        data_dir,
+        identity
+        or {
+            "kind": payload.get("kind") or "",
+            "title": payload.get("title") or "",
+            "author": payload.get("author") or "",
+            "asin": payload.get("asin") or "",
+            "cover": cover_url,
+        },
+        indexer_cover_url=cover_url,
+        transport=transport,
+        require_safe_url=True,
+        replace=replace,
+    )
+    if written is not None:
+        payload["cover_path"] = str(written)
+        return db.upsert_work(payload)
+    if replace and str(work.get("cover_path") or "") != str(payload.get("cover_path") or ""):
+        return db.upsert_work(payload)
+    return dict(work)
+
+
 def apply_comicvine_match(
     db: Database,
     settings: Settings,
     work_id: str,
     match_key: str,
     *,
+    data_dir: Path,
     transport: Optional[httpx.BaseTransport] = None,
 ) -> Dict[str, Any]:
     """Apply a chosen ComicVine volume/issue to a comic work identity."""
@@ -1086,6 +1124,16 @@ def apply_comicvine_match(
         "confidence": "high",
     }
     updated = db.upsert_work(patch)
+    cover_url = str(detail.get("cover_url") or "").strip()
+    updated = _write_matched_cover(
+        db,
+        updated,
+        data_dir=data_dir,
+        cover_url=cover_url,
+        identity={"kind": "comic", "title": title, "cover": cover_url},
+        transport=transport,
+        replace=True,
+    )
     return {
         "work": updated,
         "updated": True,
@@ -1147,6 +1195,22 @@ def apply_audnexus_match(
         "review_state": "none",
     }
     saved = db.upsert_work(updated)
+    cover_url = str(candidate.get("cover") or candidate.get("cover_url") or "").strip()
+    saved = _write_matched_cover(
+        db,
+        saved,
+        data_dir=data_dir,
+        cover_url=cover_url,
+        identity={
+            "kind": "audiobook",
+            "title": saved.get("title") or "",
+            "author": saved.get("author") or "",
+            "asin": saved.get("asin") or asin,
+            "cover": cover_url,
+        },
+        transport=transport,
+        replace=True,
+    )
     return {
         "work": saved,
         "updated": True,

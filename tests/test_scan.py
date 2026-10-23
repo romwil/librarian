@@ -117,6 +117,9 @@ def test_scan_book_comic_and_incoming_flacs(tmp_path):
     assert comic_work["series_index"] == "1"
     assert comic_work["title"] == "Saga #1"
     assert comic_work["folder_path"] == str(comic)
+    assert comic_work.get("cover_path")
+    assert Path(comic_work["cover_path"]).name == "cover.jpg"
+    assert Path(comic_work["cover_path"]).is_file()
 
     incoming_work = next(row for row in db.list_works(kind="music", music_state="incoming", limit=8))
     assert incoming_work["title"] == "Kind of Blue"
@@ -360,3 +363,29 @@ def test_scan_reports_progress_and_continues_after_folder_error(tmp_path, monkey
     assert any(t.get("event") == "tick" and t.get("errors") == 1 for t in ticks)
     works = db.list_works(kind="book", limit=10)
     assert any(row["title"] == "The Left Hand of Darkness" for row in works)
+
+
+def test_scan_extracts_embedded_music_cover(tmp_path):
+    settings = _settings(tmp_path)
+    album = Path(settings.music_root) / "Miles Davis" / "Kind of Blue"
+    album.mkdir(parents=True)
+    jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 80
+    mime = b"image/jpeg"
+    desc = b""
+    picture = (
+        (3).to_bytes(4, "big")
+        + len(mime).to_bytes(4, "big")
+        + mime
+        + len(desc).to_bytes(4, "big")
+        + desc
+        + (0).to_bytes(4, "big") * 4
+        + len(jpeg).to_bytes(4, "big")
+        + jpeg
+    )
+    header = bytes([0x80 | 6]) + len(picture).to_bytes(3, "big")
+    (album / "01 So What.flac").write_bytes(b"fLaC" + header + picture)
+    db = Database(tmp_path / "librarian.db")
+    scan_library(db, settings)
+    work = db.list_works(kind="music", music_state="promoted", limit=1)[0]
+    assert work.get("cover_path")
+    assert Path(work["cover_path"]).read_bytes() == jpeg

@@ -191,6 +191,7 @@ class Identity:
     colorist: str = ""
     cover_artist: str = ""
     letterer: str = ""
+    cover: str = ""
     web: str = ""
     month: Optional[int] = None
     day: Optional[int] = None
@@ -233,6 +234,7 @@ class Identity:
             "colorist": self.colorist,
             "cover_artist": self.cover_artist,
             "letterer": self.letterer,
+            "cover": self.cover,
             "web": self.web,
             "month": self.month,
             "day": self.day,
@@ -568,6 +570,7 @@ def fill_identity_holes(identity: Identity, layer: Optional[Mapping[str, Any]]) 
         "colorist",
         "cover_artist",
         "letterer",
+        "cover",
         "web",
     )
     for key in fields:
@@ -1330,7 +1333,7 @@ def _apply_audnexus_match(identity: Identity, settings: Any, *, transport: Any =
         filled = identity_from_candidate(best)
         fill_identity_holes(identity, filled)
         # Strong fields from authority win for title/author/asin once auto-matched.
-        for key in ("title", "author", "asin", "series_name", "series_index", "description", "narrator"):
+        for key in ("title", "author", "asin", "series_name", "series_index", "description", "narrator", "cover"):
             value = filled.get(key)
             if value not in (None, ""):
                 setattr(identity, key, value)
@@ -1489,6 +1492,8 @@ def _catalog_comic(identity: Identity, settings: Any, *, transport: Any = None) 
             out["series_name"] = best["series_name"]
         if best.get("series_index"):
             out["series_index"] = best["series_index"]
+        if best.get("cover_url"):
+            out["cover"] = best["cover_url"]
 
     band = str(matched.get("band") or "low")
     if band == "high":

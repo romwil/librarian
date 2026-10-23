@@ -49,7 +49,7 @@ def test_public_work_strips_storage_paths_and_sets_has_cover():
     assert shaped is not None
     assert shaped["id"] == "w-dune"
     assert shaped["title"] == "Dune"
-    assert shaped["has_cover"] is True
+    assert shaped["has_cover"] is False
     assert shaped["cover_story"]
     assert "cover_path" not in shaped
     assert "folder_path" not in shaped
@@ -59,6 +59,15 @@ def test_public_work_strips_storage_paths_and_sets_has_cover():
     blob = str(shaped)
     assert "/data/media" not in blob
     assert "cover.jpg" not in blob
+
+
+def test_public_work_has_cover_requires_on_disk_file(tmp_path):
+    cover = tmp_path / "cover.jpg"
+    cover.write_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 80)
+    shaped = public_work(_leaky_row(cover_path=str(cover)))
+    assert shaped["has_cover"] is True
+    missing = public_work(_leaky_row(cover_path=str(tmp_path / "gone.jpg")))
+    assert missing["has_cover"] is False
 
 
 def test_public_work_none_and_empty_cover():
@@ -81,7 +90,7 @@ def test_public_work_admin_keeps_folder_not_cover_paths():
     assert shaped["folder_path"] == "/data/media/books/Herbert/Dune"
     assert shaped["repair_fail_count"] == 3
     assert shaped["indexer_guid"] == "nzb-secret-guid"
-    assert shaped["has_cover"] is True
+    assert shaped["has_cover"] is False
     assert "cover_path" not in shaped
     assert "atmosphere_path" not in shaped
 
@@ -140,7 +149,7 @@ def test_hall_and_work_detail_omit_storage_paths(tmp_path, monkeypatch):
     epub = folder / "Dune.epub"
     epub.write_bytes(b"epub")
     cover = folder / "cover.jpg"
-    cover.write_bytes(b"jpg")
+    cover.write_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 80)
     work = db.upsert_work(
         {
             "kind": "book",
@@ -265,7 +274,7 @@ def test_enrich_response_strips_storage_paths(tmp_path, monkeypatch):
     folder = tmp_path / "library" / "Dune"
     folder.mkdir(parents=True)
     cover = folder / "cover.jpg"
-    cover.write_bytes(b"jpg")
+    cover.write_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 80)
     shaped_work = {
         "id": "w-enrich",
         "kind": "book",

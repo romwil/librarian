@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Protocol, Sequence, Tuple
 
 from librarian.config import Settings
+from librarian.covers import MIN_IMAGE_BYTES, extract_folder_cover
 from librarian.db import Database
 from librarian.identify import (
     COMIC_ARCHIVE_EXTENSIONS,
@@ -244,7 +245,7 @@ def _ingest_folder(
     identity["review_state"] = "needs_review" if review_reason else "none"
     identity["folder_path"] = folder_path
     identity["kind"] = kind
-    cover = _existing_cover(folder)
+    cover = _existing_cover(folder, kind=kind, files=files)
     if cover:
         identity["cover_path"] = cover
     elif existing and existing.get("cover_path"):
@@ -546,8 +547,18 @@ def _filename_identity(kind: str, folder: Path, files: Sequence[Path]) -> Dict[s
     return out
 
 
-def _existing_cover(folder: Path) -> Optional[str]:
+def _existing_cover(
+    folder: Path,
+    *,
+    kind: str = "",
+    files: Sequence[Path] | None = None,
+) -> Optional[str]:
     found = sidecar_named(folder, *COVER_NAMES)
     if found is not None and found.is_file():
-        return str(found)
-    return None
+        try:
+            if found.stat().st_size >= MIN_IMAGE_BYTES:
+                return str(found)
+        except OSError:
+            return None
+    extracted = extract_folder_cover(folder, kind=kind, files=files)
+    return str(extracted) if extracted is not None else None

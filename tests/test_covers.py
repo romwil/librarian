@@ -207,6 +207,9 @@ def test_assert_safe_cover_url_allowlist_and_blocks():
     )
     assert assert_safe_cover_url("https://books.googleusercontent.com/books/content/x.jpg")
     assert assert_safe_cover_url("https://m.media-amazon.com/images/I/example.jpg")
+    assert assert_safe_cover_url("https://images-na.ssl-images-amazon.com/images/I/example.jpg")
+    assert assert_safe_cover_url("https://img.audible.com/covers/example.jpg")
+    assert assert_safe_cover_url("https://api.audnex.us/books/B08G9PRS1K")
     for bad in (
         "http://127.0.0.1/cover.jpg",
         "http://169.254.169.254/latest/meta-data/",
@@ -474,3 +477,71 @@ def test_fetch_cover_cbz_still_used_when_catalogs_miss(tmp_path):
     )
     assert cover == folder / "cover.jpg"
     assert cover.read_bytes() == JPEG
+
+
+def test_fetch_cover_audiobook_skips_open_library_jacket(tmp_path):
+    captured = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        captured.append(url)
+        if "search.json" in url or "openlibrary.org" in url:
+            return httpx.Response(
+                200,
+                json={
+                    "docs": [
+                        {
+                            "title": "Project Hail Mary",
+                            "key": "/works/OL1W",
+                            "author_name": ["Andy Weir"],
+                            "cover_i": 99,
+                        }
+                    ]
+                },
+            )
+        if url.startswith("https://api.audnex.us/books/B00TEST123"):
+            return httpx.Response(
+                200,
+                json={"asin": "B00TEST123", "image": "https://m.media-amazon.com/images/I/hail.jpg"},
+            )
+        if url == "https://m.media-amazon.com/images/I/hail.jpg":
+            return httpx.Response(200, content=JPEG, headers={"content-type": "image/jpeg"})
+        return httpx.Response(404)
+
+    folder = tmp_path / "audio"
+    cover = fetch_cover(
+        folder,
+        {
+            "kind": "audiobook",
+            "title": "Project Hail Mary",
+            "author": "Andy Weir",
+            "asin": "B00TEST123",
+        },
+        transport=httpx.MockTransport(handler),
+    )
+    assert cover == folder / "cover.jpg"
+    assert not any("openlibrary.org" in url for url in captured)
+    assert any("api.audnex.us/books/B00TEST123" in url for url in captured)
+
+
+def test_fetch_cover_comic_skips_open_library_and_uses_cbz(tmp_path):
+    captured = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(str(request.url))
+        return httpx.Response(
+            200, json={"docs": [{"title": "Saga", "key": "/works/OL9W", "cover_i": 1}]}
+        )
+
+    folder = tmp_path / "comic-kind"
+    folder.mkdir()
+    with zipfile.ZipFile(folder / "Saga #1.cbz", "w") as archive:
+        archive.writestr("page-01.jpg", JPEG)
+    cover = fetch_cover(
+        folder,
+        {"kind": "comic", "title": "Saga", "author": "Vaughan"},
+        transport=httpx.MockTransport(handler),
+    )
+    assert cover == folder / "cover.jpg"
+    assert cover.read_bytes() == JPEG
+    assert captured == []

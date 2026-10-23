@@ -11,6 +11,7 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List, Mapping, Optional
 
+from librarian.covers import cover_file_ok
 from librarian.identify import isbn_match_keys
 
 # Colon, em dash, en dash, or a spaced hyphen. Parenthetical tail counts too.
@@ -177,7 +178,7 @@ def companion_audiobook_payload(
             "author": hit.get("author"),
             "isbn": hit.get("isbn"),
             "kind": "audiobook",
-            "has_cover": bool(hit.get("cover_path") or hit.get("has_cover")),
+            "has_cover": cover_file_ok(hit) if hit.get("cover_path") else bool(hit.get("has_cover")),
         },
         "find": find,
     }

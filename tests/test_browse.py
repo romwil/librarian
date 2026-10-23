@@ -102,7 +102,8 @@ def test_browse_filters_letter_kind_series(tmp_path, monkeypatch):
     body = by_letter.json()
     assert body["total"] == 1
     assert [row["title"] for row in body["items"]] == ["The Shining"]
-    assert body["items"][0]["has_cover"] is True
+    # Seeded cover_path has no file on disk — cards must not claim art.
+    assert body["items"][0]["has_cover"] is False
 
     by_kind = client.get("/api/browse", params={"kind": "comic"})
     assert by_kind.status_code == 200
