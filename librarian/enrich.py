@@ -262,21 +262,31 @@ def enrichment_from_mapping(data: Mapping[str, Any]) -> Enrichment:
     )
 
 
-def is_thin(work: Mapping[str, Any]) -> bool:
-    kind = str(work.get("kind") or "")
-    if kind not in ENRICH_KINDS:
-        return False
+def missing_enrichment_count(work: Mapping[str, Any]) -> int:
+    """How many Enrich fields are still empty. Not a sticky `enriched` flag.
+
+    Fields match `is_thin`: author, description, year, on-disk cover, genre.
+    Comics/music score 0 (Enrich does not fill them).
+    """
+    if str(work.get("kind") or "") not in ENRICH_KINDS:
+        return 0
+    missing = 0
+    if author_missing(work.get("author")):
+        missing += 1
+    if not str(work.get("description") or "").strip():
+        missing += 1
+    if work.get("year") in (None, ""):
+        missing += 1
     cover = str(work.get("cover_path") or "").strip()
-    cover_ok = bool(cover) and Path(cover).is_file()
-    return not all(
-        (
-            not author_missing(work.get("author")),
-            str(work.get("description") or "").strip(),
-            work.get("year") not in (None, ""),
-            cover_ok,
-            str(work.get("genre") or "").strip(),
-        )
-    )
+    if not (cover and Path(cover).is_file()):
+        missing += 1
+    if not str(work.get("genre") or "").strip():
+        missing += 1
+    return missing
+
+
+def is_thin(work: Mapping[str, Any]) -> bool:
+    return missing_enrichment_count(work) > 0
 
 
 def _http_client(*, transport: Optional[httpx.BaseTransport] = None) -> httpx.Client:
@@ -642,11 +652,25 @@ def enrich_library(
             if len(batch) < ENRICH_LIST_PAGE:
                 break
             offset += len(batch)
+    thin.sort(
+        key=lambda work: (
+            -missing_enrichment_count(work),
+            str(work.get("title") or "").casefold(),
+        )
+    )
+    complete = skipped
     total = len(thin)
     if progress is not None:
         progress.start(total=total, phase="enriching" if total else "done")
-        if total:
-            progress.log(f"Found {total} thin volume{'s' if total != 1 else ''} to enrich.")
+        if total and complete:
+            progress.log(
+                f"Skipping {complete} complete volume{'s' if complete != 1 else ''}; "
+                f"enriching {total} starting with the emptiest."
+            )
+        elif total:
+            progress.log(
+                f"Found {total} thin volume{'s' if total != 1 else ''} to enrich, emptiest first."
+            )
         else:
             progress.log("No thin volumes — shelves look complete.")
 
@@ -718,6 +742,7 @@ def enrich_library(
         "scanned": scanned,
         "updated": updated,
         "skipped": skipped,
+        "complete": complete,
         "errors": errors,
         "sources": sources,
     }
@@ -747,7 +772,7 @@ def enrich_backlog_batch(
         return result
     if progress is not None:
         progress.start(total=len(backlog), phase="trickle")
-        progress.log(f"Trickle batch of {len(backlog)}.")
+        progress.log(f"Trickle batch of {len(backlog)}, emptiest first.")
     enriched = 0
     errors = 0
     http = _http_client(transport=transport)

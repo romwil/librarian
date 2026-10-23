@@ -19,6 +19,7 @@ from librarian.enrich import (
     is_thin,
     lookup_author,
     lookup_enrichment,
+    missing_enrichment_count,
 )
 from librarian.goodreads import import_goodreads_csv, parse_csv_isbn, parse_goodreads_rows
 from librarian.identify import isbn10_to_isbn13, isbn13_to_isbn10, isbn_match_keys
@@ -258,8 +259,30 @@ def test_is_thin_when_author_is_unknown_placeholder(tmp_path):
         "cover_path": str(cover),
     }
     assert is_thin(work) is True
+    assert missing_enrichment_count(work) == 1
     work["author"] = "Thomas A. Bogar"
     assert is_thin(work) is False
+    assert missing_enrichment_count(work) == 0
+
+
+def test_missing_enrichment_count_empty_vs_full(tmp_path):
+    cover = tmp_path / "cover.jpg"
+    cover.write_bytes(JPEG)
+    assert missing_enrichment_count({"kind": "book"}) == 5
+    assert missing_enrichment_count({"kind": "comic"}) == 0
+    full = {
+        "kind": "book",
+        "author": "Butler",
+        "description": "A homecoming.",
+        "year": 1979,
+        "genre": "Fiction",
+        "cover_path": str(cover),
+    }
+    assert missing_enrichment_count(full) == 0
+    assert is_thin(full) is False
+    almost = {**full, "genre": ""}
+    assert missing_enrichment_count(almost) == 1
+    assert is_thin(almost) is True
 
 
 def test_apply_enrichment_fills_unknown_author(tmp_path):
@@ -709,7 +732,7 @@ def test_enrich_library_pages_beyond_first_list_window(tmp_path, monkeypatch):
     assert counts["scanned"] == 5
 
 
-def test_enrich_library_counts_complete_books_as_skipped(tmp_path):
+def test_enrich_library_counts_complete_books_as_skipped(tmp_path, monkeypatch):
     db = Database(tmp_path / "librarian.db")
     cover = tmp_path / "cover.jpg"
     cover.write_bytes(JPEG)
@@ -725,10 +748,104 @@ def test_enrich_library_counts_complete_books_as_skipped(tmp_path):
             "cover_path": str(cover),
         }
     )
+    calls: list[str] = []
+
+    def boom(work, *args, **kwargs):
+        calls.append(str(work.get("title") or ""))
+        raise AssertionError("complete volumes must not hit providers")
+
+    monkeypatch.setattr("librarian.enrich.lookup_enrichment", boom)
     counts = enrich_library(db, Settings(), data_dir=tmp_path, transport=httpx.MockTransport(_handler))
+    assert calls == []
     assert counts["scanned"] == 0
     assert counts["updated"] == 0
     assert counts["skipped"] == 1
+    assert counts["complete"] == 1
+
+
+def test_enrich_library_looks_up_emptiest_first(tmp_path, monkeypatch):
+    db = Database(tmp_path / "librarian.db")
+    cover = tmp_path / "cover.jpg"
+    cover.write_bytes(JPEG)
+    db.upsert_work({"kind": "book", "title": "Empty Shell"})
+    db.upsert_work(
+        {
+            "kind": "book",
+            "title": "Almost Full",
+            "author": "Butler",
+            "description": "A homecoming.",
+            "year": 1979,
+            "cover_path": str(cover),
+        }
+    )
+    order: list[str] = []
+
+    def record(work, *args, **kwargs):
+        order.append(str(work.get("title") or ""))
+        return Enrichment()
+
+    monkeypatch.setattr("librarian.enrich.lookup_enrichment", record)
+    logs: list[str] = []
+
+    class Sink:
+        def start(self, *, total: int, phase: str = "scanning") -> None:
+            pass
+
+        def log(self, line: str) -> None:
+            logs.append(line)
+
+        def tick(self, **kwargs) -> None:
+            if kwargs.get("log"):
+                logs.append(str(kwargs["log"]))
+
+        def complete(self, result) -> None:
+            pass
+
+        def fail(self, error: str) -> None:
+            pass
+
+    counts = enrich_library(
+        db,
+        Settings(),
+        data_dir=tmp_path,
+        transport=httpx.MockTransport(_handler),
+        progress=Sink(),
+    )
+    assert order == ["Empty Shell", "Almost Full"]
+    assert counts["scanned"] == 2
+    assert counts["complete"] == 0
+    assert any("emptiest" in line for line in logs)
+
+
+def test_works_needing_enrichment_orders_emptiest_first(tmp_path):
+    db = Database(tmp_path / "librarian.db")
+    cover = tmp_path / "cover.jpg"
+    cover.write_bytes(JPEG)
+    db.upsert_work(
+        {
+            "kind": "book",
+            "title": "Almost Full",
+            "author": "Butler",
+            "description": "A homecoming.",
+            "year": 1979,
+            "cover_path": str(cover),
+        }
+    )
+    db.upsert_work({"kind": "book", "title": "Empty Shell"})
+    db.upsert_work(
+        {
+            "kind": "book",
+            "title": "Kindred",
+            "author": "Butler",
+            "description": "A homecoming.",
+            "genre": "Fiction",
+            "year": 1979,
+            "cover_path": str(cover),
+        }
+    )
+    rows = db.works_needing_enrichment(limit=10)
+    assert [row["title"] for row in rows] == ["Empty Shell", "Almost Full"]
+    assert db.count_works_needing_enrichment() == 2
 
 
 def test_openlibrary_fills_genre_from_subjects(tmp_path):

@@ -74,9 +74,14 @@ export function enrichProgressSummary(status) {
     const scanned = Number(result.scanned != null ? result.scanned : done);
     const filled = Number(result.updated != null ? result.updated : updated);
     const skip = Number(result.skipped != null ? result.skipped : skipped);
+    const complete = Number(result.complete != null ? result.complete : 0);
     const failed = Number(result.errors != null ? result.errors : errors);
     const parts = [`Enriched ${filled} of ${scanned} thin volumes`];
-    if (skip) parts.push(`${skip} skipped`);
+    if (complete) parts.push(`${complete} already full`);
+    const leftover = skip - complete;
+    if (leftover > 0) {
+      parts.push(complete ? `${leftover} unchanged` : `${leftover} skipped`);
+    }
     if (failed) parts.push(`${failed} failed`);
     return parts.join(" · ");
   }

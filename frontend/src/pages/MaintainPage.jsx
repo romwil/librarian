@@ -770,8 +770,8 @@ export default function MaintainPage() {
         <p className="kicker">Shelves</p>
         <h2>Shelf health</h2>
         <p className="lede">
-          Rescan library roots and fill thin metadata. Job progress stays in the telemetry dock above. Paths and
-          tokens live in Settings.
+          Rescan library roots and fill thin metadata. Enrich skips volumes that are already full and starts with
+          the emptiest. Job progress stays in the telemetry dock above. Paths and tokens live in Settings.
         </p>
         {shelfHealth?.score ? <ShelfHealthPulse score={shelfHealth.score} /> : null}
         {shelfHealth ? (
