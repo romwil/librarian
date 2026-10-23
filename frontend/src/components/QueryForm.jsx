@@ -30,6 +30,7 @@ export default function QueryForm({
   variant = "search",
   kinds = KINDS,
   showKindChips = true,
+  advancedOpen = false,
 }) {
   const adv = advanced || { author: "", title: "", isbn: "", series: "", issue: "", artist: "", album: "", year: "" };
   const isFind = variant === "find";
@@ -125,7 +126,12 @@ export default function QueryForm({
           </div>
         ) : null
       ) : (
-        <details className="advanced" defaultOpen={false} data-testid="search-advanced" data-kind={kind || "all"}>
+        <details
+          className="advanced"
+          open={advancedOpen ? true : undefined}
+          data-testid="search-advanced"
+          data-kind={kind || "all"}
+        >
           <summary className="kicker">{advancedSummary}</summary>
           <div className="advanced-fields">
             <div className="field">

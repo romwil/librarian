@@ -25,6 +25,7 @@ import { isIncompleteOwnedPartSet, partSetFindFields } from "../findParts.js";
 import { canListenInApp, workListenPath } from "../listen.js";
 import { canOpenInlineMedia, canReadInApp, readerCtaLabel, workReaderPath } from "../reader.js";
 import { bookAvailability, catalogStatus } from "../availability.js";
+import { saveBeyondGet } from "../beyondGet.js";
 import AvailabilityActions from "./AvailabilityActions.jsx";
 import CatalogVerb from "./CatalogVerb.jsx";
 import PlexampToast from "./PlexampToast.jsx";
@@ -132,7 +133,11 @@ export default function WorkPeek({ work, onClose, onRequest }) {
     beyond,
   });
   const status = catalogStatus({
-    work: catalog,
+    work: {
+      ...catalog,
+      wanted: wantedRow || catalog.wanted,
+      job_status: jobStatus || catalog.job_status,
+    },
     role,
     beyond,
   });
@@ -146,6 +151,37 @@ export default function WorkPeek({ work, onClose, onRequest }) {
     try {
       const result = await api.addWanted(wantBody);
       if (result?.item) setWantedRow(result.item);
+    } catch (err) {
+      setError(humanError(err));
+    } finally {
+      setAvailabilityBusy(false);
+    }
+  }
+
+  async function getBeyond() {
+    if (availabilityBusy || jobStatus === "asked" || isInboundJob(jobStatus)) return;
+    setAvailabilityBusy(true);
+    setError("");
+    try {
+      const result = onRequest
+        ? await onRequest({
+            title: catalog.title,
+            guid: catalog.guid,
+            kind: catalog.kind,
+            download_url: catalog.download_url,
+            author: catalog.author,
+            isbn: catalog.isbn,
+            host_id: catalog.host_id,
+            category: catalog.category,
+            book_title: catalog.book_title,
+            category_name: catalog.category_name,
+          })
+        : await saveBeyondGet(catalog);
+      const wanted = result?.wanted || result?.item;
+      if (wanted) setWantedRow(wanted);
+      const nextStatus = result?.job?.status || result?.jobStatus || wanted?.status || "asked";
+      if (nextStatus === "asked" || nextStatus === "queued") setJobStatus(nextStatus === "queued" ? "asked" : nextStatus);
+      else if (wanted?.status === "asked") setJobStatus("asked");
     } catch (err) {
       setError(humanError(err));
     } finally {
@@ -376,7 +412,7 @@ export default function WorkPeek({ work, onClose, onRequest }) {
                             : status
                         }
                         onFollow={onClose}
-                        onAdd={addWanted}
+                        onAdd={beyond ? getBeyond : addWanted}
                         busy={availabilityBusy}
                       />
                     )}
@@ -435,7 +471,7 @@ export default function WorkPeek({ work, onClose, onRequest }) {
                         Find missing parts
                       </Link>
                     ) : null}
-                    {teachAsk && onRequest && !canDownload && !canListen && !canRead && !canInlineOpen ? (
+                    {teachAsk && onRequest && !beyond && !canDownload && !canListen && !canRead && !canInlineOpen ? (
                       <button
                         type="button"
                         className="cta compact"
@@ -447,19 +483,13 @@ export default function WorkPeek({ work, onClose, onRequest }) {
                       </button>
                     ) : null}
                   </>
-                ) : onRequest ? (
-                  <button
-                    type="button"
-                    className="cta compact"
-                    onClick={request}
-                    disabled={Boolean(jobStatus)}
-                    data-testid="peek-ask-house"
-                  >
-                    {jobStatus
-                      ? jobChipLabel(jobStatus, role)
-                      : teachAsk?.label || jobChipLabel(jobStatus, role)}
-                  </button>
-                ) : null}
+                ) : (
+                  <CatalogVerb
+                    view={status}
+                    onAdd={beyond ? getBeyond : addWanted}
+                    busy={availabilityBusy}
+                  />
+                )}
               </div>
               {canListen && !playerLink?.href && playerNote ? (
                 <p className="muted" data-testid="peek-player-note">

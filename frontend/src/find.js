@@ -102,7 +102,24 @@ export function discoverHref({ discover = "", cat = "", kind = "" } = {}) {
   const kindValue = trimmed(kind);
   if (kindValue) params.set("kind", kindValue);
   const qs = params.toString();
-  return qs ? `/find?${qs}` : "/find";
+  return qs ? `/search?${qs}` : "/search";
+}
+
+/** Group Discover items into one rail per indexer category. */
+export function groupDiscoverRails(items, categories) {
+  const labels = new Map((categories || []).map((row) => [String(row.id), row.name || row.id]));
+  const groups = [];
+  const index = new Map();
+  for (const item of items || []) {
+    const cat = item.category != null && item.category !== "" ? String(item.category) : "feed";
+    const title = item.category_name || labels.get(cat) || cat;
+    if (!index.has(cat)) {
+      index.set(cat, groups.length);
+      groups.push({ id: cat, title, items: [] });
+    }
+    groups[index.get(cat)].items.push(item);
+  }
+  return groups;
 }
 
 /** Bestsellers / curated lists preset on Find (`?preset=nyt&list=&date=`). */

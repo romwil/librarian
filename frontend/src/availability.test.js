@@ -99,14 +99,33 @@ describe("catalog status", () => {
     assert.equal(audio.listenHref, "/works/book-1?listen=1");
   });
 
-  it("offers Want to keepers and Ask the house to readers when beyond", () => {
+  it("offers Get to keepers and Ask the house to readers when beyond", () => {
     const owner = catalogStatus({ work: { title: "Dune", kind: "book" }, role: "owner", beyond: true });
     assert.equal(owner.status, "Not on the shelf");
-    assert.equal(owner.verb, "Want");
+    assert.equal(owner.verb, "Get");
     assert.equal(owner.canAdd, true);
     const reader = catalogStatus({ work: { title: "Dune", kind: "book" }, role: "reader", beyond: true });
     assert.equal(reader.verb, "Ask the house");
     assert.equal(reader.canAdd, false);
+  });
+
+  it("turns a saved Usenet pick into Queued or Asked", () => {
+    const asked = catalogStatus({
+      work: { title: "Dune", kind: "book", job_status: "asked" },
+      role: "owner",
+      beyond: true,
+    });
+    assert.equal(asked.status, "Asked");
+    assert.equal(asked.verb, "Queued");
+    assert.equal(asked.canAdd, false);
+    const saved = catalogStatus({
+      work: { title: "Dune", kind: "book", wanted: { id: "w1", status: "wanted" } },
+      role: "op",
+      beyond: true,
+    });
+    assert.equal(saved.status, "Queued");
+    assert.equal(saved.verb, "Queued");
+    assert.equal(saved.canAdd, false);
   });
 
   it("names Asked, On the way, and Needs you", () => {

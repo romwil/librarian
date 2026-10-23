@@ -94,7 +94,7 @@ test("Search keeps a Trending books door to New & noted", () => {
   assert.match(searchSrc, /TRENDING_BOOKS_LABEL/);
   assert.match(searchSrc, /to="\/noted"/);
   assert.equal(searchSrc.includes("ShelfMore"), false);
-  assert.equal(searchSrc.includes("DISCOVER_CTA"), false);
+  assert.match(searchSrc, /discover-panel/);
   assert.match(searchSrc, /On the shelf/);
 });
 
