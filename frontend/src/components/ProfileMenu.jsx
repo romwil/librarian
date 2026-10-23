@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api.js";
+import { pointerEventInsideNode } from "../lib/pointerInside.js";
 import {
   FONT_STEP_MAX,
   applyUiFontStep,
@@ -43,15 +44,12 @@ export default function ProfileMenu({
 
   useEffect(() => {
     if (!open) return undefined;
+    const root = rootRef.current;
     function eventInsideMenu(event) {
-      const root = rootRef.current;
-      if (!root) return false;
-      // Range inputs (and some UA widgets) can retarget so event.target is
-      // outside the menu even when the gesture started inside — prefer path.
-      const path = typeof event.composedPath === "function" ? event.composedPath() : [];
-      if (path.length > 0) return path.includes(root);
-      const target = event.target;
-      return target instanceof Node && root.contains(target);
+      return pointerEventInsideNode(event, rootRef.current);
+    }
+    function stopIfInside(event) {
+      if (eventInsideMenu(event)) event.stopPropagation();
     }
     function onPointerDown(event) {
       if (!eventInsideMenu(event)) setOpen(false);
@@ -59,9 +57,17 @@ export default function ProfileMenu({
     function onKey(event) {
       if (event.key === "Escape") setOpen(false);
     }
+    // Native stop on the menu root is more reliable than React's delegated
+    // onPointerDown: React 18 listens on #root, so a document bubble listener
+    // can still see in-menu events. Range thumbs may also retarget onto
+    // document — those never pass through `root`, so onPointerDown hit-tests.
+    root?.addEventListener("pointerdown", stopIfInside);
+    root?.addEventListener("mousedown", stopIfInside);
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKey);
     return () => {
+      root?.removeEventListener("pointerdown", stopIfInside);
+      root?.removeEventListener("mousedown", stopIfInside);
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKey);
     };
@@ -112,6 +118,7 @@ export default function ProfileMenu({
         type="button"
         className="profile-menu-trigger"
         data-testid="profile-menu-trigger"
+        aria-label="Library card"
         aria-expanded={open}
         aria-haspopup="menu"
         onClick={() => setOpen((value) => !value)}
@@ -155,7 +162,16 @@ export default function ProfileMenu({
             </div>
           </div>
 
-          <label className="profile-font-control" data-testid="profile-font-slider">
+          <label
+            className="profile-font-control"
+            data-testid="profile-font-slider"
+            onPointerDown={(event) => event.stopPropagation()}
+            onMouseDown={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") return;
+              event.stopPropagation();
+            }}
+          >
             <span className="profile-font-label">
               Text size
               <span className="profile-font-value">
@@ -173,6 +189,8 @@ export default function ProfileMenu({
               aria-valuenow={fontStep}
               aria-label="Text size. Far left is the default size; slide right to enlarge."
               onChange={handleFontChange}
+              onPointerDown={(event) => event.stopPropagation()}
+              onMouseDown={(event) => event.stopPropagation()}
             />
           </label>
 

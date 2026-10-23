@@ -8,6 +8,7 @@ const root = dirname(fileURLToPath(import.meta.url));
 const chromeSrc = readFileSync(join(root, "components/AppChrome.jsx"), "utf8");
 const menuSrc = readFileSync(join(root, "components/ProfileMenu.jsx"), "utf8");
 const mainSrc = readFileSync(join(root, "main.jsx"), "utf8");
+const stylesSrc = readFileSync(join(root, "styles.css"), "utf8");
 
 test("top nav is Hall, Search, Wanted, with Downloads and Holds for owner and op", () => {
   assert.match(chromeSrc, />\s*Hall\s*</);
@@ -36,6 +37,20 @@ test("account menu holds theme, lamp, People, Maintain, and Settings", () => {
   assert.match(menuSrc, />\s*Holds\s*</);
   assert.equal(chromeSrc.includes("theme-toggle"), false);
   assert.equal(chromeSrc.includes("ambient-toggle"), false);
+});
+
+test("Library card text-size slider stays inside dismiss hit-testing", () => {
+  assert.match(menuSrc, /pointerEventInsideNode/);
+  assert.match(menuSrc, /profile-font-slider/);
+  assert.match(menuSrc, /type="range"/);
+  assert.match(menuSrc, /ui_font_step/);
+  assert.match(menuSrc, /aria-label="Library card"/);
+  assert.match(menuSrc, /Text size/);
+});
+
+test("topbar stacks above Hall so the Library card panel can receive clicks", () => {
+  assert.match(stylesSrc, /\.room > \.topbar\s*\{[^}]*z-index:\s*200/s);
+  assert.match(stylesSrc, /\.room > \*\s*\{[^}]*z-index:\s*1/s);
 });
 
 test("mobile tab bar is Hall, Search, Wanted, Library card", () => {

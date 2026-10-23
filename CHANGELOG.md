@@ -5,6 +5,10 @@
 - Search Beyond Usenet cards say **Get**, then **Getting…**, then **Queued** (an Asked slip). Confirm on Downloads still sends SABnzbd. Failures restore Get with a short error.
 - Idle Search shows indexer **Discover** again — trending latest by category — with fielded search easy to reach. New & noted stays at `/noted`.
 
+### Fixed
+
+- **Library card text size.** Clicking Text size or the slider no longer closes the Library card. Ambient room layering had flattened the topbar under Hall, so the panel was visible through empty Hall and the click counted as outside; range thumb retargets onto `document` are hit-tested too.
+
 ## [0.5.23] — 2026-10-20
 
 ### Highlights

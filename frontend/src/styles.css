@@ -4808,6 +4808,19 @@ button.cover {
   position: relative;
   z-index: 1;
 }
+/* `.room > *` is more specific than `.topbar` / `.skip-link` / `.mobile-tabbar`,
+   so it flattened chrome to z-index 1. Main then paints over the overflowing
+   Library card panel; Hall looks transparent there and steals the click. */
+.room > .skip-link {
+  z-index: 1000;
+}
+.room > .topbar {
+  position: sticky;
+  z-index: 200;
+}
+.room > .mobile-tabbar {
+  z-index: 50;
+}
 .ambient-toggle {
   opacity: 0.85;
 }
