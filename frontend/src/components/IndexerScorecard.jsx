@@ -1,7 +1,53 @@
-import { lanternPresence, lanternWeather, scorecardLanterns, scorecardPresence } from "../lib/indexerScorecard.js";
+import {
+  lanternPresence,
+  lanternStatsModel,
+  lanternWeather,
+  scorecardLanterns,
+  scorecardPresence,
+} from "../lib/indexerScorecard.js";
+
+function LanternStats({ row, showExtra }) {
+  const model = lanternStatsModel(row, { showExtra });
+  if (!model) return null;
+  return (
+    <div className="indexer-lantern-bi" data-testid="indexer-lantern-stats">
+      <div className="indexer-kpi-row">
+        <p className="indexer-kpi-rate">{model.percent}</p>
+        <p className="indexer-kpi-meta">
+          match · {model.spokenLabel}
+        </p>
+      </div>
+      {model.kinds.length > 0 ? (
+        <ul className="indexer-kind-bars">
+          {model.kinds.map((kind) => (
+            <li
+                key={kind.kind || "any"}
+                className="indexer-kind-bar"
+                aria-label={`${kind.label} ${kind.percent} match`}
+              >
+              <span className="indexer-kind-label">{kind.label}</span>
+              <span
+                className="indexer-kind-track"
+                aria-hidden="true"
+              >
+                <span
+                  className="indexer-kind-fill"
+                  style={{ width: `${kind.fill}%` }}
+                />
+              </span>
+              <span className="indexer-kind-pct">{kind.percent}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {model.notes ? <p className="indexer-kpi-notes">{model.notes}</p> : null}
+    </div>
+  );
+}
 
 /**
  * Maintain indexer lanterns — mute a sick host without deleting it.
+ * Compact BI chips show match rate by media type when Finds have spoken.
  * @param {{
  *   card?: object | null,
  *   loading?: boolean,
@@ -38,6 +84,7 @@ export default function IndexerScorecard({
   if (!card) return null;
 
   const lanterns = scorecardLanterns(card);
+  const showExtra = Boolean(card.show_extra_categories);
 
   return (
     <section
@@ -73,6 +120,7 @@ export default function IndexerScorecard({
                 <div className="indexer-lantern-copy">
                   <p className="indexer-lantern-name">{row.name || "Indexer"}</p>
                   <p className="indexer-lantern-presence">{lanternPresence(row)}</p>
+                  <LanternStats row={row} showExtra={showExtra} />
                 </div>
                 {row.can_mute ? (
                   <div className="indexer-lantern-actions">
