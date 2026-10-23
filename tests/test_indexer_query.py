@@ -90,3 +90,4 @@ def test_job_payload_keeps_sought_selected_retrieved_without_tokens():
     assert payload["title"] == "Dune"
     assert payload["kind"] == "book"
     assert strip_secret_query("https://x.test/d?api_token=abc&id=1") == "https://x.test/d?id=1"
+    assert strip_secret_query("https://drunkenslug.com/rss?t=7020&r=secret&dl=1") == "https://drunkenslug.com/rss?t=7020&dl=1"

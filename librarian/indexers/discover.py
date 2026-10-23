@@ -328,6 +328,7 @@ def discover_beyond(
             host["api_token"],
             transport=transport,
             label=host["name"],
+            dialect=host.get("dialect") or "",
         )
         try:
             try:

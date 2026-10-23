@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Settings can add **DrunkenSlug** as an extra Newznab host (URL preset, paste the API token). Find beyond merges those hits with NZBFinder. Classic Newznab XML/`o=json` is spoken on that host — not a second search stack.
 - Search Beyond Usenet cards say **Get**, then **Getting…**, then **Queued** (an Asked slip). Confirm on Downloads still sends SABnzbd. Failures restore Get with a short error.
 - Idle Search shows indexer **Discover** again — trending latest by category — with fielded search easy to reach. New & noted stays at `/noted`.
 

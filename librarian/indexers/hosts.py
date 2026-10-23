@@ -1,4 +1,4 @@
-"""NZBFinder plus extra Newznab v2 hosts. Fail closed per host; merge by guid."""
+"""NZBFinder plus extra Newznab hosts. Fail closed per host; merge by guid."""
 
 from __future__ import annotations
 
@@ -11,10 +11,28 @@ from typing import Any, Dict, List, Mapping, Optional, Tuple
 from librarian.config import Settings
 from librarian.indexers.query import run_beyond_search_traced
 from librarian.indexers.scrub import public_indexer_hit
-from librarian.nzbfinder import NZBFinderClient, NZBFinderError, _hit_summary
+from librarian.nzbfinder import (
+    DIALECT_NEWZNAB,
+    DIALECT_V2,
+    NZBFinderClient,
+    NZBFinderError,
+    _hit_summary,
+    infer_newznab_dialect,
+    is_classic_newznab_host,
+)
 
 NZBFINDER_ID = "nzbfinder"
+DRUNKENSLUG_ID = "drunkenslug"
+DRUNKENSLUG_NAME = "DrunkenSlug"
+DRUNKENSLUG_URL = "https://drunkenslug.com"
+DRUNKENSLUG_PRESET = {
+    "id": DRUNKENSLUG_ID,
+    "name": DRUNKENSLUG_NAME,
+    "url": DRUNKENSLUG_URL,
+    "dialect": DIALECT_NEWZNAB,
+}
 MAX_EXTRA_INDEXERS = 12
+_DIALECTS = frozenset({DIALECT_V2, DIALECT_NEWZNAB})
 
 
 def _text(value: Any) -> str:
@@ -29,8 +47,17 @@ def _as_bool(value: Any, default: bool = True) -> bool:
     return _text(value).lower() in {"1", "true", "yes", "on"}
 
 
+def _extra_dialect(item: Mapping[str, Any], url: str) -> str:
+    dialect = infer_newznab_dialect(
+        url,
+        dialect=_text(item.get("dialect")),
+        label=_text(item.get("name")),
+    )
+    return dialect if dialect in _DIALECTS else ""
+
+
 def normalize_extra_indexers(raw: Any) -> List[Dict[str, Any]]:
-    """Keep extra hosts as a list of {id, name, url, api_token, enabled}."""
+    """Keep extra hosts as a list of {id, name, url, api_token, enabled, dialect}."""
     data = raw
     if isinstance(data, str):
         try:
@@ -44,21 +71,32 @@ def normalize_extra_indexers(raw: Any) -> List[Dict[str, Any]]:
     for item in data:
         if not isinstance(item, dict):
             continue
-        url = _text(item.get("url") or item.get("base_url"))
+        url = _text(item.get("url") or item.get("base_url")).rstrip("/")
         if not url:
             continue
         name = _text(item.get("name")) or "Indexer"
         indexer_id = _text(item.get("id"))
-        if not indexer_id or indexer_id == NZBFINDER_ID or indexer_id in seen:
+        if indexer_id == NZBFINDER_ID:
+            indexer_id = ""
+        if not indexer_id:
+            if is_classic_newznab_host(url) and DRUNKENSLUG_ID not in seen:
+                indexer_id = DRUNKENSLUG_ID
+            else:
+                indexer_id = uuid.uuid4().hex
+        if indexer_id in seen:
             indexer_id = uuid.uuid4().hex
         seen.add(indexer_id)
+        if not name or name == "Indexer":
+            if indexer_id == DRUNKENSLUG_ID or is_classic_newznab_host(url):
+                name = DRUNKENSLUG_NAME
         out.append(
             {
                 "id": indexer_id,
                 "name": name[:80],
-                "url": url.rstrip("/"),
+                "url": url,
                 "api_token": _text(item.get("api_token")),
                 "enabled": _as_bool(item.get("enabled"), True),
+                "dialect": _extra_dialect(item, url),
             }
         )
         if len(out) >= MAX_EXTRA_INDEXERS:
@@ -90,6 +128,7 @@ def mask_extra_indexers(raw: Any) -> List[Dict[str, Any]]:
                 "enabled": bool(row.get("enabled", True)),
                 "api_token": "",
                 "api_token_set": bool(token),
+                "dialect": _text(row.get("dialect")),
             }
         )
     return out
@@ -108,6 +147,7 @@ def enabled_hosts(settings: Settings) -> List[Dict[str, str]]:
                 "name": "NZBFinder",
                 "url": nzb_url,
                 "api_token": nzb_token,
+                "dialect": DIALECT_V2,
             }
         )
     for row in normalize_extra_indexers(getattr(settings, "extra_indexers", [])):
@@ -121,6 +161,7 @@ def enabled_hosts(settings: Settings) -> List[Dict[str, str]]:
                 "name": row["name"],
                 "url": row["url"],
                 "api_token": row["api_token"],
+                "dialect": _text(row.get("dialect")),
             }
         )
     return hosts
@@ -140,12 +181,14 @@ def client_for_host(
                 host["api_token"],
                 transport=transport,
                 label=host["name"],
+                dialect=host.get("dialect") or "",
             )
     return NZBFinderClient(
         getattr(settings, "nzbfinder_url", ""),
         getattr(settings, "nzbfinder_api_token", ""),
         transport=transport,
         label="NZBFinder",
+        dialect=DIALECT_V2,
     )
 
 
@@ -257,6 +300,7 @@ def search_beyond_traced(
             host["api_token"],
             transport=transport,
             label=host["name"],
+            dialect=host.get("dialect") or "",
         )
         started = time.perf_counter()
         try:
