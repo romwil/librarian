@@ -3219,6 +3219,15 @@ button.cover {
     radial-gradient(ellipse 55% 70% at 88% 0%, color-mix(in srgb, var(--lamp, #f0b85a) 14%, transparent), transparent 65%),
     color-mix(in srgb, var(--surface) 94%, var(--paper, #f4ead6));
   overflow: hidden;
+  /* Paper wash in Lights Up; Lights Down remaps to raised leather so muted copy is not beige-on-beige. */
+  --lantern-card: color-mix(in srgb, var(--paper, #f4ead6) 55%, var(--surface));
+  --lantern-ink: var(--fg);
+  --lantern-note: var(--muted);
+}
+html[data-theme="lights-down"] .indexer-scorecard {
+  --lantern-card: color-mix(in srgb, var(--surface-raised) 88%, var(--surface));
+  --lantern-ink: var(--text);
+  --lantern-note: color-mix(in srgb, var(--text) 62%, var(--muted));
 }
 .indexer-scorecard-quiet .indexer-scorecard-presence {
   color: var(--muted);
@@ -3265,7 +3274,7 @@ button.cover {
   padding: var(--space-3);
   border-radius: 10px;
   border: 1px solid var(--border-subtle);
-  background: color-mix(in srgb, var(--paper, #f4ead6) 55%, transparent);
+  background: var(--lantern-card);
   animation: page-settle var(--motion-settle) both;
   animation-delay: calc(var(--settle-i, 0) * 40ms);
 }
@@ -3288,6 +3297,12 @@ button.cover {
   background: color-mix(in srgb, var(--muted) 80%, #4a3a2a);
   opacity: 0.55;
 }
+.indexer-lantern-idle .indexer-lantern-flame {
+  /* Hollow ring — unspoken, distinct from filled dim/bright without relying on hue. */
+  background: transparent;
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--muted) 85%, var(--border));
+  opacity: 1;
+}
 .indexer-lantern-muted .indexer-lantern-flame,
 .indexer-lantern.is-muted .indexer-lantern-flame {
   background: color-mix(in srgb, var(--muted) 50%, transparent);
@@ -3296,16 +3311,22 @@ button.cover {
 .indexer-lantern-name {
   margin: 0;
   font-weight: 600;
+  color: var(--lantern-ink);
 }
 .indexer-lantern-presence {
   margin: 0.15rem 0 0;
-  color: var(--muted);
+  color: var(--lantern-note);
   font-size: var(--text-sm, 0.9rem);
   line-height: 1.35;
 }
 .indexer-lantern-actions {
   display: flex;
   gap: var(--space-2);
+}
+.indexer-lantern .cta.ghost,
+.indexer-lantern .cta.outline {
+  color: var(--lantern-ink);
+  border-color: color-mix(in srgb, var(--gilt) 40%, var(--border));
 }
 .listen-remember {
   margin: 0 0 var(--space-2);
@@ -3330,6 +3351,14 @@ button.cover {
   background:
     radial-gradient(ellipse 50% 80% at 0% 0%, color-mix(in srgb, var(--lamp, #f0b85a) 12%, transparent), transparent 70%),
     color-mix(in srgb, var(--paper, #f4ead6) 55%, var(--surface));
+}
+html[data-theme="lights-down"] .grooming-undo {
+  background: color-mix(in srgb, var(--surface-raised) 72%, var(--surface));
+}
+html[data-theme="lights-down"] .grooming-undo.is-available {
+  background:
+    radial-gradient(ellipse 50% 80% at 0% 0%, color-mix(in srgb, var(--lamp, #f0b85a) 12%, transparent), transparent 70%),
+    color-mix(in srgb, var(--surface-raised) 78%, var(--surface));
 }
 .grooming-undo-presence {
   margin: 0;
