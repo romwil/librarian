@@ -127,6 +127,18 @@ describe("QueryForm kinds", () => {
     assert.equal(music.includes(">ISBN<"), false);
   });
 
+  it("can open More ways to search instead of leaving fields closed", async () => {
+    const QueryForm = await loadQueryForm();
+    const closed = renderForm(QueryForm, { variant: "search", kind: "book" });
+    assert.match(closed, /data-testid="search-advanced"/);
+    assert.doesNotMatch(closed, /<details class="advanced" open/);
+    const opened = renderForm(QueryForm, { variant: "search", kind: "book", advancedOpen: true });
+    assert.match(opened, /<details class="advanced" open/);
+    assert.match(opened, />Title</);
+    assert.match(opened, />Author</);
+    assert.match(opened, />ISBN</);
+  });
+
   it("hero variant is just the field", async () => {
     const QueryForm = await loadQueryForm();
     const html = renderForm(QueryForm, { variant: "hero", placeholder: "Title, author, or ISBN" });

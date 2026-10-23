@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api.js";
 import { bookAvailability, catalogStatus } from "../availability.js";
+import { saveBeyondGet } from "../beyondGet.js";
+import { humanError } from "../copy.js";
 import AvailabilityActions from "./AvailabilityActions.jsx";
 import CatalogVerb from "./CatalogVerb.jsx";
 import {
@@ -69,27 +71,55 @@ export default function CoverCard({ work, onRequest, badge, beyond = false, role
   const host = beyond ? beyondHostName(work) : "";
   const beads = isGap ? gapBeadModel(work) : [];
   const [wantedRow, setWantedRow] = useState(null);
+  const [queuedStatus, setQueuedStatus] = useState("");
   const [availabilityBusy, setAvailabilityBusy] = useState(false);
+  const [getError, setGetError] = useState("");
   const availability = bookAvailability({
     work: { ...work, wanted: wantedRow || work.wanted },
     role,
     beyond,
   });
   const catalog = catalogStatus({
-    work: { ...work, wanted: wantedRow || work.wanted },
+    work: {
+      ...work,
+      wanted: wantedRow || work.wanted,
+      job_status: queuedStatus || status,
+    },
     role,
     beyond,
   });
   const wantBody = availability.addBody || catalog.addBody;
+  const alreadyQueued = catalog.verb === "Queued" || Boolean(queuedStatus);
 
   async function addWanted() {
     if (!wantBody || availabilityBusy) return;
     setAvailabilityBusy(true);
+    setGetError("");
     try {
       const result = await api.addWanted(wantBody);
       if (result?.item) setWantedRow(result.item);
-    } catch {
-      /* the desk and peek surface the error; the card stays Wanted */
+    } catch (err) {
+      setGetError(humanError(err));
+    } finally {
+      setAvailabilityBusy(false);
+    }
+  }
+
+  async function getBeyond() {
+    if (!beyond || availabilityBusy || alreadyQueued) return;
+    setAvailabilityBusy(true);
+    setGetError("");
+    try {
+      const result = onRequest
+        ? await onRequest({ ...work, beyond: true })
+        : await saveBeyondGet(work);
+      const wanted = result?.wanted || result?.item;
+      if (wanted) setWantedRow(wanted);
+      const nextStatus = result?.job?.status || result?.jobStatus || wanted?.status || "";
+      if (nextStatus === "asked") setQueuedStatus("asked");
+      else if (!wanted?.id) setQueuedStatus(nextStatus || "asked");
+    } catch (err) {
+      setGetError(humanError(err));
     } finally {
       setAvailabilityBusy(false);
     }
@@ -191,15 +221,27 @@ export default function CoverCard({ work, onRequest, badge, beyond = false, role
         </div>
       ) : null}
       {availability.show ? (
-        <AvailabilityActions
-          view={availability}
-          shelfVerbs
-          busy={availabilityBusy}
-          onAdd={addWanted}
-          onDismiss={dismissWanted}
-        />
+        <>
+          <AvailabilityActions
+            view={availability}
+            shelfVerbs
+            busy={availabilityBusy}
+            onAdd={addWanted}
+            onDismiss={dismissWanted}
+          />
+          {getError ? (
+            <p className="catalog-status-error" role="alert">
+              {getError}
+            </p>
+          ) : null}
+        </>
       ) : (
-        <CatalogVerb view={catalog} busy={availabilityBusy} onAdd={addWanted} />
+        <CatalogVerb
+          view={catalog}
+          busy={availabilityBusy}
+          error={getError}
+          onAdd={beyond ? getBeyond : addWanted}
+        />
       )}
     </div>
   );

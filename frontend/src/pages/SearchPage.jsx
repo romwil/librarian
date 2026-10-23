@@ -1,21 +1,32 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useOutletContext, useSearchParams } from "react-router-dom";
 import { api } from "../api.js";
+import { saveBeyondGet } from "../beyondGet.js";
+import CoverCard from "../components/CoverCard.jsx";
 import QueryForm from "../components/QueryForm.jsx";
 import Rail from "../components/Rail.jsx";
 import SearchModeControl, { normalizeSearchMode } from "../components/SearchModeControl.jsx";
 import {
   FIELD_HELP,
   TRENDING_BOOKS_LABEL,
+  discoverKindNote,
+  discoverStatusLine,
   humanError,
   searchStatusLine,
 } from "../copy.js";
 import {
+  DISCOVER_BROWSE_LIMIT,
   buildFindSearchParams,
   composeSearchQuery,
+  discoverCatFromSearchParams,
+  discoverHref,
   emptyFindFields,
   findFieldsFromSearchParams,
+  findKindOptions,
+  groupDiscoverCategories,
+  groupDiscoverRails,
   pruneFieldsForKind,
+  shouldShowDiscover,
 } from "../find.js";
 import { didYouMeanList, didYouMeanPresence, searchForgave } from "../lib/searchForgive.js";
 import {
@@ -65,11 +76,27 @@ function FacetGroup({ legend, options, value, onChange, counts, always }) {
   );
 }
 
+function SkeletonRail({ label = "Warming the lamp…" }) {
+  return (
+    <div className="skeleton-rail" data-testid="skeleton-rail" aria-hidden="true">
+      <p className="skeleton-rail-label">{label}</p>
+      <div className="skeleton-rail-track">
+        {[0, 1, 2, 3, 4].map((n) => (
+          <span key={n} className="skeleton-cover" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function SearchPage() {
   const [params, setParams] = useSearchParams();
-  const { user } = useOutletContext();
+  const { user, features } = useOutletContext();
+  const showExtra = Boolean(features?.show_extra_categories);
+  const kindOptions = findKindOptions(showExtra);
   const fields = findFieldsFromSearchParams(params);
   const mode = normalizeSearchMode(params.get("mode"));
+  const discoverCat = discoverCatFromSearchParams(params);
   const activeMode = mode || "title";
   const composed = composeSearchQuery(fields);
   const [draft, setDraft] = useState(fields.q);
@@ -79,6 +106,12 @@ export default function SearchPage() {
   const [phase, setPhase] = useState("idle");
   const [error, setError] = useState("");
   const [facet, setFacet] = useState(emptyFacetSelection);
+  const [discover, setDiscover] = useState({ items: [], categories: [], limit: 0 });
+  const [discoverPhase, setDiscoverPhase] = useState("idle");
+  const [discoverError, setDiscoverError] = useState("");
+  const [jobs, setJobs] = useState({});
+  const openDiscover = shouldShowDiscover(fields);
+  const browsing = Boolean(discoverCat) && openDiscover;
 
   useEffect(() => {
     const next = fieldsFromState(fields.q, fields.kind, fields);
@@ -123,6 +156,38 @@ export default function SearchPage() {
       alive = false;
     };
   }, [composed, fields.kind, mode, fields.author, fields.title, fields.isbn, fields.series, fields.year, fields.issue, fields.artist, fields.album]);
+
+  useEffect(() => {
+    let alive = true;
+    setDiscoverPhase("loading");
+    setDiscoverError("");
+    const extras = { kind: fields.kind, cat: discoverCat };
+    if (discoverCat) extras.limit = DISCOVER_BROWSE_LIMIT;
+    api
+      .discover(extras)
+      .then((data) => {
+        if (!alive) return;
+        setDiscover({
+          items: data.items || [],
+          categories: data.categories || [],
+          limit: data.limit || 0,
+        });
+        if (data.beyond_error) {
+          setDiscoverError(humanError(data.beyond_error));
+          setDiscoverPhase((data.items || []).length ? "done" : "error");
+        } else {
+          setDiscoverPhase("done");
+        }
+      })
+      .catch((err) => {
+        if (!alive) return;
+        setDiscoverError(humanError(err));
+        setDiscoverPhase("error");
+      });
+    return () => {
+      alive = false;
+    };
+  }, [fields.kind, discoverCat]);
 
   function commitSearch(nextKind = kind, nextAdvanced = advanced, nextMode = activeMode) {
     const next = fieldsFromState(draft, nextKind, nextAdvanced);
@@ -169,7 +234,16 @@ export default function SearchPage() {
       const query = buildFindSearchParams(next);
       if (mode) query.set("mode", mode);
       setParams(query);
+      return;
     }
+    setParams(discoverParams(next.kind, ""));
+  }
+
+  function discoverParams(nextKind, nextCat) {
+    const next = {};
+    if (nextKind) next.kind = nextKind;
+    if (nextCat) next.discover = nextCat;
+    return next;
   }
 
   function onDidYouMean(title) {
@@ -180,6 +254,17 @@ export default function SearchPage() {
     const query = buildFindSearchParams(next);
     if (mode) query.set("mode", mode);
     setParams(query);
+  }
+
+  async function request(item) {
+    const key = item.guid || item.title;
+    if (jobs[key]) {
+      return { job: { status: jobs[key] }, wanted: { id: jobs[key], status: jobs[key] === "asked" ? "asked" : "wanted" } };
+    }
+    const data = await saveBeyondGet(item);
+    const status = data.jobStatus === "saved" ? "saved" : "asked";
+    setJobs((prev) => ({ ...prev, [key]: status }));
+    return { job: { status: data.jobStatus === "asked" ? "asked" : "saved" }, wanted: data.wanted };
   }
 
   const status = searchStatusLine({
@@ -195,6 +280,144 @@ export default function SearchPage() {
   const yearEntries = yearFacetEntries(counts.years);
   const yearOptions = yearEntries.map(([year, count]) => [year, year]);
   const yearCounts = Object.fromEntries(yearEntries);
+  const beyondItems = (filtered.beyond || []).map((item) => ({
+    ...item,
+    job_status: jobs[item.guid || item.title] === "asked" ? "asked" : item.job_status,
+    wanted:
+      jobs[item.guid || item.title] === "saved"
+        ? { id: "saved", status: "wanted" }
+        : item.wanted,
+  }));
+  const discoverItems = (discover.items || []).map((item) => ({
+    ...item,
+    job_status: jobs[item.guid || item.title] === "asked" ? "asked" : item.job_status,
+    wanted:
+      jobs[item.guid || item.title] === "saved"
+        ? { id: "saved", status: "wanted" }
+        : item.wanted,
+  }));
+  const discoverEmpty = discoverStatusLine({
+    kind: fields.kind,
+    phase: discoverPhase === "loading" ? "loading" : discoverPhase === "error" ? "error" : "done",
+    count: discoverItems.length,
+  });
+  const kindCats = useMemo(
+    () => (discover.categories || []).filter((row) => !fields.kind || row.kind === fields.kind),
+    [discover.categories, fields.kind],
+  );
+  const rails = groupDiscoverRails(discoverItems, discover.categories);
+  const browseTitle =
+    kindCats.find((row) => String(row.id) === String(discoverCat))?.name ||
+    discoverItems[0]?.category_name ||
+    discoverCat;
+  const backDiscoverHref = discoverHref({ kind: fields.kind });
+  const getKicker = "Get saves a slip. Confirm on Downloads before SAB.";
+
+  function renderDiscoverBrowse() {
+    return (
+      <section className="discover-browse" data-testid="discover-browse">
+        <header className="discover-browse-head">
+          <Link className="discover-back" to={backDiscoverHref}>
+            ← Discover
+          </Link>
+          <h2>{browseTitle || "Category"}</h2>
+          <p>{getKicker}</p>
+        </header>
+        {discoverPhase === "loading" && !discoverItems.length ? (
+          <SkeletonRail label="The indexers are turning pages…" />
+        ) : null}
+        {discoverItems.length ? (
+          <div className="discover-grid" data-testid="discover-grid">
+            {discoverItems.map((item) => (
+              <CoverCard
+                key={item.id || item.guid || item.title}
+                work={item}
+                onRequest={request}
+                beyond
+                role={user?.role}
+              />
+            ))}
+          </div>
+        ) : discoverPhase !== "loading" ? (
+          <p className="lede discover-empty">{discoverEmpty}</p>
+        ) : null}
+      </section>
+    );
+  }
+
+  function renderDiscoverRails() {
+    if (discoverPhase === "loading" && !rails.length) {
+      return <SkeletonRail label="Warming Discover…" />;
+    }
+    if (!rails.length) {
+      return <p className="lede discover-empty">{discoverEmpty}</p>;
+    }
+    return rails.map((rail) => {
+      const feedKind =
+        (discover.categories || []).find((row) => String(row.id) === String(rail.id))?.kind || fields.kind;
+      return (
+        <Rail
+          key={rail.id}
+          title={rail.title}
+          kicker={getKicker}
+          items={rail.items}
+          onRequest={request}
+          beyond
+          role={user?.role}
+          seeAllTo={discoverHref({ discover: rail.id, kind: feedKind || fields.kind })}
+        />
+      );
+    });
+  }
+
+  function renderDiscover() {
+    return (
+      <section className="discover-panel" data-testid="discover-panel">
+        <header className="discover-head">
+          <h2>Discover</h2>
+          <p className="lede discover-lede">{discoverKindNote(fields.kind)}</p>
+        </header>
+        {kindCats.length > 1 ? (
+          <div className="discover-cats" data-testid="discover-cats">
+            <div className="search-hero chip-row discover-cats-all">
+              <button
+                type="button"
+                className={`chip${discoverCat === "" ? " is-on" : ""}`}
+                aria-pressed={discoverCat === ""}
+                onClick={() => setParams(discoverParams(fields.kind, ""))}
+              >
+                All
+              </button>
+            </div>
+            {groupDiscoverCategories(kindCats).map((group) => (
+              <div key={group.id} className="discover-cat-group" data-parent={group.id}>
+                <p className="discover-cat-label kicker">{group.name}</p>
+                <div className="search-hero chip-row">
+                  {group.categories.map((row) => (
+                    <button
+                      key={row.id}
+                      type="button"
+                      className={`chip${discoverCat === String(row.id) ? " is-on" : ""}`}
+                      aria-pressed={discoverCat === String(row.id)}
+                      onClick={() => setParams(discoverParams(fields.kind || row.kind, String(row.id)))}
+                    >
+                      {row.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {discoverError ? (
+          <p className="callout" role="status" data-testid="discover-error">
+            {discoverError}
+          </p>
+        ) : null}
+        {browsing ? renderDiscoverBrowse() : renderDiscoverRails()}
+      </section>
+    );
+  }
 
   return (
     <div className="search-page page-settle">
@@ -212,14 +435,19 @@ export default function SearchPage() {
         ariaLabel="Search"
         kindHelp={FIELD_HELP.searchKind}
         advancedSummary="More ways to search"
-        showKindChips={false}
+        showKindChips
+        advancedOpen
+        kinds={kindOptions}
       />
       {!composed ? (
-        <p className="search-noted-door muted" data-testid="trending-books-door">
-          <Link to="/noted">{TRENDING_BOOKS_LABEL}</Link>
-          {" / "}
-          <Link to="/noted">New & noted</Link>
-        </p>
+        <>
+          <p className="search-noted-door muted" data-testid="trending-books-door">
+            <Link to="/noted">{TRENDING_BOOKS_LABEL}</Link>
+            {" / "}
+            <Link to="/noted">New & noted</Link>
+          </p>
+          {renderDiscover()}
+        </>
       ) : (
         <div className="search-with-facets">
           <aside className="search-facets" aria-label="Filters">
@@ -288,9 +516,10 @@ export default function SearchPage() {
               <Rail
                 title="Usenet"
                 kicker="NZBFinder and the extra indexers in Settings"
-                items={filtered.beyond || []}
+                items={beyondItems}
                 empty={phase === "local" ? "Looking beyond the shelves…" : "Nothing on Usenet for this search."}
                 beyond
+                onRequest={request}
                 role={user?.role}
               />
               <div className="public-domain-lane" data-testid="public-domain-lane">
@@ -319,6 +548,10 @@ export default function SearchPage() {
                 )}
               </div>
             </section>
+            <details className="discover-fold">
+              <summary className="kicker">Discover — trending on the indexers</summary>
+              {renderDiscover()}
+            </details>
           </div>
         </div>
       )}

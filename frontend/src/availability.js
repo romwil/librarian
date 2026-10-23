@@ -132,10 +132,53 @@ export function bookAvailability({ work = {}, audiobook = null, wanted = null, r
   };
 }
 
+function beyondSaved({ work = {}, role = "reader" } = {}) {
+  const manage = canManageWanted(role);
+  const asked = work.job_status === "asked" || work.wanted?.status === "asked";
+  if (asked) {
+    return {
+      ...hidden(),
+      show: true,
+      status: "Asked",
+      verb: "Queued",
+      chip: "Asked",
+      canAdd: false,
+    };
+  }
+  if (isInboundJob(work.job_status)) {
+    return {
+      ...hidden(),
+      show: true,
+      status: "On the way",
+      verb: "",
+      chip: "On the way",
+    };
+  }
+  if (work.wanted?.id && work.wanted?.status !== "dismissed") {
+    return {
+      ...hidden(),
+      show: true,
+      status: "Queued",
+      verb: "Queued",
+      chip: "Queued",
+      canAdd: false,
+    };
+  }
+  return {
+    ...hidden(),
+    show: true,
+    status: "Not on the shelf",
+    verb: manage ? "Get" : "Ask the house",
+    chip: manage ? "Get" : "Ask the house",
+    canAdd: manage,
+    addBody: wantedBody(work),
+  };
+}
+
 /**
  * Status + one verb for any catalog kind.
- * On the shelf → Read or Listen. Not on the shelf → Want (owner/op) or Ask the house.
- * Asked / On the way / Needs you replace the verb.
+ * On the shelf → Read or Listen. Not on the shelf → Get (owner/op) or Ask the house.
+ * Asked / Queued / On the way / Needs you replace Get.
  */
 export function catalogStatus({ work = {}, role = "reader", beyond = false } = {}) {
   if (work.gap || work.kind === "gap") return hidden();
@@ -153,6 +196,11 @@ export function catalogStatus({ work = {}, role = "reader", beyond = false } = {
       chip: "Needs you",
     };
   }
+
+  if (beyond || !work.id) {
+    return beyondSaved({ work, role });
+  }
+
   if (work.job_status === "asked") {
     return {
       ...hidden(),
@@ -169,18 +217,6 @@ export function catalogStatus({ work = {}, role = "reader", beyond = false } = {
       status: "On the way",
       verb: "",
       chip: "On the way",
-    };
-  }
-
-  if (beyond || !work.id) {
-    return {
-      ...hidden(),
-      show: true,
-      status: "Not on the shelf",
-      verb: manage ? "Want" : "Ask the house",
-      chip: manage ? "Want" : "Ask the house",
-      canAdd: manage,
-      addBody,
     };
   }
 

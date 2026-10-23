@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Search Beyond Usenet cards say **Get**, then **Getting…**, then **Queued** (an Asked slip). Confirm on Downloads still sends SABnzbd. Failures restore Get with a short error.
+- Idle Search shows indexer **Discover** again — trending latest by category — with fielded search easy to reach. New & noted stays at `/noted`.
+
 ## [0.5.23] — 2026-10-20
 
 ### Highlights

@@ -796,6 +796,12 @@ main:focus {
 .catalog-status-verb {
   font-weight: 600;
 }
+.catalog-status-error {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--danger, #c45c26);
+  font-size: var(--text-xs);
+}
 
 @media (max-width: 720px) {
   .search-with-facets {

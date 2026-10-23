@@ -16,6 +16,7 @@ import {
   nytHitHref,
   rankBeyondByCompleteness,
   groupDiscoverCategories,
+  groupDiscoverRails,
   pruneFieldsForKind,
   requestBodyFromHit,
   searchHref,
@@ -46,20 +47,35 @@ describe("Find query builder", () => {
     assert.equal(shouldShowDiscover({}), true);
     assert.equal(shouldShowDiscover({ q: "dune" }), false);
     assert.equal(shouldShowDiscover({ kind: "comic" }), true);
-    assert.equal(discoverHref({ kind: "comic" }), "/find?kind=comic");
-    assert.equal(discoverHref({}), "/find");
+    assert.equal(discoverHref({ kind: "comic" }), "/search?kind=comic");
+    assert.equal(discoverHref({}), "/search");
     assert.equal(findKindOptions(false).some(([value]) => value === "movie"), false);
     assert.equal(findKindOptions(true).some(([value]) => value === "movie"), true);
   });
 
   it("builds Discover category browse hrefs from cat id", () => {
-    assert.equal(discoverHref({ discover: "7030" }), "/find?discover=7030");
-    assert.equal(discoverHref({ discover: "7030", kind: "comic" }), "/find?discover=7030&kind=comic");
-    assert.equal(discoverHref({ cat: "7010", kind: "magazine" }), "/find?discover=7010&kind=magazine");
-    assert.equal(discoverHref({}), "/find");
+    assert.equal(discoverHref({ discover: "7030" }), "/search?discover=7030");
+    assert.equal(discoverHref({ discover: "7030", kind: "comic" }), "/search?discover=7030&kind=comic");
+    assert.equal(discoverHref({ cat: "7010", kind: "magazine" }), "/search?discover=7010&kind=magazine");
+    assert.equal(discoverHref({}), "/search");
     assert.equal(discoverCatFromSearchParams(new URLSearchParams("discover=7030&kind=comic")), "7030");
     assert.equal(discoverCatFromSearchParams(new URLSearchParams("cat=7010")), "7010");
     assert.equal(discoverCatFromSearchParams(new URLSearchParams("kind=comic")), "");
+  });
+
+  it("groups Discover items onto one rail per category", () => {
+    const rails = groupDiscoverRails(
+      [
+        { title: "Issue 1", category: "7010", category_name: "Magazines" },
+        { title: "Issue 2", category: "7010" },
+        { title: "Comic 1", category: "7030", category_name: "Comics" },
+      ],
+      [{ id: "7010", name: "Magazines" }],
+    );
+    assert.equal(rails.length, 2);
+    assert.equal(rails[0].title, "Magazines");
+    assert.equal(rails[0].items.length, 2);
+    assert.equal(rails[1].title, "Comics");
   });
 
   it("groups Discover chips under Newznab parents and dedupes ids", () => {
