@@ -323,7 +323,11 @@ def _enrich_finish_log(current: Dict[str, Any], summary: Mapping[str, Any]) -> s
         current["done"] = int(summary.get("scanned") or current.get("done") or 0)
     updated = int(summary.get("updated") or current.get("updated") or 0)
     scanned = int(summary.get("scanned") or current.get("done") or 0)
-    return f"Finished — enriched {updated} of {scanned}."
+    complete = int(summary.get("complete") or 0)
+    parts = [f"enriched {updated} of {scanned}"]
+    if complete:
+        parts.append(f"{complete} already full")
+    return f"Finished — {', '.join(parts)}."
 
 
 def _ingest_finish_log(current: Mapping[str, Any], summary: Mapping[str, Any]) -> str:

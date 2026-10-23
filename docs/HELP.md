@@ -97,7 +97,7 @@ Owners and ops keep the lamp healthy from **Maintain** (`/maintain`) — not Set
 | Action | What it does |
 | --- | --- |
 | **Scan the shelves** | Walks Settings library roots into the catalog; never moves files |
-| **Enrich the shelves** | Fills thin book/audiobook metadata (Hardcover → Open Library); never invents an ISBN |
+| **Enrich the shelves** | Fills thin book/audiobook metadata (Hardcover → Open Library); skips volumes that are already full and starts with the emptiest; never invents an ISBN |
 | **Add to the shelves** | Ingest a dump already on disk under `/data` (same as Settings → Ingest) |
 | **Open Review** | Hold slips that need identity / folder help |
 | **Clear extra-files** | Bulk reprocess `extra_files` slips — including flat multi-title **collection dumps** (Fiction folders with many `Title - Author.epub` stems). Prefer Clear over Apply 29 times |
@@ -155,6 +155,6 @@ A **Watch folder** (Settings → Ingest) is an optional drop directory. New top-
 
 ## Enrich and Goodreads
 
-Owners can **Enrich the shelves** on Settings, or **Enrich** on a book/audiobook page. Hardcover (token in Settings) fills description, series, year, and cover when a volume is thin; Open Library is the fallback. Enrich never invents an ISBN — title-only matches do not write one.
+Owners can **Enrich the shelves** on Maintain, or **Enrich** on a book/audiobook page. Hardcover (token in Settings) fills description, series, year, and cover when a volume is thin; Open Library is the fallback. Shelf enrich skips volumes that already have author, blurb, year, cover, and genre, and starts with the emptiest. Enrich never invents an ISBN — title-only matches do not write one.
 
 **Import Goodreads CSV** on Settings takes a Goodreads shelf export. Rows with an ISBN match an existing book (ISBN-10 or ISBN-13) and land on Favorites. Unmatched ISBNs create a thin work (no file yet — use Find). Rows without an ISBN are skipped. There is no Goodreads login.

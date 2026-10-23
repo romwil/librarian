@@ -50,6 +50,13 @@ describe("actionBusy", () => {
       }),
       "Enriched 2 of 3 thin volumes · 1 skipped · 1 failed",
     );
+    assert.equal(
+      enrichProgressSummary({
+        status: "completed",
+        result: { scanned: 3, updated: 2, skipped: 41, complete: 40, errors: 0 },
+      }),
+      "Enriched 2 of 3 thin volumes · 40 already full · 1 unchanged",
+    );
     assert.equal(enrichProgressSummary({ status: "failed", error: "No network" }), "No network");
   });
 

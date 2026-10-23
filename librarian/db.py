@@ -1274,14 +1274,29 @@ class Database:
         )
     """
 
+    # Same holes as Enrich `is_thin` (SQL cannot check that cover_path is on disk).
+    _ENRICHMENT_MISSING_SQL = """
+        (
+            CASE WHEN author IS NULL OR trim(author) = ''
+              OR lower(trim(author)) IN (
+                'unknown author', 'unknown authors', 'author unknown',
+                'anonymous', 'n/a', 'none', 'null'
+              ) THEN 1 ELSE 0 END
+            + CASE WHEN description IS NULL OR description = '' THEN 1 ELSE 0 END
+            + CASE WHEN genre IS NULL OR genre = '' THEN 1 ELSE 0 END
+            + CASE WHEN year IS NULL THEN 1 ELSE 0 END
+            + CASE WHEN cover_path IS NULL OR cover_path = '' THEN 1 ELSE 0 END
+        )
+    """
+
     def works_needing_enrichment(self, *, limit: int = 10) -> List[Dict[str, Any]]:
-        """Oldest thin books/audiobooks for the enrich trickle."""
+        """Thinnest books/audiobooks for the enrich trickle (most holes first)."""
         with self._connect() as conn:
             rows = conn.execute(
                 f"""
                 SELECT * FROM works
                 WHERE {self._NEEDS_ENRICHMENT_WHERE}
-                ORDER BY updated_at ASC
+                ORDER BY {self._ENRICHMENT_MISSING_SQL} DESC, updated_at ASC
                 LIMIT ?
                 """,
                 (max(1, int(limit)),),
