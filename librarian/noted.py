@@ -412,6 +412,7 @@ def discover_lane(
     settings: Any,
     *,
     transport: Optional[httpx.BaseTransport] = None,
+    data_dir: Any = None,
 ) -> Dict[str, Any]:
     items: List[Dict[str, Any]] = []
     errors: List[str] = []
@@ -424,6 +425,7 @@ def discover_lane(
                 limit=DISCOVER_LIMIT,
                 transport=transport,
                 max_feeds=DISCOVER_FEEDS_PER_KIND,
+                data_dir=data_dir,
             )
         except Exception as error:  # noqa: BLE001 — one host failure must not drop the other lanes
             logger.info("Discover latest failed for %s: %s", kind, error)
@@ -563,7 +565,9 @@ def noted_desk(
     started = time.monotonic()
     pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="noted")
     trending_future = pool.submit(trending_lane, slug_period, transport=ol_transport)
-    discover_future = pool.submit(discover_lane, settings, transport=discover_transport)
+    discover_future = pool.submit(
+        discover_lane, settings, transport=discover_transport, data_dir=data_dir
+    )
     try:
         try:
             bestsellers = _bestsellers_for_desk(

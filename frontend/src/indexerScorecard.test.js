@@ -4,7 +4,10 @@ import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
+  formatMatchPercent,
+  kindStatLabel,
   lanternPresence,
+  lanternStatsModel,
   lanternWeather,
   scorecardLanterns,
   scorecardPresence,
@@ -76,5 +79,60 @@ describe("indexerScorecard", () => {
     assert.ok(contrastRatio("#dccfb9", "#281f17") >= 7, "lights-down presence meets AAA");
     assert.ok(contrastRatio("#1c1612", "#f6f0e6") >= 7, "lights-up names stay dark-on-paper");
     assert.ok(contrastRatio("#3a322c", "#f6f0e6") >= 7, "lights-up presence stays ink-on-paper");
+  });
+
+  it("formats match rate chips without a number dump", () => {
+    assert.equal(formatMatchPercent(0.8), "80%");
+    assert.equal(formatMatchPercent(0), "0%");
+    assert.equal(formatMatchPercent(null), "—");
+    assert.equal(formatMatchPercent("<script>"), "—");
+    assert.equal(kindStatLabel("book"), "Books");
+    assert.equal(kindStatLabel("audiobook"), "Audiobooks");
+    assert.equal(kindStatLabel("not-a-kind"), "Any");
+    assert.equal(lanternStatsModel({}), null);
+    assert.equal(lanternStatsModel({ stats: { searches: 0 } }), null);
+
+    const model = lanternStatsModel(
+      {
+        stats: {
+          searches: 10,
+          hits: 6,
+          empty: 2,
+          errors: 2,
+          rate_limited: 1,
+          by_kind: [
+            { kind: "book", searches: 8, hits: 6, empty: 2, errors: 0, rate_limited: 0 },
+            { kind: "movie", searches: 4, hits: 1, empty: 3, errors: 0, rate_limited: 0 },
+            { kind: "<script>", searches: 9, hits: 9, empty: 0 },
+          ],
+        },
+      },
+      { showExtra: false },
+    );
+    assert.equal(model.percent, "75%");
+    assert.equal(model.spokenLabel, "8 spoken");
+    assert.match(model.notes, /2 empty/);
+    assert.match(model.notes, /1 rate limit/);
+    assert.deepEqual(
+      model.kinds.map((row) => row.label),
+      ["Books"],
+    );
+    assert.equal(model.kinds[0].percent, "75%");
+    assert.equal(model.kinds[0].fill, 75);
+
+    const withExtra = lanternStatsModel(
+      {
+        stats: {
+          searches: 4,
+          hits: 1,
+          empty: 3,
+          errors: 0,
+          rate_limited: 0,
+          by_kind: [{ kind: "movie", searches: 4, hits: 1, empty: 3 }],
+        },
+      },
+      { showExtra: true },
+    );
+    assert.equal(withExtra.kinds[0].label, "Movies");
   });
 });

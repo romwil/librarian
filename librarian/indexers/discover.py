@@ -9,6 +9,7 @@ TV/movies/XXX stay hidden unless Show categories is on. No HTML scrape.
 from __future__ import annotations
 
 import time
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from librarian.indexers.hosts import _hit_key, enabled_hosts
@@ -302,6 +303,37 @@ def merge_category_lists(*groups: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return out
 
 
+def _record_discover_probe(
+    data_dir: Optional[Path],
+    *,
+    host: Dict[str, str],
+    ok: bool,
+    latency_ms: float,
+    hit_count: int,
+    error: str = "",
+    kind: str = "",
+) -> None:
+    if data_dir is None:
+        return
+    try:
+        from librarian.indexer_scorecard import record_host_probe
+
+        err_text = str(error or "")
+        record_host_probe(
+            Path(data_dir),
+            host_id=str(host.get("id") or ""),
+            host_name=str(host.get("name") or ""),
+            ok=ok,
+            latency_ms=latency_ms,
+            hit_count=hit_count,
+            error=err_text,
+            rate_limited="429" in err_text or "rate" in err_text.lower(),
+            kind=kind,
+        )
+    except Exception:  # noqa: BLE001 — scorecard must never break Discover
+        return
+
+
 def discover_beyond(
     settings: Any,
     *,
@@ -311,6 +343,7 @@ def discover_beyond(
     extra: Optional[bool] = None,
     transport: Optional[Any] = None,
     max_feeds: Optional[int] = None,
+    data_dir: Optional[Path] = None,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], Optional[str]]:
     """Fetch allowed category feeds from every enabled host. Fail closed per host."""
     allow_extra = bool(settings.show_extra_categories) if extra is None else bool(extra)
@@ -322,6 +355,7 @@ def discover_beyond(
     categories: List[Dict[str, Any]] = []
     errors: List[str] = []
     seen: set[str] = set()
+    probe_kind = _text(kind)
     for host in hosts:
         client = NZBFinderClient(
             host["url"],
@@ -330,11 +364,16 @@ def discover_beyond(
             label=host["name"],
             dialect=host.get("dialect") or "",
         )
+        started = time.perf_counter()
+        host_ok = False
+        host_hits = 0
+        host_error = ""
         try:
             try:
                 caps = _host_caps(client, host["id"])
             except NZBFinderError as error:
                 errors.append(str(error))
+                host_error = str(error)
                 continue
             host_feeds = category_feeds(caps, extra=allow_extra)
             categories = merge_category_lists(categories, host_feeds)
@@ -346,11 +385,15 @@ def discover_beyond(
                     cap = MAX_FEEDS
                 wanted = wanted[: max(0, cap)]
             path = trending_path(caps)
+            feed_ok = 0
             for feed in wanted:
                 try:
                     rows = _host_feed_items(client, host["id"], feed, path=path, limit=feed_limit)
+                    feed_ok += 1
                 except (NZBFinderError, RSSError) as error:
                     errors.append(str(error))
+                    if not host_error:
+                        host_error = str(error)
                     continue
                 for row in rows:
                     if not isinstance(row, dict):
@@ -360,12 +403,23 @@ def discover_beyond(
                         continue
                     if kind and public.get("kind") != kind:
                         continue
+                    host_hits += 1
                     key = _hit_key(public)
                     if key in seen:
                         continue
                     seen.add(key)
                     hits.append(public)
+            host_ok = feed_ok > 0
         finally:
             client.close()
+            _record_discover_probe(
+                data_dir,
+                host=host,
+                ok=host_ok,
+                latency_ms=(time.perf_counter() - started) * 1000.0,
+                hit_count=host_hits,
+                error="" if host_ok else host_error,
+                kind=probe_kind,
+            )
     beyond_error = "; ".join(errors) if errors else None
     return hits, categories, beyond_error

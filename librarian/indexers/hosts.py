@@ -210,6 +210,7 @@ def _record_probe(
     hit_count: int = 0,
     error: str = "",
     rate_limited: bool = False,
+    kind: str = "",
 ) -> None:
     if data_dir is None:
         return
@@ -225,6 +226,7 @@ def _record_probe(
             hit_count=hit_count,
             error=error,
             rate_limited=rate_limited,
+            kind=kind,
         )
     except Exception:  # noqa: BLE001 — scorecard must never break Find
         return
@@ -294,6 +296,7 @@ def search_beyond_traced(
     seen: set[str] = set()
     raw_count = 0
     rejected_count = 0
+    probe_kind = _text(fields.get("kind"))
     for host in hosts:
         client = NZBFinderClient(
             host["url"],
@@ -318,6 +321,7 @@ def search_beyond_traced(
                 latency_ms=latency_ms,
                 error=err_text,
                 rate_limited=rate_limited,
+                kind=probe_kind,
             )
             continue
         finally:
@@ -332,6 +336,7 @@ def search_beyond_traced(
             ok=True,
             latency_ms=latency_ms,
             hit_count=len(host_accepted),
+            kind=probe_kind,
         )
         raw_count += len(host_raw)
         rejected_count += len(host_rejected)

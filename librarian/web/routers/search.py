@@ -247,7 +247,9 @@ def register_search_routes(app: FastAPI, deps: WebDeps) -> None:
     def discover(request: Request, kind: str = "", cat: str = "", limit: int = 0):
         cfg = settings()
         feed_limit = resolve_feed_limit(cat=cat, limit=limit if limit else None)
-        items, categories, beyond_error = discover_beyond(cfg, kind=kind, cat=cat, limit=feed_limit)
+        items, categories, beyond_error = discover_beyond(
+            cfg, kind=kind, cat=cat, limit=feed_limit, data_dir=root
+        )
         return {
             "kind": kind,
             "cat": cat,

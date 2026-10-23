@@ -275,6 +275,19 @@ CREATE TABLE IF NOT EXISTS owned_slip_clearances (
 );
 CREATE INDEX IF NOT EXISTS idx_owned_slip_clearances_created
     ON owned_slip_clearances(created_at DESC);
+CREATE TABLE IF NOT EXISTS indexer_kind_stats (
+    host_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    searches INTEGER NOT NULL DEFAULT 0,
+    hits INTEGER NOT NULL DEFAULT 0,
+    empty INTEGER NOT NULL DEFAULT 0,
+    errors INTEGER NOT NULL DEFAULT 0,
+    rate_limited INTEGER NOT NULL DEFAULT 0,
+    last_spoken_at TEXT,
+    last_hit_at TEXT,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (host_id, kind)
+);
 """
 
 
