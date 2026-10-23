@@ -22,6 +22,7 @@ from librarian.audiobook_match import (
     match_prepared_catalog,
     prepare_catalog_candidates,
 )
+from librarian.covers import cover_file_ok
 from librarian.identify import isbn_match_keys, tidy_title, validated_isbn
 from librarian.indexers.query import strip_secret_query
 from librarian.indexers.scrub import public_indexer_hits
@@ -271,7 +272,7 @@ def _shelved_stub(row: Mapping[str, Any], *, kind: str = "book") -> Dict[str, An
         "title": row.get("title"),
         "author": row.get("author"),
         "kind": kind,
-        "has_cover": bool(row.get("cover_path") or row.get("has_cover")),
+        "has_cover": cover_file_ok(row) if row.get("cover_path") else bool(row.get("has_cover")),
     }
 
 

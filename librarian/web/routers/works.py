@@ -319,6 +319,7 @@ def register_works_routes(app: FastAPI, deps: WebDeps) -> None:
                     settings(),
                     work_id,
                     payload.match_key,
+                    data_dir=root,
                 )
             elif kind == "audiobook":
                 result = apply_audnexus_match(

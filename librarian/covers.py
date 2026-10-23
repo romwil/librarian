@@ -6,7 +6,7 @@ import ipaddress
 import logging
 import zipfile
 from pathlib import Path
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping, Optional, Sequence, Union
 from urllib.parse import urlencode, urljoin, urlparse
 
 import httpx
@@ -39,6 +39,9 @@ _ALLOWED_COVER_HOST_SUFFIXES = (
     "googleusercontent.com",
     "media-amazon.com",
     "ssl-images-amazon.com",
+    "images-amazon.com",
+    "audible.com",
+    "audnex.us",
 )
 _MAX_COVER_REDIRECTS = 5
 
@@ -61,6 +64,23 @@ def assert_safe_cover_url(url: str) -> str:
     if not any(host == suffix or host.endswith("." + suffix) for suffix in _ALLOWED_COVER_HOST_SUFFIXES):
         raise ValueError("Cover URL host not allowed")
     return text
+
+
+def cover_file_ok(work: Union[Mapping[str, Any], str, Path, None] = None) -> bool:
+    """True when a local cover file exists and is large enough to be real art."""
+    if work is None:
+        return False
+    if isinstance(work, Mapping):
+        raw = str(work.get("cover_path") or "").strip()
+    else:
+        raw = str(work or "").strip()
+    if not raw:
+        return False
+    path = Path(raw)
+    try:
+        return path.is_file() and path.stat().st_size >= MIN_IMAGE_BYTES
+    except OSError:
+        return False
 
 
 def looks_like_image(data: bytes) -> bool:
@@ -358,12 +378,14 @@ def fetch_cover(
     transport: Optional[httpx.BaseTransport] = None,
     client: Optional[httpx.Client] = None,
     require_safe_url: bool = True,
+    replace: bool = False,
 ) -> Optional[Path]:
     """Write cover.jpg from a real image URL or the first CBZ page.
 
-    Order: indexer URL, Open Library ISBN, Open Library title+author when there
-    is no ISBN, Hardcover when a token is set, Audnexus for audiobooks, Google
-    Books by ISBN, then CBZ page 1. Fail-soft. Never invents art.
+    Kind-correct order: indexer/identity URL first, then audiobook Audnexus,
+    comic CBZ, or book Hardcover/Open Library/Google ISBN. Fail-soft.
+    Never invents art. Never hotlinks. ``replace`` overwrites an existing file
+    only after a new image downloads — a failed fetch keeps the local cover.
     """
     folder = Path(folder)
     try:
@@ -372,12 +394,13 @@ def fetch_cover(
         logger.warning("Cannot create cover folder %s", folder, exc_info=True)
         return None
     dest = folder / "cover.jpg"
-    try:
-        if dest.is_file() and dest.stat().st_size >= MIN_IMAGE_BYTES:
-            return dest
-    except OSError:
-        logger.warning("Cannot stat cover %s", dest, exc_info=True)
-        return None
+    if not replace:
+        try:
+            if dest.is_file() and dest.stat().st_size >= MIN_IMAGE_BYTES:
+                return dest
+        except OSError:
+            logger.warning("Cannot stat cover %s", dest, exc_info=True)
+            return None
 
     download_kwargs = {
         "transport": transport,
@@ -413,19 +436,31 @@ def _fetch_cover_sources(
         "client": client,
         "require_safe_url": require_safe_url,
     }
-    urls: list[str] = []
-    cover_url = str(indexer_cover_url or identity.get("cover") or "").strip()
+    cover_url = str(
+        indexer_cover_url or identity.get("cover") or identity.get("cover_url") or ""
+    ).strip()
     if cover_url:
-        urls.append(cover_url)
-    isbn = extract_isbn(str(identity.get("isbn") or ""))
-    if isbn:
-        urls.append(OPENLIB_ISBN_COVER.format(isbn=isbn))
-    for url in urls:
-        written = _try_cover_url(dest, url, **download_kwargs)
+        written = _try_cover_url(dest, cover_url, **download_kwargs)
         if written is not None:
             return written
 
-    if not isbn:
+    kind = str(identity.get("kind") or "").strip().lower()
+    if kind == "audiobook":
+        audnexus = _audnexus_cover_url(identity, transport=transport, client=client)
+        written = _try_cover_url(dest, audnexus, **download_kwargs)
+        if written is not None:
+            return written
+        return _extract_cbz_cover(folder, dest)
+
+    if kind == "comic":
+        return _extract_cbz_cover(folder, dest)
+
+    isbn = extract_isbn(str(identity.get("isbn") or ""))
+    if isbn:
+        written = _try_cover_url(dest, OPENLIB_ISBN_COVER.format(isbn=isbn), **download_kwargs)
+        if written is not None:
+            return written
+    else:
         ol_title = _openlibrary_title_cover_url(identity, transport=transport, client=client)
         written = _try_cover_url(dest, ol_title, **download_kwargs)
         if written is not None:
@@ -441,11 +476,6 @@ def _fetch_cover_sources(
     if written is not None:
         return written
 
-    audnexus = _audnexus_cover_url(identity, transport=transport, client=client)
-    written = _try_cover_url(dest, audnexus, **download_kwargs)
-    if written is not None:
-        return written
-
     if isbn:
         written = _try_cover_url(
             dest,
@@ -454,7 +484,10 @@ def _fetch_cover_sources(
         )
         if written is not None:
             return written
+    return _extract_cbz_cover(folder, dest)
 
+
+def _extract_cbz_cover(folder: Path, dest: Path) -> Optional[Path]:
     try:
         cbz_paths = sorted(folder.glob("*.cbz"))
     except OSError:
@@ -499,7 +532,11 @@ def ensure_music_cover(
     for audio in audio_files:
         data = extract_embedded_cover_bytes(audio)
         if data and looks_like_image(data):
-            dest.write_bytes(data)
+            try:
+                dest.write_bytes(data)
+            except OSError:
+                logger.warning("Cannot write embedded cover %s", dest, exc_info=True)
+                return None
             return dest
 
     group_id = str(mbid or "").strip()
@@ -512,6 +549,54 @@ def ensure_music_cover(
                 require_safe_url=True,
             )
             if data:
-                dest.write_bytes(data)
+                try:
+                    dest.write_bytes(data)
+                except OSError:
+                    logger.warning("Cannot write CAA cover %s", dest, exc_info=True)
+                    return None
                 return dest
+    return None
+
+
+def extract_folder_cover(
+    folder: Path,
+    *,
+    kind: str = "",
+    files: Optional[Sequence[Path]] = None,
+) -> Optional[Path]:
+    """Sidecar if present; else CBZ page 1 (comics) or embedded audio art. Fail-soft."""
+    directory = Path(folder)
+    try:
+        if not directory.is_dir():
+            return None
+        for name in ("cover.jpg", "cover.jpeg", "cover.png"):
+            sidecar = directory / name
+            try:
+                if sidecar.is_file() and sidecar.stat().st_size >= MIN_IMAGE_BYTES:
+                    return sidecar
+            except OSError:
+                logger.warning("Cannot stat sidecar cover %s", sidecar, exc_info=True)
+                return None
+    except OSError:
+        logger.warning("Cannot read cover folder %s", directory, exc_info=True)
+        return None
+
+    dest = directory / "cover.jpg"
+    media = str(kind or "").strip().lower()
+    if media in {"comic", "magazine"}:
+        cbz_paths: list[Path] = []
+        if files:
+            cbz_paths = [Path(path) for path in files if Path(path).suffix.lower() == ".cbz"]
+        if not cbz_paths:
+            try:
+                cbz_paths = sorted(directory.glob("*.cbz"))
+            except OSError:
+                cbz_paths = []
+        for cbz in cbz_paths:
+            extracted = cover_from_cbz(cbz, dest)
+            if extracted:
+                return extracted
+        return None
+    if media in {"music", "audiobook"}:
+        return ensure_music_cover(directory)
     return None

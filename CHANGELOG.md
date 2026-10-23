@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Cover art lands on the shelf more often: audiobooks keep square Audnexus jackets (Amazon CDN allowlisted, no HTML scrape), Comic Vine match downloads the issue image, and a scan without a sidecar extracts CBZ page 1 or embedded album art. Wikipedia stays atmosphere / last-resort, never a print jacket when a kind-specific provider can fill it. Cards only claim a cover when the file is still on disk.
 - Maintain **Indexer scorecard** keeps lantern weather and Mute, and now shows match rate by media type (books, audiobooks, comics, …) as compact chips after Find / Discover speak. Counts persist in SQLite.
 - Enrich the shelves skips volumes that already have author, blurb, year, cover, and genre, and looks up the emptiest titles first. Maintain reports how many were already full.
 - Settings can add **DrunkenSlug** as an extra Newznab host (URL preset, paste the API token). Find beyond merges those hits with NZBFinder. Classic Newznab XML/`o=json` is spoken on that host — not a second search stack.

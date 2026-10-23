@@ -428,6 +428,7 @@ def review_reason_for_score(score: float) -> Optional[str]:
 
 
 def identity_from_candidate(candidate: Mapping[str, Any]) -> Dict[str, Any]:
+    cover = _text(candidate.get("cover") or candidate.get("cover_url"))
     return {
         "kind": "audiobook",
         "title": _text(candidate.get("title")),
@@ -439,6 +440,8 @@ def identity_from_candidate(candidate: Mapping[str, Any]) -> Dict[str, Any]:
         "isbn": _text(candidate.get("asin")).upper(),  # shelf key compat
         "description": _text(candidate.get("description")),
         "narrator": _text(candidate.get("narrator")),
+        "cover": cover,
+        "cover_url": cover,
         "match_key": _text(candidate.get("match_key")),
         "match_confidence": float(candidate.get("score") or 0),
         "source": "audnexus",

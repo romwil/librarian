@@ -305,7 +305,7 @@ def register_search_routes(app: FastAPI, deps: WebDeps) -> None:
                         "title": work.get("title"),
                         "author": work.get("author"),
                         "kind": stub.get("kind") or work.get("kind"),
-                        "has_cover": bool(work.get("has_cover") or work.get("cover_path")),
+                        "has_cover": bool(work.get("has_cover")),
                     }
         result["can_request"] = request.state.user["role"] in ("owner", "op", "reader")
         result["can_confirm"] = request.state.user["role"] in ("owner", "op")

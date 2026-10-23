@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from librarian.audiobook_match import match_catalog_work, match_companion_audiobook
+from librarian.covers import cover_file_ok
 
 BOOK = "book"
 AUDIOBOOK = "audiobook"
@@ -23,7 +24,7 @@ def _stub(row: Optional[Mapping[str, Any]], *, kind: str) -> Optional[Dict[str, 
         "title": row.get("title") or "",
         "author": row.get("author") or "",
         "kind": kind,
-        "has_cover": bool(row.get("cover_path") or row.get("has_cover")),
+        "has_cover": cover_file_ok(row) if row.get("cover_path") else bool(row.get("has_cover")),
     }
 
 

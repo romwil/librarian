@@ -1303,7 +1303,14 @@ class Database:
     """
 
     def works_needing_enrichment(self, *, limit: int = 10) -> List[Dict[str, Any]]:
-        """Thinnest books/audiobooks for the enrich trickle (most holes first)."""
+        """Thinnest books/audiobooks for the enrich trickle (most holes first).
+
+        SQL cannot see the filesystem; a second pass includes otherwise-full
+        rows whose ``cover_path`` file is gone (same as Enrich ``is_thin``).
+        """
+        from librarian.covers import cover_file_ok
+
+        limit_n = max(1, int(limit))
         with self._connect() as conn:
             rows = conn.execute(
                 f"""
@@ -1312,9 +1319,32 @@ class Database:
                 ORDER BY {self._ENRICHMENT_MISSING_SQL} DESC, updated_at ASC
                 LIMIT ?
                 """,
-                (max(1, int(limit)),),
+                (limit_n,),
             ).fetchall()
-        return [_row_dict(row) or {} for row in rows]
+            extras = conn.execute(
+                f"""
+                SELECT * FROM works
+                WHERE kind IN ('book', 'audiobook')
+                  AND review_state != 'needs_review'
+                  AND cover_path IS NOT NULL AND trim(cover_path) != ''
+                  AND NOT ({self._NEEDS_ENRICHMENT_WHERE})
+                ORDER BY updated_at ASC
+                LIMIT ?
+                """,
+                (limit_n * 8,),
+            ).fetchall()
+        needed = [_row_dict(row) or {} for row in rows]
+        seen = {row.get("id") for row in needed}
+        for row in extras:
+            data = _row_dict(row) or {}
+            work_id = data.get("id")
+            if work_id in seen or cover_file_ok(data):
+                continue
+            needed.append(data)
+            seen.add(work_id)
+            if len(needed) >= limit_n:
+                break
+        return needed[:limit_n]
 
     def count_works_needing_enrichment(self) -> int:
         with self._connect() as conn:
@@ -1445,8 +1475,10 @@ class Database:
                 [*args, capped, skip],
             ).fetchall()
         items = [_row_dict(row) or {} for row in rows]
+        from librarian.covers import cover_file_ok
+
         for item in items:
-            item["has_cover"] = bool(item.get("cover_path"))
+            item["has_cover"] = cover_file_ok(item)
         return {
             "items": items,
             "total": total,
@@ -2748,7 +2780,9 @@ class Database:
         out = []
         for row in rows:
             data = _row_dict(row) or {}
-            data["has_cover"] = bool(data.get("cover_path"))
+            from librarian.covers import cover_file_ok
+
+            data["has_cover"] = cover_file_ok(data)
             data["progress"] = int(round(float(data.get("fraction") or 0) * 100))
             out.append(data)
         return out
@@ -2770,7 +2804,9 @@ class Database:
         out = []
         for row in rows:
             data = _row_dict(row) or {}
-            data["has_cover"] = bool(data.get("cover_path"))
+            from librarian.covers import cover_file_ok
+
+            data["has_cover"] = cover_file_ok(data)
             data["progress"] = 100
             out.append(data)
         return out

@@ -10,6 +10,8 @@ from librarian.db import Database
 from librarian.enrich import (
     Enrichment,
     _still_needs,
+    apply_audnexus_match,
+    apply_comicvine_match,
     apply_enrichment,
     author_missing,
     enrich_backlog_batch,
@@ -1462,3 +1464,173 @@ def test_enrich_library_continues_after_cover_permission_error(tmp_path, monkeyp
     kindred = db.get_work(second["id"])
     assert kindred is not None
     assert counts["updated"] >= 1
+
+
+def test_is_thin_when_cover_path_file_is_gone(tmp_path):
+    work = {
+        "kind": "book",
+        "author": "Le Guin",
+        "description": BLURB,
+        "year": 1969,
+        "genre": "Science fiction",
+        "cover_path": str(tmp_path / "missing.jpg"),
+    }
+    assert is_thin(work) is True
+    assert missing_enrichment_count(work) == 1
+
+
+def test_works_needing_enrichment_includes_missing_cover_file(tmp_path):
+    db = Database(tmp_path / "librarian.db")
+    db.upsert_work(
+        {
+            "kind": "book",
+            "title": "Ghost Cover",
+            "author": "Butler",
+            "description": "A homecoming.",
+            "genre": "Fiction",
+            "year": 1979,
+            "cover_path": str(tmp_path / "gone.jpg"),
+        }
+    )
+    rows = db.works_needing_enrichment(limit=10)
+    assert [row["title"] for row in rows] == ["Ghost Cover"]
+
+
+def test_lookup_wikipedia_does_not_set_cover_url(tmp_path):
+    def wiki_only(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if "hardcover" in url or "openlibrary.org" in url:
+            return httpx.Response(404, json={})
+        if request.headers.get("accept", "").startswith("image") or "upload.wikimedia.org" in url:
+            return httpx.Response(200, content=JPEG, headers={"content-type": "image/jpeg"})
+        if "wikipedia.org" in url or "commons.wikimedia.org" in url:
+            return _wiki_handler(request)
+        return httpx.Response(404, json={"error": "missing"})
+
+    found = lookup_enrichment(
+        {"kind": "book", "title": "King Tut", "author": "Someone", "year": 1978},
+        Settings(hardcover_api_token=""),
+        transport=httpx.MockTransport(wiki_only),
+    )
+    assert found.cover_url == ""
+    assert found.atmosphere_url
+    assert found.description
+
+
+def test_apply_audnexus_match_downloads_cover(tmp_path, monkeypatch):
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    db = Database(tmp_path / "librarian.db")
+    folder = tmp_path / "audio" / "Hail Mary"
+    folder.mkdir(parents=True)
+    work = db.upsert_work(
+        {
+            "kind": "audiobook",
+            "title": "Hail Mary",
+            "author": "Unknown Author",
+            "folder_path": str(folder),
+        }
+    )
+    image = "https://m.media-amazon.com/images/I/hail.jpg"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if "api.audnex.us/books/B08G9PRS1K" in url:
+            return httpx.Response(
+                200,
+                json={
+                    "asin": "B08G9PRS1K",
+                    "title": "Project Hail Mary",
+                    "authors": [{"name": "Andy Weir"}],
+                    "narrators": [{"name": "Ray Porter"}],
+                    "image": image,
+                    "description": "A lone astronaut.",
+                    "releaseDate": "2021-05-04",
+                },
+            )
+        if url == image:
+            return httpx.Response(200, content=JPEG, headers={"content-type": "image/jpeg"})
+        return httpx.Response(404)
+
+    result = apply_audnexus_match(
+        db,
+        Settings(),
+        work["id"],
+        "asin:B08G9PRS1K",
+        data_dir=tmp_path,
+        transport=httpx.MockTransport(handler),
+    )
+    saved = result["work"]
+    assert saved["title"] == "Project Hail Mary"
+    assert saved["author"] == "Andy Weir"
+    assert saved.get("cover_path")
+    assert Path(saved["cover_path"]).read_bytes() == JPEG
+
+
+def test_apply_comicvine_match_downloads_cover(tmp_path):
+    db = Database(tmp_path / "librarian.db")
+    folder = tmp_path / "comics" / "Moon Knight" / "1"
+    folder.mkdir(parents=True)
+    work = db.upsert_work(
+        {
+            "kind": "comic",
+            "title": "Moon Knight #1",
+            "series_name": "Moon Knight",
+            "series_index": "1",
+            "folder_path": str(folder),
+        }
+    )
+    image = "https://static.comicvine.com/uploads/scale_large/moon.jpg"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if "/volume/4050-10/" in url:
+            return httpx.Response(
+                200,
+                json={
+                    "status_code": 1,
+                    "error": "OK",
+                    "results": {
+                        "id": 10,
+                        "name": "Moon Knight",
+                        "start_year": "1980",
+                        "publisher": {"name": "Marvel"},
+                        "issues": [{"id": 100, "issue_number": "1", "name": "The Bottom"}],
+                    },
+                },
+            )
+        if "/issue/4000-100/" in url:
+            return httpx.Response(
+                200,
+                json={
+                    "status_code": 1,
+                    "error": "OK",
+                    "results": {
+                        "id": 100,
+                        "name": "The Bottom",
+                        "issue_number": "1",
+                        "cover_date": "1980-11-01",
+                        "description": "<p>Fist of Khonshu.</p>",
+                        "site_detail_url": "https://comicvine.gamespot.com/moon-knight-1/4000-100/",
+                        "volume": {"id": 10, "name": "Moon Knight"},
+                        "publisher": {"name": "Marvel"},
+                        "person_credits": [{"name": "Doug Moench", "role": "writer"}],
+                        "image": {"super_url": image},
+                    },
+                },
+            )
+        if url == image:
+            return httpx.Response(200, content=JPEG, headers={"content-type": "image/jpeg"})
+        return httpx.Response(404, json={"error": "missing"})
+
+    result = apply_comicvine_match(
+        db,
+        Settings(comicvine_api_key="comicvine-test-key"),
+        work["id"],
+        "cv:volume:10:issue:100",
+        data_dir=tmp_path,
+        transport=httpx.MockTransport(handler),
+    )
+    saved = result["work"]
+    assert saved["title"] == "The Bottom"
+    assert saved.get("cover_path")
+    assert Path(saved["cover_path"]).read_bytes() == JPEG

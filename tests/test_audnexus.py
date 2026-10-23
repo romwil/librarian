@@ -13,7 +13,9 @@ from librarian.audnexus import (
     AudnexusCache,
     AudnexusClient,
     band_for_score,
+    book_to_candidate,
     cache_path_for_settings,
+    identity_from_candidate,
     match_audiobook_tokens,
     score_candidate,
 )
@@ -35,6 +37,21 @@ def test_cache_path_prefers_explicit_attr(tmp_path, monkeypatch):
         data_dir = tmp_path
 
     assert cache_path_for_settings(WithDir()) == tmp_path / "audnexus_cache.sqlite"
+
+
+def test_identity_from_candidate_keeps_cover_url():
+    candidate = book_to_candidate(
+        {
+            "asin": "B08G9PRS1K",
+            "title": "Project Hail Mary",
+            "authors": [{"name": "Andy Weir"}],
+            "image": "https://m.media-amazon.com/images/I/hail.jpg",
+        }
+    )
+    identity = identity_from_candidate({**candidate, "score": 1.0})
+    assert identity["cover"] == "https://m.media-amazon.com/images/I/hail.jpg"
+    assert identity["cover_url"] == identity["cover"]
+    assert identity["kind"] == "audiobook"
 
 
 def test_score_bands():
