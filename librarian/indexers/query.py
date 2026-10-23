@@ -39,7 +39,7 @@ SOUGHT_KEYS = (
     "year",
 )
 
-_TOKEN_QUERY = re.compile(r"^(api_token|apikey)$", re.IGNORECASE)
+_TOKEN_QUERY = re.compile(r"^(api_token|apikey|r)$", re.IGNORECASE)
 _YEAR = re.compile(r"^(19|20)\d{2}$")
 
 

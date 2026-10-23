@@ -7,6 +7,7 @@ import AboutPanel from "../components/AboutPanel.jsx";
 import RssPanel from "../components/RssPanel.jsx";
 import { FIELD_HELP, WATCH_FOLDER_LEDE, humanError, setupComplete, setupStepComplete } from "../copy.js";
 import { SETTINGS_NAV, settingsNavFromHash, settingsNavHref } from "../lib/settingsNav.js";
+import { DRUNKENSLUG_PRESET, addIndexerPreset, extraIndexersHavePreset } from "../lib/indexerPresets.js";
 import LlmSettingsPanel from "../components/LlmSettingsPanel.jsx";
 import AppearancePrefsPanel from "../components/AppearancePrefsPanel.jsx";
 import MailSettingsPanel from "../components/MailSettingsPanel.jsx";
@@ -185,12 +186,12 @@ export default function SettingsPage() {
                   </p>
                   <h2>Additional indexers</h2>
                   <p className="lede">
-                    NZBFinder stays first. Add other Newznab v2 JSON hosts; Find merges hits and keeps going if one host
-                    fails. Save after editing.
+                    NZBFinder stays first. Add another Newznab host — v2 JSON, or classic Newznab like DrunkenSlug. Find
+                    merges hits and keeps going if one host fails. Save after editing.
                   </p>
                   {(settings.extra_indexers || []).length === 0 ? (
                     <p className="muted" data-testid="extra-indexers-empty">
-                      No extra hosts yet. Add one to search more than NZBFinder.
+                      No extra hosts yet. Add DrunkenSlug, or another Newznab host, to search more than NZBFinder.
                     </p>
                   ) : null}
                   {(settings.extra_indexers || []).map((row, index) => (
@@ -265,6 +266,16 @@ export default function SettingsPage() {
                     </div>
                   ))}
                   <div className="cta-row">
+                    {extraIndexersHavePreset(settings.extra_indexers || [], DRUNKENSLUG_PRESET) ? null : (
+                      <button
+                        type="button"
+                        className="cta outline"
+                        data-testid="extra-indexer-preset-drunkenslug"
+                        onClick={() => patch("extra_indexers", addIndexerPreset(settings.extra_indexers || [], DRUNKENSLUG_PRESET))}
+                      >
+                        Add DrunkenSlug
+                      </button>
+                    )}
                     <button
                       type="button"
                       className="cta outline"

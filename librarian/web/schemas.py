@@ -71,6 +71,7 @@ class ExtraIndexerPayload(BaseModel):
     url: Optional[str] = None
     api_token: Optional[str] = None
     enabled: Optional[bool] = True
+    dialect: Optional[str] = None
 
 
 class RssFeedPayload(BaseModel):

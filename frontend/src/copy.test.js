@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   DISCOVER_CTA,
+  FIELD_HELP,
   TRENDING_BOOKS_LABEL,
   FIND_BEYOND_CTA,
   ADD_TO_LIBRARY_LEDE,
@@ -36,6 +37,13 @@ describe("reading room copy", () => {
     assert.match(humanError({ message: "NetworkError when attempting to fetch resource" }), unreachable);
     assert.match(humanError({ message: "Load failed" }), unreachable);
     assert.match(humanError({ status: 401, message: "Failed to fetch" }, "login"), /join link/);
+  });
+
+  it("describes extra Newznab hosts without Prowlarr copy", () => {
+    assert.match(FIELD_HELP.extra_indexer_url, /DrunkenSlug/);
+    assert.match(FIELD_HELP.extra_indexer_url, /drunkenslug\.com/);
+    assert.doesNotMatch(FIELD_HELP.extra_indexers, /Prowlarr/i);
+    assert.doesNotMatch(FIELD_HELP.extra_indexer_token, /Prowlarr/i);
   });
 
   it("turns indexer and SAB failures into Settings guidance", () => {
