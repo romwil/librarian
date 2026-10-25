@@ -27,6 +27,7 @@ import {
   reviewProgressDwellRemainingMs,
   reviewPurgeProgressVisible,
   reviewReasonCopy,
+  holdSlipReasonWords,
   reviewReasonFourWords,
   slipRowIsPathClear,
   reviewTerminalProgressStillVisible,
@@ -510,13 +511,24 @@ describe("smart Holds desk grouping", () => {
     assert.ok(start >= 0 && end > start);
     const line = reviewPageSrc.slice(start, end);
     assert.match(line, /ticket-title/);
-    assert.match(line, /reviewReasonFourWords/);
+    assert.match(line, /holdSlipReasonWords/);
     assert.match(line, /data-testid="review-reason-copy"/);
     const buttons = line.match(/<button/g) || [];
     assert.equal(buttons.length, 1);
     assert.match(reviewPageSrc, /Accept the clear ones/);
     assert.match(reviewPageSrc, /slipRowIsPathClear/);
     assert.equal(reviewReasonFourWords("unknown_identity").split(/\s+/).length, 4);
+    assert.equal(
+      holdSlipReasonWords({
+        review_reason: "low_confidence",
+        folder_diagnosis: { path_clear: true },
+      }),
+      "Author and title clear",
+    );
+    assert.equal(
+      holdSlipReasonWords({ review_reason: "low_confidence", folder_diagnosis: {} }),
+      "Path is not clear",
+    );
     assert.equal(reviewReasonFourWords("convert_failed"), "Convert failed twice now");
     assert.equal(
       slipRowIsPathClear({

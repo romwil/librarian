@@ -697,6 +697,96 @@ def test_review_suggest_prefills_from_mocked_llm(tmp_path, monkeypatch):
     assert row["actions"]["can_suggest_llm"] is True
 
 
+def test_review_actions_trust_clear_author_title_folder_but_keep_messy_low_slip(tmp_path):
+    from librarian.organize import review_slip_actions
+
+    clear_folder = tmp_path / "Box, C.J_" / "Three Weeks to Say Goodbye (9989)"
+    clear_folder.mkdir(parents=True)
+    (clear_folder / "book.epub").write_bytes(b"epub")
+    clear = review_slip_actions(
+        {
+            "kind": "book",
+            "title": "Three Weeks to Say Goodbye",
+            "author": "Box, C.J.",
+            "review_reason": "low_confidence",
+            "folder_path": str(clear_folder),
+        },
+        {"path": str(clear_folder)},
+        llm_configured=True,
+    )
+    assert clear["can_suggest_llm"] is False
+    assert clear["recommended_motion"] == "apply"
+
+    messy = review_slip_actions(
+        {
+            "kind": "book",
+            "title": "Three.Weeks.To.Say.Goodbye.2024.RETAIL.EPUB",
+            "author": "",
+            "review_reason": "low_confidence",
+            "folder_path": str(tmp_path / "downloads" / "messy-release"),
+        },
+        {"path": str(tmp_path / "downloads" / "messy-release")},
+        llm_configured=True,
+    )
+    assert messy["can_suggest_llm"] is True
+    assert messy["recommended_motion"] == "suggest"
+
+
+def test_calibre_and_initials_paths_are_confident_without_the_model(tmp_path):
+    from librarian.organize import review_slip_actions
+    from librarian.slip_gate import parse_library_volume
+
+    calibre = (
+        tmp_path
+        / "Calibre Library"
+        / "Hugh Howey"
+        / "Resist_ Tales from a Future Worth Fighting Against (3134)"
+    )
+    calibre.mkdir(parents=True)
+    (calibre / "book.epub").write_bytes(b"epub")
+    resist = parse_library_volume(calibre)
+    assert resist["author"] == "Hugh Howey"
+    assert resist["title"] == "Resist: Tales from a Future Worth Fighting Against"
+    resist_actions = review_slip_actions(
+        {
+            "kind": "book",
+            "title": "Resist: Tales from a Future Worth Fighting",
+            "author": "Hugh Howey",
+            "review_reason": "low_confidence",
+            "folder_path": str(calibre),
+        },
+        {"path": str(calibre)},
+        llm_configured=True,
+    )
+    assert resist_actions["recommended_motion"] == "apply"
+    assert resist_actions["can_suggest_llm"] is False
+
+    vandagriff = tmp_path / "Vandagriff, G.G_" / (
+        "Rescuing Rosalind (Three Original Ladies and Their Gentlemen) (4164)"
+    )
+    vandagriff.mkdir(parents=True)
+    (vandagriff / "book.epub").write_bytes(b"epub")
+    rosalind = parse_library_volume(vandagriff)
+    assert rosalind["author"] == "Vandagriff, G.G."
+    assert "G G" not in rosalind["author"]
+    assert rosalind["title"] == "Rescuing Rosalind"
+    assert rosalind["series_name"] == "Three Original Ladies and Their Gentlemen"
+    rosalind_actions = review_slip_actions(
+        {
+            "kind": "book",
+            "title": "Rescuing Rosalind",
+            "author": "G G Vandagriff",
+            "series_name": "Three Original Ladies and Their Gentlemen",
+            "review_reason": "low_confidence",
+            "folder_path": str(vandagriff),
+        },
+        {"path": str(vandagriff)},
+        llm_configured=True,
+    )
+    assert rosalind_actions["recommended_motion"] == "apply"
+    assert rosalind_actions["can_suggest_llm"] is False
+
+
 def test_review_extra_files_hides_retry_and_repair(tmp_path, monkeypatch):
     folder = tmp_path / "complete" / "Camino"
     folder.mkdir(parents=True)

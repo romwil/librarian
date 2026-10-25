@@ -112,7 +112,8 @@ export const api = {
   wantedBeyond: (id) => request(`/wanted/${encodeURIComponent(id)}/beyond`, { method: "POST" }),
   askWanted: (id, hit) =>
     request(`/wanted/${encodeURIComponent(id)}/ask`, { method: "POST", body: JSON.stringify(hit || {}) }),
-  review: () => request("/review"),
+  review: (work = "") =>
+    request(`/review${work ? `?work=${encodeURIComponent(work)}` : ""}`),
   reviewAcceptClear: (reason) =>
     request("/review/accept-clear", { method: "POST", body: JSON.stringify({ reason: reason || "" }) }),
   reviewApply: (id, body) => request(`/review/${id}/apply`, { method: "POST", body: JSON.stringify(body) }),

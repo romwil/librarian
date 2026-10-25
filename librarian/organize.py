@@ -326,8 +326,24 @@ def review_slip_actions(
     fails = int(work.get("repair_fail_count") or 0)
     title = str(work.get("title") or "")
     author = str(work.get("author") or "").strip()
+    # A readable book already named by a safe Author/Title folder is a
+    # trustworthy filing candidate, even if the earlier identify pass parked it
+    # as low confidence for lack of an ISBN. Keep genuinely unclear names in
+    # the LLM pile; this only recognizes the same conservative path shape used
+    # by the pre-slip gate.
+    path_identity_clear = False
+    if str(work.get("kind") or "") == KIND_BOOK and usable_folder(folder_hint):
+        from librarian.slip_gate import folder_is_path_clear, parse_library_volume
+
+        folder = Path(folder_hint)
+        # The folder parse is the confidence signal. A stored author that lost
+        # its periods (``G G``) does not put a clean Author/Title path back
+        # into the model pile.
+        path_identity_clear = bool(parse_library_volume(folder) and folder_is_path_clear(folder))
     dumpish = looks_like_dump_title(title) or (not author and reason in {REVIEW_UNKNOWN, REVIEW_LOW, ""})
-    identity_weak = reason in {REVIEW_UNKNOWN, REVIEW_LOW, REVIEW_UNEXPECTED} or dumpish
+    if path_identity_clear:
+        dumpish = False
+    identity_weak = (reason in {REVIEW_UNKNOWN, REVIEW_LOW, REVIEW_UNEXPECTED} or dumpish) and not path_identity_clear
     can_repair = problem == REVIEW_UNPACK_STUCK and par2_count > 0
     can_regrab = fails >= 2 and problem == REVIEW_UNPACK_STUCK
     can_suggest_llm = bool(llm_configured) and identity_weak and problem not in {
