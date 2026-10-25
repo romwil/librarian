@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import App from "./App.jsx";
 import { WorkPeekProvider } from "./components/WorkPeekProvider.jsx";
+import BrowsePage from "./pages/BrowsePage.jsx";
 import HallPage from "./pages/HallPage.jsx";
 import WantedPage from "./pages/WantedPage.jsx";
 import JoinPage from "./pages/JoinPage.jsx";
@@ -20,11 +21,6 @@ import WorkPage from "./pages/WorkPage.jsx";
 import CardPage from "./pages/CardPage.jsx";
 import "./styles.css";
 
-function BrowseToHall() {
-  const { search } = useLocation();
-  return <Navigate to={{ pathname: "/", search }} replace />;
-}
-
 function FindToSearch() {
   const { search } = useLocation();
   return <Navigate to={{ pathname: "/search", search }} replace />;
@@ -39,7 +35,7 @@ createRoot(document.getElementById("root")).render(
           <Route path="/join" element={<JoinPage />} />
           <Route path="/" element={<App />}>
             <Route index element={<HallPage />} />
-            <Route path="browse" element={<BrowseToHall />} />
+            <Route path="browse" element={<BrowsePage />} />
             <Route path="wanted" element={<WantedPage />} />
             <Route path="search" element={<SearchPage />} />
             <Route path="noted" element={<NotedPage />} />

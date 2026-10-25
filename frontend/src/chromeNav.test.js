@@ -10,16 +10,16 @@ const menuSrc = readFileSync(join(root, "components/ProfileMenu.jsx"), "utf8");
 const mainSrc = readFileSync(join(root, "main.jsx"), "utf8");
 const stylesSrc = readFileSync(join(root, "styles.css"), "utf8");
 
-test("top nav is Hall, Search, Wanted, with Downloads and Holds for owner and op", () => {
+test("top nav is Hall, Stacks, Search, Favorites, and Wanted, with Downloads and Holds for owner and op", () => {
   assert.match(chromeSrc, />\s*Hall\s*</);
+  assert.match(chromeSrc, />\s*Stacks\s*</);
   assert.match(chromeSrc, />\s*Search\s*</);
+  assert.match(chromeSrc, />\s*Favorites\s*</);
   assert.match(chromeSrc, />\s*Wanted\s*</);
   assert.match(chromeSrc, />\s*Downloads\s*</);
   assert.match(chromeSrc, /holdsLabel/);
   assert.match(chromeSrc, /Holds \$\{reviewCount\}/);
-  assert.equal(chromeSrc.includes("Stacks"), false);
   assert.equal(chromeSrc.includes(">Noted<"), false);
-  assert.equal(chromeSrc.includes("Favorites"), false);
   assert.equal(chromeSrc.includes("Review bag"), false);
   assert.equal(chromeSrc.includes("bag-glyph"), false);
   assert.equal(chromeSrc.includes("review-bag"), false);
@@ -53,8 +53,11 @@ test("topbar stacks above Hall so the Library card panel can receive clicks", ()
   assert.match(stylesSrc, /\.room > \*\s*\{[^}]*z-index:\s*1/s);
 });
 
-test("mobile tab bar is Hall, Search, Wanted, Library card", () => {
+test("mobile tab bar is Hall, Stacks, Search, Favorites, Wanted, and Library card", () => {
   assert.match(chromeSrc, /mobile-tabbar/);
+  assert.match(chromeSrc, />\s*Stacks\s*</);
+  assert.match(chromeSrc, />\s*Favorites\s*</);
+  assert.match(chromeSrc, />\s*Wanted\s*</);
   assert.match(chromeSrc, />\s*Library card\s*</);
   assert.match(chromeSrc, /to="\/card"/);
   assert.match(chromeSrc, /--tab-count/);
@@ -63,10 +66,9 @@ test("mobile tab bar is Hall, Search, Wanted, Library card", () => {
   assert.equal(chromeSrc.includes("bag-glyph"), false);
 });
 
-test("/browse redirects to Hall and /find redirects to Search", () => {
-  assert.match(mainSrc, /function BrowseToHall/);
-  assert.match(mainSrc, /path="browse" element=\{<BrowseToHall/);
-  assert.match(mainSrc, /pathname: "\/"/);
+test("/browse is the stacks room and /find redirects to Search", () => {
+  assert.match(mainSrc, /path="browse" element=\{<BrowsePage/);
+  assert.equal(mainSrc.includes("BrowseToHall"), false);
   assert.match(mainSrc, /function FindToSearch/);
   assert.match(mainSrc, /path="find" element=\{<FindToSearch/);
   assert.match(mainSrc, /pathname: "\/search"/);

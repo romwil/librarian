@@ -1,3 +1,4 @@
+import { browseQueryParams } from "./browse.js";
 import { detailText } from "./copy.js";
 
 const API = "/api";
@@ -42,13 +43,8 @@ export const api = {
   libraryCard: () => request("/library-card"),
   gapsLocal: () => request("/gaps/local"),
   browse: (filters = {}) => {
-    const params = new URLSearchParams();
-    for (const key of ["kind", "author", "letter", "series", "genre", "shelf", "sort"]) {
-      if (filters[key]) params.set(key, String(filters[key]));
-    }
-    if (filters.offset != null) params.set("offset", String(filters.offset));
-    if (filters.limit != null) params.set("limit", String(filters.limit));
-    const qs = params.toString();
+    const { offset, limit, ...rest } = filters;
+    const qs = browseQueryParams(rest, { offset, limit }).toString();
     return request(`/browse${qs ? `?${qs}` : ""}`);
   },
   browseFacets: (filters = {}) => {

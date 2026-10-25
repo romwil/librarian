@@ -22,13 +22,16 @@ import { canPromoteIncomingMusic, humanError, peekMediaNote, peekTeachesAsk } fr
 import { looksLikeHtml, sanitizeDescriptionHtml } from "../description.js";
 import { beyondHostName, findHref } from "../find.js";
 import { isIncompleteOwnedPartSet, partSetFindFields } from "../findParts.js";
+import { companionAudiobookView } from "../audiobookCompanion.js";
 import { canListenInApp, workListenPath } from "../listen.js";
+import { primaryWorkAction } from "../lib/workActionMenu.js";
 import { canOpenInlineMedia, canReadInApp, readerCtaLabel, workReaderPath } from "../reader.js";
 import { bookAvailability, catalogStatus } from "../availability.js";
 import { saveBeyondGet } from "../beyondGet.js";
 import AvailabilityActions from "./AvailabilityActions.jsx";
 import CatalogVerb from "./CatalogVerb.jsx";
 import PlexampToast from "./PlexampToast.jsx";
+import WorkActionMenu from "./WorkActionMenu.jsx";
 
 export default function WorkPeek({ work, onClose, onRequest }) {
   const panel = useRef(null);
@@ -125,6 +128,7 @@ export default function WorkPeek({ work, onClose, onRequest }) {
     : "";
   const incompleteParts = isIncompleteOwnedPartSet(catalog.part_set);
   const findMissingHref = incompleteParts ? findHref(partSetFindFields(catalog)) : "";
+  const audiobookCta = companionAudiobookView(detailMatches ? detail?.audiobook : null);
   const availability = bookAvailability({
     work: catalog,
     audiobook: detailMatches ? detail?.audiobook : null,
@@ -143,6 +147,17 @@ export default function WorkPeek({ work, onClose, onRequest }) {
   });
   const wantBody = availability.addBody || status.addBody;
   const readLabel = readerCtaLabel(catalog) || "Read";
+  // Ask the house only steps up when nothing above it (Listen/Read/inline-open) applies —
+  // mirrors the pre-menu condition this used to gate on inline.
+  const primary = primaryWorkAction({
+    canListen,
+    listenResume: Number(catalog.progress) > 0,
+    canRead,
+    canInlineOpen,
+    readLabel,
+    canAsk: Boolean(teachAsk && onRequest && !canDownload && !canListen && !canRead && !canInlineOpen),
+    askLabel: teachAsk?.label,
+  });
 
   async function addWanted() {
     if (!wantBody || availabilityBusy) return;
@@ -367,7 +382,7 @@ export default function WorkPeek({ work, onClose, onRequest }) {
               <div className="cta-row compact peek-actions" data-testid="peek-actions">
                 {href ? (
                   <>
-                    {canListen ? (
+                    {primary?.key === "listen" ? (
                       <Link
                         className="cta compact"
                         to={workListenPath(catalog.id)}
@@ -377,9 +392,9 @@ export default function WorkPeek({ work, onClose, onRequest }) {
                         }}
                         data-testid="peek-listen"
                       >
-                        {Number(catalog.progress) > 0 ? "Continue listening" : "Listen"}
+                        {primary.label}
                       </Link>
-                    ) : canRead ? (
+                    ) : primary?.key === "read" ? (
                       <Link
                         className="cta compact"
                         to={workReaderPath(catalog.id)}
@@ -389,12 +404,22 @@ export default function WorkPeek({ work, onClose, onRequest }) {
                         }}
                         data-testid="peek-open"
                       >
-                        {readLabel}
+                        {primary.label}
                       </Link>
-                    ) : canInlineOpen ? (
+                    ) : primary?.key === "open" ? (
                       <a className="cta compact" href={openHref} target="_blank" rel="noreferrer" data-testid="peek-open">
-                        {readLabel}
+                        {primary.label}
                       </a>
+                    ) : primary?.key === "ask" ? (
+                      <button
+                        type="button"
+                        className="cta compact"
+                        onClick={request}
+                        disabled={Boolean(jobStatus)}
+                        data-testid="peek-ask-house"
+                      >
+                        {jobStatus ? jobChipLabel(jobStatus, role) : primary.label}
+                      </button>
                     ) : null}
                     {availability.show ? (
                       <AvailabilityActions
@@ -416,72 +441,89 @@ export default function WorkPeek({ work, onClose, onRequest }) {
                         busy={availabilityBusy}
                       />
                     )}
-                    {canListen && playerLink?.href ? (
-                      <a
-                        className="cta outline compact"
-                        href={playerLink.href}
-                        target="_blank"
-                        rel="noreferrer"
-                        data-testid="peek-open-player"
-                      >
-                        {playerLink.label || "Open in player"}
-                      </a>
-                    ) : null}
-                    {komgaLink?.href ? (
-                      <a
-                        className="cta outline compact"
-                        href={komgaLink.href}
-                        target="_blank"
-                        rel="noreferrer"
-                        data-testid="peek-open-komga"
-                      >
-                        {komgaLink.label || "Open in Komga"}
-                      </a>
-                    ) : null}
-                    {canDownload ? (
-                      <a className="cta outline compact" href={downloadHref} data-testid="peek-download">
-                        Download
-                      </a>
-                    ) : null}
-                    <button type="button" className="cta outline compact" onClick={favorite}>
-                      Favorite
-                    </button>
-                    {canPromote ? (
-                      <button
-                        type="button"
-                        className="cta ghost compact"
-                        onClick={promote}
-                        disabled={promoting}
-                        aria-label="Promote to Plexamp"
-                        data-testid="peek-promote"
-                      >
-                        Promote
+                    <WorkActionMenu label={displayTitle} testId="peek-action">
+                      <button type="button" className="work-action-item" onClick={favorite}>
+                        Favorite
                       </button>
-                    ) : null}
-                    {incompleteParts ? (
-                      <Link
-                        className="cta compact"
-                        to={findMissingHref}
-                        onClick={(event) => {
-                          if (event.metaKey || event.ctrlKey) return;
-                          onClose();
-                        }}
-                        data-testid="peek-find-missing-parts"
-                      >
-                        Find missing parts
-                      </Link>
-                    ) : null}
-                    {teachAsk && onRequest && !beyond && !canDownload && !canListen && !canRead && !canInlineOpen ? (
-                      <button
-                        type="button"
-                        className="cta compact"
-                        onClick={request}
-                        disabled={Boolean(jobStatus)}
-                        data-testid="peek-ask-house"
-                      >
-                        {jobStatus ? jobChipLabel(jobStatus, role) : teachAsk.label}
-                      </button>
-                    ) : null}
+                      {audiobookCta.show && audiobookCta.shelved ? (
+                        <Link
+                          className="work-action-item"
+                          to={audiobookCta.listenHref}
+                          onClick={(event) => {
+                            if (event.metaKey || event.ctrlKey) return;
+                            onClose();
+                          }}
+                          data-testid="peek-audiobook-listen"
+                        >
+                          {audiobookCta.secondaryLabel}
+                        </Link>
+                      ) : null}
+                      {audiobookCta.show && !audiobookCta.shelved ? (
+                        <Link
+                          className="work-action-item"
+                          to={audiobookCta.findHref}
+                          onClick={(event) => {
+                            if (event.metaKey || event.ctrlKey) return;
+                            onClose();
+                          }}
+                          data-testid="peek-find-audiobook"
+                        >
+                          {audiobookCta.primaryLabel}
+                        </Link>
+                      ) : null}
+                      {canListen && playerLink?.href ? (
+                        <a
+                          className="work-action-item"
+                          href={playerLink.href}
+                          target="_blank"
+                          rel="noreferrer"
+                          data-testid="peek-open-player"
+                        >
+                          {playerLink.label || "Open in player"}
+                        </a>
+                      ) : null}
+                      {komgaLink?.href ? (
+                        <a
+                          className="work-action-item"
+                          href={komgaLink.href}
+                          target="_blank"
+                          rel="noreferrer"
+                          data-testid="peek-open-komga"
+                        >
+                          {komgaLink.label || "Open in Komga"}
+                        </a>
+                      ) : null}
+                      {canDownload ? (
+                        <a className="work-action-item" href={downloadHref} data-testid="peek-download">
+                          Download
+                        </a>
+                      ) : null}
+                      {canPromote ? (
+                        <button
+                          type="button"
+                          className="work-action-item"
+                          onClick={promote}
+                          disabled={promoting}
+                          aria-label="Promote to Plexamp"
+                          data-testid="peek-promote"
+                        >
+                          Promote
+                        </button>
+                      ) : null}
+                      {incompleteParts ? (
+                        <Link
+                          className="work-action-item"
+                          to={findMissingHref}
+                          onClick={(event) => {
+                            if (event.metaKey || event.ctrlKey) return;
+                            onClose();
+                          }}
+                          data-testid="peek-find-missing-parts"
+                        >
+                          Find missing parts
+                        </Link>
+                      ) : null}
+                    </WorkActionMenu>
                   </>
                 ) : (
                   <CatalogVerb
