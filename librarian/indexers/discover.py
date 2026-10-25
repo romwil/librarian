@@ -1,6 +1,8 @@
 """Discover: peruse indexer category feeds from capabilities.
 
-Uses the host's category tree (not a single generic RSS per kind). Latest-in-cat
+Uses the host's category tree (not a single generic RSS per kind). When a host
+answers caps with no categories — DrunkenSlug does this — Discover walks that
+host's documented Newznab tree instead of marking the lantern dark. Latest-in-cat
 is a named trending/latest caps path if present, else category RSS
 (`/rss/category?id=` on NZBFinder, then classic `/rss?t=` / `/api?t=search`).
 TV/movies/XXX stay hidden unless Show categories is on. No HTML scrape.
@@ -10,8 +12,9 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
+from librarian.indexers.category_overrides import documented_caps_for_host
 from librarian.indexers.hosts import _hit_key, enabled_hosts
 from librarian.indexers.query import selected_from_hit
 from librarian.kinds import (
@@ -171,6 +174,34 @@ def category_feeds(caps: Any, *, extra: bool = False) -> List[Dict[str, Any]]:
             }
         )
     return feeds
+
+
+def _caps_category_rows(caps: Any) -> List[Any]:
+    if not isinstance(caps, dict):
+        return []
+    rows = caps.get("categories") or []
+    return rows if isinstance(rows, list) else []
+
+
+def feeds_for_host(
+    caps: Any,
+    host: Mapping[str, Any],
+    *,
+    extra: bool = False,
+) -> List[Dict[str, Any]]:
+    """Eligible feeds from live caps.
+
+    A host that names categories is trusted, even when none are shelf kinds.
+    A host that lists none (DrunkenSlug's live caps) falls back to its
+    documented tree so Discover still has book and audiobook feeds to walk.
+    """
+    live = category_feeds(caps, extra=extra)
+    if live or _caps_category_rows(caps):
+        return live
+    override = documented_caps_for_host(host)
+    if not override:
+        return []
+    return category_feeds(override, extra=extra)
 
 
 def _wanted_feeds(feeds: List[Dict[str, Any]], *, kind: str = "", cat: str = "") -> List[Dict[str, Any]]:
@@ -375,7 +406,7 @@ def discover_beyond(
                 errors.append(str(error))
                 host_error = str(error)
                 continue
-            host_feeds = category_feeds(caps, extra=allow_extra)
+            host_feeds = feeds_for_host(caps, host, extra=allow_extra)
             categories = merge_category_lists(categories, host_feeds)
             wanted = _wanted_feeds(host_feeds, kind=kind, cat=cat)
             if max_feeds is not None:
@@ -385,31 +416,36 @@ def discover_beyond(
                     cap = MAX_FEEDS
                 wanted = wanted[: max(0, cap)]
             path = trending_path(caps)
-            feed_ok = 0
-            for feed in wanted:
-                try:
-                    rows = _host_feed_items(client, host["id"], feed, path=path, limit=feed_limit)
-                    feed_ok += 1
-                except (NZBFinderError, RSSError) as error:
-                    errors.append(str(error))
-                    if not host_error:
-                        host_error = str(error)
-                    continue
-                for row in rows:
-                    if not isinstance(row, dict):
+            if not wanted:
+                # The host answered. Nothing eligible to walk is an empty
+                # shelf, not a failed lantern ("host failed").
+                host_ok = True
+            else:
+                feed_ok = 0
+                for feed in wanted:
+                    try:
+                        rows = _host_feed_items(client, host["id"], feed, path=path, limit=feed_limit)
+                        feed_ok += 1
+                    except (NZBFinderError, RSSError) as error:
+                        errors.append(str(error))
+                        if not host_error:
+                            host_error = str(error)
                         continue
-                    public = public_discover_hit(row, host=host, feed=feed, extra=allow_extra)
-                    if public is None:
-                        continue
-                    if kind and public.get("kind") != kind:
-                        continue
-                    host_hits += 1
-                    key = _hit_key(public)
-                    if key in seen:
-                        continue
-                    seen.add(key)
-                    hits.append(public)
-            host_ok = feed_ok > 0
+                    for row in rows:
+                        if not isinstance(row, dict):
+                            continue
+                        public = public_discover_hit(row, host=host, feed=feed, extra=allow_extra)
+                        if public is None:
+                            continue
+                        if kind and public.get("kind") != kind:
+                            continue
+                        host_hits += 1
+                        key = _hit_key(public)
+                        if key in seen:
+                            continue
+                        seen.add(key)
+                        hits.append(public)
+                host_ok = feed_ok > 0
         finally:
             client.close()
             _record_discover_probe(

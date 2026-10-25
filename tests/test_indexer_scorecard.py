@@ -31,6 +31,20 @@ def test_lantern_weather_and_presence():
     assert lantern_weather(configured=False) == "idle"
     assert lantern_weather(ok_count=3, error_count=0, last_ok_at="2026-01-01T00:00:00Z") == LANTERN_BRIGHT
     assert lantern_weather(ok_count=1, error_count=3, last_error="timeout") == LANTERN_DARK
+    assert lantern_weather(
+        ok_count=1,
+        error_count=4,
+        last_ok_at="2026-10-23T18:50:00Z",
+        last_error="",
+    ) == LANTERN_BRIGHT
+    assert lantern_weather(
+        ok_count=1,
+        error_count=4,
+        empty_count=1,
+        last_ok_at="2026-10-23T18:50:00Z",
+        last_error="",
+    ) == "dim"
+    assert "host failed" not in lantern_presence(LANTERN_BRIGHT, name="DrunkenSlug")
     assert "rests muted" in lantern_presence(LANTERN_MUTED, name="NZBFinder")
     assert "burns steady" in lantern_presence(LANTERN_BRIGHT, name="NZBFinder")
 
