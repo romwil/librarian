@@ -71,28 +71,72 @@ def _staging_author(name: str) -> bool:
         return True
     if key.startswith(("test_", "pytest", "tmp", "private")):
         return True
-    if "_" in raw:
+    # Calibre-style folders sometimes keep a single trailing underscore after
+    # an author name (for example ``Box, C.J_``). It is cosmetic, unlike
+    # embedded underscore release names such as ``Some_Author_Collection``.
+    if "_" in raw.rstrip("_"):
         return True
     if len(raw) > 80:
         return True
     return False
 
 
-def path_author_title(folder: Path) -> Optional[Tuple[str, str]]:
-    """Author/Title from a volume folder. Staging roots and dump names do not count."""
-    from librarian.identify import tidy_title
+_CALIBRE_ID = re.compile(r"\s*\(\d+\)\s*$")
+_SERIES_PAREN = re.compile(r"^(?P<title>.+?)\s*\((?P<series>[^)]+)\)$")
 
+
+def restore_path_punctuation(name: str) -> str:
+    """Turn a single folder underscore back into the punctuation it replaced.
+
+    A trailing underscore after initials is a period (``G.G_`` → ``G.G.``).
+    One underscore before the rest of a title is a colon (``Resist_ Tales``).
+    Names with several underscores stay untouched so dumps are still rejected.
+    """
+    text = re.sub(r"\s+", " ", str(name or "").strip())
+    if text.count("_") != 1:
+        return text
+    if text.endswith("_"):
+        return text[:-1] + "."
+    if re.search(r"_\s+\S", text):
+        return re.sub(r"_\s+", ": ", text, count=1)
+    return text
+
+
+def _title_and_series(name: str) -> Tuple[str, str]:
+    text = _CALIBRE_ID.sub("", restore_path_punctuation(name)).strip()
+    match = _SERIES_PAREN.match(text)
+    if match and not match.group("series").strip().isdigit():
+        return match.group("title").strip(), match.group("series").strip()
+    return text, ""
+
+
+def parse_library_volume(folder: Path) -> Optional[Dict[str, str]]:
+    """Author, title, and series from ``Author/Title (id)`` or a Calibre volume.
+
+    Periods in initials stay periods. A clean parse is confident enough to file;
+    a dump name or a staging directory is not a parse.
+    """
     path = Path(folder)
     volume = path if path.is_dir() else path.parent
-    author = tidy_title(volume.parent.name)
-    title = tidy_title(volume.name)
+    author = restore_path_punctuation(volume.parent.name)
+    title, series = _title_and_series(volume.name)
     if not author or not title:
         return None
-    if _staging_author(volume.parent.name) or _staging_author(volume.name):
+    if _staging_author(author) or _staging_author(title):
+        return None
+    if "_" in author or "_" in title:
         return None
     if author.casefold() == title.casefold():
         return None
-    return author, title
+    return {"author": author, "title": title, "series_name": series}
+
+
+def path_author_title(folder: Path) -> Optional[Tuple[str, str]]:
+    """Author/Title from a volume folder. Staging roots and dump names do not count."""
+    parsed = parse_library_volume(folder)
+    if not parsed:
+        return None
+    return parsed["author"], parsed["title"]
 
 
 def _book_files(files: Sequence[Path]) -> List[Path]:

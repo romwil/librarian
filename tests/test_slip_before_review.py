@@ -60,7 +60,7 @@ def test_path_clear_book_is_shelved_before_a_slip(tmp_path, monkeypatch):
     assert db.count_works(review_state="needs_review") == 0
     work = result["work"]
     assert work["review_state"] == "none"
-    assert work["author"] == "William W Johnstone"
+    assert work["author"] == "William W. Johnstone"
     assert work["title"] == "Fire in the Ashes"
     assert work["isbn"] in (None, "")
     dest = Path(settings.books_root) / "William W Johnstone" / "Fire in the Ashes"
@@ -98,7 +98,7 @@ def test_author_equal_to_title_parses_the_folder_before_a_slip(tmp_path, monkeyp
         },
     )
     assert result["organized"] is True
-    assert result["work"]["author"] == "William W Johnstone"
+    assert result["work"]["author"] == "William W. Johnstone"
     assert result["work"]["review_state"] == "none"
     assert db.count_works(review_state="needs_review") == 0
 

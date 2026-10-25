@@ -86,7 +86,7 @@ def register_review_routes(app: FastAPI, deps: WebDeps) -> None:
         return deps.current_user(request)
 
     @app.get("/api/review")
-    def review_list(request: Request):
+    def review_list(request: Request, work: str = ""):
         require_role(request.state.user, "owner", "op")
         # Slip pruning scans the catalog and deletes rows. The poller already
         # sweeps; doing it here stalls the desk while purge is fingerprinting.
@@ -98,6 +98,13 @@ def register_review_routes(app: FastAPI, deps: WebDeps) -> None:
 
         llm_ok = bool(resolve_llm_connection(cfg).get("api_key"))
         works = public_works_admin(db.list_works(review_state="needs_review", limit=80))
+        focus = str(work or "").strip()
+        if focus and all(str(row.get("id") or "") != focus for row in works):
+            pinned = db.get_work(focus)
+            if pinned and str(pinned.get("review_state") or "") == "needs_review":
+                works.insert(0, public_work_admin(pinned))
+        from librarian.slip_gate import parse_library_volume
+
         jobs_by_work: Dict[str, Any] = {}
         for job in db.list_jobs(limit=200):
             work_id = job.get("work_id")
@@ -112,6 +119,13 @@ def register_review_routes(app: FastAPI, deps: WebDeps) -> None:
             folder_raw = str(work.get("folder_path") or storage or "")
             diagnosis = diagnose_review_folder(Path(folder_raw), cfg.complete_root)
             work["folder_diagnosis"] = diagnosis
+            if diagnosis.get("path_clear") and str(work.get("kind") or "") == "book":
+                parsed = parse_library_volume(Path(folder_raw)) if folder_raw else None
+                if parsed and str(work.get("review_reason") or "") in {REVIEW_LOW, REVIEW_UNKNOWN, ""}:
+                    work["author"] = parsed["author"]
+                    work["title"] = parsed["title"]
+                    if parsed.get("series_name"):
+                        work["series_name"] = parsed["series_name"]
             problem = diagnosis.get("problem")
             stored = str(work.get("review_reason") or "")
             # Response overlay only — SQLite soft-repair runs in the poller.

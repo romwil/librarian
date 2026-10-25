@@ -35,7 +35,7 @@ import {
   reviewProgressDwellRemainingMs,
   reviewPurgeProgressVisible,
   reviewReasonCopy,
-  reviewReasonFourWords,
+  holdSlipReasonWords,
   slipRowIsPathClear,
   extraFilesWorks,
   unpackStuckWorks,
@@ -53,6 +53,7 @@ export default function ReviewPage() {
   const [busy, setBusy] = useState({});
   const [actionNotes, setActionNotes] = useState({});
   const [bulkNote, setBulkNote] = useState("");
+  const [modelSweep, setModelSweep] = useState(null);
   const [extraFilesBacklog, setExtraFilesBacklog] = useState(0);
   const [progressClock, setProgressClock] = useState(() => Date.now());
   const [reviewBacklog, setReviewBacklog] = useState(0);
@@ -70,7 +71,7 @@ export default function ReviewPage() {
 
   function reload() {
     api
-      .review()
+      .review(focusId)
       .then((data) => {
         const next = data.works || [];
         setWorks(next);
@@ -103,7 +104,7 @@ export default function ReviewPage() {
   }
   reloadRef.current = reload;
 
-  useEffect(reload, []);
+  useEffect(reload, [focusId]);
 
   useEffect(() => {
     api
@@ -501,6 +502,61 @@ export default function ReviewPage() {
     }
   }
 
+  function lowConfidenceSlips() {
+    return works.filter((work) => {
+      const actions = reviewActionsFromWork(work);
+      return actions.canSuggestLlm || actions.needsLlmSuggest;
+    });
+  }
+
+  async function sweepLowConfidenceSlips() {
+    const slips = lowConfidenceSlips();
+    if (!slips.length) {
+      setBulkNote("No low-confidence hold slips are ready for the model.");
+      return;
+    }
+    setModelSweep({ phase: "suggesting", sent: 0, total: slips.length, trusted: [], applied: 0 });
+    const trusted = [];
+    for (let index = 0; index < slips.length; index += 1) {
+      const work = slips[index];
+      try {
+        const data = await api.reviewSuggest(work.id);
+        const suggestion = data?.suggestion;
+        if (suggestion) {
+          setDrafts((prev) => ({
+            ...prev,
+            [work.id]: applySuggestionToDraft(prev[work.id] || fieldsFromWork(work), suggestion),
+          }));
+          if (suggestion.confidence === "high") {
+            trusted.push({ work, suggestion });
+          }
+        }
+      } catch {
+        // The final count leaves failed or uncertain slips for a person.
+      }
+      setModelSweep({ phase: "suggesting", sent: index + 1, total: slips.length, trusted: [...trusted], applied: 0 });
+    }
+    setModelSweep({ phase: "ready", sent: slips.length, total: slips.length, trusted, applied: 0 });
+  }
+
+  async function applyTrustedModelMatches() {
+    const trusted = modelSweep?.trusted || [];
+    if (!trusted.length || modelSweep?.phase === "applying") return;
+    let applied = 0;
+    setModelSweep((prev) => ({ ...prev, phase: "applying", applied }));
+    for (const { work, suggestion } of trusted) {
+      try {
+        await api.reviewApply(work.id, applyBodyFromDraft(applySuggestionToDraft(fieldsFromWork(work), suggestion)));
+        applied += 1;
+      } catch {
+        // A collision or a changed folder stays on the desk for a person.
+      }
+      setModelSweep((prev) => ({ ...prev, phase: "applying", applied }));
+    }
+    setModelSweep((prev) => ({ ...prev, phase: "done", applied }));
+    reload();
+  }
+
   function runPrimary(work) {
     const motion = reviewActionsFromWork(work).recommendedMotion;
     if (motion === "repair") return repair(work);
@@ -560,6 +616,7 @@ export default function ReviewPage() {
 
   const unpackCount = unpackStuckWorks(works).length;
   const extraFilesCount = extraFilesWorks(works).length;
+  const lowConfidenceCount = lowConfidenceSlips().length;
   const progressNow = progressClock;
   const showExtraFilesProgress = reviewExtraFilesProgressVisible(extraFilesProgress, extraFilesClearing, {
     now: progressNow,
@@ -581,12 +638,14 @@ export default function ReviewPage() {
     progress: purgeProgress,
     now: progressNow,
   });
-  const showBulkRow = reviewBulkRowVisible({
-    unpackCount,
-    showClear: showBulkClear,
-    showPurge: showBulkPurge,
-    showProgress: showExtraFilesProgress || showPurgeProgress,
-  });
+  const showBulkRow =
+    lowConfidenceCount ||
+    reviewBulkRowVisible({
+      unpackCount,
+      showClear: showBulkClear,
+      showPurge: showBulkPurge,
+      showProgress: showExtraFilesProgress || showPurgeProgress,
+    });
   const extraFilesPercent = showExtraFilesProgress
     ? extraFilesReprocessProgressPercent(extraFilesProgress)
     : null;
@@ -687,6 +746,34 @@ export default function ReviewPage() {
                   ? `Purge duplicates (${reviewBacklog})`
                   : "Purge duplicates"}
             </button>
+          ) : null}
+          {lowConfidenceCount ? (
+            <button
+              type="button"
+              className="cta outline compact"
+              onClick={() => sweepLowConfidenceSlips()}
+              disabled={modelSweep?.phase === "suggesting" || modelSweep?.phase === "applying"}
+            >
+              {modelSweep?.phase === "suggesting"
+                ? `Checking slips (${modelSweep.sent}/${modelSweep.total})…`
+                : `Check low-confidence slips (${lowConfidenceCount})`}
+            </button>
+          ) : null}
+          {modelSweep?.phase === "ready" && modelSweep.trusted.length ? (
+            <button type="button" className="cta compact" onClick={() => applyTrustedModelMatches()}>
+              Apply trusted matches ({modelSweep.trusted.length})
+            </button>
+          ) : null}
+          {modelSweep ? (
+            <p className="muted" role="status">
+              {modelSweep.phase === "suggesting"
+                ? `${modelSweep.sent} of ${modelSweep.total} sent to the model.`
+                : modelSweep.phase === "applying"
+                  ? `${modelSweep.applied} of ${modelSweep.trusted.length} trusted matches applied.`
+                  : `${modelSweep.sent} sent to the model; ${modelSweep.applied} applied; ${
+                      Math.max(0, modelSweep.total - modelSweep.applied)
+                    } still need a person.`}
+            </p>
           ) : null}
           {bulkNote && !showExtraFilesProgress && !showPurgeProgress ? (
             <p className="muted" role="status">
@@ -812,7 +899,7 @@ export default function ReviewPage() {
               <div className="hold-slip-line" data-testid="hold-slip-line">
                 <strong className="ticket-title">{draft.title || work.title || "Untitled"}</strong>
                 <span className="muted hold-slip-reason" data-testid="review-reason-copy">
-                  {reviewReasonFourWords(reason)}
+                  {holdSlipReasonWords(work)}
                 </span>
                 <button
                   type="button"
@@ -824,7 +911,7 @@ export default function ReviewPage() {
                   {workBusy ? busyLabel(activeAction || "apply") : primaryLabel}
                 </button>
               </div>
-              <details className="ticket-diagnosis" data-testid="hold-slip-more">
+              <details className="ticket-diagnosis" data-testid="hold-slip-more" open={focused || undefined}>
                 <summary>More</summary>
               <header className="ticket-head">
                 <p className="kicker">{focused ? "From Queue" : "Slip"}</p>

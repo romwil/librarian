@@ -547,6 +547,18 @@ const REVIEW_REASON_FOUR_WORDS = {
   audnexus_unmatched: "Audnexus found no match",
 };
 
+/** Four-word reason for the one-line Holds row. A parsed Author/Title path is not "unclear". */
+export function holdSlipReasonWords(work = {}) {
+  const reason = effectiveReviewReason(work);
+  if (
+    work?.folder_diagnosis?.path_clear &&
+    (reason === "low_confidence" || reason === "unknown_identity")
+  ) {
+    return "Author and title clear";
+  }
+  return reviewReasonFourWords(reason);
+}
+
 /** Four-word reason for the one-line Holds row. */
 export function reviewReasonFourWords(reason) {
   const key = String(reason || "").trim();
