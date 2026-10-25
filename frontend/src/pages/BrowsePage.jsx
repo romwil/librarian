@@ -15,6 +15,7 @@ import {
 } from "../browse.js";
 import BrowseListView from "../components/BrowseListView.jsx";
 import CoverCard from "../components/CoverCard.jsx";
+import NamedShelves from "../components/NamedShelves.jsx";
 import StacksCommandBar from "../components/StacksCommandBar.jsx";
 import WarmLoad from "../components/WarmLoad.jsx";
 import { humanError } from "../copy.js";
@@ -36,6 +37,9 @@ export default function BrowsePage() {
   const [view, setView] = useState(() => loadBrowseView());
   const [listColumns, setListColumns] = useState(() => loadBrowseListColumns());
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [namedShelves, setNamedShelves] = useState([]);
+  const [shelfPresence, setShelfPresence] = useState("");
+  const [shelfTick, setShelfTick] = useState(0);
 
   const authorChips = useMemo(
     () => mergeFacetSelection(facets?.authors, filters.author, { limit: 40 }),
@@ -50,6 +54,25 @@ export default function BrowsePage() {
     [facets, filters.genre],
   );
   const showGenres = Boolean(facets?.genre_ready) || Boolean(filters.genre);
+
+  useEffect(() => {
+    let alive = true;
+    api
+      .shelves()
+      .then((data) => {
+        if (!alive) return;
+        setNamedShelves(Array.isArray(data?.shelves) ? data.shelves : []);
+        setShelfPresence(String(data?.presence || ""));
+      })
+      .catch(() => {
+        if (!alive) return;
+        setNamedShelves([]);
+        setShelfPresence("");
+      });
+    return () => {
+      alive = false;
+    };
+  }, [shelfTick]);
 
   useEffect(() => {
     let alive = true;
@@ -133,7 +156,13 @@ export default function BrowsePage() {
     }
   }
 
-  const heading = browseHeading(filters);
+  const activeShelf = namedShelves.find((shelf) => shelf.id === filters.shelf);
+  const heading = browseHeading(filters, activeShelf?.name || "");
+
+  function onShelfNamed(shelf) {
+    setShelfTick((value) => value + 1);
+    if (shelf?.id) patchFilters({ shelf: shelf.id });
+  }
 
   return (
     <div className="browse-page page-settle" data-testid="browse-page">
@@ -158,7 +187,9 @@ export default function BrowsePage() {
           seriesRows={seriesChips}
           genreRows={genreChips}
           showGenres={showGenres}
+          shelves={namedShelves}
         />
+        <NamedShelves presence={shelfPresence} onChanged={onShelfNamed} />
       </section>
       {error ? <p className="alert hall-alert">{error}</p> : null}
       <section className="browse-grid-wrap">

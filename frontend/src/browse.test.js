@@ -20,6 +20,7 @@ import {
   kindShelfTotalLine,
   loadBrowseListColumns,
   mergeFacetSelection,
+  normalizeBrowseShelf,
   normalizeExportColumns,
   readBrowseFoldState,
   saveBrowseListColumns,
@@ -87,6 +88,10 @@ describe("browse href helpers", () => {
     assert.equal(browseHref({ series: "Dune" }), "/browse?series=Dune");
     assert.equal(browseHref({ shelf: "favorites" }), "/browse?shelf=favorites");
     assert.equal(browseHref({ genre: "Science Fiction" }), "/browse?genre=Science+Fiction");
+    const shelfId = "ab".repeat(16);
+    assert.equal(browseHref({ shelf: shelfId.toUpperCase() }), `/browse?shelf=${shelfId}`);
+    assert.equal(browseHref({ shelf: "../../etc/passwd" }), "/browse");
+    assert.equal(browseHref({ shelf: "not-a-shelf" }), "/browse");
   });
 
   it("parses browse search params", () => {
@@ -117,6 +122,10 @@ describe("browse href helpers", () => {
       sort_dir: "asc",
       genre: "Science Fiction",
     });
+    const shelfId = "cd".repeat(16);
+    assert.equal(browseFiltersFromSearchParams(new URLSearchParams(`shelf=${shelfId}`)).shelf, shelfId);
+    assert.equal(normalizeBrowseShelf("Favorites"), "favorites");
+    assert.equal(normalizeBrowseShelf("favorites'; DROP TABLE shelves--"), "");
   });
 
   it("defaults sort_dir per sort and honors an explicit override", () => {
@@ -326,6 +335,8 @@ describe("browse facet selection helpers", () => {
 
   it("builds headings and clear-filter visibility from all active facets", () => {
     assert.equal(browseHeading({}), "The stacks");
+    assert.equal(browseHeading({ shelf: "favorites" }), "Favorites");
+    assert.equal(browseHeading({ shelf: "ab".repeat(16) }, "Beach"), "Beach");
     assert.equal(
       browseHeading({
         kind: "book",

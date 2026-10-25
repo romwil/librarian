@@ -9,7 +9,7 @@ const hallSrc = readFileSync(join(root, "pages/HallPage.jsx"), "utf8");
 const maintainSrc = readFileSync(join(root, "pages/MaintainPage.jsx"), "utf8");
 const mainSrc = readFileSync(join(root, "main.jsx"), "utf8");
 
-test("Hall is the collection — kind, shelf, and sort, then covers", () => {
+test("Hall keeps the hunt box and living rails, and leaves the catalog grid off the page", () => {
   assert.equal(hallSrc.includes("bestsellersHref"), false);
   assert.equal(hallSrc.includes("bestsellers-door"), false);
   assert.equal(hallSrc.includes("AddToLibrary"), false);
@@ -17,17 +17,20 @@ test("Hall is the collection — kind, shelf, and sort, then covers", () => {
   assert.equal(hallSrc.includes("CelebrationBanner"), false);
   assert.equal(hallSrc.includes("celebration-banner"), false);
   assert.equal(hallSrc.includes("ShelfMore"), false);
+  assert.equal(hallSrc.includes("HallCollection"), false);
+  assert.equal(hallSrc.includes("NamedShelves"), false);
+  assert.equal(hallSrc.includes('title="Books"'), false);
   assert.match(hallSrc, /hero-search-block/);
   assert.match(hallSrc, /variant="hero"/);
   assert.match(hallSrc, /id="hall-search"|inputId="hall-search"/);
   assert.match(hallSrc, /Title, author, or ISBN/);
   assert.match(hallSrc, /\/search\?q=/);
-  assert.match(hallSrc, /HallCollection/);
   assert.match(hallSrc, /title="Continue reading"/);
   assert.match(hallSrc, /title="Continue listening"/);
   assert.match(hallSrc, /title="Recently added"/);
   assert.match(hallSrc, /continueRailItems/);
   assert.match(hallSrc, /New & noted/);
+  assert.match(hallSrc, /browseHref\(\{ shelf: "favorites" \}\)/);
 });
 
 test("Maintain is owner-only and houses grooming entry points", () => {

@@ -73,7 +73,7 @@ test.describe("More shelves", () => {
     await loginAsOwner(page);
   });
 
-  test("Hall catalog is on the page without More shelves", async ({ page }) => {
+  test("Hall keeps personalized rails and omits the catalog list", async ({ page }) => {
     await mockFoldedHall(page);
     await page.goto("/");
     await dismissWhatsNewIfPresent(page);
@@ -81,9 +81,12 @@ test.describe("More shelves", () => {
     await expect(page.getByRole("heading", { name: "Continue reading" })).toBeVisible({
       timeout: 30_000,
     });
-    await expect(page.getByRole("button", { name: /Kept Volume/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Kept Volume", exact: true })).toBeVisible();
     await expect(page.getByRole("search")).toBeVisible();
+    await expect(page.getByRole("button", { name: "All", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Name a shelf" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "More shelves" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /Bottom Catalog Book/ })).toHaveCount(0);
   });
 
   test("Search keeps the local hit then Beyond", async ({ page }) => {

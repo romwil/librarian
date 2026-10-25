@@ -9,6 +9,8 @@ const root = dirname(fileURLToPath(import.meta.url));
 const hallSrc = readFileSync(join(root, "pages/HallPage.jsx"), "utf8");
 const searchSrc = readFileSync(join(root, "pages/SearchPage.jsx"), "utf8");
 const moreSrc = readFileSync(join(root, "components/ShelfMore.jsx"), "utf8");
+const browseSrc = readFileSync(join(root, "pages/BrowsePage.jsx"), "utf8");
+const barSrc = readFileSync(join(root, "components/StacksCommandBar.jsx"), "utf8");
 
 test("More shelves is a closed disclosure, not a second visual system", () => {
   assert.equal(MORE_SHELVES_LABEL, "More shelves");
@@ -19,14 +21,23 @@ test("More shelves is a closed disclosure, not a second visual system", () => {
   assert.match(moreSrc, /\{MORE_SHELVES_LABEL\}/);
 });
 
-test("Hall shows the catalog on the page and does not hide it behind More shelves", () => {
+test("Hall keeps personalized rails and leaves the catalog grid off the page", () => {
   assert.equal(hallSrc.includes("ShelfMore"), false);
-  assert.match(hallSrc, /HallCollection/);
+  assert.equal(hallSrc.includes("HallCollection"), false);
+  assert.equal(hallSrc.includes("<NamedShelves"), false);
   assert.match(hallSrc, /TonightShelf/);
   assert.match(hallSrc, /Continue reading/);
-  const shelvesAt = hallSrc.indexOf('data-testid="hall-shelves"');
-  const collectionAt = hallSrc.indexOf("<HallCollection");
-  assert.ok(shelvesAt > 0 && collectionAt > shelvesAt);
+  assert.match(hallSrc, /Continue listening/);
+  assert.match(hallSrc, /New & noted/);
+  assert.ok(hallSrc.includes('data-testid="hall-shelves"'));
+});
+
+test("Stacks shelf control opens household shelves", () => {
+  assert.match(browseSrc, /shelves=\{namedShelves\}/);
+  assert.match(browseSrc, /<NamedShelves/);
+  assert.match(barSrc, /\.map\(\(shelf\)/);
+  assert.match(barSrc, />Favorites</);
+  assert.equal(hallSrc.includes("<NamedShelves"), false);
 });
 
 test("Search shows local hits first, then Beyond, without More shelves", () => {
