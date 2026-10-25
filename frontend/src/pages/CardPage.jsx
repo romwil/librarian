@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useOutletContext } from "react-router-dom";
 import { api } from "../api.js";
+import { browseHref } from "../browse.js";
 import Rail from "../components/Rail.jsx";
 import { humanError } from "../copy.js";
 import { continueRailItems } from "../hallRails.js";
@@ -44,7 +45,7 @@ export default function CardPage() {
       {reading ? <Rail title="Continue reading" items={reading} role={user?.role} /> : null}
       {finished ? <Rail title="Recently finished" items={finished} role={user?.role} /> : null}
       {favorites ? (
-        <Rail title="Favorites" items={favorites} seeAllTo="/?shelf=favorites" role={user?.role} />
+        <Rail title="Favorites" items={favorites} seeAllTo={browseHref({ shelf: "favorites" })} role={user?.role} />
       ) : null}
       <p className="lede" style={{ padding: "0 var(--gutter)" }}>
         <Link to="/wanted">Wanted</Link>

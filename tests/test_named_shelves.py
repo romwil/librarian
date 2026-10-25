@@ -64,3 +64,13 @@ def test_named_shelf_db_and_hall(tmp_path, monkeypatch):
     assert hall.status_code == 200
     names = [row["name"] for row in hall.json().get("named_shelves") or []]
     assert "Kids comics" in names
+    shelf_id = created.json()["shelf"]["id"]
+    added = client.post(f"/api/shelves/{shelf_id}/works/{work['id']}")
+    assert added.status_code == 200
+    opened = client.get("/api/browse", params={"shelf": shelf_id})
+    assert opened.status_code == 200
+    assert [item["title"] for item in opened.json()["items"]] == ["Summer Read"]
+    facets = client.get("/api/browse/facets", params={"shelf": shelf_id})
+    assert facets.status_code == 200
+    kinds = {row["kind"]: row["count"] for row in facets.json()["kinds"]}
+    assert kinds.get("book") == 1

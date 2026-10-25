@@ -5,6 +5,21 @@ const BROWSE_KINDS = ["book", "magazine", "comic", "audiobook", "music"];
 /** Facets that become meaningless when kind changes. */
 const KIND_SCOPED_KEYS = ["author", "letter", "series", "genre"];
 
+/** Named shelf ids are `uuid4().hex` (32 hex chars). Anything else is dropped. */
+const NAMED_SHELF_ID = /^[a-f0-9]{32}$/i;
+
+/**
+ * Stacks shelf filter: Favorites, or a household shelf id.
+ * Hostile or unknown values become "" so a bad query cannot blank the page.
+ */
+export function normalizeBrowseShelf(value) {
+  const shelf = String(value || "").trim();
+  if (!shelf) return "";
+  if (shelf.toLowerCase() === "favorites") return "favorites";
+  if (NAMED_SHELF_ID.test(shelf)) return shelf.toLowerCase();
+  return "";
+}
+
 /** Sort keys the stacks command bar and `GET /api/browse` both understand. */
 export const BROWSE_SORTS = ["author", "title", "updated", "year"];
 
@@ -116,7 +131,7 @@ export function browseQueryParams(filters = {}, { offset, limit } = {}) {
   const author = String(filters.author || "").trim();
   const letter = String(filters.letter || "").trim().toUpperCase();
   const series = String(filters.series || "").trim();
-  const shelf = String(filters.shelf || "").trim().toLowerCase();
+  const shelf = normalizeBrowseShelf(filters.shelf);
   const sortRaw = String(filters.sort || "").trim().toLowerCase();
   const sort = BROWSE_SORTS.includes(sortRaw) ? sortRaw : "author";
   const sortDirRaw = String(filters.sort_dir || filters.sortDir || "").trim().toLowerCase();
@@ -125,7 +140,7 @@ export function browseQueryParams(filters = {}, { offset, limit } = {}) {
   if (author) params.set("author", author);
   if (letter) params.set("letter", letter);
   if (series) params.set("series", series);
-  if (shelf === "favorites") params.set("shelf", "favorites");
+  if (shelf) params.set("shelf", shelf);
   if (sort && sort !== "author") params.set("sort", sort);
   if (genre) params.set("genre", genre);
   if ((sortDirRaw === "asc" || sortDirRaw === "desc") && sortDirRaw !== defaultSortDir(sort)) {
@@ -147,7 +162,7 @@ export function browseFiltersFromSearchParams(params) {
     return String(params?.[key] || "").trim();
   };
   const letter = get("letter").toUpperCase();
-  const shelf = get("shelf").toLowerCase();
+  const shelf = normalizeBrowseShelf(get("shelf"));
   const sortRaw = get("sort").toLowerCase();
   const sort = BROWSE_SORTS.includes(sortRaw) ? sortRaw : "author";
   const sortDirRaw = get("sort_dir").toLowerCase();
@@ -157,7 +172,7 @@ export function browseFiltersFromSearchParams(params) {
     author: get("author"),
     letter: letter === "#" || (letter.length === 1 && letter >= "A" && letter <= "Z") ? letter : "",
     series: get("series"),
-    shelf: shelf === "favorites" ? "favorites" : "",
+    shelf,
     sort,
     sort_dir: sortDir,
     genre: get("genre"),
@@ -276,10 +291,12 @@ export function browseHasActiveFilters(filters = {}) {
   );
 }
 
-/** Heading bits that match visible active filters (kind · author · series · genre · letter). */
-export function browseHeading(filters = {}) {
+/** Heading bits that match visible active filters (shelf · kind · author · series · genre · letter). */
+export function browseHeading(filters = {}, shelfName = "") {
   const bits = [];
+  const named = String(shelfName || "").trim();
   if (filters.shelf === "favorites") bits.push("Favorites");
+  else if (filters.shelf && named) bits.push(named);
   if (filters.kind) bits.push(filters.kind);
   if (filters.author) bits.push(filters.author);
   if (filters.series) bits.push(filters.series);

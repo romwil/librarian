@@ -127,6 +127,7 @@ export default function StacksCommandBar({
   seriesRows,
   genreRows,
   showGenres,
+  shelves = [],
 }) {
   const activeCount = [
     filters.kind,
@@ -163,12 +164,19 @@ export default function StacksCommandBar({
           <label className="field-inline">
             <span>Shelf</span>
             <select
-              value={filters.shelf === "favorites" ? "favorites" : ""}
+              value={filters.shelf || ""}
               data-testid="stacks-shelf"
               onChange={(event) => onPatchFilters({ shelf: event.target.value })}
             >
               <option value="">Any shelf</option>
               <option value="favorites">Favorites</option>
+              {shelves
+                .filter((shelf) => shelf?.id && shelf?.name)
+                .map((shelf) => (
+                  <option key={shelf.id} value={shelf.id}>
+                    {shelf.name}
+                  </option>
+                ))}
             </select>
           </label>
           <label className="field-inline">

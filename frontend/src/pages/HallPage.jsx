@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useOutletContext } from "react-router-dom";
 import { api } from "../api.js";
-import HallCollection from "../components/HallCollection.jsx";
+import { browseHref } from "../browse.js";
 import QueryForm from "../components/QueryForm.jsx";
 import Rail from "../components/Rail.jsx";
 import SeriesCatchUp from "../components/SeriesCatchUp.jsx";
@@ -118,35 +118,32 @@ function HallRails({ role, owner, configured }) {
   const recent = continueRailItems(hall?.whats_new);
   const favorites = continueRailItems(hall?.favorites);
 
+  if (phase === "loading") return null;
+
   return (
-    <>
-      {phase === "loading" ? null : (
-        <div className="hall-shelves" data-testid="hall-shelves">
-          {loadError ? <p className="alert hall-alert">{loadError}</p> : null}
-          {hall?.empty ? (
-            <section className="empty-cta hall-empty" data-testid="hall-empty">
-              <h2>{empty.title}</h2>
-              <p className="lede">{empty.lede}</p>
-              {owner ? (
-                <Link className="cta" to="/settings">
-                  {configured ? "Open Settings" : "Add an indexer"}
-                </Link>
-              ) : null}
-            </section>
+    <div className="hall-shelves" data-testid="hall-shelves">
+      {loadError ? <p className="alert hall-alert">{loadError}</p> : null}
+      {hall?.empty ? (
+        <section className="empty-cta hall-empty" data-testid="hall-empty">
+          <h2>{empty.title}</h2>
+          <p className="lede">{empty.lede}</p>
+          {owner ? (
+            <Link className="cta" to="/settings">
+              {configured ? "Open Settings" : "Add an indexer"}
+            </Link>
           ) : null}
-          <TonightShelf tonight={hall?.tonight} role={role} />
-          <SeriesCatchUp catchUp={hall?.series_catch_up} role={role} />
-          {listening ? <Rail title="Continue listening" items={listening} /> : null}
-          {reading ? <Rail title="Continue reading" items={reading} /> : null}
-          {recent ? <Rail title="Recently added" items={recent} /> : null}
-          {favorites ? (
-            <Rail title="Favorites" items={favorites} seeAllTo="/?shelf=favorites" />
-          ) : null}
-          <NotedRail items={noted} />
-        </div>
-      )}
-      <HallCollection role={role} favoritesAvailable={Boolean(favorites)} />
-    </>
+        </section>
+      ) : null}
+      <TonightShelf tonight={hall?.tonight} role={role} />
+      <SeriesCatchUp catchUp={hall?.series_catch_up} role={role} />
+      {listening ? <Rail title="Continue listening" items={listening} /> : null}
+      {reading ? <Rail title="Continue reading" items={reading} /> : null}
+      {recent ? <Rail title="Recently added" items={recent} /> : null}
+      {favorites ? (
+        <Rail title="Favorites" items={favorites} seeAllTo={browseHref({ shelf: "favorites" })} />
+      ) : null}
+      <NotedRail items={noted} />
+    </div>
   );
 }
 

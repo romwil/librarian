@@ -393,7 +393,7 @@ def register_search_routes(app: FastAPI, deps: WebDeps) -> None:
     ):
         user = request.state.user
         kind_key = kind if kind in ALL_KINDS else None
-        shelf_key = "favorites" if str(shelf or "").strip().lower() == "favorites" else None
+        shelf_key = _resolve_browse_shelf(db, user["id"], shelf)
         facets = db.browse_facets(
             kind=kind_key,
             shelf=shelf_key,
