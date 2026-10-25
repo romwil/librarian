@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { NavLink, useNavigate } from "react-router-dom";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api.js";
+import { stacksNavState } from "../lib/stacksNav.js";
 import LampMark from "./LampMark.jsx";
 import ProfileMenu from "./ProfileMenu.jsx";
 import InboxBadgeButton from "./InboxBadgeButton.jsx";
@@ -19,6 +20,8 @@ import {
 
 export default function AppChrome({ user, features, reviewCount = 0, inboxUnread = 0, children }) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const stacksNav = stacksNavState(location.pathname, location.search);
   const op = user.role === "owner" || user.role === "op";
   const owner = user.role === "owner";
   const prevCount = useRef(reviewCount);
@@ -127,17 +130,26 @@ export default function AppChrome({ user, features, reviewCount = 0, inboxUnread
           <NavLink to="/" end className={({ isActive }) => (isActive ? "is-current" : undefined)}>
             Hall
           </NavLink>
+          <Link
+            to="/browse"
+            className={stacksNav.stacks ? "is-current" : undefined}
+            aria-current={stacksNav.stacks ? "page" : undefined}
+            title="Browse the stacks"
+          >
+            Stacks
+          </Link>
           <NavLink to="/search" className={({ isActive }) => (isActive ? "is-current" : undefined)}>
             Search
           </NavLink>
-          <NavLink to="/browse?shelf=favorites" className={({ isActive }) => (isActive ? "is-current" : undefined)}>
+          <Link
+            to="/browse?shelf=favorites"
+            className={stacksNav.favorites ? "is-current" : undefined}
+            aria-current={stacksNav.favorites ? "page" : undefined}
+          >
             Favorites
-          </NavLink>
+          </Link>
         </nav>
-        <nav className="nav-links nav-ops" aria-label="Stacks and ops">
-          <NavLink to="/browse" className={({ isActive }) => (isActive ? "is-current" : undefined)} title="Browse the stacks">
-            Stacks
-          </NavLink>
+        <nav className="nav-links nav-ops" aria-label="Household ops">
           {owner ? (
             <NavLink to="/people" className={({ isActive }) => (isActive ? "is-current" : undefined)}>
               People
@@ -211,15 +223,24 @@ export default function AppChrome({ user, features, reviewCount = 0, inboxUnread
         <NavLink to="/" end className={({ isActive }) => (isActive ? "is-current" : undefined)}>
           Hall
         </NavLink>
+        <Link
+          to="/browse"
+          className={stacksNav.stacks ? "is-current" : undefined}
+          aria-current={stacksNav.stacks ? "page" : undefined}
+          title="Browse the stacks"
+        >
+          Stacks
+        </Link>
         <NavLink to="/search" className={({ isActive }) => (isActive ? "is-current" : undefined)}>
           Search
         </NavLink>
-        <NavLink to="/browse?shelf=favorites" className={({ isActive }) => (isActive ? "is-current" : undefined)}>
+        <Link
+          to="/browse?shelf=favorites"
+          className={stacksNav.favorites ? "is-current" : undefined}
+          aria-current={stacksNav.favorites ? "page" : undefined}
+        >
           Favorites
-        </NavLink>
-        <span className="kicker" style={{ display: "grid", placeItems: "center" }}>
-          You
-        </span>
+        </Link>
       </nav>
       {features?.household_name ? <span className="sr-only">{features.household_name}</span> : null}
     </div>

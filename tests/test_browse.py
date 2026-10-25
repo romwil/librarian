@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import csv
+import io
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 
 from librarian.config import Settings, save_settings
-from librarian.db import Database
+from librarian.db import BROWSE_EXPORT_ROW_CAP, BROWSE_PAGE_MAX_LIMIT, Database
 from librarian.rate_limit import clear_rate_limits
 from librarian.sessions import clear_session_secret_cache
 from librarian.web.app import create_app
@@ -209,3 +211,507 @@ def test_browse_excludes_resolved_shells_without_files(tmp_path, monkeypatch):
     assert hall.json()["kind_counts"]["audiobook"] == 1
     audio_titles = [row["title"] for row in hall.json()["areas"]["audiobooks"]]
     assert audio_titles == ["Backstage at the Lincoln Assassination"]
+
+
+def _stamp(db: Database, sql: str, params: tuple) -> None:
+    def _write() -> None:
+        with db._connect() as conn:
+            conn.execute(sql, params)
+
+    db.run_write(_write, label="test_stamp")
+
+
+def _titles(response) -> list[str]:
+    return [row["title"] for row in response.json()["items"]]
+
+
+def _csv_title(title: str) -> str:
+    if title[:1] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + title
+    return title
+
+
+def _csv_rows(response) -> list[list[str]]:
+    return list(csv.reader(io.StringIO(response.text)))
+
+
+def _seed_catalog(db: Database, root: Path) -> dict[str, dict]:
+    """Shelved stacks used to prove sort, filters, and CSV shape."""
+    root.mkdir(parents=True, exist_ok=True)
+    specs = [
+        {
+            "key": "formula",
+            "title": "=1+1",
+            "author": "@cmd",
+            "kind": "book",
+            "series_name": "+series",
+            "genre": "-genre",
+            "updated": 10,
+        },
+        {
+            "key": "hello",
+            "title": 'Say "hello", José',
+            "author": "Ada Lovelace",
+            "year": 1843,
+            "kind": "book",
+            "series_name": "Analytical",
+            "genre": "Computing",
+            "updated": 150,
+        },
+        {
+            "key": "saga",
+            "title": "Saga #1",
+            "author": "Brian K. Vaughan",
+            "year": 2012,
+            "kind": "comic",
+            "series_name": "Saga",
+            "updated": 400,
+        },
+        {
+            "key": "dune",
+            "title": "Dune",
+            "author": "Frank Herbert",
+            "year": 1965,
+            "kind": "book",
+            "series_name": "Dune",
+            "genre": "Science Fiction",
+            "updated": 200,
+        },
+        {
+            "key": "carrie",
+            "title": "Carrie",
+            "author": "Stephen King",
+            "year": 1974,
+            "kind": "book",
+            "genre": "Horror",
+            "updated": 100,
+        },
+        {
+            "key": "shining",
+            "title": "The Shining",
+            "author": "Stephen King",
+            "year": 1977,
+            "kind": "book",
+            "series_name": "Overlook",
+            "genre": "Horror",
+            "updated": 300,
+            "cover_path": str(root / "SECRET-COVER-PATH.jpg"),
+            "atmosphere_path": str(root / "SECRET-ATMOSPHERE-PATH.jpg"),
+            "isbn": "SECRET-ISBN-TOKEN",
+            "asin": "SECRET-ASIN-TOKEN",
+            "description": "SECRET-BLURB-TOKEN",
+            "llm_blurb": "SECRET-LLM-TOKEN",
+            "narrator": "SECRET-NARRATOR-TOKEN",
+            "abs_item_id": "SECRET-ABS-TOKEN",
+            "indexer_guid": "SECRET-GUID-TOKEN",
+        },
+        {
+            "key": "undated",
+            "title": "Undated",
+            "author": "Zora Neale Hurston",
+            "kind": "book",
+            "genre": "Fiction",
+            "updated": 50,
+        },
+    ]
+    works: dict[str, dict] = {}
+    for spec in specs:
+        updated = spec.pop("updated")
+        key = spec.pop("key")
+        folder = root / "SECRET-HOST-PATH" / key
+        work = db.upsert_work({**spec, "folder_path": str(folder)})
+        _shelve(db, work, filename=f"{key}.epub")
+        _stamp(db, "UPDATE works SET updated_at = ? WHERE id = ?", (updated, work["id"]))
+        works[key] = work
+    review_folder = root / "SECRET-HOST-PATH" / "review"
+    review = db.upsert_work(
+        {
+            "kind": "book",
+            "title": "Needs Review Marker",
+            "author": "Stephen King",
+            "folder_path": str(review_folder),
+            "review_state": "needs_review",
+            "isbn": "SECRET-REVIEW-TOKEN",
+        }
+    )
+    _shelve(db, review, filename="review.epub")
+    works["review"] = review
+    return works
+
+
+_AUTHOR_ASC = [
+    "=1+1",
+    'Say "hello", José',
+    "Saga #1",
+    "Dune",
+    "Carrie",
+    "The Shining",
+    "Undated",
+]
+_AUTHOR_DESC = [
+    "Undated",
+    "Carrie",
+    "The Shining",
+    "Dune",
+    "Saga #1",
+    'Say "hello", José',
+    "=1+1",
+]
+_TITLE_ASC = [
+    "=1+1",
+    "Carrie",
+    "Dune",
+    "Saga #1",
+    'Say "hello", José',
+    "The Shining",
+    "Undated",
+]
+_TITLE_DESC = list(reversed(_TITLE_ASC))
+_YEAR_DESC = [
+    "Saga #1",
+    "The Shining",
+    "Carrie",
+    "Dune",
+    'Say "hello", José',
+    "=1+1",
+    "Undated",
+]
+_YEAR_ASC = [
+    'Say "hello", José',
+    "Dune",
+    "Carrie",
+    "The Shining",
+    "Saga #1",
+    "=1+1",
+    "Undated",
+]
+_UPDATED_DESC = [
+    "Saga #1",
+    "The Shining",
+    "Dune",
+    'Say "hello", José',
+    "Carrie",
+    "Undated",
+    "=1+1",
+]
+_UPDATED_ASC = list(reversed(_UPDATED_DESC))
+_LEAK_MARKERS = (
+    "SECRET-HOST-PATH",
+    "SECRET-COVER-PATH",
+    "SECRET-ATMOSPHERE-PATH",
+    "SECRET-ISBN-TOKEN",
+    "SECRET-ASIN-TOKEN",
+    "SECRET-BLURB-TOKEN",
+    "SECRET-LLM-TOKEN",
+    "SECRET-NARRATOR-TOKEN",
+    "SECRET-ABS-TOKEN",
+    "SECRET-GUID-TOKEN",
+    "SECRET-REVIEW-TOKEN",
+)
+
+
+def test_browse_sort_direction_and_year(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    _login(client)
+    db = Database(tmp_path / "librarian.db")
+    _seed_catalog(db, tmp_path / "catalog")
+
+    default = client.get("/api/browse")
+    assert default.status_code == 200
+    assert default.json()["sort"] == "author"
+    assert default.json()["sort_dir"] == "asc"
+    assert _titles(default) == _AUTHOR_ASC
+    assert "Needs Review Marker" not in _titles(default)
+
+    author_desc = client.get("/api/browse", params={"sort": "author", "sort_dir": "desc"})
+    assert _titles(author_desc) == _AUTHOR_DESC
+    assert author_desc.json()["sort_dir"] == "desc"
+
+    title_asc = client.get("/api/browse", params={"sort": "Title"})
+    assert title_asc.json()["sort"] == "title"
+    assert title_asc.json()["sort_dir"] == "asc"
+    assert _titles(title_asc) == _TITLE_ASC
+
+    title_desc = client.get("/api/browse", params={"sort": "title", "sort_dir": "DESC"})
+    assert _titles(title_desc) == _TITLE_DESC
+
+    updated = client.get("/api/browse", params={"sort": "updated"})
+    assert updated.json()["sort"] == "updated"
+    assert updated.json()["sort_dir"] == "desc"
+    assert _titles(updated) == _UPDATED_DESC
+
+    updated_asc = client.get("/api/browse", params={"sort": "updated", "sort_dir": "asc"})
+    assert _titles(updated_asc) == _UPDATED_ASC
+
+    year = client.get("/api/browse", params={"sort": "year"})
+    assert year.json()["sort"] == "year"
+    assert year.json()["sort_dir"] == "desc"
+    assert _titles(year) == _YEAR_DESC
+
+    year_asc = client.get("/api/browse", params={"sort": " Year ", "sort_dir": "asc"})
+    assert year_asc.json()["sort"] == "year"
+    assert year_asc.json()["sort_dir"] == "asc"
+    assert _titles(year_asc) == _YEAR_ASC
+
+    page = client.get("/api/browse", params={"sort": "author", "limit": 1, "offset": 1})
+    assert page.status_code == 200
+    body = page.json()
+    assert body["total"] == 7
+    assert body["limit"] == 1
+    assert body["offset"] == 1
+    assert _titles(page) == ['Say "hello", José']
+    assert "folder_path" not in body["items"][0]
+    assert "cover_path" not in body["items"][0]
+
+    skipped = client.get("/api/browse", params={"kind": "comic", "offset": 1, "limit": 10})
+    assert skipped.json()["total"] == 1
+    assert skipped.json()["offset"] == 1
+    assert _titles(skipped) == []
+
+    negative = client.get("/api/browse", params={"offset": -4, "limit": 1, "sort": "author"})
+    assert negative.json()["offset"] == 0
+    assert _titles(negative) == ["=1+1"]
+
+
+def test_browse_hostile_query_params(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    _login(client)
+    db = Database(tmp_path / "librarian.db")
+    _seed_catalog(db, tmp_path / "catalog")
+
+    injected = client.get(
+        "/api/browse",
+        params={
+            "sort": "title; DROP TABLE works--",
+            "sort_dir": "desc UNION SELECT password_hash FROM users",
+            "letter": "S",
+        },
+    )
+    assert injected.status_code == 200
+    assert injected.json()["sort"] == "author"
+    assert injected.json()["sort_dir"] == "asc"
+    assert _titles(injected) == ["Carrie", "The Shining"]
+    for marker in ("SECRET-HOST-PATH", "SECRET-COVER-PATH", "SECRET-GUID-TOKEN"):
+        assert marker not in injected.text
+
+    still_there = client.get("/api/browse", params={"sort": "year;drop", "sort_dir": "sideways"})
+    assert still_there.status_code == 200
+    assert still_there.json()["sort"] == "author"
+    assert still_there.json()["sort_dir"] == "asc"
+    assert _titles(still_there) == _AUTHOR_ASC
+
+    unknown_kind = client.get("/api/browse", params={"kind": "book'; DROP TABLE works--"})
+    assert unknown_kind.status_code == 200
+    assert unknown_kind.json()["filters"]["kind"] == ""
+    assert unknown_kind.json()["total"] == 7
+
+    huge = client.get("/api/browse", params={"limit": 999999})
+    assert huge.status_code == 200
+    assert huge.json()["limit"] == BROWSE_PAGE_MAX_LIMIT == 100
+    assert huge.json()["total"] == 7
+    assert len(huge.json()["items"]) == 7
+
+    capped = db.browse_works(limit=999999, max_limit=2, sort="author")
+    assert capped["limit"] == 2
+    assert capped["total"] == 7
+    assert [row["title"] for row in capped["items"]] == _AUTHOR_ASC[:2]
+    wide = db.browse_works(limit=999999, max_limit=999999)
+    assert wide["limit"] == BROWSE_EXPORT_ROW_CAP == 5000
+    assert len(wide["items"]) == 7
+
+    bogus_limit = client.get("/api/browse", params={"limit": "nope"})
+    assert bogus_limit.status_code == 422
+
+    for shelf in ("../../etc/passwd", "not-a-shelf", "favorites'; DROP TABLE shelves--"):
+        missing = client.get("/api/browse", params={"shelf": shelf})
+        assert missing.status_code == 404
+        assert "SECRET-HOST-PATH" not in missing.text
+
+    export_shelf = client.get("/api/browse/export.csv", params={"shelf": "../../etc/passwd"})
+    assert export_shelf.status_code == 404
+    assert "The Shining" not in export_shelf.text
+
+
+def test_browse_shelf_updated_direction_follows_added_at(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    _login(client)
+    db = Database(tmp_path / "librarian.db")
+    root = tmp_path / "favs"
+    older = db.upsert_work(
+        {
+            "kind": "book",
+            "title": "Older Shelf",
+            "author": "Ann Author",
+            "year": 2001,
+            "folder_path": str(root / "older"),
+        }
+    )
+    newer = db.upsert_work(
+        {
+            "kind": "book",
+            "title": "Newer Shelf",
+            "author": "Ann Author",
+            "year": 1990,
+            "folder_path": str(root / "newer"),
+        }
+    )
+    _shelve(db, older)
+    _shelve(db, newer)
+    me = client.get("/api/auth/me").json()["user"]
+    assert db.add_favorite(me["id"], older["id"]) is True
+    assert db.add_favorite(me["id"], newer["id"]) is True
+    shelf_id = db.favorites_shelf(me["id"])["id"]
+    _stamp(
+        db,
+        "UPDATE shelf_items SET added_at = ? WHERE shelf_id = ? AND work_id = ?",
+        (10, shelf_id, older["id"]),
+    )
+    _stamp(
+        db,
+        "UPDATE shelf_items SET added_at = ? WHERE shelf_id = ? AND work_id = ?",
+        (20, shelf_id, newer["id"]),
+    )
+
+    desc = client.get("/api/browse", params={"shelf": "favorites", "sort": "updated"})
+    assert desc.status_code == 200
+    assert desc.json()["sort_dir"] == "desc"
+    assert desc.json()["filters"]["shelf"] == "favorites"
+    assert _titles(desc) == ["Newer Shelf", "Older Shelf"]
+
+    asc = client.get(
+        "/api/browse",
+        params={"shelf": "favorites", "sort": "updated", "sort_dir": "asc"},
+    )
+    assert _titles(asc) == ["Older Shelf", "Newer Shelf"]
+
+    by_year = client.get(
+        "/api/browse",
+        params={"shelf": "favorites", "sort": "year", "sort_dir": "asc"},
+    )
+    assert _titles(by_year) == ["Newer Shelf", "Older Shelf"]
+
+
+def test_browse_export_csv_matches_filters_and_hides_secrets(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    _login(client)
+    db = Database(tmp_path / "librarian.db")
+    _seed_catalog(db, tmp_path / "catalog")
+    me = client.get("/api/auth/me").json()["user"]
+    shining = next(row for row in db.list_works(limit=20) if row["title"] == "The Shining")
+    dune = next(row for row in db.list_works(limit=20) if row["title"] == "Dune")
+    assert db.add_favorite(me["id"], shining["id"]) is True
+    assert db.add_favorite(me["id"], dune["id"]) is True
+
+    client.cookies.clear()
+    assert client.get("/api/browse/export.csv").status_code == 401
+    _login(client)
+
+    exported = client.get("/api/browse/export.csv", params={"sort": "year", "sort_dir": "desc"})
+    assert exported.status_code == 200
+    assert exported.headers["content-type"].startswith("text/csv")
+    assert 'filename="librarian-stacks.csv"' in exported.headers["content-disposition"]
+    assert exported.headers["cache-control"] == "private, no-store"
+    assert exported.headers["x-librarian-export-cap"] == str(BROWSE_EXPORT_ROW_CAP) == "5000"
+    assert exported.headers["x-librarian-export-total"] == "7"
+    assert exported.headers["x-librarian-export-returned"] == "7"
+    table = _csv_rows(exported)
+    assert table[0] == ["title", "author", "year", "kind", "series", "genre"]
+    assert [row[0] for row in table[1:]] == [_csv_title(title) for title in _YEAR_DESC]
+    shining_row = next(row for row in table[1:] if row[0] == "The Shining")
+    assert shining_row == ["The Shining", "Stephen King", "1977", "book", "Overlook", "Horror"]
+    hello_row = next(row for row in table[1:] if row[0] == 'Say "hello", José')
+    assert hello_row[1:] == ["Ada Lovelace", "1843", "book", "Analytical", "Computing"]
+    formula = next(row for row in table[1:] if row[2] == "" and row[1] == "'@cmd")
+    assert formula == ["'=1+1", "'@cmd", "", "book", "'+series", "'-genre"]
+    assert "Needs Review Marker" not in exported.text
+    for marker in _LEAK_MARKERS:
+        assert marker not in exported.text
+
+    visible = client.get("/api/browse/export.csv", params={"columns": "title, year"})
+    visible_rows = _csv_rows(visible)
+    assert visible_rows[0] == ["title", "year"]
+    assert all(len(row) == 2 for row in visible_rows)
+    assert "Stephen King" not in visible.text
+    assert "Overlook" not in visible.text
+
+    ordered = client.get("/api/browse/export.csv", params={"columns": "genre,title,title"})
+    assert _csv_rows(ordered)[0] == ["genre", "title"]
+
+    every = client.get("/api/browse/export.csv", params={"columns": "all"})
+    assert _csv_rows(every)[0] == ["title", "author", "year", "kind", "series", "genre"]
+
+    ignored_page = client.get(
+        "/api/browse/export.csv",
+        params={"limit": 1, "offset": 6, "sort": "author"},
+    )
+    assert _csv_rows(ignored_page)[0][0] == "title"
+    assert [row[0] for row in _csv_rows(ignored_page)[1:]] == [
+        "'=1+1" if title == "=1+1" else title for title in _AUTHOR_ASC
+    ]
+    assert ignored_page.headers["x-librarian-export-returned"] == "7"
+
+    cases = [
+        {"kind": "comic"},
+        {"author": "Frank Herbert"},
+        {"letter": "S", "sort": "title", "sort_dir": "desc"},
+        {"series": "Dune"},
+        {"genre": "horror", "sort": "year", "sort_dir": "asc"},
+        {"shelf": "favorites", "sort": "title", "sort_dir": "asc"},
+    ]
+    expected = {
+        "kind": ["Saga #1"],
+        "author": ["Dune"],
+        "letter": ["The Shining", "Carrie"],
+        "series": ["Dune"],
+        "genre": ["Carrie", "The Shining"],
+        "shelf": ["Dune", "The Shining"],
+    }
+    for params in cases:
+        key = next(iter(params))
+        browse = client.get("/api/browse", params={**params, "limit": 50})
+        csv_response = client.get("/api/browse/export.csv", params=params)
+        assert browse.status_code == 200, params
+        assert csv_response.status_code == 200, params
+        assert _titles(browse) == expected[key]
+        assert [row[0] for row in _csv_rows(csv_response)[1:]] == expected[key]
+        assert csv_response.headers["x-librarian-export-total"] == str(len(expected[key]))
+        for marker in _LEAK_MARKERS:
+            assert marker not in csv_response.text
+
+
+def test_browse_export_rejects_bad_columns_and_caps_rows(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    _login(client)
+    db = Database(tmp_path / "librarian.db")
+    _seed_catalog(db, tmp_path / "catalog")
+
+    for columns in (
+        "folder_path",
+        "cover_path",
+        "title,folder_path",
+        "indexer_guid",
+        "isbn",
+        "description",
+        ",,,",
+        "title\r\nSet-Cookie: leaked",
+    ):
+        rejected = client.get("/api/browse/export.csv", params={"columns": columns})
+        assert rejected.status_code == 400, columns
+        if columns == ",,,":
+            assert rejected.json()["detail"] == "columns must name at least one export column"
+        else:
+            assert rejected.json()["detail"] == "Unknown export column"
+        assert "The Shining" not in rejected.text
+        assert "SECRET-HOST-PATH" not in rejected.text
+
+    blank = client.get("/api/browse/export.csv", params={"columns": ",,,"})
+    assert blank.status_code == 400
+    assert blank.json()["detail"] == "columns must name at least one export column"
+
+    monkeypatch.setattr("librarian.web.routers.search.BROWSE_EXPORT_ROW_CAP", 2)
+    capped = client.get("/api/browse/export.csv", params={"sort": "author", "sort_dir": "asc"})
+    assert capped.status_code == 200
+    assert capped.headers["x-librarian-export-cap"] == "2"
+    assert capped.headers["x-librarian-export-total"] == "7"
+    assert capped.headers["x-librarian-export-returned"] == "2"
+    assert [row[0] for row in _csv_rows(capped)[1:]] == ["'=1+1", 'Say "hello", José']

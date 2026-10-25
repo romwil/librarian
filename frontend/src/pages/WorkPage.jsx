@@ -13,12 +13,14 @@ import { useAlbumPlayer } from "../hooks/useAlbumPlayer.js";
 import { finishRitualCopy, finishWhisperInvite, hallLampPeriod } from "../lib/lampRituals.js";
 import { catchUpCtaLabel, catchUpInvitation, missingRibbonBeads } from "../lib/seriesCatchUp.js";
 import { canListenInApp, isAudioFile } from "../listen.js";
+import { primaryWorkAction } from "../lib/workActionMenu.js";
 import { canOpenInlineMedia, canReadInApp, readerCtaLabel, workDownloadUrl } from "../reader.js";
 import Rail from "../components/Rail.jsx";
 import Reader from "../components/Reader.jsx";
 import AudiobookPlayer from "../components/AudiobookPlayer.jsx";
 import PlexampToast from "../components/PlexampToast.jsx";
 import WarmLoad from "../components/WarmLoad.jsx";
+import WorkActionMenu from "../components/WorkActionMenu.jsx";
 
 export default function WorkPage() {
   const { id } = useParams();
@@ -376,6 +378,12 @@ export default function WorkPage() {
     }
   }
 
+  // One primary stays on the hero outside the menu — music keeps its own
+  // Play/Stop slot ahead of the shared Listen/Read/inline-open ladder.
+  const primary = album.enabled
+    ? { key: "album", label: album.active ? "Stop" : "Play" }
+    : primaryWorkAction({ canListen, listenResume, canRead, canInlineOpen, readLabel });
+
   return (
     <article className="work-page page-settle">
       <section className={`work-hero${data.can_download ? "" : " is-bare"}${washUrl ? " has-wash" : ""}`}>
@@ -426,27 +434,19 @@ export default function WorkPage() {
             </p>
           ) : null}
           <div className="cta-row compact">
-            <button type="button" className="cta outline compact" onClick={favorite}>
-              {data.favorite ? "In Favorites" : "Favorite"}
-            </button>
-            {canListen ? (
+            {primary?.key === "listen" ? (
               <button type="button" className="cta compact" onClick={() => openListen()} data-testid="work-listen">
-                {listenResume ? "Continue listening" : "Listen"}
+                {primary.label}
               </button>
-            ) : album.enabled ? (
-              <button
-                type="button"
-                className="cta compact"
-                onClick={album.toggleAlbum}
-                data-testid="album-play"
-              >
-                {album.active ? "Stop" : "Play"}
+            ) : primary?.key === "album" ? (
+              <button type="button" className="cta compact" onClick={album.toggleAlbum} data-testid="album-play">
+                {primary.label}
               </button>
-            ) : canRead ? (
+            ) : primary?.key === "read" ? (
               <button type="button" className="cta compact" onClick={() => openReader()} data-testid="work-open">
-                {readLabel}
+                {primary.label}
               </button>
-            ) : canInlineOpen ? (
+            ) : primary?.key === "open" ? (
               <a
                 className="cta compact"
                 href={`/api/works/${work.id}/download?inline=1${fmt ? `&format=${encodeURIComponent(fmt)}` : ""}`}
@@ -454,67 +454,88 @@ export default function WorkPage() {
                 rel="noreferrer"
                 data-testid="work-open"
               >
-                {readLabel}
+                {primary.label}
               </a>
             ) : null}
-            {audiobookCta.show && audiobookCta.shelved ? (
-              <Link
-                className="cta outline compact"
-                to={audiobookCta.listenHref}
-                data-testid="work-audiobook-listen"
-              >
-                {audiobookCta.secondaryLabel}
-              </Link>
-            ) : null}
-            {audiobookCta.show && !audiobookCta.shelved ? (
-              <Link className="cta outline compact" to={audiobookCta.findHref} data-testid="work-find-audiobook">
-                {audiobookCta.primaryLabel}
-              </Link>
-            ) : null}
-            {canListen && playerLink?.href ? (
-              <a
-                className="cta outline compact"
-                href={playerLink.href}
-                target="_blank"
-                rel="noreferrer"
-                data-testid="work-open-player"
-              >
-                {playerLink.label || "Open in player"}
-              </a>
-            ) : null}
-            {komgaLink?.href ? (
-              <a
-                className="cta outline compact"
-                href={komgaLink.href}
-                target="_blank"
-                rel="noreferrer"
-                data-testid="work-open-komga"
-              >
-                {komgaLink.label || "Open in Komga"}
-              </a>
-            ) : null}
-            {data.can_download ? (
-              <a
-                className="cta outline compact"
-                href={`/api/works/${work.id}/download${fmt ? `?format=${encodeURIComponent(fmt)}` : ""}`}
-                data-testid="work-download"
-              >
-                Download
-              </a>
-            ) : null}
-            {data.ebook_convert && work.kind === "book" ? (
-              <label className="field" style={{ minWidth: "8rem" }}>
-                <span className="sr-only">Download format</span>
-                <select value={fmt} onChange={(e) => setFmt(e.target.value)} aria-label="Download format">
-                  <option value="">Original</option>
-                  {(data.formats || []).map((item) => (
-                    <option key={item} value={item}>
-                      {item.toUpperCase()}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : null}
+            <WorkActionMenu label={work.title} testId="work-action">
+              <button type="button" className="work-action-item" onClick={favorite}>
+                {data.favorite ? "In Favorites" : "Favorite"}
+              </button>
+              {audiobookCta.show && audiobookCta.shelved ? (
+                <Link className="work-action-item" to={audiobookCta.listenHref} data-testid="work-audiobook-listen">
+                  {audiobookCta.secondaryLabel}
+                </Link>
+              ) : null}
+              {audiobookCta.show && !audiobookCta.shelved ? (
+                <Link className="work-action-item" to={audiobookCta.findHref} data-testid="work-find-audiobook">
+                  {audiobookCta.primaryLabel}
+                </Link>
+              ) : null}
+              {canListen && playerLink?.href ? (
+                <a
+                  className="work-action-item"
+                  href={playerLink.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  data-testid="work-open-player"
+                >
+                  {playerLink.label || "Open in player"}
+                </a>
+              ) : null}
+              {komgaLink?.href ? (
+                <a
+                  className="work-action-item"
+                  href={komgaLink.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  data-testid="work-open-komga"
+                >
+                  {komgaLink.label || "Open in Komga"}
+                </a>
+              ) : null}
+              {data.can_download ? (
+                <a
+                  className="work-action-item"
+                  href={`/api/works/${work.id}/download${fmt ? `?format=${encodeURIComponent(fmt)}` : ""}`}
+                  data-testid="work-download"
+                >
+                  Download
+                </a>
+              ) : null}
+              {data.ebook_convert && work.kind === "book" ? (
+                <label className="work-action-item work-action-field">
+                  <span>Download format</span>
+                  <select value={fmt} onChange={(e) => setFmt(e.target.value)} aria-label="Download format">
+                    <option value="">Original</option>
+                    {(data.formats || []).map((item) => (
+                      <option key={item} value={item}>
+                        {item.toUpperCase()}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+              {canPromoteIncomingMusic(work, user.role) ? (
+                <button type="button" className="work-action-item" onClick={promote}>
+                  Promote to Plexamp
+                </button>
+              ) : null}
+              {work.review_state === "needs_review" ? (
+                <Link className="work-action-item" to={`/review?work=${encodeURIComponent(work.id)}`}>
+                  Open Review
+                </Link>
+              ) : null}
+              {incompleteParts ? (
+                <Link
+                  className="work-action-item"
+                  to={findMissingHref}
+                  data-testid="find-missing-parts"
+                  title={partStatus || undefined}
+                >
+                  Find missing parts
+                </Link>
+              ) : null}
+            </WorkActionMenu>
             {work.kind !== "music" ? (
               <button
                 type="button"
@@ -526,26 +547,6 @@ export default function WorkPage() {
               >
                 Finished
               </button>
-            ) : null}
-            {canPromoteIncomingMusic(work, user.role) ? (
-              <button type="button" className="cta ghost compact" onClick={promote}>
-                Promote to Plexamp
-              </button>
-            ) : null}
-            {work.review_state === "needs_review" ? (
-              <Link className="cta ghost compact" to={`/review?work=${encodeURIComponent(work.id)}`}>
-                Open Review
-              </Link>
-            ) : null}
-            {incompleteParts ? (
-              <Link
-                className="cta compact"
-                to={findMissingHref}
-                data-testid="find-missing-parts"
-                title={partStatus || undefined}
-              >
-                Find missing parts
-              </Link>
             ) : null}
             <Link className="cta ghost compact" to="/">
               Back to The Hall

@@ -64,28 +64,44 @@ test.describe("Peek that teaches", () => {
     await mockShellPeek(page);
     await page.goto("/");
     await dismissWhatsNewIfPresent(page);
-    // Open peek from What's New rail if present; else go work page.
-    const cover = page.getByRole("button", { name: /Empty Shell/i }).first();
-    if (await cover.count()) {
+    const note = /isn.t on the shelf|Holds desk|file yet/i;
+    const cover = page.getByRole("button", { name: "Empty Shell", exact: true });
+    const onHall = await cover
+      .waitFor({ state: "visible", timeout: 15_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (onHall) {
       await cover.click();
-    } else {
-      await page.goto("/works/shell-peek");
-      await dismissWhatsNewIfPresent(page);
-      // Work page itself teaches; also try peek via cover if Hall mounts.
-    }
-    const peek = page.getByTestId("peek");
-    if (await peek.count()) {
+      const peek = page.getByRole("dialog", { name: "Empty Shell" });
       await expect(peek).toBeVisible({ timeout: 15_000 });
-      await expect(page.getByTestId("peek-media-note")).toBeVisible();
-      await expect(page.getByTestId("peek-media-note")).toContainText(/isn’t on the shelf|Holds desk|file yet/i);
-      // Never fake an Open/Read CTA for a shell without files.
-      await expect(page.getByTestId("peek-open")).toHaveCount(0);
-    } else {
-      // Fallback: work page media honesty.
-      await page.goto("/works/shell-peek");
-      await dismissWhatsNewIfPresent(page);
-      await expect(page.getByRole("heading", { name: "Empty Shell" })).toBeVisible({ timeout: 15_000 });
-      await expect(page.getByTestId("peek-open")).toHaveCount(0);
+      await expect(peek.getByText(note)).toBeVisible();
+      // A shell has no file, so Read stays off the page. Favorite is in the grip.
+      await expect(page.getByRole("button", { name: "Read", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("link", { name: "Read", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("link", { name: "Download", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Favorite", exact: true })).toHaveCount(0);
+      const grip = peek.getByRole("button", { name: "Actions for Empty Shell", exact: true });
+      await grip.focus();
+      await expect(grip).toBeFocused();
+      await page.keyboard.press("Enter");
+      const menu = page.getByRole("menu", { name: "Actions for Empty Shell", exact: true });
+      const favorite = menu.getByRole("button", { name: "Favorite", exact: true });
+      await expect(favorite).toBeVisible();
+      await favorite.focus();
+      await expect(favorite).toBeFocused();
+      await expect(menu.getByRole("link", { name: "Download", exact: true })).toHaveCount(0);
+      return;
     }
+    await page.goto("/works/shell-peek");
+    await dismissWhatsNewIfPresent(page);
+    await expect(page.getByRole("heading", { name: "Empty Shell" })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(note)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Read", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Download", exact: true })).toHaveCount(0);
+    const grip = page.getByRole("button", { name: "Actions for Empty Shell", exact: true });
+    await grip.click();
+    const menu = page.getByRole("menu", { name: "Actions for Empty Shell", exact: true });
+    await expect(menu.getByRole("button", { name: "Favorite", exact: true })).toBeVisible();
+    await expect(menu.getByRole("link", { name: "Download", exact: true })).toHaveCount(0);
   });
 });

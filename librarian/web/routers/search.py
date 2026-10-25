@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+import csv
+import io
+from typing import Any, Dict, List, Optional, Sequence
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import Response
 
 from librarian.auth import require_role
+from librarian.db import BROWSE_EXPORT_ROW_CAP, BROWSE_PAGE_MAX_LIMIT
 from librarian.delight import (
     estimate_finish_eta_minutes,
     finish_set_label,
@@ -31,6 +35,142 @@ from librarian.web.schemas import (
     LlmListPayload,
 )
 from librarian.web.serializers import public_work, public_works
+
+# Visible stacks columns. ``series`` is the work's series_name. Omitted ``columns``
+# exports every name in this order.
+BROWSE_EXPORT_COLUMNS: tuple[str, ...] = (
+    "title",
+    "author",
+    "year",
+    "kind",
+    "series",
+    "genre",
+)
+_CSV_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def parse_browse_export_columns(raw: str) -> List[str]:
+    """Visible column list, or every export column when omitted or ``all``.
+
+    Unknown names are rejected so a query cannot ask for paths, tokens, or secrets.
+    """
+    text = str(raw or "").strip()
+    if not text or text.lower() == "all":
+        return list(BROWSE_EXPORT_COLUMNS)
+    selected: List[str] = []
+    for part in text.split(","):
+        name = part.strip().lower()
+        if not name:
+            continue
+        if name not in BROWSE_EXPORT_COLUMNS:
+            raise HTTPException(status_code=400, detail="Unknown export column")
+        if name not in selected:
+            selected.append(name)
+    if not selected:
+        raise HTTPException(
+            status_code=400,
+            detail="columns must name at least one export column",
+        )
+    return selected
+
+
+def _year_text(year: Any) -> str:
+    if isinstance(year, bool) or year is None:
+        return ""
+    if isinstance(year, int):
+        return str(year)
+    return str(year).strip()
+
+
+def _csv_cell(value: Any) -> str:
+    """Spreadsheet-safe cell. Formula-leading text is prefixed so Excel will not run it."""
+    if value is None:
+        return ""
+    text = str(value)
+    if text.startswith(_CSV_FORMULA_PREFIXES):
+        return "'" + text
+    return text
+
+
+def _browse_export_record(item: Any, columns: Sequence[str]) -> Dict[str, str]:
+    public = public_work(item if isinstance(item, dict) else None) or {}
+    values = {
+        "title": _csv_cell(public.get("title")),
+        "author": _csv_cell(public.get("author")),
+        "year": _csv_cell(_year_text(public.get("year"))),
+        "kind": _csv_cell(public.get("kind")),
+        "series": _csv_cell(public.get("series_name")),
+        "genre": _csv_cell(public.get("genre")),
+    }
+    return {column: values.get(column, "") for column in columns}
+
+
+def render_browse_csv(items: Sequence[Any], columns: Sequence[str]) -> str:
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=list(columns), extrasaction="ignore")
+    writer.writeheader()
+    for item in items:
+        writer.writerow(_browse_export_record(item, columns))
+    return buffer.getvalue()
+
+
+def _resolve_browse_shelf(db: Any, user_id: str, shelf: str) -> Optional[str]:
+    raw_shelf = str(shelf or "").strip()
+    if not raw_shelf:
+        return None
+    if raw_shelf.lower() == "favorites":
+        return "favorites"
+    shelf_row = db.get_shelf(raw_shelf)
+    if not shelf_row or not db.user_can_view_shelf(shelf_row, user_id):
+        raise HTTPException(status_code=404, detail="Shelf not found")
+    return str(shelf_row["id"])
+
+
+def load_browse_page(
+    db: Any,
+    user: Dict[str, Any],
+    *,
+    kind: str,
+    author: str,
+    letter: str,
+    series: str,
+    genre: str,
+    shelf: str,
+    sort: str,
+    sort_dir: str,
+    offset: int,
+    limit: int,
+    max_limit: int,
+) -> tuple[Dict[str, Any], Dict[str, str]]:
+    """Shared stacks filters for the JSON page and the CSV export."""
+    kind_key = kind if kind in ALL_KINDS else None
+    shelf_key = _resolve_browse_shelf(db, user["id"], shelf)
+    try:
+        page = db.browse_works(
+            kind=kind_key,
+            author=author.strip() or None,
+            letter=letter.strip() or None,
+            series=series.strip() or None,
+            genre=genre.strip() or None,
+            shelf=shelf_key,
+            user_id=user["id"] if shelf_key else None,
+            sort=sort,
+            sort_dir=sort_dir or None,
+            offset=offset,
+            limit=limit,
+            max_limit=max_limit,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    filters = {
+        "kind": kind_key or "",
+        "author": author.strip(),
+        "letter": letter.strip().upper(),
+        "series": series.strip(),
+        "genre": genre.strip(),
+        "shelf": shelf_key or "",
+    }
+    return page, filters
 
 
 def register_search_routes(app: FastAPI, deps: WebDeps) -> None:
@@ -134,50 +274,83 @@ def register_search_routes(app: FastAPI, deps: WebDeps) -> None:
         genre: str = "",
         shelf: str = "",
         sort: str = "author",
+        sort_dir: str = "",
         offset: int = 0,
         limit: int = 48,
     ):
-        user = request.state.user
-        kind_key = kind if kind in ALL_KINDS else None
-        raw_shelf = str(shelf or "").strip()
-        shelf_key = None
-        if raw_shelf.lower() == "favorites":
-            shelf_key = "favorites"
-        elif raw_shelf:
-            shelf_row = db.get_shelf(raw_shelf)
-            if not shelf_row or not db.user_can_view_shelf(shelf_row, user["id"]):
-                raise HTTPException(status_code=404, detail="Shelf not found")
-            shelf_key = shelf_row["id"]
-        try:
-            page = db.browse_works(
-                kind=kind_key,
-                author=author.strip() or None,
-                letter=letter.strip() or None,
-                series=series.strip() or None,
-                genre=genre.strip() or None,
-                shelf=shelf_key,
-                user_id=user["id"] if shelf_key else None,
-                sort=sort,
-                offset=offset,
-                limit=limit,
-            )
-        except ValueError as error:
-            raise HTTPException(status_code=404, detail=str(error)) from error
+        page, filters = load_browse_page(
+            db,
+            request.state.user,
+            kind=kind,
+            author=author,
+            letter=letter,
+            series=series,
+            genre=genre,
+            shelf=shelf,
+            sort=sort,
+            sort_dir=sort_dir,
+            offset=offset,
+            limit=limit,
+            max_limit=BROWSE_PAGE_MAX_LIMIT,
+        )
         return {
             "items": public_works(page["items"]),
             "total": page["total"],
             "offset": page["offset"],
             "limit": page["limit"],
             "sort": page["sort"],
-            "filters": {
-                "kind": kind_key or "",
-                "author": author.strip(),
-                "letter": letter.strip().upper(),
-                "series": series.strip(),
-                "genre": genre.strip(),
-                "shelf": shelf_key or "",
-            },
+            "sort_dir": page["sort_dir"],
+            "filters": filters,
         }
+
+    @app.get("/api/browse/export.csv")
+    def browse_export_csv(
+        request: Request,
+        kind: str = "",
+        author: str = "",
+        letter: str = "",
+        series: str = "",
+        genre: str = "",
+        shelf: str = "",
+        sort: str = "author",
+        sort_dir: str = "",
+        columns: str = "",
+    ):
+        """CSV for the current stacks filters, capped at ``BROWSE_EXPORT_ROW_CAP`` rows.
+
+        Offset and limit are page controls on ``GET /api/browse`` only. This route
+        always starts at the first match. ``columns`` selects a visible subset;
+        omit it, or pass ``all``, for title, author, year, kind, series, genre.
+        """
+        selected = parse_browse_export_columns(columns)
+        page, _filters = load_browse_page(
+            db,
+            request.state.user,
+            kind=kind,
+            author=author,
+            letter=letter,
+            series=series,
+            genre=genre,
+            shelf=shelf,
+            sort=sort,
+            sort_dir=sort_dir,
+            offset=0,
+            limit=BROWSE_EXPORT_ROW_CAP,
+            max_limit=BROWSE_EXPORT_ROW_CAP,
+        )
+        body = render_browse_csv(page["items"], selected)
+        returned = len(page["items"])
+        return Response(
+            content=body,
+            media_type="text/csv; charset=utf-8",
+            headers={
+                "Content-Disposition": 'attachment; filename="librarian-stacks.csv"',
+                "Cache-Control": "private, no-store",
+                "X-Librarian-Export-Cap": str(BROWSE_EXPORT_ROW_CAP),
+                "X-Librarian-Export-Total": str(page["total"]),
+                "X-Librarian-Export-Returned": str(returned),
+            },
+        )
 
     @app.get("/api/browse/facets")
     def browse_facets_endpoint(

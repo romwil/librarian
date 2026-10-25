@@ -18,6 +18,20 @@ SQLITE_LOCK_RETRIES = 6
 SQLITE_LOCK_RETRY_BASE_DELAY_S = 0.05
 FAVORITES_SHELF = "Favorites"
 
+# Stacks browse. Unknown sort falls back to author. When sort_dir is omitted,
+# direction matches the historical order: author and title ascending, updated
+# (recently shelved) descending. Year is newest-first.
+BROWSE_SORTS = ("author", "title", "updated", "year")
+BROWSE_SORT_DEFAULT_DIR = {
+    "author": "asc",
+    "title": "asc",
+    "updated": "desc",
+    "year": "desc",
+}
+BROWSE_PAGE_MAX_LIMIT = 100
+# CSV export reuses these filters and stops here so a full shelf cannot stream unbounded.
+BROWSE_EXPORT_ROW_CAP = 5000
+
 logger = logging.getLogger("librarian.db")
 T = TypeVar("T")
 
@@ -336,6 +350,32 @@ def _ensure_shelf_columns(conn: sqlite3.Connection) -> None:
     existing = {row[1] for row in conn.execute("PRAGMA table_info(shelves)").fetchall()}
     if "shared" not in existing:
         conn.execute("ALTER TABLE shelves ADD COLUMN shared INTEGER NOT NULL DEFAULT 0")
+
+
+def resolve_browse_sort(sort: Optional[str], sort_dir: Optional[str] = None) -> Tuple[str, str]:
+    """Whitelist stacks sort and direction. Never pass raw query text into SQL."""
+    sort_key = str(sort or "author").strip().lower()
+    if sort_key not in BROWSE_SORTS:
+        sort_key = "author"
+    direction = str(sort_dir or "").strip().lower()
+    if direction not in ("asc", "desc"):
+        direction = BROWSE_SORT_DEFAULT_DIR[sort_key]
+    return sort_key, direction
+
+
+def browse_order_sql(sort_key: str, direction: str, *, on_shelf: bool) -> str:
+    """ORDER BY fragment. ``sort_key`` and ``direction`` must already be whitelisted."""
+    sql_dir = "DESC" if direction == "desc" else "ASC"
+    if sort_key == "title":
+        return f"w.title COLLATE NOCASE {sql_dir}, w.author COLLATE NOCASE ASC"
+    if sort_key == "year":
+        # Null years stay last in both directions.
+        return f"(w.year IS NULL) ASC, w.year {sql_dir}, w.title COLLATE NOCASE ASC"
+    if sort_key == "updated" and on_shelf:
+        return f"s.added_at {sql_dir}, w.title COLLATE NOCASE ASC"
+    if sort_key == "updated":
+        return f"w.updated_at {sql_dir}, w.title COLLATE NOCASE ASC"
+    return f"w.author COLLATE NOCASE {sql_dir}, w.title COLLATE NOCASE ASC"
 
 
 class Database:
@@ -1154,23 +1194,17 @@ class Database:
         shelf: Optional[str] = None,
         user_id: Optional[str] = None,
         sort: str = "author",
+        sort_dir: Optional[str] = None,
         offset: int = 0,
         limit: int = 48,
+        max_limit: int = BROWSE_PAGE_MAX_LIMIT,
     ) -> Dict[str, Any]:
-        capped = max(1, min(int(limit or 48), 100))
+        ceiling = max(1, min(int(max_limit or BROWSE_PAGE_MAX_LIMIT), BROWSE_EXPORT_ROW_CAP))
+        capped = max(1, min(int(limit or 48), ceiling))
         skip = max(0, int(offset or 0))
-        sort_key = str(sort or "author").strip().lower()
-        if sort_key not in ("author", "title", "updated"):
-            sort_key = "author"
-        if sort_key == "title":
-            order_sql = "w.title COLLATE NOCASE ASC, w.author COLLATE NOCASE ASC"
-        elif sort_key == "updated":
-            order_sql = "w.updated_at DESC, w.title COLLATE NOCASE ASC"
-        else:
-            order_sql = "w.author COLLATE NOCASE ASC, w.title COLLATE NOCASE ASC"
+        sort_key, direction = resolve_browse_sort(sort, sort_dir)
         shelf_key = str(shelf or "").strip()
-        if shelf_key and sort_key == "updated":
-            order_sql = "s.added_at DESC, w.title COLLATE NOCASE ASC"
+        order_sql = browse_order_sql(sort_key, direction, on_shelf=bool(shelf_key))
 
         from_sql, where_sql, args = self._browse_base(
             kind=kind,
@@ -1203,6 +1237,7 @@ class Database:
             "offset": skip,
             "limit": capped,
             "sort": sort_key,
+            "sort_dir": direction,
         }
 
     def browse_facets(
