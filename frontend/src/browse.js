@@ -5,6 +5,42 @@ const BROWSE_KINDS = ["book", "magazine", "comic", "audiobook", "music"];
 /** Facets that become meaningless when kind changes. */
 const KIND_SCOPED_KEYS = ["author", "letter", "series", "genre"];
 
+/** Sort keys the stacks command bar and `GET /api/browse` both understand. */
+export const BROWSE_SORTS = ["author", "title", "updated", "year"];
+
+/** Library-word labels for the sort select, in display order. */
+export const BROWSE_SORT_OPTIONS = [
+  ["author", "Author"],
+  ["title", "Title"],
+  ["year", "Year"],
+  ["updated", "Recently shelved"],
+];
+
+/** Columns the CSV export and the List view both recognize. */
+export const BROWSE_EXPORT_COLUMNS = ["title", "author", "year", "kind", "series", "genre"];
+
+const DEFAULT_LIST_COLUMNS = ["title", "author", "year", "kind"];
+
+/**
+ * Sensible per-sort direction when the household hasn't picked one —
+ * author/title read A→Z, updated/year read newest-first.
+ */
+export function defaultSortDir(sort) {
+  const key = BROWSE_SORTS.includes(sort) ? sort : "author";
+  return key === "updated" || key === "year" ? "desc" : "asc";
+}
+
+/** Patch to apply when the Sort select changes — resets direction to that sort's default. */
+export function sortChangePatch(nextSort) {
+  const key = String(nextSort || "").trim().toLowerCase();
+  const sort = BROWSE_SORTS.includes(key) ? key : "author";
+  return { sort, sort_dir: defaultSortDir(sort) };
+}
+
+export function sortDirLabel(dir) {
+  return String(dir || "").toLowerCase() === "desc" ? "Descending" : "Ascending";
+}
+
 /** Singular / plural nouns for household shelf totals. */
 const KIND_NOUNS = {
   book: ["book", "books"],
@@ -69,14 +105,21 @@ export function browseCountLine({ kind = "", shelf = "", total = 0, loading = fa
   return n === 0 ? "Nothing on the shelves yet" : `${formatShelfCount(n)} on the shelves`;
 }
 
-export function browseHref(filters = {}) {
+/**
+ * Shared query-string builder for `/browse` (router), `GET /api/browse` (fetch),
+ * and `GET /api/browse/export.csv` — one place that decides which params are
+ * worth writing, so the three stay in lockstep.
+ */
+export function browseQueryParams(filters = {}, { offset, limit } = {}) {
   const params = new URLSearchParams();
   const kind = String(filters.kind || "").trim();
   const author = String(filters.author || "").trim();
   const letter = String(filters.letter || "").trim().toUpperCase();
   const series = String(filters.series || "").trim();
   const shelf = String(filters.shelf || "").trim().toLowerCase();
-  const sort = String(filters.sort || "").trim().toLowerCase();
+  const sortRaw = String(filters.sort || "").trim().toLowerCase();
+  const sort = BROWSE_SORTS.includes(sortRaw) ? sortRaw : "author";
+  const sortDirRaw = String(filters.sort_dir || filters.sortDir || "").trim().toLowerCase();
   const genre = String(filters.genre || "").trim();
   if (kind) params.set("kind", kind);
   if (author) params.set("author", author);
@@ -85,7 +128,16 @@ export function browseHref(filters = {}) {
   if (shelf === "favorites") params.set("shelf", "favorites");
   if (sort && sort !== "author") params.set("sort", sort);
   if (genre) params.set("genre", genre);
-  const qs = params.toString();
+  if ((sortDirRaw === "asc" || sortDirRaw === "desc") && sortDirRaw !== defaultSortDir(sort)) {
+    params.set("sort_dir", sortDirRaw);
+  }
+  if (offset != null) params.set("offset", String(offset));
+  if (limit != null) params.set("limit", String(limit));
+  return params;
+}
+
+export function browseHref(filters = {}) {
+  const qs = browseQueryParams(filters).toString();
   return qs ? `/browse?${qs}` : "/browse";
 }
 
@@ -96,16 +148,84 @@ export function browseFiltersFromSearchParams(params) {
   };
   const letter = get("letter").toUpperCase();
   const shelf = get("shelf").toLowerCase();
-  const sort = get("sort").toLowerCase() || "author";
+  const sortRaw = get("sort").toLowerCase();
+  const sort = BROWSE_SORTS.includes(sortRaw) ? sortRaw : "author";
+  const sortDirRaw = get("sort_dir").toLowerCase();
+  const sortDir = sortDirRaw === "asc" || sortDirRaw === "desc" ? sortDirRaw : defaultSortDir(sort);
   return {
     kind: get("kind"),
     author: get("author"),
     letter: letter === "#" || (letter.length === 1 && letter >= "A" && letter <= "Z") ? letter : "",
     series: get("series"),
     shelf: shelf === "favorites" ? "favorites" : "",
-    sort: ["author", "title", "updated"].includes(sort) ? sort : "author",
+    sort,
+    sort_dir: sortDir,
     genre: get("genre"),
   };
+}
+
+/**
+ * Validate + canonicalize an export/list column selection. Accepts a comma
+ * string, an array, or nullish (→ no columns = "all" per the export API).
+ * Unknown/hostile entries are dropped; order is always the canonical column order.
+ */
+export function normalizeExportColumns(columns) {
+  if (columns == null) return [];
+  const raw = Array.isArray(columns) ? columns : String(columns).split(",");
+  const wanted = new Set(
+    raw.map((value) => String(value ?? "").trim().toLowerCase()).filter(Boolean),
+  );
+  return BROWSE_EXPORT_COLUMNS.filter((col) => wanted.has(col));
+}
+
+/** `columns=` value for the export URL — omitted entirely when it's "all columns". */
+export function browseExportColumnsParam(columns) {
+  const normalized = normalizeExportColumns(columns);
+  if (!normalized.length || normalized.length === BROWSE_EXPORT_COLUMNS.length) return "";
+  return normalized.join(",");
+}
+
+/** `GET /api/browse/export.csv` URL for the current filters + column choice. */
+export function browseExportHref(filters = {}, { columns } = {}) {
+  const params = browseQueryParams(filters);
+  const columnsParam = browseExportColumnsParam(columns);
+  if (columnsParam) params.set("columns", columnsParam);
+  const qs = params.toString();
+  return `/api/browse/export.csv${qs ? `?${qs}` : ""}`;
+}
+
+const LIST_COLUMNS_KEY = "librarian.browse.listColumns";
+
+/** List-view column preference, persisted locally — same idea as the facet folds below. */
+export function loadBrowseListColumns(storage = globalThis.localStorage) {
+  try {
+    const raw = storage?.getItem?.(LIST_COLUMNS_KEY);
+    if (!raw) return [...DEFAULT_LIST_COLUMNS];
+    const normalized = normalizeExportColumns(JSON.parse(raw));
+    return normalized.length ? normalized : [...DEFAULT_LIST_COLUMNS];
+  } catch {
+    return [...DEFAULT_LIST_COLUMNS];
+  }
+}
+
+export function saveBrowseListColumns(columns, storage = globalThis.localStorage) {
+  const normalized = normalizeExportColumns(columns);
+  const next = normalized.length ? normalized : [...DEFAULT_LIST_COLUMNS];
+  try {
+    storage?.setItem?.(LIST_COLUMNS_KEY, JSON.stringify(next));
+  } catch {
+    /* private mode / quota — ignore */
+  }
+  return next;
+}
+
+/** Toggle one column on/off; never drops to zero columns (list rows need something to show). */
+export function toggleBrowseListColumn(current, column, storage = globalThis.localStorage) {
+  const key = String(column || "").trim().toLowerCase();
+  if (!BROWSE_EXPORT_COLUMNS.includes(key)) return normalizeExportColumns(current);
+  const base = normalizeExportColumns(current);
+  const next = base.includes(key) ? base.filter((col) => col !== key) : [...base, key];
+  return saveBrowseListColumns(next.length ? next : base, storage);
 }
 
 /**
@@ -179,6 +299,31 @@ export const BROWSE_LETTERS = [
   "#",
   ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""),
 ];
+
+/** Stacks page-size choices for the command bar's "Per page" select. */
+export const BROWSE_PAGE_SIZES = [24, 48, 96];
+
+const VIEW_KEY = "librarian.browse.view";
+
+/** Covers (grid) or List — a local view preference, not part of the query string. */
+export function loadBrowseView(storage = globalThis.localStorage) {
+  try {
+    const raw = String(storage?.getItem?.(VIEW_KEY) || "").trim().toLowerCase();
+    return raw === "list" ? "list" : "covers";
+  } catch {
+    return "covers";
+  }
+}
+
+export function saveBrowseView(view, storage = globalThis.localStorage) {
+  const next = String(view || "").trim().toLowerCase() === "list" ? "list" : "covers";
+  try {
+    storage?.setItem?.(VIEW_KEY, next);
+  } catch {
+    /* private mode / quota — ignore */
+  }
+  return next;
+}
 
 const FOLD_STORAGE_KEY = "librarian.browse.folds";
 const FOLD_DEFAULTS = { author: false, series: false, genre: false };

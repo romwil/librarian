@@ -7,6 +7,7 @@ import { coverWashStyle, coverWashUrl, isInboundJob } from "../cover.js";
 import { canPromoteIncomingMusic, humanError, peekMediaNote } from "../copy.js";
 import { looksLikeHtml, sanitizeDescriptionHtml } from "../description.js";
 import { findHref, gapFindFields } from "../find.js";
+import { companionAudiobookView } from "../audiobookCompanion.js";
 import { bookAvailability, catalogStatus } from "../availability.js";
 import AvailabilityActions from "../components/AvailabilityActions.jsx";
 import CatalogVerb from "../components/CatalogVerb.jsx";
@@ -24,6 +25,7 @@ import {
   workPrimaryVerb,
 } from "../reader.js";
 import Rail from "../components/Rail.jsx";
+import WorkActionMenu from "../components/WorkActionMenu.jsx";
 import Reader from "../components/Reader.jsx";
 import AudiobookPlayer from "../components/AudiobookPlayer.jsx";
 import PlexampToast from "../components/PlexampToast.jsx";
@@ -186,6 +188,7 @@ export default function WorkPage() {
   const incompleteParts = isIncompleteOwnedPartSet(work.part_set);
   const findMissingHref = incompleteParts ? findHref(partSetFindFields(work)) : "";
   const partStatus = incompleteParts ? ownedPartSetStatusLine(work.part_set) : "";
+  const audiobookCta = companionAudiobookView(data.audiobook);
   const availability = bookAvailability({
     work,
     audiobook: data.audiobook,
@@ -520,6 +523,85 @@ export default function WorkPage() {
                 Want
               </button>
             ) : null}
+            <WorkActionMenu label={work.title} testId="work-action">
+              <button type="button" className="work-action-item" onClick={favorite}>
+                {data.favorite ? "In Favorites" : "Favorite"}
+              </button>
+              {audiobookCta.show && audiobookCta.shelved ? (
+                <Link className="work-action-item" to={audiobookCta.listenHref} data-testid="work-audiobook-listen">
+                  {audiobookCta.secondaryLabel}
+                </Link>
+              ) : null}
+              {audiobookCta.show && !audiobookCta.shelved ? (
+                <Link className="work-action-item" to={audiobookCta.findHref} data-testid="work-find-audiobook">
+                  {audiobookCta.primaryLabel}
+                </Link>
+              ) : null}
+              {canListen && playerLink?.href ? (
+                <a
+                  className="work-action-item"
+                  href={playerLink.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  data-testid="work-open-player"
+                >
+                  {playerLink.label || "Open in player"}
+                </a>
+              ) : null}
+              {komgaLink?.href ? (
+                <a
+                  className="work-action-item"
+                  href={komgaLink.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  data-testid="work-open-komga"
+                >
+                  {komgaLink.label || "Open in Komga"}
+                </a>
+              ) : null}
+              {data.can_download ? (
+                <a
+                  className="work-action-item"
+                  href={`/api/works/${work.id}/download${fmt ? `?format=${encodeURIComponent(fmt)}` : ""}`}
+                  data-testid="work-download"
+                >
+                  Download
+                </a>
+              ) : null}
+              {data.ebook_convert && work.kind === "book" ? (
+                <label className="work-action-item work-action-field">
+                  <span>Download format</span>
+                  <select value={fmt} onChange={(e) => setFmt(e.target.value)} aria-label="Download format">
+                    <option value="">Original</option>
+                    {(data.formats || []).map((item) => (
+                      <option key={item} value={item}>
+                        {item.toUpperCase()}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+              {canPromoteIncomingMusic(work, user.role) ? (
+                <button type="button" className="work-action-item" onClick={promote}>
+                  Promote to Plexamp
+                </button>
+              ) : null}
+              {work.review_state === "needs_review" ? (
+                <Link className="work-action-item" to={`/review?work=${encodeURIComponent(work.id)}`}>
+                  Open Review
+                </Link>
+              ) : null}
+              {incompleteParts ? (
+                <Link
+                  className="work-action-item"
+                  to={findMissingHref}
+                  data-testid="find-missing-parts"
+                  title={partStatus || undefined}
+                >
+                  Find missing parts
+                </Link>
+              ) : null}
+            </WorkActionMenu>
             {work.kind !== "music" ? (
               <button
                 type="button"

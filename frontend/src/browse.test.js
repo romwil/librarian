@@ -1,20 +1,32 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  BROWSE_EXPORT_COLUMNS,
   BROWSE_LETTERS,
+  BROWSE_SORTS,
   applyBrowseFilterPatch,
   browseCountLine,
+  browseExportColumnsParam,
+  browseExportHref,
   browseFiltersFromSearchParams,
   browseHasActiveFilters,
   browseHeading,
   browseHref,
   browseParamsObject,
+  browseQueryParams,
+  defaultSortDir,
   formatShelfCount,
   kindCountFromFacets,
   kindShelfTotalLine,
+  loadBrowseListColumns,
   mergeFacetSelection,
+  normalizeExportColumns,
   readBrowseFoldState,
+  saveBrowseListColumns,
+  sortChangePatch,
+  sortDirLabel,
   toggleBrowseFold,
+  toggleBrowseListColumn,
 } from "./browse.js";
 import { coverWashStyle, coverWashUrl } from "./cover.js";
 
@@ -86,6 +98,7 @@ describe("browse href helpers", () => {
       series: "",
       shelf: "favorites",
       sort: "title",
+      sort_dir: "asc",
       genre: "",
     });
     assert.ok(BROWSE_LETTERS.includes("#"));
@@ -101,8 +114,169 @@ describe("browse href helpers", () => {
       series: "Archive Historical",
       shelf: "",
       sort: "author",
+      sort_dir: "asc",
       genre: "Science Fiction",
     });
+  });
+
+  it("defaults sort_dir per sort and honors an explicit override", () => {
+    assert.equal(browseFiltersFromSearchParams(new URLSearchParams("sort=year")).sort_dir, "desc");
+    assert.equal(browseFiltersFromSearchParams(new URLSearchParams("sort=updated")).sort_dir, "desc");
+    assert.equal(browseFiltersFromSearchParams(new URLSearchParams("sort=title")).sort_dir, "asc");
+    assert.equal(browseFiltersFromSearchParams(new URLSearchParams()).sort_dir, "asc");
+    assert.equal(
+      browseFiltersFromSearchParams(new URLSearchParams("sort=year&sort_dir=asc")).sort_dir,
+      "asc",
+    );
+    // Hostile direction values fall back to the sort's default, not a crash.
+    assert.equal(
+      browseFiltersFromSearchParams(new URLSearchParams("sort=year&sort_dir=sideways")).sort_dir,
+      "desc",
+    );
+    // An unknown sort key falls back to author, same as before.
+    assert.equal(browseFiltersFromSearchParams(new URLSearchParams("sort=nope")).sort, "author");
+  });
+});
+
+describe("browse sort direction defaults", () => {
+  it("exposes the four sort keys the command bar offers", () => {
+    assert.deepEqual(BROWSE_SORTS, ["author", "title", "updated", "year"]);
+  });
+
+  it("picks ascending for author/title, descending for updated/year", () => {
+    assert.equal(defaultSortDir("author"), "asc");
+    assert.equal(defaultSortDir("title"), "asc");
+    assert.equal(defaultSortDir("updated"), "desc");
+    assert.equal(defaultSortDir("year"), "desc");
+    // Hostile/unknown sort falls back to the author default.
+    assert.equal(defaultSortDir("'; DROP TABLE works;--"), "asc");
+    assert.equal(defaultSortDir(undefined), "asc");
+  });
+
+  it("builds a sort change patch with the matching default direction", () => {
+    assert.deepEqual(sortChangePatch("year"), { sort: "year", sort_dir: "desc" });
+    assert.deepEqual(sortChangePatch("Title"), { sort: "title", sort_dir: "asc" });
+    assert.deepEqual(sortChangePatch("not-a-sort"), { sort: "author", sort_dir: "asc" });
+  });
+
+  it("labels sort direction for the toggle button", () => {
+    assert.equal(sortDirLabel("asc"), "Ascending");
+    assert.equal(sortDirLabel("desc"), "Descending");
+    assert.equal(sortDirLabel(""), "Ascending");
+    assert.equal(sortDirLabel("DESC"), "Descending");
+  });
+});
+
+describe("browse query params (shared by the route, the API fetch, and CSV export)", () => {
+  it("omits sort_dir when it matches the sort's default", () => {
+    assert.equal(browseQueryParams({ sort: "author", sort_dir: "asc" }).toString(), "");
+    assert.equal(browseQueryParams({ sort: "updated", sort_dir: "desc" }).toString(), "sort=updated");
+  });
+
+  it("writes sort_dir only when it departs from the default", () => {
+    const params = browseQueryParams({ sort: "year", sort_dir: "asc" });
+    assert.equal(params.get("sort"), "year");
+    assert.equal(params.get("sort_dir"), "asc");
+  });
+
+  it("ignores a hostile/unknown sort_dir value", () => {
+    assert.equal(browseQueryParams({ sort: "title", sort_dir: "sideways" }).has("sort_dir"), false);
+  });
+
+  it("carries offset/limit for the API fetch without touching /browse URLs", () => {
+    const params = browseQueryParams({ kind: "book" }, { offset: 48, limit: 48 });
+    assert.equal(params.get("offset"), "48");
+    assert.equal(params.get("limit"), "48");
+    assert.equal(browseHref({ kind: "book" }), "/browse?kind=book");
+  });
+
+  it("keeps browseHref honoring the shared builder end to end", () => {
+    assert.equal(browseHref({ sort: "year", sort_dir: "desc" }), "/browse?sort=year");
+    assert.equal(browseHref({ sort: "year", sort_dir: "asc" }), "/browse?sort=year&sort_dir=asc");
+  });
+});
+
+describe("browse export column building", () => {
+  it("validates and dedupes against the canonical column list", () => {
+    assert.deepEqual(normalizeExportColumns("title,author,title"), ["title", "author"]);
+    assert.deepEqual(normalizeExportColumns(["year", "kind"]), ["year", "kind"]);
+    // Canonical order wins over input order.
+    assert.deepEqual(normalizeExportColumns(["genre", "title"]), ["title", "genre"]);
+  });
+
+  it("drops hostile/unknown entries without throwing", () => {
+    assert.deepEqual(
+      normalizeExportColumns(["title", "<script>alert(1)</script>", "DROP TABLE works", "", null, undefined]),
+      ["title"],
+    );
+    assert.deepEqual(normalizeExportColumns(null), []);
+    assert.deepEqual(normalizeExportColumns(42), []);
+  });
+
+  it("omits the columns param for 'all columns' (null, empty, or the full set)", () => {
+    assert.equal(browseExportColumnsParam(null), "");
+    assert.equal(browseExportColumnsParam([]), "");
+    assert.equal(browseExportColumnsParam(BROWSE_EXPORT_COLUMNS), "");
+    assert.equal(browseExportColumnsParam([...BROWSE_EXPORT_COLUMNS].reverse()), "");
+  });
+
+  it("writes a canonical-order columns param for a real subset", () => {
+    assert.equal(browseExportColumnsParam(["author", "title"]), "title,author");
+  });
+
+  it("builds the export.csv href with filters and columns together", () => {
+    assert.equal(
+      browseExportHref({ kind: "book", shelf: "favorites" }, { columns: ["title", "author"] }),
+      "/api/browse/export.csv?kind=book&shelf=favorites&columns=title%2Cauthor",
+    );
+    assert.equal(
+      browseExportHref({ kind: "book" }),
+      "/api/browse/export.csv?kind=book",
+    );
+    // No secret/hostile columns reach the URL even on a hostile call.
+    assert.equal(
+      browseExportHref({}, { columns: ["password", "api_key", "title"] }),
+      "/api/browse/export.csv?columns=title",
+    );
+  });
+});
+
+describe("browse list column preference", () => {
+  function fakeStorage() {
+    const data = {};
+    return {
+      getItem: (key) => (key in data ? data[key] : null),
+      setItem: (key, value) => {
+        data[key] = String(value);
+      },
+    };
+  }
+
+  it("defaults to title/author/year/kind and persists a valid change", () => {
+    const store = fakeStorage();
+    assert.deepEqual(loadBrowseListColumns(store), ["title", "author", "year", "kind"]);
+    const saved = saveBrowseListColumns(["series", "title"], store);
+    assert.deepEqual(saved, ["title", "series"]);
+    assert.deepEqual(loadBrowseListColumns(store), ["title", "series"]);
+  });
+
+  it("falls back to defaults when storage holds garbage", () => {
+    const store = { getItem: () => "{not json", setItem: () => {} };
+    assert.deepEqual(loadBrowseListColumns(store), ["title", "author", "year", "kind"]);
+  });
+
+  it("toggles one column without ever dropping to zero", () => {
+    const store = fakeStorage();
+    saveBrowseListColumns(["title"], store);
+    const removed = toggleBrowseListColumn(["title"], "title", store);
+    // Only column left — toggle refuses to empty the list.
+    assert.deepEqual(removed, ["title"]);
+    const added = toggleBrowseListColumn(["title"], "author", store);
+    assert.deepEqual(added, ["title", "author"]);
+  });
+
+  it("ignores an unknown column key", () => {
+    assert.deepEqual(toggleBrowseListColumn(["title"], "nope"), ["title"]);
   });
 });
 

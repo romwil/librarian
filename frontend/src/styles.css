@@ -80,6 +80,9 @@
   --glass-card-max: 520px;
   --topbar-h: 64px;
   --reading-column-max: 1200px;
+
+  /* —— Shared control contract (cover grip, stacks bar, every new menu) —— */
+  --tap-min: 44px;
 }
 
 /* Night library / Lights Down — brass lamp, leather, gilt */
@@ -325,9 +328,13 @@ main:focus {
   display: grid;
   place-items: center;
   gap: 2px;
+  min-width: 0;
+  padding-inline: 2px;
   color: var(--muted);
   font-size: 11px;
   font-weight: 600;
+  line-height: 1.15;
+  text-align: center;
 }
 .mobile-tabbar a.is-current {
   color: var(--text);
@@ -342,6 +349,18 @@ main:focus {
   }
   body {
     padding-bottom: 72px;
+  }
+  .topbar {
+    gap: 8px;
+    padding-inline: 12px;
+  }
+  .topbar-end {
+    gap: 6px;
+    min-width: 0;
+  }
+  .profile-menu-name,
+  .profile-menu-role {
+    display: none;
   }
 }
 
@@ -1138,14 +1157,42 @@ a.chip {
 .field select {
   width: 100%;
   box-sizing: border-box;
-  height: 44px;
+  height: var(--tap-min);
   padding: 0 14px;
   border-radius: var(--radius);
   border: 1px solid var(--border);
   background: color-mix(in srgb, var(--bg) 55%, transparent);
+  /* 16px floor — iOS Safari zooms the page on focus below this. */
+  font-size: 16px;
 }
 .field input:focus,
 .field select:focus {
+  outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 1px;
+}
+
+/* Inline label+control pair for the stacks command bar (Kind, Shelf, Letter, Sort, Per page). */
+.field-inline {
+  display: grid;
+  gap: 4px;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+.field-inline > span {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.field-inline select {
+  min-height: var(--tap-min);
+  padding: 0 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+  color: var(--text);
+  font: inherit;
+  font-size: 16px;
+}
+.field-inline select:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
   outline-offset: 1px;
 }
@@ -2793,7 +2840,7 @@ button.cover {
   border-radius: var(--radius);
   border: 1px solid var(--border);
   background: var(--surface-raised);
-  color: var(--paper);
+  color: var(--text);
   font-size: var(--text-sm);
   font-weight: 400;
   letter-spacing: 0;
@@ -4081,6 +4128,325 @@ html[data-theme="lights-down"] .grooming-undo.is-available {
 }
 .browse-fold .chip-row {
   margin-top: 0;
+}
+
+/* ═══════════ Title action menu — grip + portaled popover ═══════════
+   One popover style (.work-action-popover / .work-action-item) is shared by
+   the cover grip, and — as .is-static — the stacks filter/columns/export
+   menus below. Links and buttons here keep their own row contract and never
+   fall back to the global accent .cta. */
+
+.cover-frame {
+  position: relative;
+}
+.work-action-menu {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  z-index: 5;
+}
+.work-action-grip {
+  display: grid;
+  place-items: center;
+  width: var(--tap-min);
+  height: var(--tap-min);
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--paper) 35%, transparent);
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  color: var(--paper);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.work-action-grip:hover,
+.work-action-grip:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  outline: none;
+}
+.work-action-grip:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  outline-offset: 2px;
+}
+
+/* Portaled to document.body — a rail's overflow can't clip it. */
+.work-action-popover {
+  position: fixed;
+  z-index: 1000;
+  display: grid;
+  gap: 2px;
+  min-width: 200px;
+  max-width: min(300px, calc(100vw - 16px));
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  color: var(--text);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.4);
+}
+/* Command-bar menus (filters/columns/export) aren't portaled — plain CSS placement. */
+.work-action-popover.is-static {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: auto;
+}
+
+/* One row contract for every link/button in a work-action menu — same type,
+   weight, and 44px target. Beats the global accent .cta and underlined <a>. */
+.work-action-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: var(--tap-min);
+  margin: 0;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  box-shadow: none;
+  color: var(--text);
+  text-align: left;
+  text-decoration: none;
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  line-height: 1.3;
+  cursor: pointer;
+  filter: none;
+}
+.work-action-item:hover,
+.work-action-item:focus-visible {
+  background: var(--accent-soft);
+  color: var(--text);
+  outline: none;
+}
+.work-action-item:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.work-action-item.work-action-check {
+  gap: 10px;
+}
+.work-action-item.work-action-check input {
+  accent-color: var(--accent);
+}
+.work-action-field {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-height: var(--tap-min);
+  cursor: default;
+}
+.work-action-field > span {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.work-action-field select {
+  width: 100%;
+  min-height: 36px;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+  color: var(--text);
+  font: inherit;
+  font-size: 16px;
+}
+.work-action-label {
+  margin: 0;
+  padding: 6px 10px 2px;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+/* ═══════════ Stacks command bar ═══════════ */
+
+.stacks-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3) var(--space-5);
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+}
+.stacks-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+  flex: 1 1 auto;
+}
+.stacks-filters-toggle {
+  display: none;
+  list-style: none;
+}
+.stacks-filters-toggle::-webkit-details-marker {
+  display: none;
+}
+/* Two classes beat the UA `details:not([open]) > :not(summary){display:none}`,
+   so the filter controls stay visible on desktop regardless of [open]. */
+.stacks-filters > .stacks-filters-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+}
+.stacks-sort-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+  padding-left: var(--space-4);
+  border-left: 1px solid var(--border-subtle);
+}
+.stacks-menu-wrap {
+  position: relative;
+}
+.stacks-menu-trigger {
+  min-height: var(--tap-min);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.stacks-menu-trigger:hover,
+.stacks-menu-trigger:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  outline: none;
+}
+.stacks-menu-active {
+  font-weight: 600;
+}
+.stacks-clear {
+  min-height: var(--tap-min);
+  padding: 0 var(--space-3);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.stacks-sort-dir {
+  min-height: var(--tap-min);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.stacks-view-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.stacks-view-toggle button {
+  min-height: var(--tap-min);
+  padding: 0 var(--space-3);
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.stacks-view-toggle button.is-active {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+@media (max-width: 720px) {
+  .stacks-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .stacks-filters-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: var(--tap-min);
+    padding: 0 var(--space-3);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius);
+    background: var(--surface);
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .stacks-filters:not([open]) .stacks-filters-body {
+    display: none;
+  }
+  .stacks-filters[open] > .stacks-filters-body {
+    margin-top: var(--space-3);
+    padding: var(--space-3);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius);
+    background: var(--surface);
+  }
+  .stacks-sort-group {
+    padding-left: 0;
+    border-left: 0;
+    border-top: 1px solid var(--border-subtle);
+    padding-top: var(--space-3);
+  }
+}
+
+/* ═══════════ Stacks list view ═══════════ */
+
+.stacks-list {
+  display: grid;
+  border-top: 1px solid var(--border);
+}
+.stacks-list-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--tap-min);
+  padding: 6px var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: var(--text-sm);
+}
+.stacks-list-row > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.stacks-list-header {
+  min-height: 34px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.stacks-list-title a {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-weight: 600;
 }
 
 /* ── Multipart chase, gap beads, Review craft, empty warmth ── */

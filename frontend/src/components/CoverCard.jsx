@@ -1,9 +1,8 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api.js";
 import { bookAvailability, catalogStatus } from "../availability.js";
 import { saveBeyondGet } from "../beyondGet.js";
-import { humanError } from "../copy.js";
 import AvailabilityActions from "./AvailabilityActions.jsx";
 import CatalogVerb from "./CatalogVerb.jsx";
 import {
@@ -13,12 +12,18 @@ import {
   coverClassNames,
   coverOverlay,
   coverTip,
+  isBeyondWork,
   jobChipLabel,
   jobChipTone,
   localCoverUrl,
   shouldOpenPeek,
 } from "../cover.js";
+import { canPromoteIncomingMusic, humanError } from "../copy.js";
 import { beyondHostName, findHref, gapFindFields } from "../find.js";
+import { isIncompleteOwnedPartSet, partSetFindFields } from "../findParts.js";
+import { canListenInApp, workListenPath } from "../listen.js";
+import { canOpenInlineMedia, canReadInApp, readerCtaLabel, workDownloadUrl, workReaderPath } from "../reader.js";
+import WorkActionMenu from "./WorkActionMenu.jsx";
 import { useWorkPeek } from "./WorkPeekProvider.jsx";
 
 function gapBeadModel(work = {}) {
@@ -58,6 +63,10 @@ export default function CoverCard({ work, onRequest, badge, beyond = false, role
   const navigate = useNavigate();
   const kind = work.kind || "book";
   const isGap = Boolean(work.gap || work.kind === "gap");
+  const isBeyond = beyond || isBeyondWork(work);
+  // The grip is the cover's only new control. Gap/beyond cards aren't real
+  // catalog rows yet — no GET /api/works/:id to lazy-load, no menu to show.
+  const showActions = Boolean(work.id) && !isGap && !isBeyond;
   const status = work.job_status || badge;
   const tone = isGap ? "" : jobChipTone(status);
   const chip = isGap ? "" : status ? jobChipLabel(status, role) : "";
@@ -138,6 +147,62 @@ export default function CoverCard({ work, onRequest, badge, beyond = false, role
     }
   }
 
+  const [detail, setDetail] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [favorite, setFavorite] = useState(Boolean(work.favorite));
+  const [promoting, setPromoting] = useState(false);
+  const [actionNote, setActionNote] = useState("");
+
+  // Rail/browse summaries don't know Read/Listen/Download yet — the grip
+  // lazy-loads the full work once, on first open.
+  function loadDetail() {
+    if (!showActions || detail || detailLoading) return;
+    setDetailLoading(true);
+    api
+      .work(work.id)
+      .then((data) => setDetail(data))
+      .catch((err) => setActionNote(humanError(err)))
+      .finally(() => setDetailLoading(false));
+  }
+
+  async function toggleFavorite() {
+    try {
+      const next = await api.favorite(work.id);
+      setFavorite(Boolean(next.favorite));
+    } catch (err) {
+      setActionNote(humanError(err));
+    }
+  }
+
+  async function promote() {
+    if (!work.id || promoting) return;
+    setPromoting(true);
+    setActionNote("");
+    try {
+      const result = await api.promote(work.id);
+      setDetail((current) => ({
+        ...(current || {}),
+        work: { ...(current?.work || {}), ...(result?.work || {}) },
+      }));
+    } catch (err) {
+      setActionNote(humanError(err));
+    } finally {
+      setPromoting(false);
+    }
+  }
+
+  const menuWork = detail?.work ? { ...work, ...detail.work } : work;
+  const canDownload = Boolean(detail?.can_download);
+  const canRead = Boolean(detail?.can_read) && canReadInApp(menuWork, detail?.files);
+  const canListen = Boolean(detail?.listen?.can_listen) && canListenInApp(menuWork, detail?.files, canDownload);
+  const canInlineOpen = canOpenInlineMedia(menuWork, canDownload, canRead);
+  const readLabel = readerCtaLabel(menuWork) || "Read";
+  const incompleteParts = isIncompleteOwnedPartSet(menuWork.part_set);
+  const findMissingHref = incompleteParts ? findHref(partSetFindFields(menuWork)) : "";
+  const canPromote = canPromoteIncomingMusic(menuWork, role);
+  const playerLink = detail?.listen?.player || null;
+  const komgaLink = detail?.komga?.reader || null;
+
   function onClick(event) {
     if (isGap) {
       const href = findHref(gapFindFields(work));
@@ -170,6 +235,7 @@ export default function CoverCard({ work, onRequest, badge, beyond = false, role
 
   return (
     <div className={`cover-unit cover-unit-${kind}${beyond ? " is-beyond" : ""}${isGap ? " is-gap-unit" : ""}`}>
+      <div className="cover-frame">
       <button
         type="button"
         className={coverClassNames(item, { art: hasArt })}
@@ -195,6 +261,67 @@ export default function CoverCard({ work, onRequest, badge, beyond = false, role
           </span>
         ) : null}
       </button>
+        {showActions ? (
+          <WorkActionMenu label={tip || caption} onOpen={loadDetail} testId="rail-action">
+            <button type="button" className="work-action-item" onClick={toggleFavorite}>
+              {favorite ? "In Favorites" : "Favorite"}
+            </button>
+            {detailLoading ? <span className="work-action-label">Warming the lamp…</span> : null}
+            {detail && canListen ? (
+              <Link className="work-action-item" to={workListenPath(work.id)}>
+                {Number(menuWork.progress) > 0 ? "Continue listening" : "Listen"}
+              </Link>
+            ) : null}
+            {detail && canRead ? (
+              <Link className="work-action-item" to={workReaderPath(work.id)}>
+                {readLabel}
+              </Link>
+            ) : detail && canInlineOpen ? (
+              <a
+                className="work-action-item"
+                href={`/api/works/${encodeURIComponent(work.id)}/download?inline=1`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {readLabel}
+              </a>
+            ) : null}
+            {detail && canListen && playerLink?.href ? (
+              <a className="work-action-item" href={playerLink.href} target="_blank" rel="noreferrer">
+                {playerLink.label || "Open in player"}
+              </a>
+            ) : null}
+            {detail && komgaLink?.href ? (
+              <a className="work-action-item" href={komgaLink.href} target="_blank" rel="noreferrer">
+                {komgaLink.label || "Open in Komga"}
+              </a>
+            ) : null}
+            {detail && canDownload ? (
+              <a className="work-action-item" href={workDownloadUrl(work.id)}>
+                Download
+              </a>
+            ) : null}
+            {detail && canPromote ? (
+              <button type="button" className="work-action-item" onClick={promote} disabled={promoting}>
+                {promoting ? "Promoting…" : "Promote to Plexamp"}
+              </button>
+            ) : null}
+            {detail && incompleteParts ? (
+              <Link className="work-action-item" to={findMissingHref}>
+                Find missing parts
+              </Link>
+            ) : null}
+            <Link className="work-action-item" to={`/works/${encodeURIComponent(work.id)}`}>
+              Open full page
+            </Link>
+            {actionNote ? (
+              <p className="work-action-label" role="status">
+                {actionNote}
+              </p>
+            ) : null}
+          </WorkActionMenu>
+        ) : null}
+      </div>
       <p className="cover-caption" title={tip || undefined}>
         {caption}
         {host ? <span className="cover-host"> · {host}</span> : null}

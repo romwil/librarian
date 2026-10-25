@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { NavLink, useNavigate } from "react-router-dom";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api.js";
+import { stacksNavState } from "../lib/stacksNav.js";
 import ProfileMenu from "./ProfileMenu.jsx";
 import InboxBadgeButton from "./InboxBadgeButton.jsx";
 import {
@@ -15,6 +16,8 @@ import {
 
 export default function AppChrome({ user, features, reviewCount = 0, inboxUnread = 0, children }) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const stacksNav = stacksNavState(location.pathname, location.search);
   const op = user.role === "owner" || user.role === "op";
   const owner = user.role === "owner";
   const [ambient, setAmbient] = useState("off");
@@ -91,9 +94,24 @@ export default function AppChrome({ user, features, reviewCount = 0, inboxUnread
           <NavLink to="/" end className={({ isActive }) => (isActive ? "is-current" : undefined)}>
             Hall
           </NavLink>
+          <Link
+            to="/browse"
+            className={stacksNav.stacks ? "is-current" : undefined}
+            aria-current={stacksNav.stacks ? "page" : undefined}
+            title="Browse the stacks"
+          >
+            Stacks
+          </Link>
           <NavLink to="/search" className={({ isActive }) => (isActive ? "is-current" : undefined)}>
             Search
           </NavLink>
+          <Link
+            to="/browse?shelf=favorites"
+            className={stacksNav.favorites ? "is-current" : undefined}
+            aria-current={stacksNav.favorites ? "page" : undefined}
+          >
+            Favorites
+          </Link>
           <NavLink to="/wanted" className={({ isActive }) => (isActive ? "is-current" : undefined)}>
             Wanted
           </NavLink>
@@ -126,28 +144,34 @@ export default function AppChrome({ user, features, reviewCount = 0, inboxUnread
       <main id="main" tabIndex={-1}>
         {children}
       </main>
-      <nav
-        className="mobile-tabbar"
-        aria-label="Mobile"
-        style={{ "--tab-count": op ? 5 : 4 }}
-      >
+      <nav className="mobile-tabbar" aria-label="Mobile" style={{ "--tab-count": 6 }}>
         <NavLink to="/" end className={({ isActive }) => (isActive ? "is-current" : undefined)}>
           Hall
         </NavLink>
+        <Link
+          to="/browse"
+          className={stacksNav.stacks ? "is-current" : undefined}
+          aria-current={stacksNav.stacks ? "page" : undefined}
+          title="Browse the stacks"
+        >
+          Stacks
+        </Link>
         <NavLink to="/search" className={({ isActive }) => (isActive ? "is-current" : undefined)}>
           Search
         </NavLink>
+        <Link
+          to="/browse?shelf=favorites"
+          className={stacksNav.favorites ? "is-current" : undefined}
+          aria-current={stacksNav.favorites ? "page" : undefined}
+        >
+          Favorites
+        </Link>
         <NavLink to="/wanted" className={({ isActive }) => (isActive ? "is-current" : undefined)}>
           Wanted
         </NavLink>
         <NavLink to="/card" className={({ isActive }) => (isActive ? "is-current" : undefined)}>
           Library card
         </NavLink>
-        {op ? (
-          <NavLink to="/review" className={({ isActive }) => (isActive ? "is-current" : undefined)}>
-            Holds
-          </NavLink>
-        ) : null}
       </nav>
     </div>
   );
