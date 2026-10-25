@@ -463,7 +463,9 @@ def lantern_weather(
     limited = max(0, int(rate_limited_count or 0))
     if errors + oks < 1:
         return LANTERN_IDLE
-    if last_error or (errors > 0 and errors >= oks):
+    # Dark when the latest probe failed, or the host has never spoken.
+    # Older failures do not keep a lantern dark after a later success.
+    if _text(last_error) or (errors > 0 and oks < 1):
         return LANTERN_DARK
     if limited > 0 or (empties > 0 and empties >= max(1, oks // 2)):
         return LANTERN_DIM
