@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import NamedShelves from "./NamedShelves.jsx";
 import { useAnchoredPopover } from "../hooks/useAnchoredPopover.js";
 import {
   BROWSE_EXPORT_COLUMNS,
@@ -128,6 +129,8 @@ export default function StacksCommandBar({
   genreRows,
   showGenres,
   shelves = [],
+  shelfPresence = "",
+  onShelfNamed,
 }) {
   const activeCount = [
     filters.kind,
@@ -289,6 +292,12 @@ export default function StacksCommandBar({
         {view === "list" ? <ColumnsMenu columns={listColumns} onToggle={onToggleColumn} /> : null}
         <ExportMenu filters={filters} columns={listColumns} />
       </div>
+      <details className="stacks-name-shelf">
+        <summary className="stacks-name-shelf-toggle" role="button" data-testid="stacks-name-shelf">
+          Name a shelf
+        </summary>
+        <NamedShelves presence={shelfPresence} onChanged={onShelfNamed} />
+      </details>
     </div>
   );
 }

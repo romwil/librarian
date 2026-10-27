@@ -19,6 +19,8 @@ test("Hall keeps the hunt box and living rails, and leaves the catalog grid off 
   assert.equal(hallSrc.includes("ShelfMore"), false);
   assert.equal(hallSrc.includes("HallCollection"), false);
   assert.equal(hallSrc.includes("NamedShelves"), false);
+  assert.equal(hallSrc.includes("TonightShelf"), false);
+  assert.equal(hallSrc.includes("SeriesCatchUp"), false);
   assert.equal(hallSrc.includes('title="Books"'), false);
   assert.match(hallSrc, /hero-search-block/);
   assert.match(hallSrc, /variant="hero"/);

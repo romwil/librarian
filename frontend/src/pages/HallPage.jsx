@@ -4,8 +4,6 @@ import { api } from "../api.js";
 import { browseHref } from "../browse.js";
 import QueryForm from "../components/QueryForm.jsx";
 import Rail from "../components/Rail.jsx";
-import SeriesCatchUp from "../components/SeriesCatchUp.jsx";
-import TonightShelf from "../components/TonightShelf.jsx";
 import { emptyHallCopy, humanError, setupComplete } from "../copy.js";
 import { continueRailItems, notedRailItems } from "../hallRails.js";
 
@@ -32,7 +30,7 @@ function NotedRail({ items }) {
   );
 }
 
-function HallRails({ role, owner, configured }) {
+function HallRails({ owner, configured }) {
   const [hall, setHall] = useState(null);
   const [phase, setPhase] = useState("loading");
   const [loadError, setLoadError] = useState("");
@@ -134,8 +132,6 @@ function HallRails({ role, owner, configured }) {
           ) : null}
         </section>
       ) : null}
-      <TonightShelf tonight={hall?.tonight} role={role} />
-      <SeriesCatchUp catchUp={hall?.series_catch_up} role={role} />
       {listening ? <Rail title="Continue listening" items={listening} /> : null}
       {reading ? <Rail title="Continue reading" items={reading} /> : null}
       {recent ? <Rail title="Recently added" items={recent} /> : null}
@@ -187,7 +183,7 @@ export default function HallPage() {
           ariaLabel="Search"
         />
       </header>
-      <HallRails role={user?.role} owner={owner} configured={configured} />
+      <HallRails owner={owner} configured={configured} />
     </div>
   );
 }

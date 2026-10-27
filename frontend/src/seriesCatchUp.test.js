@@ -105,13 +105,18 @@ test("SeriesCatchUp avoids KPI dashboard chrome", () => {
   assert.doesNotMatch(catchUpSrc, /streak|badge|score/i);
 });
 
-test("Hall mounts catch-up after Tonight’s Shelf", () => {
-  assert.match(hallSrc, /import SeriesCatchUp from "\.\.\/components\/SeriesCatchUp\.jsx"/);
-  const shelfAt = hallSrc.indexOf("<TonightShelf");
-  const catchUpAt = hallSrc.indexOf("<SeriesCatchUp");
-  assert.ok(shelfAt > -1 && catchUpAt > shelfAt, "catch-up must follow Tonight’s Shelf");
-  assert.match(hallSrc, /catchUp=\{hall\?\.series_catch_up\}/);
-  assert.match(hallSrc, /gapsLocal\(\)/);
+test("Hall does not mount Tonight’s shelf or Series catch-up", () => {
+  assert.equal(hallSrc.includes("TonightShelf"), false);
+  assert.equal(hallSrc.includes("SeriesCatchUp"), false);
+  assert.equal(hallSrc.includes("<TonightShelf"), false);
+  assert.equal(hallSrc.includes("<SeriesCatchUp"), false);
+  const listenAt = hallSrc.indexOf('title="Continue listening"');
+  const readAt = hallSrc.indexOf('title="Continue reading"');
+  const recentAt = hallSrc.indexOf('title="Recently added"');
+  const favoritesAt = hallSrc.indexOf('title="Favorites"');
+  assert.ok(listenAt > -1 && readAt > listenAt, "Continue reading follows Continue listening");
+  assert.ok(recentAt > readAt, "Recently added follows Continue reading");
+  assert.ok(favoritesAt > recentAt, "Favorites follows Recently added");
 });
 
 test("Work soft invite rides the series ribbon", () => {

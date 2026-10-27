@@ -15,7 +15,6 @@ import {
 } from "../browse.js";
 import BrowseListView from "../components/BrowseListView.jsx";
 import CoverCard from "../components/CoverCard.jsx";
-import NamedShelves from "../components/NamedShelves.jsx";
 import StacksCommandBar from "../components/StacksCommandBar.jsx";
 import WarmLoad from "../components/WarmLoad.jsx";
 import { humanError } from "../copy.js";
@@ -188,8 +187,9 @@ export default function BrowsePage() {
           genreRows={genreChips}
           showGenres={showGenres}
           shelves={namedShelves}
+          shelfPresence={shelfPresence}
+          onShelfNamed={onShelfNamed}
         />
-        <NamedShelves presence={shelfPresence} onChanged={onShelfNamed} />
       </section>
       {error ? <p className="alert hall-alert">{error}</p> : null}
       <section className="browse-grid-wrap">

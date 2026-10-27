@@ -62,8 +62,23 @@ test("mobile tab bar is Hall, Stacks, Search, Favorites, Wanted, and Library car
   assert.match(chromeSrc, /to="\/card"/);
   assert.match(chromeSrc, /--tab-count/);
   assert.match(chromeSrc, /id="main"/);
-  assert.match(chromeSrc, /Skip to library/);
+  assert.equal(chromeSrc.includes("Skip to library"), false);
+  assert.equal(chromeSrc.includes("skip-link"), false);
   assert.equal(chromeSrc.includes("bag-glyph"), false);
+});
+
+test("phone tab bar is fixed to the viewport and the skip link is gone", () => {
+  const loginSrc = readFileSync(join(root, "pages/LoginPage.jsx"), "utf8");
+  assert.equal(loginSrc.includes("Skip to library"), false);
+  assert.equal(loginSrc.includes("skip-link"), false);
+  assert.equal(stylesSrc.includes(".skip-link"), false);
+  assert.match(stylesSrc, /\.room > \.mobile-tabbar\s*\{[^}]*position:\s*fixed/s);
+  assert.match(stylesSrc, /\.room > \.mobile-tabbar\s*\{[^}]*bottom:\s*0/s);
+  assert.match(stylesSrc, /minmax\(0,\s*1fr\)/);
+  assert.match(stylesSrc, /env\(safe-area-inset-bottom,\s*0px\)/);
+  assert.match(stylesSrc, /scroll-padding-bottom:\s*var\(--mobile-tabbar-clearance\)/);
+  assert.match(stylesSrc, /padding-bottom:\s*var\(--mobile-tabbar-clearance\)/);
+  assert.match(stylesSrc, /min-height:\s*44px/);
 });
 
 test("/browse is the stacks room and /find redirects to Search", () => {
