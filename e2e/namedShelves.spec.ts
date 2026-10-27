@@ -13,7 +13,10 @@ test.describe("Named household shelves", () => {
     const shelf = page.getByRole("combobox", { name: "Shelf" });
     await expect(shelf).toBeVisible();
     await expect(shelf.getByRole("option", { name: "Favorites" })).toHaveCount(1);
-    await expect(page.getByRole("heading", { name: "Name a shelf" })).toBeVisible();
+    const nameShelf = page.getByRole("button", { name: "Name a shelf" });
+    await expect(nameShelf).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "Shelf name" })).toBeHidden();
+    await nameShelf.click();
     await expect(page.getByRole("textbox", { name: "Shelf name" })).toBeVisible();
     await expect(page.getByRole("checkbox", { name: "Share with the house" })).toBeChecked();
     await expect(page.getByRole("button", { name: "Name this shelf" })).toBeVisible();
@@ -21,6 +24,7 @@ test.describe("Named household shelves", () => {
     await page.goto("/");
     await expect(page.getByRole("search")).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole("heading", { name: "Name a shelf" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Name a shelf" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "More shelves" })).toHaveCount(0);
   });
 });

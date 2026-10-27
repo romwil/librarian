@@ -65,3 +65,62 @@ export function splitWorkActions(actions, primaryKey = "") {
 export function primaryActionOrder() {
   return [...PRIMARY_ORDER];
 }
+
+function finite(value, fallback = 0) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+/**
+ * Where the portaled ⋮ menu sits.
+ *
+ * On a peek the grip is a sheet row under the primary action, not a cover
+ * overlay. The menu matches that column and opens beneath the grip so its
+ * rows line up with the sheet instead of covering Read.
+ * Cover and work-page grips keep the anchor placement.
+ */
+export function placeActionMenu(anchor, menu, anchorEl) {
+  const margin = 8;
+  if (typeof window === "undefined") {
+    return { top: `${margin}px`, left: `${margin}px` };
+  }
+  const viewW = finite(window.innerWidth);
+  const viewH = finite(window.innerHeight);
+  const menuWidth = finite(menu?.width);
+  const menuHeight = finite(menu?.height);
+  const anchorTop = finite(anchor?.top);
+  const anchorBottom = finite(anchor?.bottom);
+  const anchorLeft = finite(anchor?.left);
+  const sheet = peekSheetBox(anchorEl);
+  if (sheet) {
+    const maxWidth = Math.max(0, viewW - margin * 2);
+    const width = Math.min(finite(sheet.width), maxWidth);
+    const left = Math.max(margin, Math.min(finite(sheet.left), viewW - width - margin));
+    const below = anchorBottom + margin;
+    const top = Math.max(margin, Math.min(below, viewH - menuHeight - margin));
+    return {
+      top: `${top}px`,
+      left: `${left}px`,
+      width: `${width}px`,
+      minWidth: "0px",
+      maxWidth: `${width}px`,
+    };
+  }
+  const above = anchorTop - margin - menuHeight;
+  const below = anchorBottom + margin;
+  const top =
+    above >= margin || below + menuHeight > viewH
+      ? Math.max(margin, Math.min(above, viewH - menuHeight - margin))
+      : Math.min(below, viewH - menuHeight - margin);
+  const left = Math.max(margin, Math.min(anchorLeft, viewW - menuWidth - margin));
+  return { top: `${top}px`, left: `${left}px` };
+}
+
+function peekSheetBox(anchorEl) {
+  if (!anchorEl || typeof anchorEl.closest !== "function") return null;
+  if (!anchorEl.closest(".peek")) return null;
+  const column = anchorEl.closest(".peek-copy") || anchorEl.closest(".peek");
+  const box = column?.getBoundingClientRect?.();
+  if (!box || !(finite(box.width) > 0)) return null;
+  return box;
+}

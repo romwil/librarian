@@ -94,40 +94,28 @@ test.describe("Series catch-up", () => {
     await loginAsOwner(page);
   });
 
-  test("invites the household to finish a nearly whole run", async ({ page }) => {
+  test("Hall does not invite the household from Series catch-up", async ({ page }) => {
     await mockHall(page, CATCH_UP_HALL);
     await page.goto("/");
     await dismissWhatsNewIfPresent(page);
 
-    const region = page.getByRole("region", { name: "Series catch-up" });
-    await expect(region).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByRole("heading", { name: "A hole or two from whole" })).toBeVisible();
-    await expect(region.getByText("One issue from a whole Saga.")).toBeVisible();
-    await expect(region.getByText("One issue from a whole Linux Magazin.")).toBeVisible();
-    await expect(region.getByText(/No hurry/)).toBeVisible();
-    await expect(region.getByRole("img", { name: /On the shelf, missing 3/ })).toBeVisible();
-
-    // Invitation, never a scoreboard.
-    await expect(region.getByText(/\d+\s*\/\s*\d+/)).toHaveCount(0);
-    await expect(region.getByText(/bagging/i)).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Hall" })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("hall-shelves")).toHaveCount(1);
+    await expect(page.getByRole("region", { name: "Series catch-up" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "A hole or two from whole" })).toHaveCount(0);
+    await expect(page.getByText("One issue from a whole Saga.")).toHaveCount(0);
+    await expect(page.getByText("One issue from a whole Linux Magazin.")).toHaveCount(0);
+    await expect(page.getByText(/bagging/i)).toHaveCount(0);
   });
 
-  test("owner CTA opens Find with the hole prefilled — no auto-queue", async ({ page }) => {
+  test("Hall does not send the household to Find from a catch-up hole", async ({ page }) => {
     await mockHall(page, CATCH_UP_HALL);
     await page.goto("/");
     await dismissWhatsNewIfPresent(page);
 
-    const region = page.getByRole("region", { name: "Series catch-up" });
-    await expect(region).toBeVisible({ timeout: 30_000 });
-    const cta = region.getByRole("link", { name: "Find this hole" }).first();
-    await expect(cta).toBeVisible();
-    await cta.click();
-
-    await expect(page).toHaveURL(/\/search\?/);
-    const url = new URL(page.url());
-    expect(url.searchParams.get("kind")).toBe("comic");
-    expect(url.searchParams.get("series")).toBe("Saga");
-    expect(url.searchParams.get("issue")).toBe("3");
+    await expect(page.getByRole("heading", { name: "Hall" })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("region", { name: "Series catch-up" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Find this hole" })).toHaveCount(0);
   });
 
   test("stays hidden when the shelf is already whole", async ({ page }) => {
@@ -135,7 +123,8 @@ test.describe("Series catch-up", () => {
     await page.goto("/");
     await dismissWhatsNewIfPresent(page);
 
-    await expect(page.getByTestId("hall-shelves")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("heading", { name: "Hall" })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("hall-shelves")).toHaveCount(1);
     await expect(page.getByRole("region", { name: "Series catch-up" })).toHaveCount(0);
   });
 
@@ -147,33 +136,25 @@ test.describe("Series catch-up", () => {
     await page.goto("/");
     await dismissWhatsNewIfPresent(page);
 
-    await expect(page.getByRole("heading", { name: "Hall" })).toBeVisible();
-    await expect(page.getByTestId("hall-shelves")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("heading", { name: "Hall" })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("hall-shelves")).toHaveCount(1);
     await expect(page.getByRole("region", { name: "Series catch-up" })).toHaveCount(0);
   });
 
-  test("reduced-motion keeps the invitation readable and static", async ({ page }) => {
+  test("reduced-motion keeps Hall readable without Series catch-up", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await mockHall(page, CATCH_UP_HALL);
     await page.goto("/");
     await dismissWhatsNewIfPresent(page);
 
-    const region = page.getByRole("region", { name: "Series catch-up" });
-    await expect(region).toBeVisible({ timeout: 30_000 });
-    await expect(region.getByText("One issue from a whole Saga.")).toBeVisible();
-    await expect(region.getByRole("link", { name: "Find this hole" }).first()).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Hall" })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("region", { name: "Series catch-up" })).toHaveCount(0);
+    await expect(page.getByText("One issue from a whole Saga.")).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Find this hole" })).toHaveCount(0);
 
     const breathToken = await page.evaluate(() =>
       getComputedStyle(document.documentElement).getPropertyValue("--motion-breath").trim(),
     );
     expect(breathToken).toBe("1ms");
-
-    // Nothing inside the invitation may still be breathing.
-    const running = await region.evaluate((node) =>
-      [node, ...node.querySelectorAll("*")].filter(
-        (el) => getComputedStyle(el as Element).animationName !== "none",
-      ).length,
-    );
-    expect(running).toBe(0);
   });
 });

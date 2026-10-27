@@ -1,5 +1,6 @@
 import { createPortal } from "react-dom";
 import { useAnchoredPopover } from "../hooks/useAnchoredPopover.js";
+import { placeActionMenu } from "../lib/workActionMenu.js";
 
 /**
  * ⋮ grip + portaled action menu for a title cover (work hero, peek, rail
@@ -10,18 +11,8 @@ import { useAnchoredPopover } from "../hooks/useAnchoredPopover.js";
  *
  * Portaled to `document.body` so a rail's overflow can't clip the menu, and
  * closes on Escape, outside click, or any link/button activated inside it.
+ * The grip stops the click so a cover button underneath does not open.
  */
-function placeActionMenu(anchor, menu) {
-  const margin = 8;
-  const above = anchor.top - margin - menu.height;
-  const below = anchor.bottom + margin;
-  const top =
-    above >= margin || below + menu.height > window.innerHeight
-      ? Math.max(margin, Math.min(above, window.innerHeight - menu.height - margin))
-      : Math.min(below, window.innerHeight - menu.height - margin);
-  const left = Math.max(margin, Math.min(anchor.left, window.innerWidth - menu.width - margin));
-  return { top: `${top}px`, left: `${left}px` };
-}
 
 export default function WorkActionMenu({ label = "", onOpen, children, className = "", testId = "work-action" }) {
   const { open, setOpen, rootRef, popoverRef, popoverStyle } = useAnchoredPopover({

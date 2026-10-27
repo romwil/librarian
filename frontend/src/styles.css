@@ -198,22 +198,6 @@ input {
   color: var(--fg);
 }
 
-.skip-link {
-  position: absolute;
-  left: 1rem;
-  top: 0;
-  z-index: 1000;
-  padding: 0.5rem 1rem;
-  background: var(--surface-raised);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  transform: translateY(-160%);
-}
-.skip-link:focus {
-  transform: translateY(0.75rem);
-}
-
 main:focus {
   outline: none;
 }
@@ -309,6 +293,13 @@ main:focus {
   border: 1px solid color-mix(in srgb, var(--gilt) 40%, transparent);
 }
 
+/* Phone tab row. Fixed to the visual viewport; `.room > *` would otherwise
+   win on specificity and put the bar back in document flow. The clearance
+   token lives on :root so the page padding (an ancestor) can use it.
+   Height includes the home-indicator inset so labels sit above it. */
+:root {
+  --mobile-tabbar-clearance: calc(48px + env(safe-area-inset-bottom, 0px));
+}
 .mobile-tabbar {
   display: none;
   position: fixed;
@@ -316,25 +307,40 @@ main:focus {
   right: 0;
   bottom: 0;
   z-index: 50;
-  height: 64px;
-  padding-bottom: env(safe-area-inset-bottom);
+  width: 100%;
+  max-width: 100%;
+  min-height: var(--mobile-tabbar-clearance);
+  padding: 2px 2px env(safe-area-inset-bottom, 0px);
   background: color-mix(in srgb, var(--surface) 92%, transparent);
   backdrop-filter: blur(14px);
   border-top: 1px solid var(--border-subtle);
-  display: none;
-  grid-template-columns: repeat(var(--tab-count, 4), 1fr);
+  grid-template-columns: repeat(var(--tab-count, 6), minmax(0, 1fr));
+  align-items: stretch;
 }
 .mobile-tabbar a {
   display: grid;
   place-items: center;
-  gap: 2px;
   min-width: 0;
-  padding-inline: 2px;
+  min-height: 44px;
+  padding: 4px 1px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: clamp(8px, 2.6vw, 11px);
   font-weight: 600;
-  line-height: 1.15;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
   text-align: center;
+  text-decoration: none;
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+.mobile-tabbar a:hover,
+.mobile-tabbar a:focus-visible {
+  color: var(--text);
+  text-decoration: none;
+}
+.mobile-tabbar a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 .mobile-tabbar a.is-current {
   color: var(--text);
@@ -347,8 +353,11 @@ main:focus {
   .mobile-tabbar {
     display: grid;
   }
-  body {
-    padding-bottom: 72px;
+  html:has(.mobile-tabbar) {
+    scroll-padding-bottom: var(--mobile-tabbar-clearance);
+  }
+  body:has(.mobile-tabbar) {
+    padding-bottom: var(--mobile-tabbar-clearance);
   }
   .topbar {
     gap: 8px;
@@ -839,9 +848,6 @@ main:focus {
   .search-field {
     min-height: var(--hero-search-h);
     height: auto;
-  }
-  .mobile-tabbar {
-    font-size: 10px;
   }
 }
 
@@ -3540,13 +3546,13 @@ html[data-theme="lights-down"] .grooming-undo.is-available {
 }
 .named-shelves {
   position: relative;
-  margin: var(--space-5) 0 var(--space-4);
-  padding: var(--space-4);
-  border-radius: 12px;
-  border: 1px solid color-mix(in srgb, var(--brass, #c9954a) 18%, var(--border-subtle));
-  background:
-    radial-gradient(ellipse at 12% 0%, color-mix(in srgb, var(--brass, #c9954a) 14%, transparent), transparent 55%),
-    color-mix(in srgb, var(--paper, #f4ead6) 40%, var(--surface));
+  margin: var(--space-3) 0 0;
+  padding: var(--space-3);
+  max-width: 100%;
+  min-width: 0;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-subtle);
+  background: var(--surface);
 }
 .named-shelves-glow {
   position: absolute;
@@ -3568,6 +3574,8 @@ html[data-theme="lights-down"] .grooming-undo.is-available {
 }
 .named-shelves-presence {
   margin: 0 0 var(--space-3);
+  max-width: 100%;
+  overflow-wrap: anywhere;
   position: relative;
   z-index: 1;
 }
@@ -3576,22 +3584,40 @@ html[data-theme="lights-down"] .grooming-undo.is-available {
   flex-wrap: wrap;
   gap: var(--space-2);
   align-items: center;
-  margin-bottom: var(--space-3);
+  margin: 0;
+  max-width: 100%;
+  min-width: 0;
   position: relative;
   z-index: 1;
 }
+.named-shelves-label {
+  flex: 1 1 12rem;
+  min-width: 0;
+  max-width: 100%;
+}
 .named-shelves-form input[type="text"] {
-  min-width: 12rem;
-  padding: 0.45rem 0.7rem;
+  width: 100%;
+  min-width: 0;
+  min-height: var(--tap-min);
+  padding: 0 0.7rem;
+  box-sizing: border-box;
   border-radius: 0.4rem;
-  border: 1px solid color-mix(in srgb, var(--brass, #c9954a) 40%, var(--border-subtle));
-  background: var(--surface);
-  color: var(--fg);
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  color: var(--text);
+  font: inherit;
+  font-size: max(16px, 1rem);
 }
 .named-shelves-share {
   display: inline-flex;
   gap: 0.4rem;
   align-items: center;
+  min-height: var(--tap-min);
+  font-size: var(--text-sm);
+}
+.named-shelves .cta.compact {
+  min-height: var(--tap-min);
+  padding: 0 var(--space-4);
   font-size: var(--text-sm);
 }
 @keyframes named-shelves-breathe {
@@ -3942,6 +3968,7 @@ html[data-theme="lights-down"] .grooming-undo.is-available {
 .browse-grid-wrap {
   width: min(1200px, calc(100% - 2 * var(--gutter)));
   margin: 0 auto;
+  min-width: 0;
 }
 .browse-count {
   margin: 0 0 var(--space-4);
@@ -3950,6 +3977,71 @@ html[data-theme="lights-down"] .grooming-undo.is-available {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
   gap: var(--space-4);
+  min-width: 0;
+}
+/* A large reading size makes 9.5rem wider than half a phone, so auto-fill
+   drops to one column and the cover sits soft in the leftover space. */
+@media (max-width: 720px) {
+  .browse-page .browse-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-3) var(--space-2);
+    align-items: start;
+  }
+  .browse-page .browse-grid > .cover-unit {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    flex: none;
+  }
+  .browse-page .browse-grid .cover-frame,
+  .browse-page .browse-grid .cover {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    min-height: 0;
+    height: auto;
+    flex-basis: auto;
+    aspect-ratio: 2 / 3;
+  }
+  .browse-page .browse-grid .cover.is-square,
+  .browse-page .browse-grid .cover.is-landscape {
+    aspect-ratio: 1;
+    height: auto;
+    max-height: none;
+  }
+  .browse-page .browse-grid .cover.is-magazine {
+    aspect-ratio: 4 / 5;
+    height: auto;
+    max-height: none;
+  }
+  .browse-page .browse-grid .cover.is-comic {
+    aspect-ratio: 10 / 11;
+    height: auto;
+    max-height: none;
+  }
+  .browse-page .browse-grid .cover:hover,
+  .browse-page .browse-grid .cover:focus-visible {
+    transform: none;
+  }
+  .browse-page .browse-grid .cover-caption {
+    opacity: 1;
+    transform: none;
+    max-width: 100%;
+    font-size: max(12px, 0.75rem);
+    line-height: 1.25;
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+  }
+  .browse-page .browse-grid .catalog-status,
+  .browse-page .browse-grid .availability {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
 }
 .browse-empty {
   color: var(--muted);
@@ -4144,6 +4236,27 @@ html[data-theme="lights-down"] .grooming-undo.is-available {
   left: 8px;
   bottom: 8px;
   z-index: 5;
+}
+/* Peek sheet: the grip is a column row, not a cover overlay. On a phone
+   it wraps under Read so it cannot cover the title, Read, or Open full page. */
+.peek .peek-action-menu {
+  position: static;
+  left: auto;
+  bottom: auto;
+  z-index: auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+@media (max-width: 640px) {
+  .peek .peek-action-menu {
+    flex: 1 0 100%;
+    width: 100%;
+    margin-top: var(--space-2);
+  }
+  .peek .peek-action-menu .work-action-grip {
+    flex: 0 0 var(--tap-min);
+  }
 }
 .work-action-grip {
   display: grid;
@@ -4374,6 +4487,43 @@ html[data-theme="lights-down"] .grooming-undo.is-available {
   background: var(--accent);
   color: var(--accent-text);
 }
+.stacks-name-shelf {
+  min-width: 0;
+  max-width: 100%;
+}
+.stacks-name-shelf:not([open]) > :not(summary) {
+  display: none;
+}
+.stacks-name-shelf[open] {
+  flex: 1 1 100%;
+}
+.stacks-name-shelf-toggle {
+  display: flex;
+  align-items: center;
+  min-height: var(--tap-min);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+.stacks-name-shelf-toggle::-webkit-details-marker {
+  display: none;
+}
+.stacks-name-shelf-toggle:hover,
+.stacks-name-shelf-toggle:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  outline: none;
+}
+.stacks-name-shelf-toggle:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  outline-offset: 2px;
+}
 
 @media (max-width: 720px) {
   .stacks-bar {
@@ -4407,6 +4557,12 @@ html[data-theme="lights-down"] .grooming-undo.is-available {
     border-left: 0;
     border-top: 1px solid var(--border-subtle);
     padding-top: var(--space-3);
+  }
+  .stacks-name-shelf-toggle {
+    width: 100%;
+    justify-content: space-between;
+    border-color: var(--border-subtle);
+    background: var(--surface);
   }
 }
 
@@ -5281,17 +5437,19 @@ html[data-theme="lights-down"] .grooming-undo.is-available {
   position: relative;
   z-index: 1;
 }
-/* `.room > *` is more specific than `.topbar` / `.skip-link` / `.mobile-tabbar`,
-   so it flattened chrome to z-index 1. Main then paints over the overflowing
-   Library card panel; Hall looks transparent there and steals the click. */
-.room > .skip-link {
-  z-index: 1000;
-}
+/* `.room > *` is more specific than `.topbar` / `.mobile-tabbar`, so it
+   flattened chrome to position: relative and z-index 1. That put the phone
+   tab bar back in document flow (it scrolled away with the article) and let
+   main paint over the Library card panel. Restore each chrome piece here. */
 .room > .topbar {
   position: sticky;
   z-index: 200;
 }
 .room > .mobile-tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
   z-index: 50;
 }
 .ambient-toggle {

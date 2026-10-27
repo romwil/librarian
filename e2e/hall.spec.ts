@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { dismissWhatsNewIfPresent, loginAsOwner } from "./fixtures/auth";
 
-/** Minimal Hall payload with Tonight’s Shelf + Continue presence. */
+/** Hall payload that still carries tonight and catch-up data the page must ignore. */
 const TONIGHT_HALL = {
   empty: false,
   tonight: {
@@ -33,9 +33,44 @@ const TONIGHT_HALL = {
       has_cover: false,
     },
   ],
-  continue_listening: [],
-  whats_new: [],
-  favorites: [],
+  continue_listening: [
+    {
+      id: 301,
+      title: "Night Radio",
+      author: "C. Voice",
+      kind: "audiobook",
+      progress: 12,
+      has_cover: false,
+    },
+  ],
+  whats_new: [
+    {
+      id: 401,
+      title: "Fresh Issue",
+      author: "D. Editor",
+      kind: "magazine",
+      has_cover: false,
+    },
+  ],
+  favorites: [
+    {
+      id: 501,
+      title: "Kept Novel",
+      author: "E. Keeper",
+      kind: "book",
+      has_cover: false,
+    },
+  ],
+  series_catch_up: {
+    empty: false,
+    series: [
+      {
+        id: "catchup:comic:Saga:",
+        series_name: "Saga",
+        invitation: "One issue from a whole Saga.",
+      },
+    ],
+  },
   areas: {
     books: [],
     magazines: [],
@@ -86,40 +121,53 @@ test.describe("Hall", () => {
     ).toBeVisible({ timeout: 30_000 });
   });
 
-  test("Tonight’s Shelf alive — lamp presence and Continue rail", async ({ page }) => {
+  test("Continue rails lead Hall and Tonight’s shelf stays off", async ({ page }) => {
     await mockTonightHall(page);
     await page.goto("/");
     await dismissWhatsNewIfPresent(page);
 
-    const shelf = page.getByRole("region", { name: "Tonight’s shelf" });
-    await expect(shelf).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByRole("heading", { name: "Pick up where you left the lamp" })).toBeVisible();
-    await expect(page.getByText("The room kept your place.")).toBeVisible();
-    await expect(shelf.getByRole("button", { name: /The Lamp Novel/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Continue listening" })).toBeVisible({
+      timeout: 30_000,
+    });
     await expect(page.getByRole("heading", { name: "Continue reading" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Recently added" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Favorites" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "The Lamp Novel", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Night Radio", exact: true })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Tonight’s shelf" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Pick up where you left the lamp" })).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "Series catch-up" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /Surprise Volume/ })).toHaveCount(0);
+
+    const top = async (name: string) =>
+      (await page.getByRole("heading", { name, exact: true }).boundingBox())?.y ?? 0;
+    expect(await top("Continue listening")).toBeLessThan(await top("Continue reading"));
+    expect(await top("Continue reading")).toBeLessThan(await top("Recently added"));
+    expect(await top("Recently added")).toBeLessThan(await top("Favorites"));
   });
 
-  test("Tonight’s Shelf respects reduced-motion", async ({ page }) => {
+  test("reduced-motion still shows Continue without Tonight’s shelf", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await mockTonightHall(page);
     await page.goto("/");
     await dismissWhatsNewIfPresent(page);
 
-    await expect(page.getByRole("region", { name: "Tonight’s shelf" })).toBeVisible({
+    await expect(page.getByRole("heading", { name: "Continue reading" })).toBeVisible({
       timeout: 30_000,
     });
-    await expect(page.getByRole("heading", { name: "Pick up where you left the lamp" })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Surprise Volume/ })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Tonight’s shelf" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Pick up where you left the lamp" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /Surprise Volume/ })).toHaveCount(0);
   });
 
-  test("lamp rituals — period presence and welcome-back", async ({ page }) => {
+  test("lamp rituals — search and Continue without Tonight’s shelf", async ({ page }) => {
     await mockTonightHall(page);
     await page.goto("/");
     await dismissWhatsNewIfPresent(page);
 
     await expect(page.getByRole("search")).toBeVisible();
-    await expect(page.getByRole("region", { name: "Tonight’s shelf" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Continue reading" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Tonight’s shelf" })).toHaveCount(0);
   });
 
   test("Hall search opens Search results", async ({ page }) => {
@@ -145,12 +193,10 @@ test.describe("Hall", () => {
     await expect(page.getByRole("heading", { name: "On the shelf" })).toBeVisible();
   });
 
-  test("skip link moves to the library main", async ({ page }) => {
+  test("skip link is not shown in the library chrome", async ({ page }) => {
     await page.goto("/");
     await dismissWhatsNewIfPresent(page);
-    await page.getByRole("link", { name: "Skip to library" }).focus();
-    await expect(page.getByRole("link", { name: "Skip to library" })).toBeFocused();
-    await page.getByRole("link", { name: "Skip to library" }).press("Enter");
-    await expect(page.getByRole("main")).toBeFocused();
+    await expect(page.getByRole("link", { name: "Skip to library" })).toHaveCount(0);
+    await expect(page.getByRole("main")).toBeVisible();
   });
 });

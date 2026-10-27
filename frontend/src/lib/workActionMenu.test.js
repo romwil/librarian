@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
-import { primaryActionOrder, primaryWorkAction, splitWorkActions } from "./workActionMenu.js";
+import { fileURLToPath } from "node:url";
+import { placeActionMenu, primaryActionOrder, primaryWorkAction, splitWorkActions } from "./workActionMenu.js";
+
+const root = dirname(fileURLToPath(import.meta.url));
 
 describe("primaryWorkAction", () => {
   it("prefers Listen over everything else", () => {
@@ -109,5 +114,109 @@ describe("splitWorkActions", () => {
       primary: { key: "x" },
       items: [],
     });
+  });
+});
+
+function withView(size, run) {
+  const prior = globalThis.window;
+  globalThis.window = { innerWidth: size.width, innerHeight: size.height };
+  try {
+    return run();
+  } finally {
+    if (prior === undefined) delete globalThis.window;
+    else globalThis.window = prior;
+  }
+}
+
+function peekAnchor(box) {
+  const column = { getBoundingClientRect: () => box };
+  return {
+    closest(selector) {
+      if (selector === ".peek" || selector === ".peek-copy") return column;
+      return null;
+    },
+  };
+}
+
+describe("placeActionMenu", () => {
+  const grip = { top: 476, bottom: 520, left: 24, width: 44, height: 44 };
+  const menu = { width: 200, height: 160 };
+
+  it("lines a peek menu up with the sheet column and opens under the grip", () => {
+    const style = withView({ width: 390, height: 844 }, () =>
+      placeActionMenu(grip, menu, peekAnchor({ left: 24, width: 342, top: 0, bottom: 700 })),
+    );
+    assert.equal(style.left, "24px");
+    assert.equal(style.width, "342px");
+    assert.equal(style.maxWidth, "342px");
+    assert.equal(style.minWidth, "0px");
+    // 520 + 8 — beneath the grip, not over Read above it.
+    assert.equal(style.top, "528px");
+  });
+
+  it("clamps a peek menu that is wider than the phone", () => {
+    const style = withView({ width: 390, height: 844 }, () =>
+      placeActionMenu(grip, menu, peekAnchor({ left: 0, width: 400, top: 0, bottom: 700 })),
+    );
+    assert.equal(style.left, "8px");
+    assert.equal(style.width, "374px");
+  });
+
+  it("keeps cover and work-page menus anchored to the grip", () => {
+    const style = withView({ width: 1200, height: 800 }, () =>
+      placeActionMenu({ top: 100, bottom: 144, left: 40 }, { width: 200, height: 80 }, {
+        closest() {
+          return null;
+        },
+      }),
+    );
+    assert.equal(style.left, "40px");
+    assert.equal(style.top, "12px");
+    assert.equal(style.width, undefined);
+  });
+
+  it("a zero-width peek column falls back to the grip anchor", () => {
+    const style = withView({ width: 1200, height: 800 }, () =>
+      placeActionMenu({ top: 100, bottom: 144, left: 40 }, { width: 200, height: 80 }, {
+        closest(selector) {
+          if (selector === ".peek") return { getBoundingClientRect: () => ({ width: 0, left: 0 }) };
+          if (selector === ".peek-copy") return { getBoundingClientRect: () => ({ width: 0, left: 10 }) };
+          return null;
+        },
+      }),
+    );
+    assert.equal(style.left, "40px");
+    assert.equal(style.width, undefined);
+  });
+
+  it("hostile rects and a missing window stay finite", () => {
+    const style = withView({ width: 1200, height: 800 }, () =>
+      placeActionMenu({ top: "no", bottom: null, left: undefined }, { width: "x", height: null }, null),
+    );
+    assert.match(style.top, /^\d+(\.\d+)?px$/);
+    assert.match(style.left, /^\d+(\.\d+)?px$/);
+    const prior = globalThis.window;
+    delete globalThis.window;
+    try {
+      assert.deepEqual(placeActionMenu(grip, menu, null), { top: "8px", left: "8px" });
+    } finally {
+      if (prior === undefined) delete globalThis.window;
+      else globalThis.window = prior;
+    }
+  });
+});
+
+describe("peek grip placement in the sheet", () => {
+  const peekSrc = readFileSync(join(root, "../components/WorkPeek.jsx"), "utf8");
+  const menuSrc = readFileSync(join(root, "../components/WorkActionMenu.jsx"), "utf8");
+  const stylesSrc = readFileSync(join(root, "../styles.css"), "utf8");
+
+  it("puts the peek grip in the action row, under Read on a phone", () => {
+    assert.match(peekSrc, /className="peek-action-menu"/);
+    assert.match(menuSrc, /event\.stopPropagation\(\)/);
+    assert.match(stylesSrc, /\.peek \.peek-action-menu\s*\{[^}]*position:\s*static/);
+    const phone = stylesSrc.slice(stylesSrc.indexOf("@media (max-width: 640px)"));
+    assert.match(phone, /\.peek \.peek-action-menu\s*\{[^}]*flex:\s*1 0 100%/);
+    assert.match(phone, /\.peek \.peek-action-menu \.work-action-grip\s*\{[^}]*flex:\s*0 0 var\(--tap-min\)/);
   });
 });

@@ -19,9 +19,10 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
  * @param {boolean} [options.closeOnEscape=false] Dismiss on the Escape key.
  * @param {string} [options.anchorSelector] Selector queried inside `rootRef` for
  *   the placement anchor; falls back to `rootRef` itself.
- * @param {(anchor: DOMRect, popover: DOMRect) => Object} [options.placement]
+ * @param {(anchor: DOMRect, popover: DOMRect, anchorEl: Element) => Object} [options.placement]
  *   Returns the popover style object. Omit for menus that don't portal/position
- *   (plain CSS-absolute popovers skip this).
+ *   (plain CSS-absolute popovers skip this). The third argument is the anchor
+ *   element so a peek can line the menu up with the sheet.
  * @param {string|number} [options.repositionKey] Extra dependency: when it
  *   changes while open, placement recomputes.
  */
@@ -81,7 +82,7 @@ export function useAnchoredPopover({
       const anchor = anchorEl?.getBoundingClientRect();
       const menu = popoverRef.current?.getBoundingClientRect();
       if (!anchor || !menu) return;
-      setPopoverStyle(placement(anchor, menu));
+      setPopoverStyle(placement(anchor, menu, anchorEl));
     };
     position();
     window.addEventListener("resize", position);

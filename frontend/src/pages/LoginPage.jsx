@@ -23,11 +23,7 @@ export default function LoginPage() {
   }
 
   return (
-    <>
-      <a className="skip-link" href="#main">
-        Skip to library
-      </a>
-      <main id="main" tabIndex={-1}>
+    <main id="main" tabIndex={-1}>
     <GlassDoor
       eyebrow="Household library"
       title="The Reading Room"
@@ -62,7 +58,6 @@ export default function LoginPage() {
         </button>
       </form>
     </GlassDoor>
-      </main>
-    </>
+    </main>
   );
 }

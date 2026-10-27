@@ -25,7 +25,8 @@ test("Hall keeps personalized rails and leaves the catalog grid off the page", (
   assert.equal(hallSrc.includes("ShelfMore"), false);
   assert.equal(hallSrc.includes("HallCollection"), false);
   assert.equal(hallSrc.includes("<NamedShelves"), false);
-  assert.match(hallSrc, /TonightShelf/);
+  assert.equal(hallSrc.includes("TonightShelf"), false);
+  assert.equal(hallSrc.includes("SeriesCatchUp"), false);
   assert.match(hallSrc, /Continue reading/);
   assert.match(hallSrc, /Continue listening/);
   assert.match(hallSrc, /New & noted/);
@@ -34,7 +35,12 @@ test("Hall keeps personalized rails and leaves the catalog grid off the page", (
 
 test("Stacks shelf control opens household shelves", () => {
   assert.match(browseSrc, /shelves=\{namedShelves\}/);
-  assert.match(browseSrc, /<NamedShelves/);
+  assert.match(browseSrc, /shelfPresence=\{shelfPresence\}/);
+  assert.match(browseSrc, /onShelfNamed=\{onShelfNamed\}/);
+  assert.equal(browseSrc.includes("<NamedShelves"), false);
+  assert.match(barSrc, /<NamedShelves/);
+  assert.match(barSrc, /Name a shelf/);
+  assert.match(barSrc, /stacks-name-shelf/);
   assert.match(barSrc, /\.map\(\(shelf\)/);
   assert.match(barSrc, />Favorites</);
   assert.equal(hallSrc.includes("<NamedShelves"), false);

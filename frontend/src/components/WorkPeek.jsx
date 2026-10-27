@@ -441,7 +441,7 @@ export default function WorkPeek({ work, onClose, onRequest }) {
                         busy={availabilityBusy}
                       />
                     )}
-                    <WorkActionMenu label={displayTitle} testId="peek-action">
+                    <WorkActionMenu className="peek-action-menu" label={displayTitle} testId="peek-action">
                       <button type="button" className="work-action-item" onClick={favorite}>
                         Favorite
                       </button>

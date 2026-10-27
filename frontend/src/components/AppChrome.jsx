@@ -82,9 +82,6 @@ export default function AppChrome({ user, features, reviewCount = 0, inboxUnread
 
   return (
     <div className={`room ambient-${ambient}`} data-ambient={ambient}>
-      <a className="skip-link" href="#main">
-        Skip to library
-      </a>
       <header className="topbar">
         <NavLink to="/" className="brand" end>
           Librarian
