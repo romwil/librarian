@@ -13,6 +13,7 @@ import AppearancePrefsPanel from "../components/AppearancePrefsPanel.jsx";
 import MailSettingsPanel from "../components/MailSettingsPanel.jsx";
 import NotificationsPrefsPanel from "../components/NotificationsPrefsPanel.jsx";
 import WarmLoad from "../components/WarmLoad.jsx";
+import { ThinkingButton } from "../components/Thinking.jsx";
 
 const MORE_FIELDS = [
   ["audiobook_target", "Audiobook target"],
@@ -379,10 +380,11 @@ export default function SettingsPage() {
                   </p>
                 ) : null}
                 <div className="cta-row">
-                  <button
+                  <ThinkingButton
                     type="button"
                     className="cta outline"
-                    disabled={matching || !settings.audiobookshelf_api_token_set}
+                    busy={matching}
+                    disabled={!settings.audiobookshelf_api_token_set}
                     onClick={async () => {
                       setAbsNote("");
                       setMatching(true);
@@ -401,8 +403,8 @@ export default function SettingsPage() {
                       }
                     }}
                   >
-                    {matching ? "Matching…" : "Match Audiobookshelf"}
-                  </button>
+                    Match Audiobookshelf
+                  </ThinkingButton>
                 </div>
                 {absNote ? <p className={/Matched /.test(absNote) ? "muted" : "alert"}>{absNote}</p> : null}
               </section>

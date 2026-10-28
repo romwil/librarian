@@ -23,7 +23,8 @@ test("Hall keeps the hunt box and living rails, and leaves the catalog grid off 
   assert.match(hallSrc, /id="hall-search"|inputId="hall-search"/);
   assert.match(hallSrc, /Title, author, or ISBN/);
   assert.match(hallSrc, /\/search\?q=/);
-  assert.match(hallSrc, /title="Continue reading"/);
+  assert.match(hallSrc, /title="Continue reading" items=\{reading\} cardMode="stacks"/);
+  assert.match(hallSrc, /title="Continue listening" items=\{listening\} cardMode="stacks"/);
   assert.match(hallSrc, /title="Continue listening"/);
   assert.match(hallSrc, /title="Recently added"/);
   assert.match(hallSrc, /continueRailItems/);
@@ -34,7 +35,9 @@ test("Hall keeps the hunt box and living rails, and leaves the catalog grid off 
 test("Maintain is owner-only and houses grooming entry points", () => {
   assert.match(maintainSrc, /role !== "owner"/);
   assert.match(maintainSrc, /Navigate to="\/"/);
-  assert.match(maintainSrc, /bestsellersHref/);
+  assert.match(maintainSrc, /to="\/noted\/history"/);
+  assert.equal(maintainSrc.includes("bestsellersHref"), false);
+  assert.equal(maintainSrc.includes("/noted?preset=nyt"), false);
   assert.match(maintainSrc, /AddToLibrary/);
   assert.match(maintainSrc, /MorningBrief/);
   assert.match(maintainSrc, /maintain-scan/);

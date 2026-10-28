@@ -38,7 +38,7 @@ export default function HoldsGroupActions({ group, onChanged, bulk = api.reviewB
         return data;
       }
       setResult(data);
-      onChanged?.(data);
+      onChanged?.(data ? { ...data, reason } : data);
       return data;
     } catch (err) {
       setResult(null);

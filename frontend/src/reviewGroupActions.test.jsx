@@ -4,6 +4,7 @@ import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it } from "vitest";
 import HoldsGroupActions from "./components/HoldsGroupActions.jsx";
+import ReviewBulkBar from "./components/ReviewBulkBar.jsx";
 import {
   bulkResultSummary,
   deleteGroupConfirmCopy,
@@ -209,5 +210,90 @@ describe("HoldsGroupActions", () => {
     const status = await screen.findByRole("status");
     assert.ok(status.classList.contains("alert"));
     assert.ok(status.textContent.length > 0);
+  });
+});
+
+function countText(summary, label) {
+  const labelNode = [...summary.childNodes].find(
+    (node) => node.nodeType === Node.TEXT_NODE && node.nodeValue.includes(label),
+  );
+  assert.ok(labelNode, label);
+  let span = labelNode.previousSibling;
+  while (span && span.nodeType === Node.TEXT_NODE && !span.nodeValue.trim()) span = span.previousSibling;
+  assert.equal(span?.nodeType, Node.ELEMENT_NODE);
+  return span.firstChild;
+}
+
+function deskSummary() {
+  const summary = screen.getAllByRole("status").find((node) => /On the desk:/.test(node.textContent || ""));
+  assert.ok(summary, "desk summary");
+  return summary;
+}
+
+function deskBar(overrides = {}) {
+  return (
+    <ReviewBulkBar
+      show
+      showBulkPurge
+      reviewBacklog={454}
+      slipCount={20}
+      onPurgeDuplicates={() => {}}
+      lowConfidenceCount={62}
+      onStartTriage={() => {}}
+      triageCounts={{ trusted: 0, ambiguous: 10, failed: 0 }}
+      {...overrides}
+    />
+  );
+}
+
+describe("Holds desk tally", () => {
+  it("places the desk summary under the button row and keeps an unchanged count's text node", () => {
+    const { rerender } = render(deskBar());
+    const actions = screen.getByRole("group", { name: "Holds desk actions" });
+    const summary = deskSummary();
+    assert.equal(actions.contains(summary), false);
+    assert.ok(within(actions).getByRole("button", { name: "Purge duplicates (454)" }));
+    assert.ok(within(actions).getByRole("button", { name: "Check low-confidence slips (62)" }));
+    assert.match(summary.textContent, /On the desk: 0 ready to file · 10 need a decision · 0 model unavailable/);
+
+    const ready = countText(summary, "ready to file");
+    const decision = countText(summary, "need a decision");
+    const unavailable = countText(summary, "model unavailable");
+    assert.equal(ready.nodeValue, "0");
+    assert.equal(decision.nodeValue, "10");
+    assert.equal(unavailable.nodeValue, "0");
+
+    rerender(
+      deskBar({
+        bulkNote: "Finished clearing extra-files slips.",
+        triageLine: "Checking with the model",
+        triageCounts: { trusted: 0, ambiguous: 10, failed: 0 },
+      }),
+    );
+    const summaryAfter = deskSummary();
+    assert.equal(summaryAfter, summary);
+    assert.equal(countText(summaryAfter, "need a decision"), decision);
+    assert.equal(decision.nodeValue, "10");
+    assert.equal(countText(summaryAfter, "ready to file"), ready);
+    assert.equal(ready.nodeValue, "0");
+    assert.equal(actions.contains(summaryAfter), false);
+    assert.equal(actions.contains(screen.getByText("Finished clearing extra-files slips.")), false);
+    assert.equal(actions.contains(screen.getByText(/Checking with the model/)), false);
+
+    rerender(
+      deskBar({
+        bulkNote: "Finished clearing extra-files slips.",
+        triageLine: "Checking with the model",
+        triageCounts: { trusted: 1, ambiguous: 11, failed: 0 },
+      }),
+    );
+    assert.equal(summary.isConnected, true);
+    assert.equal(countText(summary, "need a decision"), decision);
+    assert.equal(decision.nodeValue, "11");
+    assert.equal(countText(summary, "ready to file"), ready);
+    assert.equal(ready.nodeValue, "1");
+    assert.equal(countText(summary, "model unavailable"), unavailable);
+    assert.equal(unavailable.nodeValue, "0");
+    assert.match(summary.textContent, /1 ready to file · 11 need a decision · 0 model unavailable/);
   });
 });

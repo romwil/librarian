@@ -458,7 +458,6 @@ def _pre_slip_gate(
             job_id=str(item.get("job_id") or "") or None,
             guid=str(item.get("guid") or "") or None,
             host_id=str(selected.get("host_id") or item.get("host_id") or "") or None,
-            record_missing=False,
         )
         if released["released"]:
             return {
@@ -472,7 +471,18 @@ def _pre_slip_gate(
                     "wanted_id": released.get("wanted_id"),
                 }
             }
-        return {"needs_owner": True}
+        return {
+            "result": {
+                "organized": False,
+                "work": None,
+                "identity": identity,
+                "files": names,
+                "dismissed_bad": True,
+                "reason": "bad_release",
+                "problem": REVIEW_CONVERT,
+                "missing": released.get("missing") or "",
+            }
+        }
     reason = str(identity.get("review_reason") or "")
     if reason not in _GATED_IDENTITY_REASONS:
         return {}
@@ -775,7 +785,6 @@ def organize_identified(
         filenames=payload_names,
     )
     if not result["auto_organize"] or not apply:
-        needs_owner = False
         if apply and not force:
             gated = _pre_slip_gate(
                 db,
@@ -787,7 +796,6 @@ def organize_identified(
             )
             if gated.get("result") is not None:
                 return gated["result"]
-            needs_owner = bool(gated.get("needs_owner"))
         work = db.upsert_work(
             {
                 **identity,
@@ -813,16 +821,6 @@ def organize_identified(
                 "reason": released["reason"],
                 "files": [str(p) for p in files],
             }
-        if needs_owner:
-            from librarian.bad_releases import NEEDS_OWNER_ACTION
-
-            db.record_review_audit(
-                NEEDS_OWNER_ACTION,
-                work_id=str(work.get("id") or ""),
-                guid=str((indexer_item or {}).get("guid") or "") or None,
-                reason=str(identity.get("review_reason") or ""),
-                detail={"missing": "wanted_or_guid"},
-            )
         # Flat multi-title / Calibre dumps: expand into per-title ingest instead of one
         # confusing extra_files Review slip. Skip when force Apply (peel path) or mixed kinds.
         if (

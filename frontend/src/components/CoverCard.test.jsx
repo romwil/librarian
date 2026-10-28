@@ -71,16 +71,28 @@ describe("CoverCard footer", () => {
     assert.equal(screen.queryByRole("link", { name: "Download" }), null);
   });
 
-  it("keeps a wanted-audiobook note without letting it replace the title and author", () => {
-    renderCard({ ...book, audiobook: wantedAudio }, { cardMode: "stacks" });
+  it("does not show a missing-audiobook line under the title and author", () => {
+    renderCard({ ...book, audiobook: wantedAudio }, { cardMode: "stacks", role: "owner" });
     const footer = screen.getByTestId("stacks-card-footer");
     assert.ok(within(footer).getByText("The 1619 Project"));
     assert.ok(within(footer).getByText("Nikole Hannah-Jones"));
-    assert.equal(footer.textContent.includes("The audiobook is wanted"), false);
-    assert.ok(screen.getByText("The audiobook is wanted"));
+    assert.equal(screen.queryByText("The audiobook is wanted"), null);
+    assert.equal(screen.queryByText("Wanted"), null);
+    assert.equal(screen.queryByRole("button", { name: "Add to Wanted" }), null);
+    assert.equal(screen.queryByRole("link", { name: "Search the shelves" }), null);
     assert.equal(screen.queryByText("On the shelf"), null);
     assert.equal(screen.queryByRole("link", { name: "Read" }), null);
     assert.equal(screen.queryByRole("link", { name: "Download" }), null);
+  });
+
+  it("keeps On the shelf and Read on a list card, without the missing audiobook", () => {
+    renderCard({ ...book, audiobook: wantedAudio }, { role: "owner" });
+    assert.ok(screen.getByText("On the shelf"));
+    assert.ok(screen.getByRole("link", { name: "Read" }));
+    assert.equal(screen.queryByTestId("stacks-card-footer"), null);
+    assert.equal(screen.queryByText("The audiobook is wanted"), null);
+    assert.equal(screen.queryByRole("button", { name: "Add to Wanted" }), null);
+    assert.equal(screen.queryByRole("link", { name: "Find beyond" }), null);
   });
 
   it("leaves Listen off the Stacks poster when a companion audiobook is shelved", () => {

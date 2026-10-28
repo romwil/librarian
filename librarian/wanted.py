@@ -26,6 +26,8 @@ SLOW_CADENCE_SECONDS = 7 * 24 * 60 * 60
 SLOW_AFTER_MISSES = 3
 # Title overlap is worth 3 and author overlap 2. 4.5 needs both, not a title-only glance.
 CONFIDENT_SCORE = 4.5
+# A posting name this long that matches exactly is the release itself, not a glance.
+RELEASE_NAME_MIN_CHARS = 16
 
 _JUNK_MULTIDISC = re.compile(
     r"(?ix)"
@@ -98,8 +100,16 @@ def is_junk_multidisc(hit: Mapping[str, Any]) -> bool:
     return _JUNK_MULTIDISC.search(blob) is not None
 
 
+def is_release_name_match(sought: Mapping[str, Any], hit: Mapping[str, Any]) -> bool:
+    """The Wanted title is this posting's own name (a pick saved from Discover or RSS)."""
+    want = _norm(sought.get("title"))
+    if len(want) < RELEASE_NAME_MIN_CHARS:
+        return False
+    return want == _norm(hit.get("title"))
+
+
 def is_confident_hit(sought: Mapping[str, Any], hit: Mapping[str, Any]) -> bool:
-    """ISBN agreement, or a strong title and author overlap. Fail closed."""
+    """ISBN agreement, the exact posting name, or a strong title and author overlap. Fail closed."""
     if not str(hit.get("guid") or hit.get("indexer_guid") or "").strip():
         return False
     if is_junk_multidisc(hit):
@@ -107,6 +117,8 @@ def is_confident_hit(sought: Mapping[str, Any], hit: Mapping[str, Any]) -> bool:
     want = set(isbn_match_keys(str(sought.get("isbn") or "")))
     got = set(isbn_match_keys(str(hit.get("isbn") or "")))
     if want and got and want.intersection(got):
+        return True
+    if is_release_name_match(sought, hit):
         return True
     return heuristic_score(sought, hit) >= CONFIDENT_SCORE
 

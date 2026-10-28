@@ -55,7 +55,8 @@ export async function saveBeyondGet(item, apiFns = {}) {
   if (!body.title && !body.isbn) {
     throw new Error("This result is missing a title.");
   }
-  const added = await addWanted(body);
+  const hit = askHitFromItem(item);
+  const added = await addWanted(hit.guid ? { ...body, hit } : body);
   const wanted = added?.item;
   if (!wanted?.id) {
     throw new Error("The house could not save that pick.");
@@ -63,7 +64,6 @@ export async function saveBeyondGet(item, apiFns = {}) {
   if (wanted.status === "asked") {
     return { wanted, jobStatus: "asked" };
   }
-  const hit = askHitFromItem(item);
   if (!hit.guid) {
     return { wanted, jobStatus: "saved" };
   }

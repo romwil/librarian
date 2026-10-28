@@ -24,10 +24,11 @@ from librarian.identity.isbn import canonical_isbn13
 from librarian.identity.resolve import resolve_work
 from librarian.indexers.discover import discover_beyond
 from librarian.kinds import NEWZNAB_AUDIOBOOK, NEWZNAB_COMIC, NEWZNAB_MAGAZINE
-from librarian.lists import curated_list_payload
+from librarian.lists import curated_list_payload, fetch_llm_list
 from librarian.llm import (
     LLM_RATE_LIMIT_COPY,
     LLMClient,
+    LLMError,
     client_from_settings,
     seconds_until_llm_ready,
 )
@@ -52,6 +53,27 @@ BOOK_FAMILY = 7000
 # The desk must paint even when a lane's host is quiet. Abandoned HTTP may finish later.
 NOTE_LANE_WAIT_S = 8.0
 NOTE_LLM_TIMEOUT_S = 12.0
+# One empty current list per page read, so the desk can return inside its request.
+HOUSEHOLD_FILL_TIMEOUT_S = 18.0
+# Maintain, history, and the six-hour refresh can wait longer than a page paint.
+HOUSEHOLD_LIST_TIMEOUT_S = 40.0
+NYT_CACHE_SOURCE = "nyt"
+HOUSEHOLD_CACHE_SOURCE = "household"
+# A dated week is one noted_cache key: (source, list name, YYYY-MM-DD asked for).
+# `week` rows only record that an empty published list was stored.
+STORED_WEEK_KIND = "week"
+WEEK_MARKER_KEY = "__week__"
+HOUSEHOLD_ORIGIN_LABEL = (
+    "These titles came from the household model, not the New York Times API."
+)
+MISSING_NYT_AND_MODEL = (
+    "No New York Times list can show titles yet. "
+    "The NYT API key and the household model are both missing."
+)
+HOUSEHOLD_NOT_FILLED = (
+    "This list has not been filled by the household model yet. "
+    "Refresh New & noted from Maintain."
+)
 
 LANE_TRENDING = "trending"
 LANE_BESTSELLERS = "bestsellers"
@@ -640,7 +662,10 @@ def noted_desk(
 #
 # The old desk above remains a small, independently useful feed adapter.  The
 # routes below use this cache so changing a chip never starts another HTTP
-# request and NYT's immutable dated lists are only read once.
+# request. Each dated week is its own stored list, keyed by the date asked for,
+# and is not asked again — including a week that published no titles. A week
+# that failed to fetch is left unstored so a later range can retry it. Current
+# lists still refresh from Maintain and the six-hour poller.
 
 
 def _today() -> str:
@@ -648,8 +673,8 @@ def _today() -> str:
 
 
 def _cache_rows(db: Any, *, source: str, list_name: str, published_date: str = "") -> List[Dict[str, Any]]:
-    sql = "SELECT * FROM noted_cache WHERE source = ? AND list_name = ?"
-    args: list[Any] = [source, list_name]
+    sql = "SELECT * FROM noted_cache WHERE source = ? AND list_name = ? AND kind != ?"
+    args: list[Any] = [source, list_name, STORED_WEEK_KIND]
     if published_date:
         sql += " AND published_date = ?"
         args.append(published_date)
@@ -709,6 +734,96 @@ def _cache_upsert(db: Any, row: Mapping[str, Any]) -> None:
             )
 
     db.run_write(write, label="noted_cache")
+
+
+def _week_cached(db: Any, *, source: str, list_name: str, published_date: str) -> bool:
+    """True when this dated week was already stored, even if it published no titles."""
+    if not published_date or published_date == "current":
+        return False
+    with db._connect() as conn:
+        row = conn.execute(
+            """
+            SELECT 1 FROM noted_cache
+            WHERE source = ? AND list_name = ? AND published_date = ?
+            LIMIT 1
+            """,
+            (source, list_name, published_date),
+        ).fetchone()
+    return row is not None
+
+
+def _stored_week_dates(db: Any, *, source: str, list_name: str) -> set[str]:
+    with db._connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT DISTINCT published_date FROM noted_cache
+            WHERE source = ? AND list_name = ?
+            """,
+            (source, list_name),
+        ).fetchall()
+    return {_text(row["published_date"]) for row in rows if _text(row["published_date"])}
+
+
+def _mark_week_stored(db: Any, *, source: str, list_name: str, published_date: str) -> None:
+    """Remember a dated week whose published list was empty so it is not fetched again."""
+    _cache_upsert(
+        db,
+        {
+            "source": source,
+            "source_key": WEEK_MARKER_KEY,
+            "title": "",
+            "author": "",
+            "kind": STORED_WEEK_KIND,
+            "list_name": list_name,
+            "published_date": published_date,
+        },
+    )
+
+
+def _persist_week_books(
+    db: Any,
+    books: Sequence[Any],
+    *,
+    source: str,
+    list_name: str,
+    published_date: str,
+    mark_empty: bool,
+    require_author: bool = False,
+) -> int:
+    """Store one week's titles under the date that was asked for.
+
+    An empty published list is marked stored. A list that failed before this
+    call is not marked, so the next pull can retry that week.
+    """
+    stored = 0
+    for book in books:
+        if not isinstance(book, Mapping):
+            continue
+        title = _text(book.get("title"))
+        author = _text(book.get("author"))
+        if not title or (require_author and not author):
+            continue
+        isbn = _text(book.get("isbn"))
+        _cache_upsert(
+            db,
+            {
+                **book,
+                "source": source,
+                "source_key": isbn or f"{title.lower()}|{author.lower()}",
+                "isbn": isbn,
+                "title": title,
+                "author": author,
+                "kind": _text(book.get("kind")) or "book",
+                "rank": book.get("rank"),
+                "cover": _text(book.get("cover")),
+                "list_name": list_name,
+                "published_date": published_date,
+            },
+        )
+        stored += 1
+    if stored == 0 and mark_empty:
+        _mark_week_stored(db, source=source, list_name=list_name, published_date=published_date)
+    return stored
 
 
 def _open_library_edition_isbn(
@@ -778,6 +893,152 @@ def _store_discover(db: Any, settings: Any, *, data_dir: Any = None) -> int:
     return len(lane.get("items") or [])
 
 
+def _shelf_probe(item: Mapping[str, Any]) -> Dict[str, Any]:
+    """Shelf match reads ``isbn``. Cache rows and history items store ``isbn13``."""
+    sought = dict(item)
+    sought["isbn"] = _text(item.get("isbn")) or _text(item.get("isbn13"))
+    return sought
+
+
+def _nyt_api_key(settings: Any) -> str:
+    return _text(getattr(settings, "nyt_books_api_key", ""))
+
+
+def _household_llm_ready(settings: Any) -> bool:
+    """True when a household model key is configured. Does not open a connection."""
+    from librarian.llm_providers import resolve_llm_connection
+
+    return bool(resolve_llm_connection(settings).get("api_key"))
+
+
+def _nyt_cache_source(settings: Any) -> str:
+    return NYT_CACHE_SOURCE if _nyt_api_key(settings) else HOUSEHOLD_CACHE_SOURCE
+
+
+def _store_household_nyt_list(
+    db: Any,
+    settings: Any,
+    *,
+    slug: str,
+    when: str,
+    data_dir: Any = None,
+    llm: Optional[LLMClient] = None,
+    llm_transport: Optional[httpx.BaseTransport] = None,
+) -> int:
+    """Ask the household model for one NYT week and cache those rows.
+
+    A dated week already in the cache is not asked again. No model key returns
+    immediately. Failures are logged without the prompt or any key.
+    """
+    if when != "current" and _week_cached(
+        db, source=HOUSEHOLD_CACHE_SOURCE, list_name=slug, published_date=when
+    ):
+        return 0
+    if seconds_until_llm_ready() > 1:
+        logger.info("Household NYT list skipped for %s; model cooling down", slug)
+        return 0
+    client = llm
+    own = False
+    if client is None:
+        if not _household_llm_ready(settings):
+            return 0
+        client = client_from_settings(
+            settings, transport=llm_transport, timeout=HOUSEHOLD_LIST_TIMEOUT_S
+        )
+        own = client is not None
+    if client is None:
+        return 0
+    if own:
+        client.max_retries = 0
+    try:
+        if not client.configured():
+            return 0
+        logger.info("Household model listing %s for %s", slug, when)
+        try:
+            payload = fetch_llm_list(
+                client,
+                preset=slug,
+                date=when,
+                data_dir=data_dir,
+                use_cache=when == "current",
+            )
+        except LLMError:
+            logger.info("Household NYT list failed for %s %s", slug, when)
+            return 0
+        books = [book for book in (payload.get("books") or []) if isinstance(book, Mapping)]
+        if when == "current":
+            parsed = normalize_list_date(_text(payload.get("published_date")))
+            actual_date = parsed if parsed and parsed != "current" else _today()
+            if _week_cached(
+                db, source=HOUSEHOLD_CACHE_SOURCE, list_name=slug, published_date=actual_date
+            ):
+                return 0
+            week_key = actual_date
+            mark_empty = False
+        else:
+            # Key the stored week by the date we asked for. The model's
+            # published_date is not the New York Times feed, and it must not
+            # collapse several weeks onto one row.
+            week_key = when
+            mark_empty = not books
+        return _persist_week_books(
+            db,
+            books,
+            source=HOUSEHOLD_CACHE_SOURCE,
+            list_name=slug,
+            published_date=week_key,
+            mark_empty=mark_empty,
+            require_author=True,
+        )
+    finally:
+        if own:
+            client.close()
+
+
+def _fill_missing_household_lists(
+    db: Any,
+    settings: Any,
+    data_dir: Any = None,
+    *,
+    llm_transport: Optional[httpx.BaseTransport] = None,
+) -> None:
+    """Fill one empty current list from the household model.
+
+    The page request must return. Lists still empty wait for the next read,
+    Maintain, or the six-hour refresh.
+    """
+    if _nyt_api_key(settings) or not _household_llm_ready(settings):
+        return
+    if seconds_until_llm_ready() > 1:
+        return
+    missing = [
+        item["id"]
+        for item in default_list_names()
+        if not _cache_rows(db, source=HOUSEHOLD_CACHE_SOURCE, list_name=item["id"])
+    ]
+    if not missing:
+        return
+    client = client_from_settings(
+        settings, transport=llm_transport, timeout=HOUSEHOLD_FILL_TIMEOUT_S
+    )
+    if client is None:
+        return
+    client.max_retries = 0
+    try:
+        refresh_nyt_list(
+            db,
+            settings,
+            list_name=missing[0],
+            published_date="current",
+            data_dir=data_dir,
+            llm=client,
+        )
+    except Exception:
+        logger.info("Household NYT fill skipped for %s", missing[0])
+    finally:
+        client.close()
+
+
 def refresh_nyt_list(
     db: Any,
     settings: Any,
@@ -786,40 +1047,65 @@ def refresh_nyt_list(
     published_date: str = "current",
     data_dir: Any = None,
     transport: Optional[httpx.BaseTransport] = None,
+    llm: Optional[LLMClient] = None,
+    llm_transport: Optional[httpx.BaseTransport] = None,
 ) -> int:
-    """Fetch a NYT list once when it has a fixed publication date."""
+    """Fetch one NYT list. A configured key uses the API and never the model.
+
+    A dated week already stored — including an empty published list — is not
+    asked again. The stored week is keyed by the date asked for. Current lists
+    follow the same Maintain / six-hour refresh as the API path. With no key,
+    the household model fills the same week key and keeps its own source.
+    """
     slug = normalize_list_name(list_name)
     when = normalize_list_date(published_date)
     if not slug or not when:
         raise NotedError("Date must be YYYY-MM-DD or current")
-    if when != "current" and _cache_rows(db, source="nyt", list_name=slug, published_date=when):
+    if not _nyt_api_key(settings):
+        return _store_household_nyt_list(
+            db,
+            settings,
+            slug=slug,
+            when=when,
+            data_dir=data_dir,
+            llm=llm,
+            llm_transport=llm_transport,
+        )
+    if when != "current" and _week_cached(
+        db, source=NYT_CACHE_SOURCE, list_name=slug, published_date=when
+    ):
         return 0
     client = NytBooksClient(
-        _text(getattr(settings, "nyt_books_api_key", "")),
+        _nyt_api_key(settings),
         data_dir=data_dir,
         transport=transport,
     )
     try:
-        payload = client.bestseller_list(slug, date=when)
+        # Dated weeks live in noted_cache. The client's short file cache must
+        # not answer a week that SQLite has not stored, or hide a retry.
+        payload = client.bestseller_list(slug, date=when, use_cache=when == "current")
     finally:
         client.close()
-    actual_date = _text(payload.get("published_date")) or when
-    if when == "current" and actual_date != "current" and _cache_rows(
-        db, source="nyt", list_name=slug, published_date=actual_date
-    ):
-        return 0
-    for book in payload.get("books") or []:
-        _cache_upsert(
-            db,
-            {
-                **book,
-                "source": "nyt",
-                "source_key": _text(book.get("isbn")) or f"{_text(book.get('title')).lower()}|{_text(book.get('author')).lower()}",
-                "list_name": slug,
-                "published_date": actual_date,
-            },
-        )
-    return len(payload.get("books") or [])
+    books = [book for book in (payload.get("books") or []) if isinstance(book, Mapping)]
+    if when == "current":
+        actual_date = _text(payload.get("published_date")) or when
+        if actual_date != "current" and _week_cached(
+            db, source=NYT_CACHE_SOURCE, list_name=slug, published_date=actual_date
+        ):
+            return 0
+        week_key = actual_date
+        mark_empty = False
+    else:
+        week_key = when
+        mark_empty = not books and _text(payload.get("empty_reason")) != "missing_key"
+    return _persist_week_books(
+        db,
+        books,
+        source=NYT_CACHE_SOURCE,
+        list_name=slug,
+        published_date=week_key,
+        mark_empty=mark_empty,
+    )
 
 
 def run_noted_refresh(
@@ -864,23 +1150,66 @@ def _cached_cards(db: Any, rows: Sequence[Mapping[str, Any]]) -> List[Dict[str, 
         )
         for row in rows
     ]
-    annotate_noted_lanes(db, [{"items": cards}])
     return cards
 
 
-def cached_noted_desk(db: Any, settings: Any, *, data_dir: Any = None) -> Dict[str, Any]:
+def cached_noted_desk(
+    db: Any,
+    settings: Any,
+    *,
+    data_dir: Any = None,
+    llm_transport: Optional[httpx.BaseTransport] = None,
+) -> Dict[str, Any]:
     """Return all cached lanes in one response; the SPA switches locally."""
-    if not _cache_rows(db, source="open_library", list_name="daily"):
-        run_noted_refresh(db, settings, data_dir=data_dir)
+    _fill_missing_household_lists(db, settings, data_dir, llm_transport=llm_transport)
     lanes: List[Dict[str, Any]] = []
     for period, label in (("daily", "Open Library daily"), ("weekly", "Open Library weekly")):
         rows = _cache_rows(db, source="open_library", list_name=period)
-        lanes.append({"id": f"open-library-{period}", "label": label, "source": "open_library", "items": _cached_cards(db, rows)})
+        lanes.append(
+            {
+                "id": f"open-library-{period}",
+                "label": label,
+                "source": "open_library",
+                "items": _cached_cards(db, rows),
+                "empty_copy": "" if rows else "No cached Open Library titles yet. Refresh New & noted from Maintain.",
+            }
+        )
+    has_nyt_key = bool(_nyt_api_key(settings))
+    list_source = _nyt_cache_source(settings)
     for item in default_list_names():
-        rows = _cache_rows(db, source="nyt", list_name=item["id"])
-        lanes.append({"id": f"nyt-{item['id']}", "label": item["display_name"], "source": "nyt", "items": _cached_cards(db, rows)})
+        rows = _cache_rows(db, source=list_source, list_name=item["id"])
+        latest_date = max((_text(row.get("published_date")) for row in rows), default="")
+        current_rows = [row for row in rows if _text(row.get("published_date")) == latest_date] if latest_date else []
+        if current_rows:
+            empty_copy = ""
+        elif not has_nyt_key and not _household_llm_ready(settings):
+            empty_copy = MISSING_NYT_AND_MODEL
+        elif not has_nyt_key:
+            empty_copy = HOUSEHOLD_NOT_FILLED
+        else:
+            empty_copy = "No cached New York Times titles yet. Refresh New & noted from Maintain."
+        lanes.append(
+            {
+                "id": f"nyt-{item['id']}",
+                "label": item["display_name"],
+                "source": list_source,
+                "origin": "household" if not has_nyt_key else "nyt",
+                "origin_label": HOUSEHOLD_ORIGIN_LABEL if not has_nyt_key and current_rows else "",
+                "items": _cached_cards(db, current_rows),
+                "empty_copy": empty_copy,
+            }
+        )
     rows = _cache_rows(db, source="discover", list_name="latest")
-    lanes.append({"id": "discover-latest", "label": "Indexer latest", "source": "discover", "items": _cached_cards(db, rows)})
+    lanes.append(
+        {
+            "id": "discover-latest",
+            "label": "Indexer latest",
+            "source": "discover",
+            "items": _cached_cards(db, rows),
+            "empty_copy": "" if rows else "No cached indexer titles yet. Refresh New & noted from Maintain.",
+        }
+    )
+    annotate_noted_lanes(db, lanes)
     return {"lanes": lanes, "lists": [{"id": lane["id"], "label": lane["label"]} for lane in lanes]}
 
 
@@ -899,15 +1228,42 @@ def _week_dates(start: str, end: str) -> List[str]:
 
 
 def noted_history(
-    db: Any, settings: Any, *, list_name: str, start: str, end: str, data_dir: Any = None
+    db: Any,
+    settings: Any,
+    *,
+    list_name: str,
+    start: str,
+    end: str,
+    data_dir: Any = None,
+    transport: Optional[httpx.BaseTransport] = None,
+    llm_transport: Optional[httpx.BaseTransport] = None,
 ) -> Dict[str, Any]:
     slug = normalize_list_name(list_name)
     if not slug:
         raise NotedError("Choose a New York Times category")
     weeks = _week_dates(start, end)
+    has_nyt_key = bool(_nyt_api_key(settings))
+    source = _nyt_cache_source(settings)
+    if not has_nyt_key:
+        cached_dates = _stored_week_dates(db, source=source, list_name=slug)
+        if any(week not in cached_dates for week in weeks) and not _household_llm_ready(settings):
+            raise NotedError(MISSING_NYT_AND_MODEL)
     for week in weeks:
-        refresh_nyt_list(db, settings, list_name=slug, published_date=week, data_dir=data_dir)
-    rows = _cache_rows(db, source="nyt", list_name=slug)
+        try:
+            refresh_nyt_list(
+                db,
+                settings,
+                list_name=slug,
+                published_date=week,
+                data_dir=data_dir,
+                transport=transport,
+                llm_transport=llm_transport,
+            )
+        except NotedError:
+            raise
+        except Exception:
+            logger.info("NYT list %s for %s was not stored", slug, week)
+    rows = _cache_rows(db, source=source, list_name=slug)
     rows = [row for row in rows if start <= _text(row.get("published_date")) <= end]
     grouped: Dict[str, Dict[str, Any]] = {}
     for row in rows:
@@ -917,9 +1273,44 @@ def noted_history(
     index = ShelfIndex(db)
     items = []
     for row in grouped.values():
-        book, audio = index.pair(row)
-        items.append({**row, "weeks": sorted(set(row["weeks"])), "shelved": bool(book or audio)})
-    return {"list_name": slug, "start": start, "end": end, "items": sorted(items, key=lambda item: item["title"].lower())}
+        book, audio = index.pair(_shelf_probe(row))
+        shelved = bool(book or audio)
+        wanted = not shelved and bool(
+            db.get_wanted_by_dedupe(
+                dedupe_key(
+                    kind="book",
+                    work_id="",
+                    title=_text(row.get("title")),
+                    author=_text(row.get("author")),
+                    isbn=_text(row.get("isbn13")),
+                )
+            )
+        )
+        items.append(
+            {
+                **row,
+                "weeks": sorted(set(row["weeks"])),
+                "shelved": shelved,
+                "wanted": wanted,
+                "status": "matched" if shelved else "wanted" if wanted else "missing",
+            }
+        )
+    items.sort(key=lambda item: item["title"].lower())
+    counts = {status: sum(1 for item in items if item["status"] == status) for status in ("matched", "wanted", "missing")}
+    origin = "nyt" if has_nyt_key else "household"
+    return {
+        "list_name": slug,
+        "start": start,
+        "end": end,
+        "weeks": weeks,
+        "counts": counts,
+        "items": items,
+        "origin": origin,
+        "origin_label": HOUSEHOLD_ORIGIN_LABEL if origin == "household" and items else "",
+        "empty_copy": ""
+        if items or has_nyt_key
+        else "The household model did not return titles for that range.",
+    }
 
 
 def add_missing_noted_history(db: Any, items: Sequence[Mapping[str, Any]]) -> int:
@@ -927,7 +1318,8 @@ def add_missing_noted_history(db: Any, items: Sequence[Mapping[str, Any]]) -> in
     index = ShelfIndex(db)
     added = 0
     for item in items:
-        if index.of_kind(item, "book") or index.of_kind(item, "audiobook"):
+        sought = _shelf_probe(item)
+        if index.of_kind(sought, "book") or index.of_kind(sought, "audiobook"):
             continue
         try:
             key = dedupe_key(

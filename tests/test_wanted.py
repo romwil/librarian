@@ -973,3 +973,118 @@ def test_ask_wanted_hit_does_not_enqueue_twice(db, monkeypatch):
     assert second["outcome"] == "already_asked"
     assert second["note"] == "Already on a slip"
     assert len(db.list_jobs(limit=10)) == 1
+
+
+DORIAN = "Titan.Comics.Dorian.Gray.2026.HYBRID.COMIC.eBook-21A1"
+DORIAN_GUID = "575ab9e4-6d92-4b5e-8c2a-d544d27f963e"
+
+
+def _indexer_transport(results, seen):
+    import httpx
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        params = dict(request.url.params)
+        seen.append(
+            {
+                "path": request.url.path,
+                "query": params.get("query", ""),
+                "cat": params.get("cat", ""),
+            }
+        )
+        return httpx.Response(200, json={"results": results})
+
+    return httpx.MockTransport(handler)
+
+
+def test_comic_release_name_want_grabs_the_posting_the_indexer_returns(db):
+    """Discover/RSS saved the posting name. The indexer returns that posting. Grab it."""
+    from librarian.wanted import add_wanted
+
+    row = add_wanted(db, {"title": DORIAN, "kind": "comic"}, now=NOW)
+    seen: list = []
+    finder = NZBFinderClient(
+        "https://nzbfinder.ws",
+        "test-token",
+        transport=_indexer_transport(
+            [{"title": DORIAN, "guid": DORIAN_GUID, "category": "7030", "size": 61_000_000}],
+            seen,
+        ),
+    )
+    try:
+        assert poll_wanted(db, Settings(), now=NOW, client=finder) == 1
+    finally:
+        finder.close()
+    assert seen == [{"path": "/api/v2/search", "query": DORIAN, "cat": "7030"}]
+    fresh = db.get_wanted(row["id"])
+    assert fresh["status"] == "asked"
+    assert fresh["miss_streak"] == 0
+    job = db.get_job(fresh["job_id"])
+    assert job["status"] == "asked"
+    assert job["indexer_guid"] == DORIAN_GUID
+    assert job["kind"] == "comic"
+
+
+def test_title_only_glance_still_misses_and_backs_off(db):
+    """A short title with no author is not the release. Nothing found stays honest."""
+    from librarian.wanted import add_wanted
+
+    row = add_wanted(db, {"title": "Dune", "kind": "comic"}, now=NOW)
+    seen: list = []
+    finder = NZBFinderClient(
+        "https://nzbfinder.ws",
+        "test-token",
+        transport=_indexer_transport(
+            [{"title": "Dune", "guid": "guid-other-dune", "category": "7030"}], seen
+        ),
+    )
+    try:
+        assert poll_wanted(db, Settings(), now=NOW, client=finder) == 1
+    finally:
+        finder.close()
+    fresh = db.get_wanted(row["id"])
+    assert fresh["status"] == "wanted"
+    assert fresh["miss_streak"] == 1
+    assert fresh["next_search_at"] == pytest.approx(NOW + backoff_seconds(1))
+    assert db.list_jobs(limit=10) == []
+
+
+def test_wanted_add_with_clicked_hit_files_that_guid(tmp_path, monkeypatch):
+    """Get on a Discover/RSS card: one call saves the row and asks for that posting."""
+    client = _owner_client(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        NZBFinderClient,
+        "search_traced",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("add must not search")),
+    )
+    hit = {
+        "guid": DORIAN_GUID,
+        "title": DORIAN,
+        "kind": "comic",
+        "category": "7030",
+        "host_id": "nzbfinder",
+        "download_url": "https://nzbfinder.ws/api/v2/download?id=x&api_token=secret-token",
+    }
+    added = client.post("/api/wanted", json={"title": DORIAN, "kind": "comic", "hit": hit})
+    assert added.status_code == 200
+    body = added.json()
+    assert body["item"]["status"] == "asked"
+    assert body["outcome"] == "hit"
+    database = Database(tmp_path / "librarian.db")
+    try:
+        jobs = database.list_jobs(limit=10)
+        assert len(jobs) == 1
+        assert jobs[0]["indexer_guid"] == DORIAN_GUID
+        assert jobs[0]["status"] == "asked"
+        assert jobs[0]["id"] == body["job_id"]
+        assert "secret-token" not in str(database.get_job(jobs[0]["id"])["payload"])
+    finally:
+        database.close()
+
+    again = client.post("/api/wanted", json={"title": DORIAN, "kind": "comic", "hit": hit})
+    assert again.status_code == 200
+    assert again.json()["item"]["status"] == "asked"
+    database = Database(tmp_path / "librarian.db")
+    try:
+        assert len(database.list_jobs(limit=10)) == 1
+    finally:
+        database.close()

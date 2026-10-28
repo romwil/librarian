@@ -1,7 +1,8 @@
 """Wanted desk API. Readers may list. Owner and op may add, dismiss, or search.
 
 Adding a row does not search and does not call SABnzbd. Search files an Asked
-slip. Confirm, on the queue, is what talks to SABnzbd.
+slip, and so does an add that carries the clicked posting's guid. Confirm, on
+the queue, is what talks to SABnzbd.
 """
 
 from __future__ import annotations
@@ -81,8 +82,18 @@ def register_wanted_routes(app: FastAPI, deps: WebDeps) -> None:
     @app.post("/api/wanted")
     def wanted_add(payload: WantedAddPayload, request: Request):
         require_role(request.state.user, "owner", "op")
+        fields = payload.model_dump(exclude={"hit"})
+        hit = payload.hit.model_dump() if payload.hit is not None else {}
         try:
-            row = add_wanted(db, payload.model_dump())
+            row = add_wanted(db, fields)
+            if hit.get("guid", "").strip() and row.get("status") == "wanted":
+                asked = ask_wanted_hit(db, str(row["id"]), hit)
+                row = db.get_wanted(str(row["id"])) or row
+                return {
+                    "item": _public(row),
+                    "outcome": asked.get("outcome"),
+                    "job_id": asked.get("job_id"),
+                }
         except AlreadyShelved as error:
             raise HTTPException(
                 status_code=409,
