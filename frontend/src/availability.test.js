@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { bookAvailability, catalogStatus } from "./availability.js";
+import { bookAvailability, catalogStatus, forListCard } from "./availability.js";
 
 const book = {
   id: "book-1",
@@ -49,6 +49,24 @@ describe("availability chip", () => {
     assert.equal(view.downloadHref, "/api/works/book-1/download");
     assert.equal(view.canAdd, false);
     assert.equal(view.canDismiss, false);
+    assert.equal(forListCard(view).show, false);
+  });
+
+  it("keeps a shelved Listen link on a list card and drops only the missing format", () => {
+    const listen = bookAvailability({
+      work: book,
+      audiobook: {
+        applicable: true,
+        shelved: { id: "audio-1", title: "Circe" },
+        find: miss.find,
+      },
+      role: "reader",
+    });
+    assert.equal(forListCard(listen).verb, "listen");
+    const wanted = bookAvailability({ work: book, audiobook: miss, role: "owner" });
+    assert.equal(wanted.note, "The audiobook is wanted");
+    assert.equal(wanted.canAdd, true);
+    assert.equal(forListCard(wanted).show, false);
   });
 
   it("lets an owner add when no row exists, and dismiss an open row", () => {

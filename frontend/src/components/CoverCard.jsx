@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api.js";
-import { bookAvailability, catalogStatus } from "../availability.js";
+import { bookAvailability, catalogStatus, forListCard } from "../availability.js";
 import { saveBeyondGet } from "../beyondGet.js";
 import AvailabilityActions from "./AvailabilityActions.jsx";
 import CatalogVerb from "./CatalogVerb.jsx";
@@ -78,7 +78,7 @@ export default function CoverCard({ work, onRequest, badge, beyond = false, role
   const overlay = coverOverlay(item);
   const caption = coverCaption(item);
   const tip = coverTip(item);
-  // Stacks names the title and the author. Hall and Search keep their verbs.
+  // Stacks names the title and the author. Every list footer skips a missing format.
   const stacksCard = cardMode === "stacks";
   const host = beyond ? beyondHostName(work) : "";
   const beads = isGap ? gapBeadModel(work) : [];
@@ -86,11 +86,13 @@ export default function CoverCard({ work, onRequest, badge, beyond = false, role
   const [queuedStatus, setQueuedStatus] = useState("");
   const [availabilityBusy, setAvailabilityBusy] = useState(false);
   const [getError, setGetError] = useState("");
-  const availability = bookAvailability({
-    work: { ...work, wanted: wantedRow || work.wanted },
-    role,
-    beyond,
-  });
+  const availability = forListCard(
+    bookAvailability({
+      work: { ...work, wanted: wantedRow || work.wanted },
+      role,
+      beyond,
+    }),
+  );
   const catalog = catalogStatus({
     work: {
       ...work,
@@ -354,24 +356,7 @@ export default function CoverCard({ work, onRequest, badge, beyond = false, role
           ))}
         </div>
       ) : null}
-      {stacksCard ? (
-        availability.verb === "want" ? (
-          <>
-            <AvailabilityActions
-              view={availability}
-              shelfVerbs={false}
-              busy={availabilityBusy}
-              onAdd={addWanted}
-              onDismiss={dismissWanted}
-            />
-            {getError ? (
-              <p className="catalog-status-error" role="alert">
-                {getError}
-              </p>
-            ) : null}
-          </>
-        ) : null
-      ) : availability.show ? (
+      {stacksCard ? null : availability.show ? (
         <>
           <AvailabilityActions
             view={availability}

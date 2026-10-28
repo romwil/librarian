@@ -6,6 +6,7 @@ import CoverCard from "../components/CoverCard.jsx";
 import QueryForm from "../components/QueryForm.jsx";
 import Rail from "../components/Rail.jsx";
 import SearchModeControl, { normalizeSearchMode } from "../components/SearchModeControl.jsx";
+import { ThinkingButton } from "../components/Thinking.jsx";
 import { FIELD_HELP, discoverStatusLine, humanError, searchStatusLine } from "../copy.js";
 import {
   DISCOVER_PAGE_SIZE,
@@ -99,6 +100,7 @@ export default function SearchPage() {
   const [discoverError, setDiscoverError] = useState("");
   const [discoverOpen, setDiscoverOpen] = useState(false);
   const [discoverPage, setDiscoverPage] = useState(0);
+  const [discoverPaging, setDiscoverPaging] = useState("");
   const [jobs, setJobs] = useState({});
 
   useEffect(() => {
@@ -167,11 +169,13 @@ export default function SearchPage() {
         } else {
           setDiscoverPhase("done");
         }
+        setDiscoverPaging("");
       })
       .catch((err) => {
         if (!alive) return;
         setDiscoverError(humanError(err));
         setDiscoverPhase("error");
+        setDiscoverPaging("");
       });
     return () => {
       alive = false;
@@ -285,9 +289,11 @@ export default function SearchPage() {
     if (discoverOpen) {
       setDiscoverOpen(false);
       setDiscoverPage(0);
+      setDiscoverPaging("");
       return;
     }
     setDiscoverPage(0);
+    setDiscoverPaging("");
     setDiscoverPhase("loading");
     setDiscoverError("");
     setDiscover({ items: [], categories: [], limit: DISCOVER_PAGE_SIZE, offset: 0 });
@@ -295,7 +301,9 @@ export default function SearchPage() {
   }
 
   function goDiscoverPage(nextPage) {
-    setDiscoverPage(Math.max(0, nextPage));
+    const page = Math.max(0, nextPage);
+    setDiscoverPaging(page > discoverPage ? "next" : "prev");
+    setDiscoverPage(page);
     setDiscoverPhase("loading");
     setDiscoverError("");
     setDiscover((prev) => ({ ...prev, items: [] }));
@@ -306,9 +314,11 @@ export default function SearchPage() {
     if (!open) {
       setDiscoverOpen(false);
       setDiscoverPage(0);
+      setDiscoverPaging("");
       return;
     }
     setDiscoverPage(0);
+    setDiscoverPaging("");
     setDiscoverPhase("loading");
     setDiscoverError("");
     setDiscover({ items: [], categories: [], limit: DISCOVER_PAGE_SIZE, offset: 0 });
@@ -346,22 +356,24 @@ export default function SearchPage() {
           <p className="lede discover-empty">{discoverEmpty}</p>
         ) : null}
         <div className="discover-pager">
-          <button
+          <ThinkingButton
             type="button"
             className="cta outline compact"
             onClick={() => goDiscoverPage(discoverPage - 1)}
+            busy={discoverPaging === "prev"}
             disabled={discoverPage === 0 || discoverPhase === "loading"}
           >
             Previous
-          </button>
-          <button
+          </ThinkingButton>
+          <ThinkingButton
             type="button"
             className="cta outline compact"
             onClick={() => goDiscoverPage(discoverPage + 1)}
+            busy={discoverPaging === "next"}
             disabled={discoverItems.length < DISCOVER_PAGE_SIZE || discoverPhase === "loading"}
           >
             Next
-          </button>
+          </ThinkingButton>
         </div>
       </section>
     );

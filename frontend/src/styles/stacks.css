@@ -1235,6 +1235,15 @@ body:has(.peek) .topbar {
 .cta-row.compact {
   gap: var(--space-2);
 }
+.cta-row.align-end {
+  align-items: end;
+}
+.cta-row.align-end > .cta {
+  height: var(--tap-min);
+  box-sizing: border-box;
+  padding-top: 0;
+  padding-bottom: 0;
+}
 .peek-copy .cta-row {
   width: 100%;
   max-width: 100%;
@@ -1749,7 +1758,8 @@ button.cover {
   }
 }
 /* Title and author, one line each, always visible under a Stacks cover. */
-.browse-page .browse-grid .stacks-card-footer {
+.browse-page .browse-grid .stacks-card-footer,
+.rail .stacks-card-footer {
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -1761,18 +1771,22 @@ button.cover {
   line-height: 1.25;
 }
 .browse-page .browse-grid .stacks-card-title,
-.browse-page .browse-grid .stacks-card-author {
+.browse-page .browse-grid .stacks-card-author,
+.rail .stacks-card-title,
+.rail .stacks-card-author {
   display: block;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.browse-page .browse-grid .stacks-card-title {
+.browse-page .browse-grid .stacks-card-title,
+.rail .stacks-card-title {
   color: var(--fg);
   font-weight: 600;
 }
-.browse-page .browse-grid .stacks-card-author {
+.browse-page .browse-grid .stacks-card-author,
+.rail .stacks-card-author {
   color: var(--muted);
 }
 .browse-empty {
@@ -2438,4 +2452,89 @@ button.cover {
   inset: 0;
   z-index: 0;
   opacity: 0.08;
+}
+
+/* New & noted — one cloth-backed card per book, filling the reading column. */
+.noted-books {
+  list-style: none;
+  margin: var(--space-4) 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(17.5rem, 1fr));
+  gap: var(--space-3);
+}
+
+.noted-book {
+  display: grid;
+  grid-template-columns: 0.7rem minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  gap: var(--space-3);
+  margin: 0;
+  padding: var(--space-3) var(--space-3) var(--space-3) 0;
+  background: color-mix(in srgb, var(--surface-raised) 92%, var(--paper));
+  border: 1px solid color-mix(in srgb, var(--paper) 30%, var(--border));
+  border-radius: var(--radius);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--paper) 35%, transparent),
+    0 12px 28px color-mix(in srgb, var(--lamp) 12%, transparent);
+  min-width: 0;
+}
+
+.noted-book-spine {
+  grid-column: 1;
+  grid-row: 1 / -1;
+  border-radius: var(--radius) 0 0 var(--radius);
+  background:
+    linear-gradient(90deg, rgba(0, 0, 0, 0.28) 0 3px, transparent 8px),
+    var(--cloth, var(--leather));
+}
+
+.noted-book-copy {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+}
+
+.noted-book-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: var(--leading-tight);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.noted-book-author {
+  margin: 0.2rem 0 0;
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  line-height: var(--leading-body);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.noted-book-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0;
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.noted-book-weeks {
+  color: var(--fg);
+}
+
+.noted-book-status {
+  color: var(--muted);
+}
+
+.noted-book-actions {
+  grid-column: 2;
+  grid-row: 2;
+  margin: 0;
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useOutletContext, useParams } from "react-router-dom";
 import { api } from "../api.js";
 import { busyLabel } from "../actionBusy.js";
+import { ThinkingButton } from "../components/Thinking.jsx";
 import { browseHref } from "../browse.js";
 import { coverWashStyle, coverWashUrl, isInboundJob } from "../cover.js";
 import { canPromoteIncomingMusic, humanError, peekMediaNote } from "../copy.js";
@@ -876,11 +877,10 @@ export default function WorkPage() {
                 </p>
               ) : null}
               <div className="cta-row compact">
-                <button
+                <ThinkingButton
                   type="button"
                   className="cta outline compact"
-                  disabled={enriching}
-                  aria-busy={enriching || undefined}
+                  busy={enriching}
                   data-testid="work-enrich"
                   onClick={async () => {
                     setEnrichNote(busyLabel("enrich"));
@@ -908,8 +908,8 @@ export default function WorkPage() {
                     }
                   }}
                 >
-                  {enriching ? busyLabel("enrich") : "Enrich"}
-                </button>
+                  Enrich
+                </ThinkingButton>
                 <button
                   type="button"
                   className="cta outline compact"
@@ -919,15 +919,15 @@ export default function WorkPage() {
                 >
                   Edit
                 </button>
-                <button
+                <ThinkingButton
                   type="button"
                   className="cta outline compact"
                   data-testid="work-fix-match"
                   onClick={openFixMatch}
-                  disabled={matchLoading}
+                  busy={matchLoading}
                 >
-                  {matchLoading ? busyLabel("match") : "Fix match"}
-                </button>
+                  Fix match
+                </ThinkingButton>
                 {work.description || work.synopsis_source || work.llm_blurb ? (
                   <button
                     type="button"
@@ -1033,15 +1033,16 @@ export default function WorkPage() {
                             <span className="chip">{Math.round(Number(row.match_confidence) * 100)}%</span>
                           ) : null}
                         </div>
-                        <button
+                        <ThinkingButton
                           type="button"
                           className="cta outline compact"
-                          disabled={Boolean(matchApplying)}
+                          busy={matchApplying === row.match_key}
+                          disabled={Boolean(matchApplying) && matchApplying !== row.match_key}
                           data-testid="work-apply-match"
                           onClick={() => chooseMatch(row.match_key)}
                         >
-                          {matchApplying === row.match_key ? busyLabel("match") : "Use this"}
-                        </button>
+                          Use this
+                        </ThinkingButton>
                       </li>
                     ))}
                   </ul>

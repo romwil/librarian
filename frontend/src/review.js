@@ -922,10 +922,13 @@ export function badReleaseMigrationSummary(status) {
   const state = String(status.status || "");
   if (!state || state === "idle") return "";
   const returned = Number(status.returned || 0);
+  const dismissed = Number(status.dismissed || 0);
   const left = Number(status.left_on_desk || 0);
   const failed = Number(status.failed || 0);
   if (state === "failed") return status.error || "Returning bad downloads to Wanted stopped.";
-  const tallies = [`${returned} returned to Wanted`, `${left} left for you`];
+  const tallies = [`${returned} returned to Wanted`];
+  if (dismissed) tallies.push(`${dismissed} cleared from the desk`);
+  if (left) tallies.push(`${left} left for you`);
   if (failed) tallies.push(`${failed} failed`);
   if (state === "running") {
     const done = Number(status.done || 0);

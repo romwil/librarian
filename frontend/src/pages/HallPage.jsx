@@ -98,8 +98,8 @@ function HallRails({ owner, configured }) {
           ) : null}
         </section>
       ) : null}
-      {listening ? <Rail title="Continue listening" items={listening} /> : null}
-      {reading ? <Rail title="Continue reading" items={reading} /> : null}
+      {listening ? <Rail title="Continue listening" items={listening} cardMode="stacks" /> : null}
+      {reading ? <Rail title="Continue reading" items={reading} cardMode="stacks" /> : null}
       {recent ? <Rail title="Recently added" items={recent} /> : null}
       {favorites ? (
         <Rail title="Favorites" items={favorites} seeAllTo={browseHref({ shelf: "favorites" })} />

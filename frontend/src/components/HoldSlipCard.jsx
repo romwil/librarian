@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
-import { busyLabel } from "../actionBusy.js";
 import { FIELD_HELP, SLIP_ACTION_HELP, humanError } from "../copy.js";
+import { ThinkingButton } from "./Thinking.jsx";
 import FieldHelp, { FieldLabel } from "./FieldHelp.jsx";
 import SearchTraceDisclosure from "./SearchTraceDisclosure.jsx";
 import {
@@ -68,15 +68,16 @@ export default function HoldSlipCard({
         <span className="muted hold-slip-reason" data-testid="review-reason-copy">
           {holdSlipReasonWords(work)}
         </span>
-        <button
+        <ThinkingButton
           type="button"
           className="cta compact"
           data-testid="hold-slip-primary"
-          disabled={workBusy || (actions.recommendedMotion === "apply" && !canApply)}
+          busy={workBusy}
+          disabled={!workBusy && actions.recommendedMotion === "apply" && !canApply}
           onClick={() => onPrimary()}
         >
-          {workBusy ? busyLabel(activeAction || "apply") : primaryLabel}
-        </button>
+          {primaryLabel}
+        </ThinkingButton>
       </div>
       <details className="ticket-diagnosis" data-testid="hold-slip-more" open={focused || undefined}>
         <summary>More</summary>
@@ -179,15 +180,16 @@ export default function HoldSlipCard({
                         .join(" · ")}
                     </span>
                   </div>
-                  <button
+                  <ThinkingButton
                     type="button"
                     className="cta outline compact"
-                    disabled={workBusy}
+                    busy={activeAction === "match"}
+                    disabled={workBusy && activeAction !== "match"}
                     data-testid="review-apply-match"
                     onClick={() => onUseListedMatch(row)}
                   >
                     Use this
-                  </button>
+                  </ThinkingButton>
                 </li>
               ))}
             </ul>
@@ -200,74 +202,74 @@ export default function HoldSlipCard({
           actions.canSuggestLlm) && (
           <div className="cta-row ticket-recovery" data-testid="review-recovery">
             {actions.canSuggestLlm ? (
-              <button
+              <ThinkingButton
                 type="button"
                 className={recommendedMotionCtaClass(work, "suggest")}
-                disabled={workBusy}
-                aria-busy={activeAction === "suggest" || undefined}
+                busy={activeAction === "suggest"}
+                disabled={workBusy && activeAction !== "suggest"}
                 onClick={() => onSuggest()}
                 data-testid="review-suggest-llm"
               >
-                {activeAction === "suggest" ? busyLabel("suggest") : "Suggest with LLM"}
-              </button>
+                Suggest with LLM
+              </ThinkingButton>
             ) : null}
             {actions.canRepair ? (
               <span className="cta-help">
-                <button
+                <ThinkingButton
                   type="button"
                   className={recommendedMotionCtaClass(work, "repair")}
-                  disabled={workBusy}
-                  aria-busy={activeAction === "repair" || undefined}
+                  busy={activeAction === "repair"}
+                  disabled={workBusy && activeAction !== "repair"}
                   onClick={() => onRepair()}
                   data-testid="review-repair"
                 >
-                  {activeAction === "repair" ? busyLabel("repair") : "Repair"}
-                </button>
+                  Repair
+                </ThinkingButton>
                 <FieldHelp label="Repair">{SLIP_ACTION_HELP.repair}</FieldHelp>
               </span>
             ) : null}
             {actions.canRetry ? (
               <span className="cta-help">
-                <button
+                <ThinkingButton
                   type="button"
                   className={recommendedMotionCtaClass(work, "retry")}
-                  disabled={workBusy}
-                  aria-busy={activeAction === "retry" || undefined}
+                  busy={activeAction === "retry"}
+                  disabled={workBusy && activeAction !== "retry"}
                   onClick={() => onRetry()}
                   data-testid="review-retry"
                 >
-                  {activeAction === "retry" ? busyLabel("retry") : "Retry"}
-                </button>
+                  Retry
+                </ThinkingButton>
                 <FieldHelp label="Retry">{SLIP_ACTION_HELP.retry}</FieldHelp>
               </span>
             ) : null}
             {actions.canRegrab ? (
               <span className="cta-help">
-                <button
+                <ThinkingButton
                   type="button"
                   className={recommendedMotionCtaClass(work, "regrab")}
-                  disabled={workBusy}
-                  aria-busy={activeAction === "regrab" || undefined}
+                  busy={activeAction === "regrab"}
+                  disabled={workBusy && activeAction !== "regrab"}
                   onClick={() => onRetrieve("regrab")}
                   data-testid="review-regrab"
                 >
-                  {activeAction === "regrab" ? busyLabel("regrab") : "Smart re-grab"}
-                </button>
+                  Smart re-grab
+                </ThinkingButton>
                 <FieldHelp label="Smart re-grab">{SLIP_ACTION_HELP.regrab}</FieldHelp>
               </span>
             ) : null}
             {actions.canRequestNew ? (
               <span className="cta-help">
-                <button
+                <ThinkingButton
                   type="button"
                   className={recommendedMotionCtaClass(work, "request_new")}
-                  disabled={workBusy}
-                  aria-busy={activeAction === "requestNew" || undefined}
+                  busy={activeAction === "requestNew"}
+                  disabled={workBusy && activeAction !== "requestNew"}
                   onClick={() => onRetrieve("new_version")}
                   data-testid="review-request-new"
                 >
-                  {activeAction === "requestNew" ? busyLabel("requestNew") : "Request new version"}
-                </button>
+                  Request new version
+                </ThinkingButton>
                 <FieldHelp label="Request new version">{SLIP_ACTION_HELP.requestNew}</FieldHelp>
               </span>
             ) : null}
@@ -290,16 +292,16 @@ export default function HoldSlipCard({
                     ? ` · ${Math.round(Number(candidate.score ?? candidate.match_confidence) * 100)}%`
                     : ""}
                 </span>
-                <button
+                <ThinkingButton
                   type="button"
                   className={index === 0 ? "cta compact" : "cta compact outline"}
-                  disabled={workBusy}
-                  aria-busy={activeAction === "applyMatch" || undefined}
+                  busy={activeAction === "applyMatch"}
+                  disabled={workBusy && activeAction !== "applyMatch"}
                   onClick={() => onApplyAuthority(candidate)}
                   data-testid="authority-match-apply"
                 >
-                  {activeAction === "applyMatch" ? busyLabel("applyMatch") : "Use this match"}
-                </button>
+                  Use this match
+                </ThinkingButton>
               </li>
             ))}
           </ul>
@@ -326,16 +328,16 @@ export default function HoldSlipCard({
               <li key={candidate.guid || candidate.title}>
                 <span>{candidate.diff || candidate.title}</span>
                 {regrab?.queued || regrab?.already_active ? null : (
-                  <button
+                  <ThinkingButton
                     type="button"
                     className={index === 0 ? "cta compact" : "cta compact outline"}
-                    disabled={workBusy}
-                    aria-busy={activeAction === "request" || undefined}
+                    busy={activeAction === "request"}
+                    disabled={workBusy && activeAction !== "request"}
                     onClick={() => onRequestCandidate(candidate)}
                     data-testid="regrab-request"
                   >
-                    {activeAction === "request" ? busyLabel("request") : "Request this"}
-                  </button>
+                    Request this
+                  </ThinkingButton>
                 )}
               </li>
             ))}
@@ -408,11 +410,11 @@ export default function HoldSlipCard({
           {slipError ? <p className="alert field-wide">{slipError}</p> : null}
           <div className="cta-row field-wide">
             <span className="cta-help">
-              <button
+              <ThinkingButton
                 type="submit"
                 className={recommendedMotionCtaClass(work, "apply", { compact: false })}
-                disabled={!canApply || workBusy}
-                aria-busy={activeAction === "apply" || undefined}
+                busy={activeAction === "apply"}
+                disabled={!canApply || (workBusy && activeAction !== "apply")}
                 title={
                   collision && !canApply
                     ? "Change title, author, series, or folder so the destination is free — Apply will not overwrite."
@@ -420,25 +422,25 @@ export default function HoldSlipCard({
                 }
                 data-testid="review-apply"
               >
-                {activeAction === "apply" ? busyLabel("apply") : "Apply"}
-              </button>
+                Apply
+              </ThinkingButton>
               <FieldHelp label="Apply">{SLIP_ACTION_HELP.apply}</FieldHelp>
             </span>
             <span className="cta-help">
-              <button
+              <ThinkingButton
                 type="button"
                 className={
                   actions.recommendedMotion === "skip"
                     ? recommendedMotionCtaClass(work, "skip", { compact: false })
                     : "cta ghost"
                 }
-                disabled={workBusy}
-                aria-busy={activeAction === "skip" || undefined}
+                busy={activeAction === "skip"}
+                disabled={workBusy && activeAction !== "skip"}
                 onClick={() => onSkip()}
                 data-testid="review-skip"
               >
-                {activeAction === "skip" ? busyLabel("skip") : "Skip"}
-              </button>
+                Skip
+              </ThinkingButton>
               <FieldHelp label="Skip">{SLIP_ACTION_HELP.skip}</FieldHelp>
             </span>
           </div>

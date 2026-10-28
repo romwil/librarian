@@ -160,10 +160,10 @@ test.describe("Holds desk group actions", () => {
     expect(bodies[0]).toMatchObject({ dry_run: true });
 
     await dialog.getByRole("button", { name: "Purge 2" }).click();
-    await expect(page.getByTestId("review-group-note")).toContainText(
-      "Purged 1 of 3. Skipped 2: 1 unassessable, 1 failed.",
-    );
-    await expect(page.getByTestId("review-group-note")).toContainText("Broken: database is locked");
+    const pileResult = page.getByTestId("holds-group-result");
+    await expect(pileResult).toContainText("Purged 1 of 3. Skipped 2: 1 unassessable, 1 failed.");
+    await expect(pileResult).toContainText("Broken: database is locked");
+    await expect(page.getByTestId("review-group-note")).toHaveCount(0);
     expect(bodies[1]).toMatchObject({ dry_run: false, action: "purge_duplicates" });
   });
 

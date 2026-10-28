@@ -50,9 +50,19 @@ function wantedBody(work) {
 }
 
 /**
+ * List and card footers name the work that is there.
+ * A missing companion format (verb "want") stays on the work page.
+ */
+export function forListCard(view) {
+  if (!view?.show || view.verb === "want") return hidden();
+  return view;
+}
+
+/**
  * Availability for a book already on the shelf.
  * Listen wins when a companion audiobook is shelved.
  * Wanted is the miss, or an open Wanted row. A dismissal hides the prompt.
+ * Pass the result through forListCard before rendering a list or cover footer.
  */
 export function bookAvailability({ work = {}, audiobook = null, wanted = null, role = "reader", beyond = false } = {}) {
   if (beyond || work.gap || work.kind === "gap") return hidden();

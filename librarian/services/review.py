@@ -119,12 +119,23 @@ def bad_release_migration_status(db: Any, root: Path) -> Dict[str, Any]:
             "total": int(report.get("total") or 0),
             "done": int(report.get("total") or 0),
             "returned": int(report.get("returned") or 0),
+            "dismissed": int(report.get("dismissed") or 0),
             "left_on_desk": int(report.get("left_on_desk") or 0),
             "failed": int(report.get("failed") or 0),
         }
     return {
         key: progress.get(key)
-        for key in ("status", "total", "done", "returned", "left_on_desk", "failed", "current_title", "error")
+        for key in (
+            "status",
+            "total",
+            "done",
+            "returned",
+            "dismissed",
+            "left_on_desk",
+            "failed",
+            "current_title",
+            "error",
+        )
     }
 
 

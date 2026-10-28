@@ -61,23 +61,19 @@ async function viewAsReader(page: Page) {
 }
 
 test.describe("Library availability", () => {
-  test("Browse shows Wanted and Listen on the cards", async ({ page }) => {
+  test("Browse cards name the book and leave a missing audiobook off the list", async ({ page }) => {
     await loginAsOwner(page);
     await mockBrowse(page);
     await page.goto("/browse");
     await dismissWhatsNewIfPresent(page);
-    const listen = page.getByTestId("availability").filter({ hasText: "Listen" });
-    const wanted = page.getByTestId("availability").filter({ hasText: "Wanted" });
-    await expect(listen).toBeVisible();
-    await expect(listen.getByRole("link", { name: "Listen" })).toHaveAttribute("href", /\/works\/audio-dune\?listen=1/);
-    await expect(listen.getByRole("link", { name: "Download" })).toHaveAttribute("href", "/api/works/book-listen/download");
-    await expect(listen.getByText("Wanted")).toHaveCount(0);
-    await expect(wanted).toBeVisible();
-    await expect(wanted.getByText("The audiobook is wanted")).toBeVisible();
-    await expect(wanted.getByRole("link", { name: "Search the shelves" })).toBeVisible();
-    await expect(wanted.getByRole("link", { name: "Find beyond" })).toBeVisible();
-    await expect(wanted.getByRole("link", { name: "Download" })).toHaveAttribute("href", "/api/works/book-want/download");
-    await expect(wanted.getByRole("link", { name: "Listen" })).toHaveCount(0);
+    await expect(page.getByText("Circe")).toBeVisible();
+    await expect(page.getByText("Madeline Miller")).toBeVisible();
+    await expect(page.getByText("Dune")).toBeVisible();
+    await expect(page.getByText("Frank Herbert")).toBeVisible();
+    await expect(page.getByText("The audiobook is wanted")).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Listen" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Add to Wanted" })).toHaveCount(0);
+    await expect(page.getByText("On the shelf")).toHaveCount(0);
   });
 
   test("Wanted desk add and dismiss stay with the owner", async ({ page }) => {

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
-from librarian.audiobook_match import match_catalog_work, match_companion_audiobook
+from librarian.audiobook_match import match_prepared_catalog, prepare_catalog_candidates
 from librarian.covers import cover_file_ok
 
 BOOK = "book"
@@ -47,11 +47,15 @@ class ShelfIndex:
         self.audiobooks: List[Dict[str, Any]] = (
             list(db.list_shelved_works(AUDIOBOOK)) if db is not None else []
         )
+        self._books = prepare_catalog_candidates(self.books)
+        self._audiobooks = prepare_catalog_candidates(
+            [row for row in self.audiobooks if str(row.get("kind") or "") in ("", AUDIOBOOK)]
+        )
 
     def pair(self, item: Mapping[str, Any]) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
         probe = _probe(item)
-        book = _stub(match_catalog_work(probe, self.books), kind=BOOK)
-        audio = _stub(match_companion_audiobook(probe, self.audiobooks), kind=AUDIOBOOK)
+        book = _stub(match_prepared_catalog(probe, self._books), kind=BOOK)
+        audio = _stub(match_prepared_catalog(probe, self._audiobooks), kind=AUDIOBOOK)
         return book, audio
 
     def of_kind(self, item: Mapping[str, Any], kind: str) -> Optional[Dict[str, Any]]:

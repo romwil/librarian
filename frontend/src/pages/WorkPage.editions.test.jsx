@@ -67,11 +67,23 @@ function Where() {
   return <output data-testid="where">{`${location.pathname}${location.search}`}</output>;
 }
 
-function renderWork(path) {
+const MISSING_AUDIO = {
+  ...BOOK,
+  work: { ...BOOK.work, id: "miss-audio", narrator: "January LaVoy" },
+  audiobook: {
+    applicable: true,
+    shelved: null,
+    narrator: "January LaVoy",
+    find: { kind: "audiobook", title: "The 1619 Project", author: "Nikole Hannah-Jones" },
+  },
+  wanted: null,
+};
+
+function renderWork(path, role = "reader") {
   return render(
     <MemoryRouter initialEntries={[path]}>
       <Routes>
-        <Route element={<Outlet context={{ user: { role: "reader", display_name: "Ada" } }} />}>
+        <Route element={<Outlet context={{ user: { role, display_name: "Ada" } }} />}>
           <Route path="/works/:id" element={<WorkPage />} />
         </Route>
       </Routes>
@@ -93,6 +105,7 @@ beforeEach(() => {
     const path = String(url);
     let body = {};
     if (path.endsWith("/api/works/1619")) body = BOOK;
+    else if (path.endsWith("/api/works/miss-audio")) body = MISSING_AUDIO;
     else if (path.endsWith("/api/works/audio-1")) body = AUDIO;
     else if (path.endsWith("/api/works/linked-1")) body = LINKED;
     else if (path.includes("/chapters")) body = { chapters: [] };
@@ -118,6 +131,17 @@ describe("Work page editions and listen", () => {
     assert.match(items[0], /9780593230572/);
     assert.match(items[1], /Audiobook/);
     assert.match(items[1], /B09LISTEN/);
+  });
+
+  it("keeps a missing audiobook on the work page", async () => {
+    renderWork("/works/miss-audio", "owner");
+    const section = await screen.findByRole("region", { name: "Editions and formats" });
+    assert.match(section.textContent, /Audiobook/);
+    assert.match(section.textContent, /B09LISTEN/);
+    await userEvent.click(screen.getByText("Series, catalog, and notes"));
+    assert.ok(screen.getByText("The audiobook is wanted"));
+    assert.ok(screen.getByRole("button", { name: "Add to Wanted" }));
+    assert.ok(screen.getByRole("link", { name: "Find beyond" }));
   });
 
   it("opens Listen on the m4b and does not invent an Audiobookshelf link", async () => {

@@ -3,6 +3,7 @@ import { Link, useOutletContext } from "react-router-dom";
 import { api } from "../api.js";
 import { humanError } from "../copy.js";
 import { wantedDeskModel } from "../wantedDesk.js";
+import { ThinkingButton } from "../components/Thinking.jsx";
 import WarmLoad from "../components/WarmLoad.jsx";
 
 const KINDS = ["audiobook", "book", "magazine", "comic", "music"];
@@ -27,6 +28,7 @@ export default function WantedPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState("");
+  const [busyKind, setBusyKind] = useState("");
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState({ title: "", author: "", kind: "audiobook" });
   const [selected, setSelected] = useState({});
@@ -34,6 +36,7 @@ export default function WantedPage() {
   const [attempts, setAttempts] = useState({});
   const [beyond, setBeyond] = useState({});
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkTarget, setBulkTarget] = useState("");
 
   function applyList(data) {
     setItems(data.items || []);
@@ -126,9 +129,10 @@ export default function WantedPage() {
     });
   }
 
-  async function runSearch(body, ids) {
+  async function runSearch(body, ids, target) {
     if (bulkBusy) return;
     setBulkBusy(true);
+    setBulkTarget(target || "");
     setError("");
     setInflight((current) => {
       const next = { ...current };
@@ -157,17 +161,18 @@ export default function WantedPage() {
         return next;
       });
       setBulkBusy(false);
+      setBulkTarget("");
     }
   }
 
   function searchSelected() {
     const ids = visibleIds.filter((id) => selected[id]);
     if (!ids.length) return;
-    runSearch({ ids }, ids);
+    runSearch({ ids }, ids, "selected");
   }
 
   function searchAll() {
-    runSearch(kind ? { all: true, kind } : { all: true }, visibleIds);
+    runSearch(kind ? { all: true, kind } : { all: true }, visibleIds, "all");
   }
 
   async function findBeyond(row) {
@@ -255,6 +260,7 @@ export default function WantedPage() {
   async function dismiss(id) {
     if (!id || busyId) return;
     setBusyId(id);
+    setBusyKind("dismiss");
     setError("");
     try {
       await api.dismissWanted(id);
@@ -263,6 +269,7 @@ export default function WantedPage() {
       setError(humanError(err));
     } finally {
       setBusyId("");
+      setBusyKind("");
     }
   }
 
@@ -332,24 +339,26 @@ export default function WantedPage() {
             </div>
             {desk.canSearch ? (
               <div className="cta-row compact">
-                <button
+                <ThinkingButton
                   type="button"
                   className="cta compact"
+                  busy={bulkTarget === "selected"}
                   disabled={desk.toolbar.searchSelectedDisabled || bulkBusy}
                   onClick={searchSelected}
                   data-testid="wanted-search-selected"
                 >
                   {desk.toolbar.searchSelectedLabel}
-                </button>
-                <button
+                </ThinkingButton>
+                <ThinkingButton
                   type="button"
                   className="cta outline compact"
+                  busy={bulkTarget === "all"}
                   disabled={desk.toolbar.searchAllDisabled || bulkBusy}
                   onClick={searchAll}
                   data-testid="wanted-search-all"
                 >
                   {desk.toolbar.searchAllLabel}
-                </button>
+                </ThinkingButton>
               </div>
             ) : null}
           </div>
@@ -417,15 +426,16 @@ export default function WantedPage() {
                           Listen
                         </Link>
                       ) : null}
-                      <button
+                      <ThinkingButton
                         type="button"
                         className="cta outline compact"
                         onClick={() => findBeyond(row)}
+                        busy={Boolean(inflight[row.id]) && !bulkBusy}
                         disabled={Boolean(inflight[row.id])}
                         data-testid="wanted-find-beyond"
                       >
                         Find beyond
-                      </button>
+                      </ThinkingButton>
                       {row.status === "asked" && desk.canSearch && row.jobId ? (
                         <button
                           type="button"
@@ -438,15 +448,16 @@ export default function WantedPage() {
                         </button>
                       ) : null}
                       {row.canDismiss ? (
-                        <button
+                        <ThinkingButton
                           type="button"
                           className="cta outline compact"
                           onClick={() => dismiss(row.id)}
+                          busy={busyId === row.id && busyKind === "dismiss"}
                           disabled={busyId === row.id}
                           data-testid="wanted-dismiss"
                         >
                           Dismiss
-                        </button>
+                        </ThinkingButton>
                       ) : null}
                     </div>
                     {beyond[row.id]?.beyond_error && !/sabnzbd|downloader/i.test(String(beyond[row.id].beyond_error)) ? (

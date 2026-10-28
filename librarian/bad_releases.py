@@ -5,8 +5,9 @@ A release that unpacked to nothing (``no_payload``) or failed its conversion twi
 release id as bad so search never picks it again, clears the Wanted row's job, and
 puts it back on the normal retry clock. The completed-download folder stays on disk.
 
-Without a Wanted row or a release id there is nothing to send back; the slip stays
-on the desk and says it needs an owner decision.
+Without a Wanted row or a release id there is nothing to send back and nothing for
+the owner to decide. The slip is dismissed. The download folder stays on disk, and
+no Wanted row is invented.
 """
 
 from __future__ import annotations
@@ -27,8 +28,13 @@ NEEDS_OWNER_NOTE = (
     "Needs owner decision — no Wanted request or release id to send this back for another "
     "release. Request a new version or Delete it."
 )
+UNRETURNABLE_NOTE = (
+    "Nothing to send back to Wanted, so this slip was not kept. "
+    "The download folder is still on disk."
+)
+DISMISS_BAD_SLIP = "dismiss_bad_slip"
 
-MIGRATION_NAME = "bad_release_slips_to_wanted_v1"
+MIGRATION_NAME = "bad_release_slips_dismiss_unreturnable_v1"
 
 
 def _text(value: Any) -> str:
@@ -87,6 +93,40 @@ def release_context(
     }
 
 
+def _clear_unreturnable_slip(
+    db: Database,
+    *,
+    work_id: Optional[str],
+    job_id: Optional[str],
+    guid: str,
+    reason: str,
+    missing: str,
+    now: float,
+) -> Dict[str, Any]:
+    """Drop a bad-download slip the desk cannot act on. Does not touch the folder or Wanted."""
+    wid = _text(work_id)
+    dismissed = bool(wid) and db.delete_work(wid)
+    if dismissed:
+        db.record_review_audit(
+            DISMISS_BAD_SLIP,
+            work_id=wid,
+            job_id=job_id,
+            guid=guid or None,
+            reason=reason,
+            detail={"missing": missing},
+            now=now,
+        )
+    return {
+        "released": False,
+        "dismissed": dismissed,
+        "needs_owner": False,
+        "missing": missing,
+        "guid": guid,
+        "wanted_id": None,
+        "note": UNRETURNABLE_NOTE,
+    }
+
+
 def release_bad_wanted(
     db: Database,
     *,
@@ -96,13 +136,13 @@ def release_bad_wanted(
     guid: Optional[str] = None,
     host_id: Optional[str] = None,
     remove_slip: bool = False,
-    record_missing: bool = True,
     now: Optional[float] = None,
 ) -> Dict[str, Any]:
     """One shared transition: mark the release bad and return the Wanted row to the retry clock.
 
     Links the Wanted row by job first, then by work. With ``remove_slip`` the slip and its
-    job records go in the same write. Never touches files on disk.
+    job records go in the same write. When there is no Wanted row or no release id, the
+    slip is dismissed instead. Never touches files on disk and never inserts a Wanted row.
     """
     if reason not in BAD_RELEASE_REASONS:
         raise ValueError(f"Not a bad-release reason: {reason}")
@@ -122,24 +162,15 @@ def release_bad_wanted(
             db.record_bad_indexer_release(
                 host_id=ctx["host_id"], guid=found_guid, reason=reason, now=moment
             )
-        if record_missing:
-            db.record_review_audit(
-                NEEDS_OWNER_ACTION,
-                work_id=work_id,
-                job_id=resolved_job_id,
-                guid=found_guid or None,
-                reason=reason,
-                detail={"missing": missing},
-                now=moment,
-            )
-        return {
-            "released": False,
-            "needs_owner": True,
-            "missing": missing,
-            "guid": found_guid,
-            "wanted_id": None,
-            "note": NEEDS_OWNER_NOTE,
-        }
+        return _clear_unreturnable_slip(
+            db,
+            work_id=work_id,
+            job_id=resolved_job_id,
+            guid=found_guid,
+            reason=reason,
+            missing=missing,
+            now=moment,
+        )
     assert wanted is not None
     updated = db.apply_bad_release(
         host_id=ctx["host_id"],
@@ -153,19 +184,24 @@ def release_bad_wanted(
         detail={"title": _text((ctx["work"] or job or {}).get("title"))},
     )
     if updated is None:
-        return {
-            "released": False,
-            "needs_owner": True,
-            "missing": "wanted",
-            "guid": found_guid,
-            "wanted_id": None,
-            "note": NEEDS_OWNER_NOTE,
-        }
+        db.record_bad_indexer_release(
+            host_id=ctx["host_id"], guid=found_guid, reason=reason, now=moment
+        )
+        return _clear_unreturnable_slip(
+            db,
+            work_id=work_id,
+            job_id=resolved_job_id,
+            guid=found_guid,
+            reason=reason,
+            missing="wanted",
+            now=moment,
+        )
     logger.info(
         "Bad release %s (%s) sent Wanted %s back to search", found_guid, reason, updated.get("id")
     )
     return {
         "released": True,
+        "dismissed": False,
         "needs_owner": False,
         "missing": "",
         "guid": found_guid,
@@ -185,6 +221,7 @@ _MIGRATION_PROGRESS = ProgressJob(
         "done": 0,
         "total": 0,
         "returned": 0,
+        "dismissed": 0,
         "left_on_desk": 0,
         "failed": 0,
         "current_title": "",
@@ -206,9 +243,10 @@ def migrate_bad_release_slips(
     data_dir: Any = None,
     now: Optional[float] = None,
 ) -> Dict[str, Any]:
-    """Purge existing no_payload/convert_failed slips back to Wanted. Runs once, idempotent.
+    """Send existing no_payload/convert_failed slips back to Wanted. Runs once, idempotent.
 
-    Slips with no Wanted row or no release id stay on the desk and are counted.
+    A slip that cannot go back — no Wanted row, or no release id — is dismissed.
+    The download folder stays on disk. Nothing is left on the desk for the owner.
     """
     done = db.get_migration(MIGRATION_NAME)
     if done is not None:
@@ -221,6 +259,7 @@ def migrate_bad_release_slips(
     ]
     total = len(slips)
     returned = 0
+    dismissed = 0
     left = 0
     failed = 0
     if data_dir is not None:
@@ -231,7 +270,10 @@ def migrate_bad_release_slips(
                 "phase": "returning",
                 "total": total,
                 "started_at": utc_now(),
-                "logs": [f"Returning {total} bad-download slips to Wanted."],
+                "logs": [
+                    f"Returning {total} bad-download slips to Wanted. "
+                    "Slips that cannot go back are cleared from the desk."
+                ],
             },
         )
     for index, slip in enumerate(slips, start=1):
@@ -246,6 +288,8 @@ def migrate_bad_release_slips(
             )
             if result["released"]:
                 returned += 1
+            elif result.get("dismissed"):
+                dismissed += 1
             else:
                 left += 1
         except Exception as error:  # noqa: BLE001 — keep going through the backlog
@@ -258,6 +302,7 @@ def migrate_bad_release_slips(
                 data_dir,
                 done=index,
                 returned=returned,
+                dismissed=dismissed,
                 left_on_desk=left,
                 failed=failed,
                 current_title=title,
@@ -265,6 +310,7 @@ def migrate_bad_release_slips(
     report = {
         "total": total,
         "returned": returned,
+        "dismissed": dismissed,
         "left_on_desk": left,
         "failed": failed,
     }
@@ -280,7 +326,7 @@ def migrate_bad_release_slips(
         )
         _MIGRATION_PROGRESS.append_log(
             data_dir,
-            f"Finished — {returned} back on Wanted, {left} left on the desk for an owner decision.",
+            f"Finished — {returned} back on Wanted, {dismissed} cleared from the desk, {left} left.",
         )
     return report
 
@@ -311,8 +357,10 @@ def start_bad_release_migration(db: Database, data_dir: Any) -> bool:
 __all__ = [
     "BAD_RELEASE_REASONS",
     "MIGRATION_NAME",
+    "DISMISS_BAD_SLIP",
     "NEEDS_OWNER_ACTION",
     "NEEDS_OWNER_NOTE",
+    "UNRETURNABLE_NOTE",
     "migrate_bad_release_slips",
     "read_migration_progress",
     "release_bad_wanted",

@@ -72,7 +72,7 @@ describe("BrowsePage Stacks cards", () => {
     globalThis.fetch = realFetch;
   });
 
-  it("shows title and author under each cover, and keeps the wanted note from replacing them", async () => {
+  it("shows title and author under each cover, without a missing-audiobook line", async () => {
     renderBrowse();
     const footers = await screen.findAllByTestId("stacks-card-footer");
     assert.equal(footers.length, 2);
@@ -82,8 +82,8 @@ describe("BrowsePage Stacks cards", () => {
     assert.ok(circeCard);
     assert.ok(within(projectCard).getByText("Nikole Hannah-Jones"));
     assert.ok(within(circeCard).getByText("Madeline Miller"));
-    assert.equal(circeCard.textContent.includes("The audiobook is wanted"), false);
-    assert.ok(screen.getByText("The audiobook is wanted"));
+    assert.equal(screen.queryByText("The audiobook is wanted"), null);
+    assert.equal(screen.queryByRole("button", { name: "Add to Wanted" }), null);
 
     assert.equal(screen.queryByText("On the shelf"), null);
     assert.equal(screen.queryByRole("link", { name: "Read" }), null);

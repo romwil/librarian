@@ -16,8 +16,8 @@ import IndexerScorecard from "../components/IndexerScorecard.jsx";
 import GroomingUndo from "../components/GroomingUndo.jsx";
 import ShelfHealthPulse from "../components/ShelfHealthPulse.jsx";
 import { FieldLabel } from "../components/FieldHelp.jsx";
+import { ThinkingButton } from "../components/Thinking.jsx";
 import { FIELD_HELP, humanError } from "../copy.js";
-import { bestsellersHref } from "../find.js";
 import {
   extraFilesReprocessIsRunning,
   extraFilesReprocessProgressSummary,
@@ -131,6 +131,7 @@ export default function MaintainPage() {
   const mixPollRef = useRef(0);
   const [cleanupStatus, setCleanupStatus] = useState(null);
   const [cleanupBusy, setCleanupBusy] = useState(false);
+  const [cleanupAction, setCleanupAction] = useState("");
   const [cleanupNote, setCleanupNote] = useState("");
   const [morningBrief, setMorningBrief] = useState(null);
   // Progressive load: start quiet so Maintain chrome paints before desk cards.
@@ -614,6 +615,7 @@ export default function MaintainPage() {
   }
 
   async function runCleanup(approve = false) {
+    setCleanupAction(approve ? "approve" : "preview");
     setCleanupBusy(true);
     setCleanupNote(approve ? "Applying approved cleanup…" : "Preparing cleanup preview…");
     try {
@@ -622,6 +624,7 @@ export default function MaintainPage() {
       const report = status?.report || status?.result || {};
       if (status?.status !== "running") {
         setCleanupBusy(false);
+        setCleanupAction("");
         setCleanupNote(
           approve
             ? `Merged ${Number(report.merged || 0)} duplicates; quarantine is restorable.`
@@ -630,6 +633,7 @@ export default function MaintainPage() {
       }
     } catch (err) {
       setCleanupBusy(false);
+      setCleanupAction("");
       setCleanupNote(humanError(err));
     }
   }
@@ -788,20 +792,21 @@ export default function MaintainPage() {
 
       <section className="maintain-section" data-testid="maintain-curated">
         <p className="kicker">Curated</p>
-        <h2>Bestsellers / curated lists</h2>
-        <p className="lede">Chase hardcover lists with the household LLM. Beyond the shelves when a title is missing.</p>
+        <h2>New York Times date range</h2>
+        <p className="lede">
+          Pick one New York Times category and a date range. The result is one title per book, with the weeks it appeared and whether the house already has it.
+        </p>
         <div className="cta-row">
-          <Link className="cta outline" to={bestsellersHref()} data-testid="maintain-bestsellers">
-            Open bestsellers
+          <Link className="cta" to="/noted/history" data-testid="maintain-nyt-history">
+            New York Times date range
           </Link>
-          <Link className="cta outline" to="/noted/history">
-            New &amp; noted history
+          <Link className="cta outline" to="/noted">
+            New &amp; noted
           </Link>
-          <button
+          <ThinkingButton
             type="button"
             className="cta outline"
-            disabled={notedRefreshing}
-            aria-busy={notedRefreshing || undefined}
+            busy={notedRefreshing}
             onClick={async () => {
               setNotedRefreshing(true);
               setNotedRefresh("Refreshing New & noted…");
@@ -816,8 +821,8 @@ export default function MaintainPage() {
               }
             }}
           >
-            {notedRefreshing ? "Refreshing…" : "Refresh New & noted"}
-          </button>
+            Refresh New & noted
+          </ThinkingButton>
         </div>
         {notedRefresh ? <p className="muted" role="status">{notedRefresh}</p> : null}
       </section>
@@ -846,21 +851,16 @@ export default function MaintainPage() {
           <Link className="cta outline" to="/review" data-testid="maintain-review-link">
             Open Holds desk
           </Link>
-          <button
+          <ThinkingButton
             type="button"
             className="cta outline"
             id="maintain-clear-extra-files"
-            disabled={extraClearing}
-            aria-busy={extraClearing || undefined}
+            busy={extraClearing}
             onClick={clearExtraFiles}
             data-testid="maintain-clear-extra-files"
           >
-            {extraClearing
-              ? "Clearing…"
-              : extraBacklog > 0
-                ? `Clear extra-files (${extraBacklog})`
-                : "Clear extra-files"}
-          </button>
+            {extraBacklog > 0 ? `Clear extra-files (${extraBacklog})` : "Clear extra-files"}
+          </ThinkingButton>
         </div>
         {extraNote ? <p className="muted">{extraNote}</p> : null}
       </section>
@@ -873,20 +873,15 @@ export default function MaintainPage() {
           Volumes that still have media on disk are kept.
         </p>
         <div className="cta-row">
-          <button
+          <ThinkingButton
             type="button"
             className="cta outline"
-            disabled={shellPurging}
-            aria-busy={shellPurging || undefined}
+            busy={shellPurging}
             onClick={purgeShells}
             data-testid="maintain-purge-shells"
           >
-            {shellPurging
-              ? "Purging…"
-              : shellBacklog > 0
-                ? `Purge shells (${shellBacklog})`
-                : "Purge shells"}
-          </button>
+            {shellBacklog > 0 ? `Purge shells (${shellBacklog})` : "Purge shells"}
+          </ThinkingButton>
         </div>
         {shellNote ? <p className="muted">{shellNote}</p> : null}
         {shellStatus && shellPurging ? (
@@ -904,20 +899,15 @@ export default function MaintainPage() {
           onto their own book volume — media stays on disk.
         </p>
         <div className="cta-row">
-          <button
+          <ThinkingButton
             type="button"
             className="cta outline"
-            disabled={mixSplitting}
-            aria-busy={mixSplitting || undefined}
+            busy={mixSplitting}
             onClick={splitMixedKinds}
             data-testid="maintain-split-mixed-kinds"
           >
-            {mixSplitting
-              ? "Splitting…"
-              : mixBacklog > 0
-                ? `Split blends (${mixBacklog})`
-                : "Split comic/book blends"}
-          </button>
+            {mixBacklog > 0 ? `Split blends (${mixBacklog})` : "Split comic/book blends"}
+          </ThinkingButton>
         </div>
         {mixNote ? <p className="muted">{mixNote}</p> : null}
         {mixStatus && mixSplitting ? (
@@ -934,22 +924,31 @@ export default function MaintainPage() {
           Preview hashes, author aliases, duplicate merges, editions, and quarantine first. Title-and-author matches stay on the Holds desk.
         </p>
         <div className="cta-row">
-          <button type="button" className="cta outline" disabled={cleanupBusy} onClick={() => runCleanup(false)}>
-            {cleanupBusy ? "Working…" : "Preview cleanup"}
-          </button>
-          <button
+          <ThinkingButton
+            type="button"
+            className="cta outline"
+            busy={cleanupBusy && (cleanupAction === "preview" || cleanupAction === "")}
+            disabled={Boolean(cleanupAction) && cleanupAction !== "preview"}
+            onClick={() => runCleanup(false)}
+          >
+            Preview cleanup
+          </ThinkingButton>
+          <ThinkingButton
             type="button"
             className="cta"
+            busy={cleanupAction === "approve"}
             disabled={cleanupBusy || !cleanupStatus?.awaiting_approval}
             onClick={() => runCleanup(true)}
           >
             Approve cleanup
-          </button>
-          <button
+          </ThinkingButton>
+          <ThinkingButton
             type="button"
             className="cta outline"
+            busy={cleanupAction === "restore"}
             disabled={cleanupBusy || !cleanupStatus?.report?.quarantine}
             onClick={async () => {
+              setCleanupAction("restore");
               setCleanupBusy(true);
               try {
                 const result = await api.maintainCleanupRestore();
@@ -958,17 +957,20 @@ export default function MaintainPage() {
                 setCleanupNote(humanError(err));
               } finally {
                 setCleanupBusy(false);
+                setCleanupAction("");
               }
             }}
           >
             Restore quarantine
-          </button>
-          <button
+          </ThinkingButton>
+          <ThinkingButton
             type="button"
             className="cta outline"
+            busy={cleanupAction === "empty"}
             disabled={cleanupBusy || !cleanupStatus?.report?.quarantine}
             onClick={async () => {
               if (!window.confirm("Empty the cleanup quarantine permanently?")) return;
+              setCleanupAction("empty");
               setCleanupBusy(true);
               try {
                 await api.maintainCleanupEmpty();
@@ -977,11 +979,12 @@ export default function MaintainPage() {
                 setCleanupNote(humanError(err));
               } finally {
                 setCleanupBusy(false);
+                setCleanupAction("");
               }
             }}
           >
             Empty quarantine
-          </button>
+          </ThinkingButton>
         </div>
         {cleanupStatus?.report ? (
           <p className="muted">
@@ -1038,32 +1041,30 @@ export default function MaintainPage() {
         ) : null}
         {shelfHealthError ? <p className="alert">{shelfHealthError}</p> : null}
         <div className="cta-row">
-          <button
+          <ThinkingButton
             type="button"
             className="cta outline"
             id="maintain-scan"
-            disabled={scanning}
-            aria-busy={scanning || undefined}
+            busy={scanning}
             onClick={startScanShelves}
             data-testid="maintain-scan"
           >
-            {scanning ? busyLabel("scan") : "Scan the shelves"}
-          </button>
-          <button
+            Scan the shelves
+          </ThinkingButton>
+          <ThinkingButton
             type="button"
             className="cta outline"
             id="maintain-enrich"
-            disabled={enriching}
-            aria-busy={enriching || undefined}
+            busy={enriching}
             onClick={startEnrichShelves}
             data-testid="maintain-enrich"
           >
-            {enriching ? busyLabel("enrich") : "Enrich the shelves"}
-          </button>
-          <button
+            Enrich the shelves
+          </ThinkingButton>
+          <ThinkingButton
             type="button"
             className="cta outline"
-            disabled={suggesting}
+            busy={suggesting}
             onClick={async () => {
               setSuggestNote("");
               setSuggesting(true);
@@ -1080,8 +1081,8 @@ export default function MaintainPage() {
             }}
             data-testid="maintain-suggest"
           >
-            {suggesting ? "Refreshing…" : "Refresh suggestions"}
-          </button>
+            Refresh suggestions
+          </ThinkingButton>
         </div>
         {scan ? <p className="muted">{scan}</p> : null}
         {enrich ? <p className="muted">{enrich}</p> : null}
@@ -1114,10 +1115,11 @@ export default function MaintainPage() {
           />
         </div>
         <div className="cta-row">
-          <button
+          <ThinkingButton
             type="button"
             className="cta outline"
-            disabled={importing || !csvFile}
+            busy={importing}
+            disabled={!csvFile}
             onClick={async () => {
               if (!csvFile) return;
               setGoodreads("");
@@ -1135,8 +1137,8 @@ export default function MaintainPage() {
             }}
             data-testid="maintain-goodreads-import"
           >
-            {importing ? "Importing…" : "Import Goodreads CSV"}
-          </button>
+            Import Goodreads CSV
+          </ThinkingButton>
         </div>
         {goodreads ? <p className={/^Imported /.test(goodreads) ? "muted" : "alert"}>{goodreads}</p> : null}
       </section>
