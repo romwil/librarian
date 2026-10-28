@@ -2,10 +2,10 @@
 
 SABnzbd stays on the short cadence (``LIBRARIAN_POLL_SECONDS``, default 30s,
 or the ``interval`` passed to ``JobPoller``). Enrich, RSS, the audiobook
-sweep, and wanted search each wait on a longer interval so a slow enrich
-cannot hold the next download poll. Watch-folder ingest stays on the short
-thread, after the download poll. One step's failure is recorded on that
-step and the others still run.
+sweep, wanted search, and New & noted each wait on a longer interval so a
+slow enrich cannot hold the next download poll. Watch-folder ingest stays on
+the short thread, after the download poll. One step's failure is recorded on
+that step and the others still run.
 """
 
 from __future__ import annotations
@@ -36,22 +36,25 @@ DEFAULT_ENRICH_POLL_SECONDS = 300.0
 DEFAULT_RSS_POLL_SECONDS = 300.0
 DEFAULT_SWEEP_POLL_SECONDS = 900.0
 DEFAULT_WANTED_POLL_SECONDS = 120.0
+DEFAULT_NOTED_POLL_SECONDS = 21600.0
 
 SAB_POLL_ENV = "LIBRARIAN_POLL_SECONDS"
 ENRICH_POLL_ENV = "LIBRARIAN_ENRICH_POLL_SECONDS"
 RSS_POLL_ENV = "LIBRARIAN_RSS_POLL_SECONDS"
 SWEEP_POLL_ENV = "LIBRARIAN_SWEEP_POLL_SECONDS"
 WANTED_POLL_ENV = "LIBRARIAN_WANTED_POLL_SECONDS"
+NOTED_POLL_ENV = "LIBRARIAN_NOTED_POLL_SECONDS"
 
 # Housekeeping shares one thread. Enrich is last so a long trickle does not
-# delay RSS, the sweep, or wanted search that were already due.
-_BACKGROUND_STEPS = ("rss", "repair", "abs", "sweep", "owned", "wanted", "enrich")
+# delay RSS, the sweep, wanted search, or New & noted that were already due.
+_BACKGROUND_STEPS = ("rss", "repair", "abs", "sweep", "owned", "wanted", "noted", "enrich")
 _STATUS_ORDER = (
     "sab",
     "enrich",
     "rss",
     "sweep",
     "wanted",
+    "noted",
     "watch",
     "repair",
     "abs",
@@ -66,6 +69,7 @@ _FAILURE_LOG = {
     "sweep": "Wanted sweep tick failed",
     "owned": "Owned slip sweep tick failed",
     "wanted": "Wanted search tick failed",
+    "noted": "New & noted refresh failed",
     "enrich": "Enrich backlog tick failed",
     "sab": "SAB poller tick failed",
 }
@@ -121,6 +125,12 @@ def _build_steps(short: float) -> tuple[_Step, ...]:
             True,
         ),
         _Step(
+            "noted",
+            "New & noted",
+            _env_seconds(NOTED_POLL_ENV, DEFAULT_NOTED_POLL_SECONDS),
+            False,
+        ),
+        _Step(
             "enrich",
             "Enrich",
             _env_seconds(ENRICH_POLL_ENV, DEFAULT_ENRICH_POLL_SECONDS),
@@ -164,6 +174,7 @@ class JobPoller:
             "sweep": self._run_sweep,
             "owned": self._run_owned,
             "wanted": self._run_wanted,
+            "noted": self._run_noted,
             "enrich": self._run_enrich,
             "sab": self._run_sab,
         }
@@ -287,8 +298,15 @@ class JobPoller:
 
         return int(poll_wanted(self.db, settings) or 0)
 
+    def _run_noted(self, settings: Settings) -> int:
+        from librarian.noted import run_noted_refresh
+
+        # Current lists only. Dated NYT lists already in the cache stay put.
+        run_noted_refresh(self.db, settings, data_dir=self.data_dir)
+        return 0
+
     def _run_enrich(self, settings: Settings) -> int:
-        from librarian.enrich import enrich_backlog_batch
+        from librarian.enrich import enrich_corrections_backlog_batch
         from librarian.enrich_progress import EnrichProgressReporter, read_enrich_progress
 
         current = read_enrich_progress(self.data_dir)
@@ -296,7 +314,9 @@ class JobPoller:
             logger.debug("Enrich trickle skipped — manual enrich is running")
             return 0
         reporter = EnrichProgressReporter(self.data_dir, source="trickle")
-        result = enrich_backlog_batch(
+        # Identifiers, strong-match corrections, ISBN backfill, Audnexus ASIN/narrator,
+        # and magazine masthead/issue/cover corrections all run on this one backlog.
+        result = enrich_corrections_backlog_batch(
             self.db,
             settings,
             data_dir=self.data_dir,

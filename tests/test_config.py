@@ -81,6 +81,63 @@ def test_audiobookshelf_blank_secret_takes_env(tmp_path, monkeypatch):
     assert settings.audiobookshelf_api_token == "from-env"
 
 
+def test_abs_credentials_recommend_audiobookshelf_without_clobbering_choice(tmp_path, monkeypatch):
+    monkeypatch.delenv("AUDIOBOOK_TARGET", raising=False)
+    monkeypatch.delenv("AUDIOBOOKSHELF_URL", raising=False)
+    monkeypatch.delenv("AUDIOBOOKSHELF_API_TOKEN", raising=False)
+    from librarian.config import settings_path
+
+    settings_path(tmp_path).write_text(
+        """{
+  "audiobookshelf_url": "http://10.10.1.202:13378",
+  "audiobookshelf_api_token": "from-file"
+}
+""",
+        encoding="utf-8",
+    )
+    recommended = load_merged_settings(tmp_path)
+    assert recommended.audiobook_target == "audiobookshelf"
+    assert recommended.audiobookshelf_api_token == "from-file"
+
+    monkeypatch.setenv("AUDIOBOOKSHELF_URL", "http://10.10.1.202:13378")
+    monkeypatch.setenv("AUDIOBOOKSHELF_API_TOKEN", "from-env")
+    (tmp_path / "settings.json").unlink()
+    assert load_merged_settings(tmp_path).audiobook_target == "audiobookshelf"
+
+    monkeypatch.setenv("AUDIOBOOK_TARGET", "plex")
+    assert load_merged_settings(tmp_path).audiobook_target == "plex"
+    monkeypatch.delenv("AUDIOBOOK_TARGET", raising=False)
+
+    # An empty token is not a saved secret, and must not be filled back in from a developer .env.
+    monkeypatch.setenv("AUDIOBOOKSHELF_API_TOKEN", "")
+    assert load_merged_settings(tmp_path).audiobook_target == "librarian_only"
+
+    settings_path(tmp_path).write_text(
+        """{
+  "audiobook_target": "librarian_only",
+  "audiobookshelf_url": "http://10.10.1.202:13378",
+  "audiobookshelf_api_token": "kept"
+}
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("AUDIOBOOKSHELF_API_TOKEN", "from-env")
+    saved = load_merged_settings(tmp_path)
+    assert saved.audiobook_target == "librarian_only"
+    assert saved.audiobookshelf_api_token == "kept"
+
+    settings_path(tmp_path).write_text(
+        """{
+  "audiobook_target": "plex",
+  "audiobookshelf_url": "http://abs.example",
+  "audiobookshelf_api_token": "kept"
+}
+""",
+        encoding="utf-8",
+    )
+    assert load_merged_settings(tmp_path).audiobook_target == "plex"
+
+
 def test_audiobook_target_defaults_to_librarian_only_when_unset():
     from librarian.config import Settings
 
@@ -95,6 +152,10 @@ def test_unknown_settings_keys_are_ignored(tmp_path, monkeypatch):
     from librarian.config import load_merged_settings, settings_path
 
     monkeypatch.delenv("AUDIOBOOK_TARGET", raising=False)
+    # load_dotenv() refills deleted names from .env. An empty value blocks that
+    # and keeps this case on the in-app default.
+    monkeypatch.setenv("AUDIOBOOKSHELF_URL", "")
+    monkeypatch.setenv("AUDIOBOOKSHELF_API_TOKEN", "")
 
     settings_path(tmp_path).write_text(
         """{

@@ -487,7 +487,8 @@ def test_isbn_stub_falls_back_to_openlibrary_title_lookup(tmp_path):
     assert result["work"]["isbn"] == "9780345526595"
 
 
-def test_title_lookup_does_not_write_isbn(tmp_path):
+def test_title_lookup_fills_isbn_when_author_and_title_agree(tmp_path):
+    """Title+author search may fill a missing ISBN — but only when both agree."""
     db = Database(tmp_path / "librarian.db")
     work = db.upsert_work({"kind": "book", "title": "Dune", "author": "Frank Herbert"})
     result = enrich_work(
@@ -497,10 +498,55 @@ def test_title_lookup_does_not_write_isbn(tmp_path):
         data_dir=tmp_path,
         transport=httpx.MockTransport(_handler),
     )
-    assert result["work"]["isbn"] in (None, "")
+    assert result["work"]["isbn"] == "9780441172719"
     assert result["work"]["description"] == "Desert planet."
     assert result["work"]["year"] == 1965
     assert result["work"]["series_name"] == "Dune"
+    identifiers = db.list_work_identifiers(result["work"]["id"])
+    schemes = {row["scheme"]: row["value"] for row in identifiers}
+    assert schemes.get("isbn13") == "9780441172719"
+
+
+def test_title_lookup_does_not_fill_isbn_when_author_disagrees(tmp_path):
+    """OL treats "Frank Herbert Jr." and "Frank Herbert" as the same author (its
+    scorer drops Jr/Sr), but enrich's own exact author-key check must not — the
+    catalog spelling and the hit's spelling are not the same author key.
+    """
+    db = Database(tmp_path / "librarian.db")
+    work = db.upsert_work({"kind": "book", "title": "Dune", "author": "Frank Herbert Jr."})
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if request.method == "POST" and "hardcover.app" in url:
+            return httpx.Response(200, json={"data": {}})
+        if "search.json" in url:
+            return httpx.Response(
+                200,
+                json={
+                    "docs": [
+                        {
+                            "title": "Dune",
+                            "key": "/works/OL893415W",
+                            "first_publish_year": 1965,
+                            "isbn": ["9780441172719"],
+                            "author_name": ["Frank Herbert"],
+                        }
+                    ]
+                },
+            )
+        if "/works/OL893415W" in url:
+            return httpx.Response(200, json={"description": "Desert planet.", "title": "Dune"})
+        return httpx.Response(404, json={"error": "missing"})
+
+    result = enrich_work(
+        db,
+        Settings(hardcover_api_token=""),
+        work["id"],
+        data_dir=tmp_path,
+        transport=httpx.MockTransport(handler),
+    )
+    assert result["work"]["isbn"] in (None, "")
+    assert result["work"]["description"] == "Desert planet."
 
 
 def test_enrich_does_not_overwrite_existing_blurb(tmp_path):
@@ -981,7 +1027,8 @@ def test_llm_polish_writes_blurb_from_existing_text(tmp_path):
     )
     assert result["work"]["llm_blurb"] == "On a desert world, a prophecy reshapes an empire."
     assert result["work"]["description"] == "A desert planet and a messianic prophecy."
-    assert result["work"]["isbn"] in (None, "")
+    # Title+author agree with the Dune/Frank Herbert hit, so the missing ISBN fills in.
+    assert result["work"]["isbn"] == "9780441172719"
 
 
 def test_enrich_backlog_batch_updates_thin_work(tmp_path):

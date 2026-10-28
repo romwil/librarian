@@ -4,7 +4,8 @@
 #   On-host build (current, until Hub exists):  ./docker-run.sh
 #   Hub pull + recreate (later):                ./rollout.sh
 # Does NOT wipe ./config. Stock Unraid has no Compose.
-# Port 8793 — never 8788 / 8790 / 8791 / 8792.
+# Port 8793 — never 8788 / 8790 / 8791 / 8792 / 8794.
+# Also starts Audiobookshelf on 13378 (read-only audiobooks, config under appdata).
 set -eu
 
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -18,8 +19,30 @@ CONTAINER_NAME="${CONTAINER_NAME:-librarian}"
 WAIT_SECS="${WAIT_SECS:-90}"
 SKIP_BUILD="${SKIP_BUILD:-0}"
 
-if [ "$HOST_PORT" = "8788" ] || [ "$HOST_PORT" = "8790" ] || [ "$HOST_PORT" = "8791" ] || [ "$HOST_PORT" = "8792" ]; then
-  echo "ERROR: Librarian must not bind $HOST_PORT (Projectionist / Smart Map / Lobby)." >&2
+if [ "$HOST_PORT" = "8788" ] || [ "$HOST_PORT" = "8790" ] || [ "$HOST_PORT" = "8791" ] || [ "$HOST_PORT" = "8792" ] || [ "$HOST_PORT" = "8794" ]; then
+  echo "ERROR: Librarian must not bind $HOST_PORT (Projectionist / Smart Map / Lobby / e2e)." >&2
+  exit 1
+fi
+
+# Audiobookshelf listens in the container on 80. Host port stays 13378.
+ABS_IMAGE="${ABS_IMAGE:-ghcr.io/advplyr/audiobookshelf:latest}"
+ABS_CONTAINER="${ABS_CONTAINER:-audiobookshelf}"
+ABS_PORT="${ABS_PORT:-13378}"
+if [ -d /mnt/user/appdata ]; then
+  ABS_CONFIG="${ABS_CONFIG:-/mnt/user/appdata/audiobookshelf}"
+else
+  ABS_CONFIG="${ABS_CONFIG:-$ROOT_DIR/audiobookshelf-config}"
+fi
+ABS_AUDIOBOOKS="${ABS_AUDIOBOOKS:-$DATA_HOST/media/library/audiobooks}"
+
+case "$ABS_PORT" in
+  8788|8790|8791|8792|8793|8794)
+    echo "ERROR: Audiobookshelf must not bind $ABS_PORT." >&2
+    exit 1
+    ;;
+esac
+if [ "$ABS_PORT" = "$HOST_PORT" ]; then
+  echo "ERROR: Audiobookshelf port $ABS_PORT collides with Librarian." >&2
   exit 1
 fi
 
@@ -203,6 +226,26 @@ while [ "$(date +%s)" -lt "$_deadline" ]; do
         docker exec "$CONTAINER_NAME" cat /app/.build-info || true
         echo
       fi
+      echo "Starting ${ABS_CONTAINER} on port ${ABS_PORT} (audiobooks read-only)..."
+      mkdir -p "$ABS_CONFIG/config" "$ABS_CONFIG/metadata" "$ABS_AUDIOBOOKS"
+      docker rm -f "$ABS_CONTAINER" 2>/dev/null || true
+      docker run -d \
+        --name "$ABS_CONTAINER" \
+        --restart unless-stopped \
+        -p "${ABS_PORT}:80" \
+        -e "TZ=${TZ:-America/New_York}" \
+        -v "${ABS_CONFIG}/config:/config" \
+        -v "${ABS_CONFIG}/metadata:/metadata" \
+        -v "${ABS_AUDIOBOOKS}:/audiobooks:ro" \
+        "$ABS_IMAGE"
+      if ! docker inspect -f '{{.State.Running}}' "$ABS_CONTAINER" 2>/dev/null | grep -qx true; then
+        docker logs --tail 40 "$ABS_CONTAINER" 2>&1 || true
+        echo "ERROR: Audiobookshelf container is not running." >&2
+        exit 1
+      fi
+      echo "Audiobookshelf: http://$(hostname -I 2>/dev/null | awk '{print $1}'):${ABS_PORT}/"
+      echo "  Config:  ${ABS_CONFIG}"
+      echo "  Library: ${ABS_AUDIOBOOKS} (read-only)"
       echo "Librarian is running."
       echo "  Web UI:  http://$(hostname -I 2>/dev/null | awk '{print $1}'):${HOST_PORT}/"
       echo "  Logs:    docker logs -f ${CONTAINER_NAME}"

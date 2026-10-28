@@ -10,8 +10,10 @@ from librarian.config import Settings
 from librarian.db import Database
 from librarian.indexers.sync import ping_nzbfinder, summarize_capabilities, sync_nzbfinder
 from librarian.jobs import enqueue_indexer_item
+from librarian.noted import run_noted_refresh
 from librarian.poller import (
     DEFAULT_ENRICH_POLL_SECONDS,
+    DEFAULT_NOTED_POLL_SECONDS,
     DEFAULT_RSS_POLL_SECONDS,
     DEFAULT_SAB_POLL_SECONDS,
     DEFAULT_SWEEP_POLL_SECONDS,
@@ -171,6 +173,7 @@ _POLL_ENV = (
     "LIBRARIAN_RSS_POLL_SECONDS",
     "LIBRARIAN_SWEEP_POLL_SECONDS",
     "LIBRARIAN_WANTED_POLL_SECONDS",
+    "LIBRARIAN_NOTED_POLL_SECONDS",
 )
 
 
@@ -203,6 +206,7 @@ def test_poll_seconds_and_step_env_overrides(tmp_path, monkeypatch):
     monkeypatch.setenv("LIBRARIAN_RSS_POLL_SECONDS", "600")
     monkeypatch.setenv("LIBRARIAN_SWEEP_POLL_SECONDS", "4")
     monkeypatch.setenv("LIBRARIAN_WANTED_POLL_SECONDS", "90")
+    monkeypatch.setenv("LIBRARIAN_NOTED_POLL_SECONDS", "3")
     poller = JobPoller(Database(tmp_path / "librarian.db"), lambda: Settings())
     status = _status(poller)
     assert poller.interval == 15
@@ -213,6 +217,7 @@ def test_poll_seconds_and_step_env_overrides(tmp_path, monkeypatch):
     assert status["rss"]["interval_seconds"] == 600
     assert status["sweep"]["interval_seconds"] == 5
     assert status["wanted"]["interval_seconds"] == 90
+    assert status["noted"]["interval_seconds"] == 5
     assert status["sab"]["last_run"] is None
     assert status["sab"]["last_error"] is None
 
@@ -236,7 +241,7 @@ def test_step_intervals_are_independent(tmp_path, monkeypatch):
         poller._runners[name] = _record(calls, name)
 
     poller.tick()
-    assert calls == ["watch", "rss", "repair", "abs", "sweep", "owned", "wanted", "sab"]
+    assert calls == ["watch", "rss", "repair", "abs", "sweep", "owned", "wanted", "noted", "sab"]
     assert _status(poller)["enrich"]["last_run"] is None
     assert _status(poller)["sab"]["last_run"]
 
@@ -249,6 +254,64 @@ def test_step_intervals_are_independent(tmp_path, monkeypatch):
     assert _status(poller)["enrich"]["last_error"] is None
     assert DEFAULT_RSS_POLL_SECONDS == DEFAULT_ENRICH_POLL_SECONDS
     assert DEFAULT_SWEEP_POLL_SECONDS > DEFAULT_WANTED_POLL_SECONDS > DEFAULT_SAB_POLL_SECONDS
+
+
+def test_noted_refresh_is_due_after_its_interval(tmp_path, monkeypatch):
+    _clear_poll_env(monkeypatch)
+    clock = _Clock()
+    refresh_calls = []
+    hosts: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        hosts.append(request.url.host)
+        if request.url.host != "openlibrary.org":
+            return httpx.Response(599, json={"error": "refused"})
+        return httpx.Response(200, json={"works": []})
+
+    transport = httpx.MockTransport(handler)
+    real_client = httpx.Client
+
+    def client_factory(*args, **kwargs):
+        kwargs["transport"] = transport
+        return real_client(*args, **kwargs)
+
+    monkeypatch.setattr("librarian.noted.httpx.Client", client_factory)
+
+    def spy(db, settings, **kwargs):
+        refresh_calls.append(kwargs.get("data_dir"))
+        return run_noted_refresh(db, settings, **kwargs)
+
+    monkeypatch.setattr("librarian.noted.run_noted_refresh", spy)
+
+    poller = JobPoller(
+        Database(tmp_path / "librarian.db"),
+        lambda: Settings(),
+        interval=30,
+        clock=clock,
+        data_dir=tmp_path,
+    )
+    for name in list(poller._runners):
+        if name != "noted":
+            poller._runners[name] = lambda _settings: 0
+
+    noted = _status(poller)["noted"]
+    assert noted["interval_seconds"] == DEFAULT_NOTED_POLL_SECONDS == 21600
+    assert noted["label"] == "New & noted"
+    assert poller._due("noted") is True
+
+    poller.tick()
+    assert refresh_calls == [tmp_path]
+    assert hosts == ["openlibrary.org", "openlibrary.org"]
+    assert _status(poller)["noted"]["last_error"] is None
+    assert poller._due("noted") is False
+
+    clock.now += DEFAULT_NOTED_POLL_SECONDS - 1
+    assert poller._due("noted") is False
+    poller.tick()
+    assert refresh_calls == [tmp_path]
+
+    clock.now += 1
+    assert poller._due("noted") is True
 
 
 def test_one_step_failure_does_not_skip_the_others(tmp_path, monkeypatch):
@@ -417,6 +480,8 @@ def test_maintain_jobs_status_reports_poller_steps(tmp_path, monkeypatch):
     assert by_id["rss"]["interval_seconds"] == DEFAULT_RSS_POLL_SECONDS
     assert by_id["sweep"]["interval_seconds"] == DEFAULT_SWEEP_POLL_SECONDS
     assert by_id["wanted"]["interval_seconds"] == DEFAULT_WANTED_POLL_SECONDS
+    assert by_id["noted"]["interval_seconds"] == DEFAULT_NOTED_POLL_SECONDS
+    assert by_id["noted"]["label"] == "New & noted"
     for step in steps:
         assert step["label"]
         assert step["last_run"] is None

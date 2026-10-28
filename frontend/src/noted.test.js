@@ -89,10 +89,12 @@ test("a shelved format becomes On the shelf and the missing format stays Wanted"
   assert.equal(ownedBook.downloadHref, "/api/works/book-1/download");
 });
 
-test("Search keeps a Trending books door to New & noted", () => {
-  assert.match(searchSrc, /trending-books-door/);
-  assert.match(searchSrc, /TRENDING_BOOKS_LABEL/);
-  assert.match(searchSrc, /to="\/noted"/);
+test("Search keeps one New & noted door", () => {
+  assert.match(searchSrc, /noted-door/);
+  assert.match(searchSrc, /New & noted/);
+  assert.equal((searchSrc.match(/to="\/noted"/g) || []).length, 1);
+  assert.equal(searchSrc.includes("TRENDING_BOOKS_LABEL"), false);
+  assert.equal(searchSrc.includes("Trending books"), false);
   assert.match(searchSrc, /discover-panel/);
   assert.match(searchSrc, /On the shelf/);
 });

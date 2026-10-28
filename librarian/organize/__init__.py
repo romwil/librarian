@@ -35,7 +35,7 @@ from librarian.covers import ensure_music_cover as ensure_music_cover
 from librarian.covers import fetch_cover
 from librarian.db import Database
 from librarian.delight import in_quiet_hours
-from librarian.file_identity import files_byte_identical, volume_content_fingerprint
+from librarian.file_identity import files_byte_identical, hash_file, volume_content_fingerprint
 from librarian.identify import (
     REVIEW_AUDNEXUS_AMBIGUOUS as REVIEW_AUDNEXUS_AMBIGUOUS,
 )
@@ -80,6 +80,8 @@ from librarian.identify import (
 from librarian.identify import (
     diagnose_review_folder as diagnose_review_folder,
 )
+from librarian.identity.isbn import canonical_isbn13
+from librarian.identity.resolve import resolve_work
 from librarian.ingest import enqueue_ingest, list_ingest_targets
 from librarian.kinds import KIND_AUDIOBOOK, KIND_BOOK, KIND_COMIC, KIND_MAGAZINE, KIND_MUSIC
 from librarian.llm import (
@@ -90,7 +92,12 @@ from librarian.llm import (
     merge_llm_identity,
     suggestion_fields,
 )
-from librarian.metadata import apply_audio_tags_in_folder, write_comicinfo, write_opf
+from librarian.metadata import (
+    apply_audio_tags_in_folder,
+    write_audiobook_sidecars,
+    write_comicinfo,
+    write_opf,
+)
 from librarian.metadata import comicinfo_xml as comicinfo_xml
 from librarian.organize.move import (
     _cleanup_moved_source as _cleanup_moved_source,
@@ -488,6 +495,84 @@ def _pre_slip_gate(
     return {}
 
 
+# Schemes resolve_work understands, and the identity fields that feed each one.
+# Kept in sync with librarian.identity.resolve._IDENTIFIER_FIELDS (that mapping is
+# private to the resolver; organize only needs to know what to *write*, not match).
+_IDENTIFIER_REGISTER_FIELDS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("isbn13", ("isbn13", "isbn")),
+    ("asin", ("asin",)),
+    ("ol_work", ("ol_work", "openlibrary_work", "open_library_work")),
+    ("hardcover", ("hardcover", "hardcover_id")),
+)
+
+
+def _register_work_identifiers(db: Database, work_id: str, identity: Dict[str, Any]) -> None:
+    """Record this payload's canonical identifiers so a later edition resolves by id.
+
+    Without this, resolve_work's step-1 identifier match never fires for anything
+    organize itself shelved (only librarian.cleanup's backfill writes identifiers today).
+    """
+    wid = str(work_id or "").strip()
+    if not wid:
+        return
+    for scheme, fields in _IDENTIFIER_REGISTER_FIELDS:
+        value = next(
+            (str(identity.get(field) or "").strip() for field in fields if identity.get(field)),
+            "",
+        )
+        if scheme == "isbn13":
+            value = canonical_isbn13(value)
+        if not value:
+            continue
+        try:
+            db.upsert_work_identifier(scheme=scheme, value=value, work_id=wid)
+        except ValueError:
+            continue
+
+
+def _resolve_join_candidate(identity: Dict[str, Any], placed: List[str]) -> Dict[str, Any]:
+    """resolve_work's candidate payload: identity identifiers plus placed-file hashes."""
+    candidate: Dict[str, Any] = {
+        "kind": identity.get("kind"),
+        "title": identity.get("title"),
+        "author": identity.get("author"),
+    }
+    for field in ("isbn", "isbn13", "asin", "ol_work", "openlibrary_work", "hardcover", "hardcover_id"):
+        if identity.get(field):
+            candidate[field] = identity[field]
+    hashes: List[str] = []
+    for path in placed:
+        try:
+            hashes.append(hash_file(Path(path)))
+        except OSError:
+            continue
+    if hashes:
+        candidate["sha256s"] = hashes
+    return candidate
+
+
+def _resolve_canonical_work(
+    db: Database, identity: Dict[str, Any], placed: List[str]
+) -> Optional[Dict[str, Any]]:
+    """Find an already-catalogued work this payload belongs to, as another edition.
+
+    Only tried when the payload is about to land at a *new* folder — a reprocess of
+    the same folder is handled by the existing get_work_by_folder_path path, and an
+    explicit identity["id"] (Review Apply / retry) is a known target, not a search.
+    Music is excluded: albums join by folder (existing_album_folder), not by
+    resolve_work's title/author matching.
+    """
+    if identity.get("id"):
+        return None
+    if str(identity.get("kind") or "") == KIND_MUSIC:
+        return None
+    candidate = _resolve_join_candidate(identity, placed)
+    resolved_id = resolve_work(db, candidate)
+    if not resolved_id:
+        return None
+    return db.get_work(resolved_id)
+
+
 def organize_identified(
     db: Database,
     settings: Settings,
@@ -866,6 +951,7 @@ def organize_identified(
     assert folder_path is not None
     guid = str((indexer_item or {}).get("guid") or "")
     existing = db.get_work_by_folder_path(str(folder_path))
+    canonical_work: Optional[Dict[str, Any]] = None
     if existing:
         identity["id"] = existing["id"]
         part_fields = _part_fields_for_organize(
@@ -874,6 +960,11 @@ def organize_identified(
             filenames=payload_names + [Path(path).name for path in placed],
             existing=existing,
         )
+    else:
+        # A new destination folder — resolve_work decides whether this payload is a
+        # brand-new work or another edition of one already in the catalog (ISBN/ASIN/OL
+        # work/Hardcover, then file hash, then normalized author+title+kind family).
+        canonical_work = _resolve_canonical_work(db, identity, placed)
     if identity["kind"] in (KIND_BOOK, KIND_MAGAZINE):
         write_opf(folder_path, identity, guid=guid)
     if identity["kind"] == KIND_COMIC:
@@ -891,6 +982,11 @@ def organize_identified(
         transport=cover_transport,
         require_safe_url=True,
     )
+    if identity.get("kind") == KIND_AUDIOBOOK:
+        # Sidecars land before the Audiobookshelf scan so the scanner sees canonical metadata.
+        sidecar_cover = write_audiobook_sidecars(Path(folder_path), identity, source=folder)
+        if cover is None and sidecar_cover is not None:
+            cover = sidecar_cover
     if identity["kind"] == KIND_MUSIC:
         music_cover = ensure_music_cover(
             Path(folder_path),
@@ -906,24 +1002,48 @@ def organize_identified(
                 paths=[Path(path) for path in placed],
             )
 
-    work = db.upsert_work(
-        {
-            **identity,
-            **part_fields,
-            "folder_path": str(folder_path),
-            "cover_path": str(cover) if cover else None,
-            "review_state": "none",
-            "review_reason": None,
-            "music_state": (
-                existing.get("music_state")
-                if existing and existing.get("music_state")
-                else music_state_for_folder(settings, Path(folder_path))
-            )
-            if identity["kind"] == KIND_MUSIC
-            else None,
-            "indexer_guid": guid or None,
-        }
-    )
+    if canonical_work is not None:
+        # Another edition of a work already in the catalog — leave the canonical
+        # row's own identity untouched and record this payload as its edition.
+        db.upsert_edition(
+            {
+                "work_id": canonical_work["id"],
+                "kind": identity.get("kind"),
+                "isbn13": canonical_isbn13(identity.get("isbn")),
+                "asin": str(identity.get("asin") or "").strip() or None,
+                "publisher": identity.get("publisher"),
+                "year": identity.get("year"),
+                "format": (
+                    Path(placed[0]).suffix.lstrip(".")
+                    if placed
+                    else str(identity.get("kind") or "")
+                ),
+                "folder_path": str(folder_path),
+                "cover_path": str(cover) if cover else None,
+            }
+        )
+        _register_work_identifiers(db, str(canonical_work["id"]), identity)
+        work = db.get_work(str(canonical_work["id"])) or canonical_work
+    else:
+        work = db.upsert_work(
+            {
+                **identity,
+                **part_fields,
+                "folder_path": str(folder_path),
+                "cover_path": str(cover) if cover else None,
+                "review_state": "none",
+                "review_reason": None,
+                "music_state": (
+                    existing.get("music_state")
+                    if existing and existing.get("music_state")
+                    else music_state_for_folder(settings, Path(folder_path))
+                )
+                if identity["kind"] == KIND_MUSIC
+                else None,
+                "indexer_guid": guid or None,
+            }
+        )
+        _register_work_identifiers(db, str(work["id"]), identity)
     placed_names = [Path(path).name for path in placed]
     for path in placed:
         name = Path(path).name

@@ -92,6 +92,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
     purge_duplicates_job = BackgroundJobSlot()
     purge_shells_job = BackgroundJobSlot()
     split_mixed_kinds_job = BackgroundJobSlot()
+    cleanup_job = BackgroundJobSlot()
 
     def settings():
         return load_merged_settings(root)
@@ -107,6 +108,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         purge_duplicates_job=purge_duplicates_job,
         purge_shells_job=purge_shells_job,
         split_mixed_kinds_job=split_mixed_kinds_job,
+        cleanup_job=cleanup_job,
     )
 
     @app.middleware("http")

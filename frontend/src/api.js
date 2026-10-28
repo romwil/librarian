@@ -153,6 +153,11 @@ export const api = {
       method: "POST",
     }),
   maintainSplitMixedKindsStatus: () => request("/maintain/split-mixed-kinds/status"),
+  maintainCleanup: (approve = false) =>
+    request(`/maintain/cleanup${approve ? "?approve=1" : ""}`, { method: "POST" }),
+  maintainCleanupStatus: () => request("/maintain/cleanup/status"),
+  maintainCleanupRestore: () => request("/maintain/cleanup/restore", { method: "POST" }),
+  maintainCleanupEmpty: () => request("/maintain/cleanup/empty", { method: "POST" }),
   maintainShelfHealth: () => request("/maintain/shelf-health"),
   maintainMorningBrief: () => request("/maintain/morning-brief"),
   maintainJobsStatus: () => request("/maintain/jobs/status"),
@@ -182,18 +187,19 @@ export const api = {
   updateRss: (id, body) => request(`/rss/${id}`, { method: "PUT", body: JSON.stringify(body) }),
   deleteRss: (id) => request(`/rss/${id}`, { method: "DELETE" }),
   pollRss: () => request("/rss/poll", { method: "POST" }),
-  noted: ({ period = "daily", preset = "hardcover-fiction", date = "current" } = {}) => {
-    const params = new URLSearchParams();
-    if (period) params.set("period", period);
-    if (preset) params.set("preset", preset);
-    if (date) params.set("date", date);
-    return request(`/noted?${params.toString()}`, { signal: AbortSignal.timeout(20000) });
-  },
+  noted: () => request("/noted", { signal: AbortSignal.timeout(20000) }),
+  refreshNoted: () => request("/maintain/noted/refresh", { method: "POST" }),
+  notedHistory: ({ listName, start, end }) =>
+    request(`/noted/history?list_name=${encodeURIComponent(listName)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`),
+  addMissingNotedHistory: (items) =>
+    request("/noted/history/add-missing", { method: "POST", body: JSON.stringify({ items: items || [] }) }),
   discover: (extras = {}) => {
     const params = new URLSearchParams();
     if (extras.kind) params.set("kind", extras.kind);
     if (extras.cat) params.set("cat", extras.cat);
     if (extras.limit) params.set("limit", String(extras.limit));
+    if (extras.offset) params.set("offset", String(extras.offset));
+    if (extras.page) params.set("page", String(extras.page));
     const qs = params.toString();
     return request(`/discover${qs ? `?${qs}` : ""}`);
   },

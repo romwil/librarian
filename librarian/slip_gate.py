@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Sequence
 
 from librarian.db import Database
+from librarian.identity import resolve_work
 from librarian.kinds import KIND_BOOK
 from librarian.naming.library import (
     parse_library_volume as parse_library_volume,
@@ -146,6 +147,12 @@ def _classify(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
 def match_shelved(db: Database, identity: Dict[str, Any]) -> Dict[str, Any]:
     """Find a shelved work. Title alone returns none."""
     from librarian.identify import extract_isbn
+
+    resolved_id = resolve_work(db, identity)
+    if resolved_id:
+        resolved = db.get_work(resolved_id)
+        if resolved and db.files_for_work(resolved_id):
+            return _classify([resolved])
 
     kind = str(identity.get("kind") or "")
     isbn = extract_isbn(str(identity.get("isbn") or ""))

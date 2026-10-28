@@ -280,6 +280,102 @@ def test_update_refuses_bad_token():
         client.close()
 
 
+def test_match_item_prefers_asin_then_isbn_then_title(tmp_path):
+    from librarian.audiobookshelf import match_audiobooks, match_item
+
+    items = [
+        {
+            "id": "by-title",
+            "media": {"metadata": {"title": "Dune", "authors": [{"name": "Herbert"}]}},
+        },
+        {
+            "id": "by-isbn",
+            "media": {
+                "metadata": {
+                    "title": "Other",
+                    "isbn": "9780441172719",
+                    "authors": [{"name": "X"}],
+                }
+            },
+        },
+        {
+            "id": "by-asin",
+            "media": {
+                "metadata": {
+                    "title": "Wrong",
+                    "asin": "B000TEST01",
+                    "authors": [{"name": "Y"}],
+                }
+            },
+        },
+    ]
+    both = match_item(
+        {
+            "title": "Dune",
+            "author": "Herbert",
+            "asin": "B000TEST01",
+            "isbn": "9780441172719",
+        },
+        items,
+    )
+    assert both["id"] == "by-asin"
+    by_isbn = match_item({"title": "Dune", "author": "Herbert", "isbn": "9780441172719"}, items)
+    assert by_isbn["id"] == "by-isbn"
+    by_title = match_item({"title": "Dune", "author": "Herbert"}, items)
+    assert by_title["id"] == "by-title"
+    assert match_item({"title": "Dune", "author": ""}, items) is None
+
+    db = Database(tmp_path / "librarian.db")
+    work = db.upsert_work(
+        {
+            "kind": "audiobook",
+            "title": "Wrong Title",
+            "author": "Someone",
+            "asin": "B000TEST01",
+        }
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/api/libraries"):
+            return httpx.Response(200, json={"libraries": [{"id": "lib-1", "mediaType": "book"}]})
+        return httpx.Response(
+            200,
+            json={
+                "results": [
+                    {
+                        "id": "abs-by-title",
+                        "media": {
+                            "metadata": {
+                                "title": "Wrong Title",
+                                "authors": [{"name": "Someone"}],
+                            }
+                        },
+                    },
+                    {
+                        "id": "abs-by-asin",
+                        "media": {"metadata": {"title": "Other", "asin": "B000TEST01"}},
+                    },
+                ]
+            },
+        )
+
+    client = AudiobookshelfClient(
+        "http://abs.example",
+        "tok",
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        result = match_audiobooks(
+            db,
+            Settings(audiobookshelf_url="http://abs.example", audiobookshelf_api_token="tok"),
+            client=client,
+        )
+    finally:
+        client.close()
+    assert result["updated"] == 1
+    assert db.get_work(work["id"])["abs_item_id"] == "abs-by-asin"
+
+
 def test_settings_object_works_for_notify():
     settings = Settings(
         audiobookshelf_url="http://abs.local",

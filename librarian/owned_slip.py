@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 from librarian.db import Database
 from librarian.identify import isbn_match_keys
+from librarian.identity import resolve_work
 from librarian.kinds import KIND_AUDIOBOOK, KIND_BOOK, KIND_COMIC, KIND_MAGAZINE
 
 ALREADY_ON_SHELF = "Already on the shelf"
@@ -92,9 +93,18 @@ class _OwnedCatalog:
 def match_owned_media(
     slip: Mapping[str, Any],
     owned: Sequence[Mapping[str, Any]],
+    *,
+    db: Optional[Database] = None,
 ) -> Optional[Dict[str, Any]]:
     """Pick a shelved work this slip duplicates. None when unsure."""
     slip_id = str(slip.get("id") or "")
+    if db is not None:
+        candidate = dict(slip)
+        resolved_id = resolve_work(db, candidate)
+        if resolved_id and resolved_id != slip_id:
+            resolved = db.get_work(resolved_id)
+            if resolved and any(str(row.get("id") or "") == resolved_id for row in owned):
+                return resolved
     rows = [row for row in owned if str(row.get("id") or "") != slip_id]
     return _OwnedCatalog.build(rows).match(slip)
 
@@ -138,7 +148,7 @@ def _drop_owned_slip(
     owned: Sequence[Mapping[str, Any]],
 ) -> Optional[Dict[str, Any]]:
     """Delete one open slip that matches owned media. Leave the shelf alone."""
-    hit = match_owned_media(slip, owned)
+    hit = match_owned_media(slip, owned, db=db)
     if hit is None:
         return None
     return _drop_matched_slip(db, slip, hit)

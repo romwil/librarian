@@ -17,6 +17,7 @@ import SettingsPage from "./pages/SettingsPage.jsx";
 import InboxPage from "./pages/InboxPage.jsx";
 import NotificationsPage from "./pages/NotificationsPage.jsx";
 import NotedPage from "./pages/NotedPage.jsx";
+import NotedHistoryPage from "./pages/NotedHistoryPage.jsx";
 import WorkPage from "./pages/WorkPage.jsx";
 import CardPage from "./pages/CardPage.jsx";
 import "./styles.css";
@@ -39,6 +40,7 @@ createRoot(document.getElementById("root")).render(
             <Route path="wanted" element={<WantedPage />} />
             <Route path="search" element={<SearchPage />} />
             <Route path="noted" element={<NotedPage />} />
+            <Route path="noted/history" element={<NotedHistoryPage />} />
             <Route path="find" element={<FindToSearch />} />
             <Route path="card" element={<CardPage />} />
             <Route path="works/:id" element={<WorkPage />} />

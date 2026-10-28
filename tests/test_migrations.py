@@ -1,7 +1,13 @@
 import sqlite3
 
 from librarian.db import SCHEMA_VERSION, Database
-from librarian.migrations import LATEST_VERSION, MIGRATIONS, schema_version
+from librarian.migrations import (
+    LATEST_VERSION,
+    MIGRATIONS,
+    m0001_baseline,
+    m0002_rebuild_works_fts,
+    schema_version,
+)
 
 # A catalog from before numbered steps: the tables an early build created, missing
 # every column the old _ensure_*_columns helpers added, and no review tables at all.
@@ -76,20 +82,35 @@ def _legacy_db(path):
     conn.close()
 
 
+def _version_two_db(path):
+    conn = sqlite3.connect(path)
+    try:
+        m0001_baseline.apply(conn)
+        m0002_rebuild_works_fts.apply(conn)
+        conn.execute("PRAGMA user_version = 2")
+        conn.commit()
+        assert schema_version(conn) == 2
+    finally:
+        conn.close()
+
+
 def test_steps_are_numbered_in_order():
     versions = [step.version for step in MIGRATIONS]
     assert versions == list(range(1, len(MIGRATIONS) + 1))
-    assert LATEST_VERSION == SCHEMA_VERSION == 2
+    assert LATEST_VERSION == SCHEMA_VERSION == 4
 
 
 def test_fresh_database_lands_on_latest_version(tmp_path):
     db = Database(tmp_path / "librarian.db")
-    assert db.schema_version == 2
+    assert db.schema_version == 4
     tables, indexes = _schema(tmp_path / "librarian.db")
     assert "source" in tables["wanted"]
     assert {"host_id", "guid", "wanted_id", "reason", "seen_count"} <= tables["bad_indexer_releases"]
     assert {"review_audit", "review_suggestions", "review_slip_cooldowns", "app_migrations"} <= set(tables)
     assert {"asin", "narrator", "subtitle", "repair_fail_count"} <= tables["works"]
+    assert {"title_sort", "author_sort", "metadata_locked"} <= tables["works"]
+    assert "sha256" in tables["files"]
+    assert {"editions", "work_identifiers", "authors", "author_aliases", "work_authors", "noted_cache"} <= set(tables)
     assert "idx_bad_indexer_releases_guid" in indexes
 
 
@@ -100,8 +121,20 @@ def test_legacy_and_fresh_databases_end_on_the_same_schema(tmp_path):
     _legacy_db(legacy_path)
     legacy = Database(legacy_path)
 
-    assert legacy.schema_version == 2
+    assert legacy.schema_version == 4
     assert _schema(legacy_path) == _schema(fresh_path)
+
+
+def test_version_two_and_fresh_databases_end_on_the_same_schema(tmp_path):
+    fresh_path = tmp_path / "fresh.db"
+    version_two_path = tmp_path / "version-two.db"
+    Database(fresh_path)
+    _version_two_db(version_two_path)
+
+    version_two = Database(version_two_path)
+
+    assert version_two.schema_version == 4
+    assert _schema(version_two_path) == _schema(fresh_path)
 
 
 def test_fts_rebuild_indexes_rows_written_before_the_index(tmp_path):
@@ -125,7 +158,7 @@ def test_reopening_does_not_rerun_steps(tmp_path):
 
     reopened = Database(path)
 
-    assert reopened.schema_version == 2
+    assert reopened.schema_version == 4
     # A second boot is a no-op: the FTS rebuild step does not run again.
     assert reopened.search_works("Kindred") == []
 

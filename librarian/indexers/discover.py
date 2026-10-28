@@ -82,6 +82,22 @@ def resolve_feed_limit(*, cat: str = "", limit: Optional[int] = None) -> int:
     return PER_FEED_LIMIT
 
 
+def resolve_discover_offset(*, offset: int = 0, page: int = 0, limit: int) -> int:
+    """Item skip for one Discover page.
+
+    ``page`` is 1-based and applies only when ``offset`` is unset or zero.
+    A positive offset wins, so Next can ask for the same feed further along.
+    """
+    skip = _as_int(offset)
+    if skip is not None and skip > 0:
+        return skip
+    page_no = _as_int(page) or 0
+    size = _as_int(limit) or 0
+    if page_no > 1 and size > 0:
+        return (page_no - 1) * size
+    return 0
+
+
 def _searching_available(block: Any) -> bool:
     if not isinstance(block, dict):
         return False
@@ -296,13 +312,24 @@ def _host_feed_items(
     *,
     path: str,
     limit: int = PER_FEED_LIMIT,
+    offset: int = 0,
 ) -> List[Dict[str, Any]]:
-    feed_limit = resolve_feed_limit(limit=limit)
-    key = f"latest:{host_id}:{feed.get('id')}:{feed_limit}"
+    """One page of a category feed.
+
+    Indexer latest/RSS starts at the newest item, so a later page asks for
+    ``offset + limit`` and slices. Offset 0 still requests exactly ``limit``.
+    """
+    page_size = resolve_feed_limit(limit=limit)
+    skip = max(0, _as_int(offset) or 0)
+    if skip >= MAX_LIMIT:
+        return []
+    window = page_size if skip == 0 else resolve_feed_limit(limit=page_size + skip)
+    key = f"latest:{host_id}:{feed.get('id')}:{window}"
     cached = _cache_get(key, LATEST_TTL_SECONDS)
-    if cached is not None:
-        return cached
-    return _cache_put(key, fetch_feed_items(client, feed, path=path, limit=feed_limit))
+    if cached is None:
+        cached = _cache_put(key, fetch_feed_items(client, feed, path=path, limit=window))
+    rows = cached if isinstance(cached, list) else []
+    return rows[skip : skip + page_size]
 
 
 def merge_category_lists(*groups: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -355,14 +382,20 @@ def discover_beyond(
     kind: str = "",
     cat: str = "",
     limit: Optional[int] = None,
+    offset: int = 0,
     extra: Optional[bool] = None,
     transport: Optional[Any] = None,
     max_feeds: Optional[int] = None,
     data_dir: Optional[Path] = None,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], Optional[str]]:
-    """Fetch allowed category feeds from every enabled host. Fail closed per host."""
+    """Fetch allowed category feeds from every enabled host. Fail closed per host.
+
+    ``offset`` skips that many items in each selected feed and returns the next
+    ``limit`` of the same feed. Zero keeps the first page.
+    """
     allow_extra = bool(extra)
     feed_limit = resolve_feed_limit(cat=cat, limit=limit)
+    skip = max(0, _as_int(offset) or 0)
     hosts = enabled_hosts(settings)
     if not hosts:
         return [], [], "NZBFinder api_token is not configured"
@@ -408,7 +441,9 @@ def discover_beyond(
                 feed_ok = 0
                 for feed in wanted:
                     try:
-                        rows = _host_feed_items(client, host["id"], feed, path=path, limit=feed_limit)
+                        rows = _host_feed_items(
+                            client, host["id"], feed, path=path, limit=feed_limit, offset=skip
+                        )
                         feed_ok += 1
                     except (NZBFinderError, RSSError) as error:
                         errors.append(str(error))

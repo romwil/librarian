@@ -10,14 +10,18 @@ from __future__ import annotations
 
 import logging
 import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeout
+from datetime import date, timedelta
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
 
 import httpx
 
 from librarian.covers import DEFAULT_USER_AGENT
 from librarian.identify import tidy_title, validated_isbn
+from librarian.identity.isbn import canonical_isbn13
+from librarian.identity.resolve import resolve_work
 from librarian.indexers.discover import discover_beyond
 from librarian.kinds import NEWZNAB_AUDIOBOOK, NEWZNAB_COMIC, NEWZNAB_MAGAZINE
 from librarian.lists import curated_list_payload
@@ -27,8 +31,14 @@ from librarian.llm import (
     client_from_settings,
     seconds_until_llm_ready,
 )
-from librarian.nyt_books import normalize_list_date, normalize_list_name
-from librarian.owned import annotate_noted_lanes
+from librarian.nyt_books import (
+    NytBooksClient,
+    default_list_names,
+    normalize_list_date,
+    normalize_list_name,
+)
+from librarian.owned import ShelfIndex, annotate_noted_lanes
+from librarian.wanted import AlreadyShelved, WantedError, add_wanted, dedupe_key
 
 logger = logging.getLogger(__name__)
 
@@ -624,3 +634,321 @@ def noted_desk(
         "date": when,
         "lanes": lanes,
     }
+
+
+# Processed cache -----------------------------------------------------------
+#
+# The old desk above remains a small, independently useful feed adapter.  The
+# routes below use this cache so changing a chip never starts another HTTP
+# request and NYT's immutable dated lists are only read once.
+
+
+def _today() -> str:
+    return date.today().isoformat()
+
+
+def _cache_rows(db: Any, *, source: str, list_name: str, published_date: str = "") -> List[Dict[str, Any]]:
+    sql = "SELECT * FROM noted_cache WHERE source = ? AND list_name = ?"
+    args: list[Any] = [source, list_name]
+    if published_date:
+        sql += " AND published_date = ?"
+        args.append(published_date)
+    sql += " ORDER BY rank IS NULL, rank, title COLLATE NOCASE, id"
+    with db._connect() as conn:
+        rows = conn.execute(sql, args).fetchall()
+    return [dict(row) for row in rows]
+
+
+def _cache_upsert(db: Any, row: Mapping[str, Any]) -> None:
+    now = time.time()
+    isbn13 = canonical_isbn13(row.get("isbn13") or row.get("isbn") or "")
+    asin = _text(row.get("asin"))
+    candidate = {
+        "title": _text(row.get("title")),
+        "author": _text(row.get("author")),
+        "kind": _text(row.get("kind")) or "book",
+        "isbn13": isbn13,
+        "asin": asin,
+        "ol_work": _text(row.get("open_library_key")),
+    }
+    work_id = resolve_work(db, candidate)
+    source_key = _text(row.get("source_key")) or isbn13 or asin or _text(row.get("open_library_key"))
+    if not source_key:
+        source_key = f"{candidate['title'].lower()}|{candidate['author'].lower()}"
+
+    def write() -> None:
+        with db._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO noted_cache (
+                    id, source, source_key, isbn13, asin, title, author, list_name,
+                    published_date, work_id, kind, rank, cover, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(source, list_name, published_date, source_key) DO UPDATE SET
+                    isbn13 = excluded.isbn13, asin = excluded.asin, title = excluded.title,
+                    author = excluded.author, work_id = excluded.work_id, kind = excluded.kind,
+                    rank = excluded.rank, cover = excluded.cover, updated_at = excluded.updated_at
+                """,
+                (
+                    uuid.uuid4().hex,
+                    _text(row.get("source")),
+                    source_key,
+                    isbn13 or None,
+                    asin or None,
+                    candidate["title"],
+                    candidate["author"],
+                    _text(row.get("list_name")),
+                    _text(row.get("published_date")),
+                    work_id,
+                    candidate["kind"],
+                    row.get("rank"),
+                    _text(row.get("cover")),
+                    now,
+                    now,
+                ),
+            )
+
+    db.run_write(write, label="noted_cache")
+
+
+def _open_library_edition_isbn(
+    work_key: str, *, transport: Optional[httpx.BaseTransport] = None
+) -> str:
+    """Resolve a work-only trending result to an edition ISBN before caching it."""
+    key = _text(work_key)
+    if not key:
+        return ""
+    path = key if key.startswith("/") else f"/works/{key}"
+    with httpx.Client(transport=transport, timeout=8.0, follow_redirects=True) as client:
+        response = client.get(f"https://openlibrary.org{path}/editions.json", params={"limit": 20})
+        response.raise_for_status()
+        payload = response.json()
+    entries = payload.get("entries") if isinstance(payload, Mapping) else []
+    for entry in entries if isinstance(entries, list) else []:
+        if isinstance(entry, Mapping):
+            isbn = _first_isbn(entry)
+            if isbn:
+                return isbn
+    return ""
+
+
+def _store_open_library(
+    db: Any, period: str, *, transport: Optional[httpx.BaseTransport] = None, published_date: str = ""
+) -> int:
+    payload = fetch_open_library_trending(period, transport=transport)
+    cards = parse_open_library_trending(payload)
+    when = published_date or _today()
+    for card in cards:
+        isbn = card.get("isbn") or ""
+        if not isbn and card.get("open_library_key"):
+            try:
+                isbn = _open_library_edition_isbn(card["open_library_key"], transport=transport)
+            except (httpx.HTTPError, ValueError):
+                logger.info("Open Library edition lookup failed for %s", card["open_library_key"])
+        _cache_upsert(
+            db,
+            {
+                **card,
+                "source": "open_library",
+                "source_key": card.get("open_library_key") or isbn,
+                "isbn13": isbn,
+                "list_name": period,
+                "published_date": when,
+            },
+        )
+    return len(cards)
+
+
+def _store_discover(db: Any, settings: Any, *, data_dir: Any = None) -> int:
+    lane = discover_lane(settings, data_dir=data_dir)
+    when = _today()
+    for card in lane.get("items") or []:
+        _cache_upsert(
+            db,
+            {
+                **card,
+                "source": "discover",
+                "source_key": "|".join(
+                    (_text(card.get("category")), _text(card.get("isbn")), _text(card.get("title")), _text(card.get("author")))
+                ),
+                "list_name": "latest",
+                "published_date": when,
+            },
+        )
+    return len(lane.get("items") or [])
+
+
+def refresh_nyt_list(
+    db: Any,
+    settings: Any,
+    *,
+    list_name: str,
+    published_date: str = "current",
+    data_dir: Any = None,
+    transport: Optional[httpx.BaseTransport] = None,
+) -> int:
+    """Fetch a NYT list once when it has a fixed publication date."""
+    slug = normalize_list_name(list_name)
+    when = normalize_list_date(published_date)
+    if not slug or not when:
+        raise NotedError("Date must be YYYY-MM-DD or current")
+    if when != "current" and _cache_rows(db, source="nyt", list_name=slug, published_date=when):
+        return 0
+    client = NytBooksClient(
+        _text(getattr(settings, "nyt_books_api_key", "")),
+        data_dir=data_dir,
+        transport=transport,
+    )
+    try:
+        payload = client.bestseller_list(slug, date=when)
+    finally:
+        client.close()
+    actual_date = _text(payload.get("published_date")) or when
+    if when == "current" and actual_date != "current" and _cache_rows(
+        db, source="nyt", list_name=slug, published_date=actual_date
+    ):
+        return 0
+    for book in payload.get("books") or []:
+        _cache_upsert(
+            db,
+            {
+                **book,
+                "source": "nyt",
+                "source_key": _text(book.get("isbn")) or f"{_text(book.get('title')).lower()}|{_text(book.get('author')).lower()}",
+                "list_name": slug,
+                "published_date": actual_date,
+            },
+        )
+    return len(payload.get("books") or [])
+
+
+def run_noted_refresh(
+    db: Any,
+    settings: Any,
+    *,
+    data_dir: Any = None,
+    ol_transport: Optional[httpx.BaseTransport] = None,
+    nyt_transport: Optional[httpx.BaseTransport] = None,
+) -> Dict[str, int]:
+    """Refresh mutable lists.  The poller may call this on its six-hour cadence."""
+    result = {"open_library": 0, "nyt": 0, "discover": 0}
+    for period in PERIODS:
+        try:
+            result["open_library"] += _store_open_library(db, period, transport=ol_transport)
+        except (httpx.HTTPError, ValueError) as error:
+            logger.info("Open Library %s refresh failed: %s", period, error)
+    for row in default_list_names():
+        try:
+            result["nyt"] += refresh_nyt_list(
+                db, settings, list_name=row["id"], data_dir=data_dir, transport=nyt_transport
+            )
+        except Exception as error:  # one unavailable category should not stop the desk
+            logger.info("NYT %s refresh failed: %s", row["id"], error)
+    try:
+        result["discover"] = _store_discover(db, settings, data_dir=data_dir)
+    except Exception as error:  # noqa: BLE001
+        logger.info("Discover latest refresh failed: %s", error)
+    return result
+
+
+def _cached_cards(db: Any, rows: Sequence[Mapping[str, Any]]) -> List[Dict[str, Any]]:
+    cards = [
+        noted_card(
+            title=_text(row.get("title")),
+            author=_text(row.get("author")),
+            isbn=_text(row.get("isbn13")),
+            kind=_text(row.get("kind")) or "book",
+            source=_text(row.get("source")),
+            rank=row.get("rank"),
+            cover=_text(row.get("cover")),
+        )
+        for row in rows
+    ]
+    annotate_noted_lanes(db, [{"items": cards}])
+    return cards
+
+
+def cached_noted_desk(db: Any, settings: Any, *, data_dir: Any = None) -> Dict[str, Any]:
+    """Return all cached lanes in one response; the SPA switches locally."""
+    if not _cache_rows(db, source="open_library", list_name="daily"):
+        run_noted_refresh(db, settings, data_dir=data_dir)
+    lanes: List[Dict[str, Any]] = []
+    for period, label in (("daily", "Open Library daily"), ("weekly", "Open Library weekly")):
+        rows = _cache_rows(db, source="open_library", list_name=period)
+        lanes.append({"id": f"open-library-{period}", "label": label, "source": "open_library", "items": _cached_cards(db, rows)})
+    for item in default_list_names():
+        rows = _cache_rows(db, source="nyt", list_name=item["id"])
+        lanes.append({"id": f"nyt-{item['id']}", "label": item["display_name"], "source": "nyt", "items": _cached_cards(db, rows)})
+    rows = _cache_rows(db, source="discover", list_name="latest")
+    lanes.append({"id": "discover-latest", "label": "Indexer latest", "source": "discover", "items": _cached_cards(db, rows)})
+    return {"lanes": lanes, "lists": [{"id": lane["id"], "label": lane["label"]} for lane in lanes]}
+
+
+def _week_dates(start: str, end: str) -> List[str]:
+    begin = date.fromisoformat(start)
+    finish = date.fromisoformat(end)
+    if finish < begin:
+        raise NotedError("End date must be after start date")
+    if finish - begin > timedelta(days=190):
+        raise NotedError("Choose six months or less")
+    dates: List[str] = []
+    while begin <= finish:
+        dates.append(begin.isoformat())
+        begin += timedelta(days=7)
+    return dates
+
+
+def noted_history(
+    db: Any, settings: Any, *, list_name: str, start: str, end: str, data_dir: Any = None
+) -> Dict[str, Any]:
+    slug = normalize_list_name(list_name)
+    if not slug:
+        raise NotedError("Choose a New York Times category")
+    weeks = _week_dates(start, end)
+    for week in weeks:
+        refresh_nyt_list(db, settings, list_name=slug, published_date=week, data_dir=data_dir)
+    rows = _cache_rows(db, source="nyt", list_name=slug)
+    rows = [row for row in rows if start <= _text(row.get("published_date")) <= end]
+    grouped: Dict[str, Dict[str, Any]] = {}
+    for row in rows:
+        key = _text(row.get("isbn13")) or f"{_text(row.get('title')).lower()}|{_text(row.get('author')).lower()}"
+        entry = grouped.setdefault(key, {**row, "weeks": []})
+        entry["weeks"].append(_text(row.get("published_date")))
+    index = ShelfIndex(db)
+    items = []
+    for row in grouped.values():
+        book, audio = index.pair(row)
+        items.append({**row, "weeks": sorted(set(row["weeks"])), "shelved": bool(book or audio)})
+    return {"list_name": slug, "start": start, "end": end, "items": sorted(items, key=lambda item: item["title"].lower())}
+
+
+def add_missing_noted_history(db: Any, items: Sequence[Mapping[str, Any]]) -> int:
+    """Add only unshelved, not-already-wanted history titles."""
+    index = ShelfIndex(db)
+    added = 0
+    for item in items:
+        if index.of_kind(item, "book") or index.of_kind(item, "audiobook"):
+            continue
+        try:
+            key = dedupe_key(
+                kind="book",
+                work_id="",
+                title=_text(item.get("title")),
+                author=_text(item.get("author")),
+                isbn=_text(item.get("isbn13")),
+            )
+            if db.get_wanted_by_dedupe(key):
+                continue
+            add_wanted(
+                db,
+                {
+                    "title": _text(item.get("title")),
+                    "author": _text(item.get("author")),
+                    "isbn": _text(item.get("isbn13")),
+                    "kind": "book",
+                },
+            )
+            added += 1
+        except (AlreadyShelved, WantedError):
+            continue
+    return added

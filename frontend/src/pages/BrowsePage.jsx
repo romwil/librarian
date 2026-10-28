@@ -204,7 +204,7 @@ export default function BrowsePage() {
           ) : (
             <div className="browse-grid" data-testid="browse-grid">
               {items.map((work) => (
-                <CoverCard key={work.id} work={work} role={role} />
+                <CoverCard key={work.id} work={work} role={role} cardMode="stacks" />
               ))}
             </div>
           )

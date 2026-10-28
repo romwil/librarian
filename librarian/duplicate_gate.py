@@ -25,6 +25,7 @@ from typing import Any, Dict, List, Mapping, Optional
 
 from librarian.db import Database
 from librarian.file_identity import volume_content_fingerprint
+from librarian.identity import resolve_work
 
 EVIDENCE_EXACT = "exact_fingerprint"
 EVIDENCE_SAME_IDENTITY = "same_shelved_identity"
@@ -123,6 +124,14 @@ def duplicate_gate(
     """Decide before a slip exists: resolve, hold as possible_duplicate, or pass."""
     if str(identity.get("kind") or "") == "music":
         return {"action": "pass", "evidence": EVIDENCE_NONE, "work": None}
+    resolver_candidate = dict(identity)
+    resolved_id = resolve_work(db, resolver_candidate)
+    if resolved_id:
+        work = db.get_work(resolved_id)
+        if work:
+            if resolver_candidate.get("match_confidence") == "normalized":
+                return {"action": "hold", "evidence": EVIDENCE_NORMALIZED, "work": work}
+            return {"action": "resolve", "evidence": EVIDENCE_EXACT, "work": work}
     matches = normalized_shelf_matches(db, identity)
     if not matches:
         return {"action": "pass", "evidence": EVIDENCE_NONE, "work": None}

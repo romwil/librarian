@@ -20,6 +20,8 @@ from librarian.identify import (
     list_payload_files,
     tidy_title,
 )
+from librarian.identify.paths import parse_audiobook_leaf
+from librarian.identity import resolve_work
 from librarian.kinds import KIND_AUDIOBOOK, KIND_BOOK, KIND_COMIC, KIND_MAGAZINE, KIND_MUSIC
 from librarian.metadata import (
     read_cbz_comicinfo,
@@ -351,7 +353,8 @@ def _match_existing(
         else:
             existing = by_file
     if existing is None:
-        hit = _identity_match(db, identity)
+        resolved_id = resolve_work(db, identity)
+        hit = db.get_work(resolved_id) if resolved_id else _identity_match(db, identity)
         if hit:
             other = str(hit.get("folder_path") or "").rstrip("/")
             if other and other != folder_key:
@@ -441,10 +444,33 @@ def _layout_identity(kind: str, folder: Path, root: Path) -> Dict[str, Any]:
     parts = [tidy_title(part) for part in relative.parts if part not in (".", "")]
     if not parts:
         return {}
-    if kind in (KIND_BOOK, KIND_AUDIOBOOK):
+    if kind == KIND_BOOK:
         if len(parts) >= 2:
             return {"author": parts[-2], "title": parts[-1]}
         return {"title": parts[-1]}
+    if kind == KIND_AUDIOBOOK:
+        # Author/Title or Author/Series/Book N - Title (Audiobookshelf).
+        # Parse the leaf before tidy so "Book N - Title" keeps its separator.
+        raw = [part for part in relative.parts if part not in (".", "")]
+        if len(raw) >= 3:
+            title, index = parse_audiobook_leaf(raw[-1])
+            out: Dict[str, Any] = {
+                "author": tidy_title(raw[-3]),
+                "series_name": tidy_title(raw[-2]),
+                "title": title or tidy_title(raw[-1]),
+            }
+            if index:
+                out["series_index"] = index
+            return out
+        if len(raw) >= 2:
+            title, index = parse_audiobook_leaf(raw[-1])
+            out = {"author": tidy_title(raw[-2]), "title": title or tidy_title(raw[-1])}
+            if index:
+                out["series_index"] = index
+            return out
+        if raw:
+            return {"title": tidy_title(raw[-1])}
+        return {}
     if kind == KIND_COMIC:
         if len(parts) >= 2:
             first, second = parts[0], parts[1]

@@ -27,6 +27,7 @@ from librarian.repositories._base import (
     _loads,
     _row_dict,
 )
+from librarian.repositories.authors import AuthorsRepository
 from librarian.repositories.catalog import (
     BROWSE_DEFAULT_SORT,
     BROWSE_EXPORT_ROW_CAP,
@@ -37,6 +38,8 @@ from librarian.repositories.catalog import (
     browse_order_sql,
     resolve_browse_sort,
 )
+from librarian.repositories.editions import EditionsRepository
+from librarian.repositories.identifiers import IdentifiersRepository
 from librarian.repositories.jobs import JobsRepository
 from librarian.repositories.people import InviteConflict, PeopleRepository
 from librarian.repositories.review import ReviewRepository, safe_release_guid
@@ -109,6 +112,9 @@ def run_with_db_lock_retry(operation: Callable[[], T], *, label: str = "db") -> 
 class Database(
     PeopleRepository,
     CatalogRepository,
+    EditionsRepository,
+    IdentifiersRepository,
+    AuthorsRepository,
     JobsRepository,
     WantedRepository,
     ShelvesRepository,

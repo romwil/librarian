@@ -1,7 +1,8 @@
-"""OPF and ComicInfo writers and readers. Never invent a blurb."""
+"""OPF, ComicInfo, and Audiobookshelf sidecar writers and readers. Never invent a blurb."""
 
 from __future__ import annotations
 
+import json
 import re
 import xml.etree.ElementTree as ET
 import xml.sax.saxutils as sax
@@ -146,6 +147,246 @@ def write_comicinfo(folder: Path, identity: Mapping[str, Any], *, guid: str = ""
     path = folder / "ComicInfo.xml"
     path.write_text(comicinfo_xml(identity, guid=guid, page_count=page_count), encoding="utf-8")
     return path
+
+
+_ASIN_TOKEN = re.compile(r"^[A-Z0-9]{10}$")
+_MIN_COVER_BYTES = 64
+
+
+def _asin_token(value: object) -> str:
+    """10-character Audible ASIN. Digit-only and ISBN-10 check-digit forms stay ISBNs."""
+    text = re.sub(r"[^A-Za-z0-9]", "", str(value or "")).upper()
+    if not _ASIN_TOKEN.fullmatch(text):
+        return ""
+    if text.isdigit() or (text.endswith("X") and text[:-1].isdigit()):
+        return ""
+    return text
+
+
+def _author_names(value: object) -> list[str]:
+    """One display name, or several joined with ``&`` or ``;``. Do not split on comma."""
+    if isinstance(value, list):
+        return _people_list(value)
+    text = str(value or "").strip()
+    if not text:
+        return []
+    parts = re.split(r"\s*(?:&|;)\s*", text)
+    return [part.strip() for part in parts if part.strip()]
+
+
+def _people_list(value: object) -> list[str]:
+    if isinstance(value, str):
+        parts = re.split(r"\s*(?:,|&)\s*", value)
+        return [part.strip() for part in parts if part.strip()]
+    if not isinstance(value, list):
+        return []
+    names: list[str] = []
+    for item in value:
+        if isinstance(item, str) and item.strip():
+            names.append(item.strip())
+        elif isinstance(item, dict):
+            name = str(item.get("name") or "").strip()
+            if name:
+                names.append(name)
+    return names
+
+
+def audiobook_sidecar_payload(identity: Mapping[str, Any]) -> Dict[str, Any]:
+    """Audiobookshelf metadata.json body. Omits blanks. Never invents a blurb."""
+    title = str(identity.get("title") or "").strip()
+    subtitle = str(identity.get("subtitle") or "").strip()
+    authors = _author_names(identity.get("authors")) or _author_names(identity.get("author"))
+    narrators = _people_list(identity.get("narrators")) or _people_list(identity.get("narrator"))
+    series_name = str(identity.get("series_name") or "").strip()
+    series_index = str(identity.get("series_index") or "").strip()
+    description = str(identity.get("description") or "").strip()
+    publisher = str(identity.get("publisher") or "").strip()
+    genres = _people_list(identity.get("genres")) or _people_list(identity.get("genre"))
+    year = identity.get("year")
+    isbn_raw = str(identity.get("isbn") or "").strip()
+    asin = _asin_token(identity.get("asin")) or _asin_token(isbn_raw)
+    isbn = ""
+    if isbn_raw and not _asin_token(isbn_raw):
+        from librarian.naming.isbn import isbn_match_keys
+
+        keys = isbn_match_keys(isbn_raw)
+        isbn = keys[0] if keys else ""
+    payload: Dict[str, Any] = {}
+    if title:
+        payload["title"] = title
+    if subtitle:
+        payload["subtitle"] = subtitle
+    if authors:
+        payload["authors"] = authors
+    if narrators:
+        payload["narrators"] = narrators
+    if series_name:
+        entry: Dict[str, str] = {"name": series_name}
+        if series_index:
+            entry["sequence"] = series_index
+        payload["series"] = [entry]
+    if genres:
+        payload["genres"] = genres
+    if year not in (None, ""):
+        payload["publishedYear"] = str(year)
+    if publisher:
+        payload["publisher"] = publisher
+    if description:
+        payload["description"] = description
+    if isbn:
+        payload["isbn"] = isbn
+    if asin:
+        payload["asin"] = asin
+    language = str(identity.get("language") or "").strip()
+    if language:
+        payload["language"] = language
+    return payload
+
+
+def _copy_jpeg_cover(source: Optional[Path], dest_folder: Path) -> Optional[Path]:
+    """Copy a real JPEG already beside the source audio. Never invents art."""
+    dest = dest_folder / "cover.jpg"
+    try:
+        if dest.is_file() and dest.stat().st_size >= _MIN_COVER_BYTES:
+            return dest
+    except OSError:
+        return None
+    if source is None:
+        return None
+    directory = Path(source)
+    if directory.is_file():
+        directory = directory.parent
+    if not directory.is_dir():
+        return None
+    for name in ("cover.jpg", "cover.jpeg", "folder.jpg"):
+        candidate = directory / name
+        try:
+            if not candidate.is_file() or candidate.stat().st_size < _MIN_COVER_BYTES:
+                continue
+            data = candidate.read_bytes()
+        except OSError:
+            continue
+        if not data.startswith(b"\xff\xd8\xff"):
+            continue
+        try:
+            dest.write_bytes(data)
+        except OSError:
+            return None
+        return dest
+    return None
+
+
+def write_audiobook_sidecars(
+    folder: Path,
+    identity: Mapping[str, Any],
+    *,
+    source: Optional[Path] = None,
+) -> Optional[Path]:
+    """Write Audiobookshelf sidecars beside the audio.
+
+    Always writes ``metadata.json``. Writes ``desc.txt`` and ``reader.txt`` only
+    when a description or narrator is known, so an empty file cannot blank tags.
+    Copies ``cover.jpg`` from the source folder when the shelf does not have one.
+    Returns the cover path when a JPEG is present. Never invents art or a blurb.
+    """
+    directory = Path(folder)
+    directory.mkdir(parents=True, exist_ok=True)
+    payload = audiobook_sidecar_payload(identity)
+    (directory / "metadata.json").write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    description = str(payload.get("description") or "").strip()
+    if description:
+        (directory / "desc.txt").write_text(description + "\n", encoding="utf-8")
+    narrators = payload.get("narrators") if isinstance(payload.get("narrators"), list) else []
+    narrator_line = ", ".join(str(name).strip() for name in narrators if str(name).strip())
+    if narrator_line:
+        (directory / "reader.txt").write_text(narrator_line + "\n", encoding="utf-8")
+    return _copy_jpeg_cover(source, directory)
+
+
+def read_abs_metadata(folder: Path) -> Dict[str, Any]:
+    """Read metadata.json, then desc.txt and reader.txt when those fields are blank."""
+    directory = Path(folder)
+    parsed: Dict[str, Any] = {}
+    meta = sidecar_named(directory, "metadata.json") if directory.is_dir() else None
+    if meta is not None:
+        try:
+            raw = json.loads(meta.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            raw = None
+        if isinstance(raw, dict):
+            parsed = _identity_from_abs_json(raw)
+    if directory.is_dir() and not str(parsed.get("description") or "").strip():
+        desc = sidecar_named(directory, "desc.txt", "description.txt")
+        if desc is not None:
+            try:
+                text = desc.read_text(encoding="utf-8").strip()
+            except OSError:
+                text = ""
+            if text:
+                parsed["description"] = text
+    if directory.is_dir() and not str(parsed.get("narrator") or "").strip():
+        reader = sidecar_named(directory, "reader.txt")
+        if reader is not None:
+            try:
+                text = reader.read_text(encoding="utf-8").strip()
+            except OSError:
+                text = ""
+            if text:
+                parsed["narrator"] = text
+    return parsed
+
+
+def _identity_from_abs_json(raw: Mapping[str, Any]) -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+    title = str(raw.get("title") or "").strip()
+    if title:
+        out["title"] = title
+    subtitle = str(raw.get("subtitle") or "").strip()
+    if subtitle:
+        out["subtitle"] = subtitle
+    authors = _people_list(raw.get("authors"))
+    if authors:
+        out["author"] = " & ".join(authors)
+    narrators = _people_list(raw.get("narrators"))
+    if narrators:
+        out["narrator"] = ", ".join(narrators)
+    series = raw.get("series")
+    if isinstance(series, list) and series:
+        first = series[0]
+        if isinstance(first, dict):
+            name = str(first.get("name") or "").strip()
+            sequence = str(first.get("sequence") or "").strip()
+        else:
+            name = str(first or "").strip()
+            sequence = ""
+        if name:
+            out["series_name"] = name
+        if sequence:
+            out["series_index"] = sequence
+    elif isinstance(series, str) and series.strip():
+        out["series_name"] = series.strip()
+    genres = _people_list(raw.get("genres"))
+    if genres:
+        out["genre"] = ", ".join(genres)
+    year = str(raw.get("publishedYear") or "").strip()
+    if year.isdigit():
+        out["year"] = int(year)
+    publisher = str(raw.get("publisher") or "").strip()
+    if publisher:
+        out["publisher"] = publisher
+    description = str(raw.get("description") or "").strip()
+    if description:
+        out["description"] = description
+    isbn = str(raw.get("isbn") or "").strip()
+    if isbn:
+        out["isbn"] = isbn
+    asin = _asin_token(raw.get("asin"))
+    if asin:
+        out["asin"] = asin
+    return out
 
 
 _YEAR = re.compile(r"(19\d{2}|20\d{2})")
@@ -347,7 +588,7 @@ def sidecar_named(folder: Path, *names: str) -> Optional[Path]:
 
 
 def read_folder_metadata(folder: Path) -> Dict[str, Any]:
-    """Merge sidecar OPF then ComicInfo. ComicInfo wins on overlapping keys."""
+    """Merge sidecar OPF, ComicInfo, then Audiobookshelf metadata.json."""
     merged: Dict[str, Any] = {}
     opf = sidecar_named(folder, "metadata.opf")
     if opf is not None:
@@ -355,6 +596,11 @@ def read_folder_metadata(folder: Path) -> Dict[str, Any]:
     comic = sidecar_named(folder, "ComicInfo.xml", "comicinfo.xml")
     if comic is not None:
         merged.update(read_comicinfo(comic))
+    abs_meta = read_abs_metadata(folder)
+    for key, value in abs_meta.items():
+        if value in (None, ""):
+            continue
+        merged[key] = value
     return merged
 
 

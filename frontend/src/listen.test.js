@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import {
   canListenInApp,
+  primaryListeningFile,
   chapterAt,
   chapterRemainingSeconds,
   decodeListenPosition,
@@ -33,6 +34,15 @@ describe("audiobook Listen helpers", () => {
       canListenInApp({ kind: "audiobook" }, [{ filename: "ghost.m4b", on_disk: false }], true),
       false,
     );
+  });
+
+  it("picks an m4b over an mp3 and skips a file that is not on disk", () => {
+    const best = primaryListeningFile([
+      { id: "mp3", filename: "01.mp3" },
+      { id: "gone", filename: "full.m4b", on_disk: false },
+      { id: "m4b", filename: "book.m4b" },
+    ]);
+    assert.equal(best.id, "m4b");
   });
 
   it("deep-links peek Listen onto the work page player", () => {

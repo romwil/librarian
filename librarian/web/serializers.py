@@ -86,6 +86,32 @@ def public_works(rows: Iterable[Any]) -> list:
     return [public_work(row) for row in rows if row]
 
 
+_PUBLIC_EDITION_KEYS: tuple[str, ...] = (
+    "id",
+    "work_id",
+    "kind",
+    "isbn13",
+    "asin",
+    "publisher",
+    "year",
+    "format",
+)
+
+
+def public_edition(row: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """Edition metadata for the work page. Folder and cover paths stay off the wire."""
+    if row is None:
+        return None
+    data = _pick(row, _PUBLIC_EDITION_KEYS)
+    for key in _PATH_KEYS:
+        data.pop(key, None)
+    return data
+
+
+def public_editions(rows: Iterable[Any]) -> list:
+    return [public_edition(row) for row in rows if row]
+
+
 def public_work_admin(row: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     """Owner/op work shape: public fields plus folder_path / repair counters.
 

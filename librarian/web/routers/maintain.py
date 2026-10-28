@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import shutil
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
@@ -10,6 +12,8 @@ from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from librarian.audiobookshelf import match_audiobooks
 from librarian.auth import require_role
 from librarian.calibre_renormalize import assemble_calibre_renormalize
+from librarian.cleanup import cleanup_library, restore_quarantine
+from librarian.cleanup import read_progress as read_cleanup_progress
 from librarian.config import save_settings
 from librarian.enrich import enrich_library, friendly_enrich_error
 from librarian.enrich_progress import (
@@ -90,6 +94,7 @@ def register_maintain_routes(app: FastAPI, deps: WebDeps) -> None:
     purge_duplicates_job = deps.purge_duplicates_job
     purge_shells_job = deps.purge_shells_job
     split_mixed_kinds_job = deps.split_mixed_kinds_job
+    cleanup_job = deps.cleanup_job
 
     def current_user(request: Request) -> Optional[Dict[str, Any]]:
         return deps.current_user(request)
@@ -127,6 +132,7 @@ def register_maintain_routes(app: FastAPI, deps: WebDeps) -> None:
                 read_extra_files_reprocess_progress,
             ),
             ("shells", "Purge shells is still running", "#maintain-shells", read_purge_shells_progress),
+            ("cleanup", "Catalog cleanup is still running", "#maintain-cleanup", read_cleanup_progress),
             (
                 "mixed",
                 "Split blends is still running",
@@ -212,8 +218,57 @@ def register_maintain_routes(app: FastAPI, deps: WebDeps) -> None:
             "enrich": enrich,
             "ingest": ingest,
             "extra_files": extra_files,
+            "cleanup": read_cleanup_progress(root),
             "poller": _background_poller_status(app),
         }
+
+    @app.post("/api/maintain/cleanup")
+    def maintain_cleanup(request: Request, approve: bool = False):
+        """Preview canonical cleanup, then run only after owner approval."""
+        require_role(request.state.user, "owner")
+
+        def run_cleanup() -> None:
+            try:
+                cleanup_library(db, settings(), apply=approve, data_dir=root)
+            except Exception as error:
+                logger.exception("Catalog cleanup failed")
+                from librarian.cleanup import PROGRESS
+
+                PROGRESS.finish(root, error=str(error) or "Catalog cleanup failed")
+
+        kicked = cleanup_job.start_if_idle(
+            is_running=lambda: str(read_cleanup_progress(root).get("status") or "") == "running",
+            begin=lambda: None,
+            target=run_cleanup,
+            name="librarian-cleanup",
+        )
+        return {**read_cleanup_progress(root), "kicked_off": kicked}
+
+    @app.get("/api/maintain/cleanup/status")
+    def maintain_cleanup_status(request: Request):
+        require_role(request.state.user, "owner")
+        return read_cleanup_progress(root)
+
+    @app.post("/api/maintain/cleanup/restore")
+    def maintain_cleanup_restore(request: Request):
+        """Restore the most recently quarantined duplicate copies."""
+        require_role(request.state.user, "owner")
+        report = read_cleanup_progress(root).get("report") or {}
+        manifest = Path(str(report.get("quarantine") or "")) / "manifest.json"
+        if not manifest.is_file():
+            raise HTTPException(status_code=404, detail="No cleanup quarantine is ready to restore")
+        return {"restored": restore_quarantine(manifest)}
+
+    @app.post("/api/maintain/cleanup/empty")
+    def maintain_cleanup_empty(request: Request):
+        """Permanently empty the owner-approved cleanup quarantine."""
+        require_role(request.state.user, "owner")
+        report = read_cleanup_progress(root).get("report") or {}
+        quarantine = Path(str(report.get("quarantine") or ""))
+        if not quarantine.is_dir():
+            raise HTTPException(status_code=404, detail="No cleanup quarantine is ready to empty")
+        shutil.rmtree(quarantine)
+        return {"emptied": True}
 
     @app.get("/api/maintain/indexer-scorecard")
     def maintain_indexer_scorecard(request: Request):

@@ -11,6 +11,7 @@ import httpx
 from librarian.covers import DEFAULT_USER_AGENT, OPENLIB_ISBN_COVER
 from librarian.descriptions import normalize_description
 from librarian.identify import extract_isbn
+from librarian.identity.isbn import canonical_isbn13
 
 OPENLIB_ISBN = "https://openlibrary.org/isbn/{isbn}.json"
 OPENLIB_SEARCH = "https://openlibrary.org/search.json"
@@ -264,6 +265,33 @@ def _volume_from_search_doc(doc: Mapping[str, Any], series_name: str) -> Dict[st
     return out
 
 
+def _edition_isbn13s(edition: Mapping[str, Any], *, extra: str = "") -> List[str]:
+    """Canonical ISBN-13s for every edition identifier on a payload (dedup, order-stable)."""
+    out: List[str] = []
+    seen: set[str] = set()
+    if extra:
+        canonical = canonical_isbn13(extra)
+        if canonical and canonical not in seen:
+            seen.add(canonical)
+            out.append(canonical)
+    for key in ("isbn_13", "isbn_10", "isbn"):
+        raw = edition.get(key)
+        values: List[Any] = raw if isinstance(raw, list) else [raw] if raw else []
+        for value in values:
+            canonical = canonical_isbn13(value)
+            if canonical and canonical not in seen:
+                seen.add(canonical)
+                out.append(canonical)
+    return out
+
+
+def _work_key_from(value: Any) -> str:
+    key = str(value or "").strip()
+    if not key:
+        return ""
+    return key if key.startswith("/works/") else f"/works/{key}"
+
+
 def _cover_url(edition: Mapping[str, Any], isbn: str = "") -> str:
     covers = edition.get("covers")
     if isinstance(covers, list) and covers:
@@ -331,9 +359,11 @@ class OpenLibraryClient:
         if not edition:
             return {}
         work: Dict[str, Any] = {}
+        work_key = ""
         works = edition.get("works")
         if isinstance(works, list) and works and isinstance(works[0], dict):
-            work = self._work_payload(str(works[0].get("key") or ""))
+            work_key = str(works[0].get("key") or "").strip()
+            work = self._work_payload(work_key)
         description = _description(work.get("description") or edition.get("description"))
         year = _year_from(edition.get("publish_date") or work.get("first_publish_date"))
         series = _series_name(edition.get("series") or work.get("series"))
@@ -357,6 +387,11 @@ class OpenLibraryClient:
             out["series_name"] = series
         if genre:
             out["genre"] = genre
+        if work_key:
+            out["ol_work"] = _work_key_from(work_key)
+        isbn13s = _edition_isbn13s(edition, extra=digits)
+        if isbn13s:
+            out["isbn13s"] = isbn13s
         return out
 
     def _enrichment_from_doc(
@@ -400,7 +435,17 @@ class OpenLibraryClient:
             out["series_name"] = series
         if genre:
             out["genre"] = genre
-        # Title search may include ISBNs on the hit — we deliberately do not copy them.
+        if key:
+            out["ol_work"] = _work_key_from(key)
+        isbn13s: List[str] = []
+        raw_isbn = doc.get("isbn")
+        raw_list: List[Any] = raw_isbn if isinstance(raw_isbn, list) else [raw_isbn] if raw_isbn else []
+        for value in raw_list:
+            canonical = canonical_isbn13(value)
+            if canonical and canonical not in isbn13s:
+                isbn13s.append(canonical)
+        if isbn13s:
+            out["isbn13s"] = isbn13s
         return out
 
     def lookup_by_key(self, work_key: str) -> Dict[str, Any]:
