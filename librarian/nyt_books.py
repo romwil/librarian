@@ -1,7 +1,8 @@
 """New York Times Books API bestseller lists.
 
 Key lives in settings (`nyt_books_api_key`) or `NYT_BOOKS_API_KEY`. Fail closed
-with no key — never invents list rows. Messages must never include the key.
+with no key — never invents list rows. Noted lists ask the household model in
+that case; this client does not. Messages must never include the key.
 """
 
 from __future__ import annotations

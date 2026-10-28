@@ -1,21 +1,35 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api.js";
+import NotedBookCard from "../components/NotedBookCard.jsx";
 import WarmLoad from "../components/WarmLoad.jsx";
 import { humanError } from "../copy.js";
-import { notedFindHref, notedFormatActions, notedSearchHref, notedWantedBody } from "../noted.js";
+import {
+  collapseNotedBooks,
+  listFormatActions,
+  notedBookStatus,
+  notedFindHref,
+  notedSearchHref,
+  notedWantedBody,
+  weekCountLabel,
+} from "../noted.js";
 
 function itemKey(item, kind) {
   return `${item?.title || ""}|${item?.author || ""}|${item?.isbn || ""}|${kind}`;
 }
 
 export default function NotedPage() {
+  const [searchParams] = useSearchParams();
   const [payload, setPayload] = useState(null);
   const [activeList, setActiveList] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState({});
   const [busy, setBusy] = useState("");
+  const selectedList =
+    searchParams.get("preset") === "nyt" && searchParams.get("list")
+      ? `nyt-${searchParams.get("list")}`
+      : "";
 
   useEffect(() => {
     let alive = true;
@@ -25,7 +39,11 @@ export default function NotedPage() {
       .then((data) => {
         if (!alive) return;
         setPayload(data);
-        setActiveList((current) => current || data?.lists?.[0]?.id || "");
+        setActiveList((current) =>
+          data?.lists?.some((list) => list.id === selectedList)
+            ? selectedList
+            : current || data?.lists?.[0]?.id || "",
+        );
         setError("");
         setLoading(false);
       })
@@ -42,7 +60,7 @@ export default function NotedPage() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [selectedList]);
 
   async function add(item, kind) {
     const key = itemKey(item, kind);
@@ -88,38 +106,40 @@ export default function NotedPage() {
         ? (
             <section key={activeLane.id} className="stack" data-testid={`noted-lane-${activeLane.id}`}>
               <h2>{activeLane.label || activeLane.id}</h2>
+              {activeLane.origin_label ? (
+                <p className="muted" data-testid="noted-origin">
+                  {activeLane.origin_label}
+                </p>
+              ) : null}
               {activeLane.empty_copy && !activeLane.items?.length ? (
                 <p className="empty-note" data-testid={`noted-empty-${activeLane.id}`}>
                   {activeLane.empty_copy}
                 </p>
               ) : null}
-              <ul className="stack">
-                {(activeLane.items || []).map((item) => (
-                  <li
-                    key={`${activeLane.id}|${item.open_library_key || ""}|${item.category || ""}|${item.kind}|${item.title}|${item.author}|${item.rank || ""}`}
-                    className="card"
-                    data-testid="noted-item"
-                    data-kind={item.kind || ""}
-                    data-source={item.source || ""}
-                  >
-                    <strong>{item.title}</strong>
-                    {item.author ? <p className="muted">{item.author}</p> : null}
-                    <p className="chip-row">
-                      <span className="chip">{item.kind === "audiobook" ? "Audiobook" : "Book"}</span>
-                    </p>
-                    {item.companion_note ? (
-                      <p className="muted" data-testid="noted-companion">
-                        {item.companion_note}
-                      </p>
-                    ) : null}
-                    <div className="cta-row">
+              <ul className="noted-books">
+                {collapseNotedBooks(activeLane.items).map((item) => {
+                  const actions = listFormatActions(item);
+                  const savedHere = actions.some((action) => saved[itemKey(item, action.kind)]);
+                  const status = actions.some((action) => action.owned) || notedBookStatus(item) === "matched"
+                    ? "Matched"
+                    : savedHere || notedBookStatus(item) === "wanted"
+                      ? "Wanted"
+                      : "Missing";
+                  return (
+                    <NotedBookCard
+                      key={`${activeLane.id}|${item.key}`}
+                      book={item}
+                      status={status}
+                      weeks={weekCountLabel(item.weekCount)}
+                      testId="noted-item"
+                    >
                       <Link className="cta outline compact" to={notedSearchHref(item)} data-testid="noted-search">
                         Search the shelves
                       </Link>
                       <Link className="cta outline compact" to={notedFindHref(item)} data-testid="noted-find">
                         Find beyond
                       </Link>
-                      {notedFormatActions(item).map((action) => {
+                      {actions.map((action) => {
                         if (action.owned) {
                           return (
                             <span key={action.kind} className="noted-owned">
@@ -158,23 +178,23 @@ export default function NotedPage() {
                         }
                         if (!payload?.can_add) return null;
                         const key = itemKey(item, action.kind);
-                        const done = Boolean(saved[key]);
+                        if (saved[key]) return null;
                         return (
                           <button
                             key={action.kind}
                             type="button"
                             className="cta compact"
                             data-testid={`noted-want-${action.kind}`}
-                            disabled={done || busy === key}
+                            disabled={busy === key}
                             onClick={() => add(item, action.kind)}
                           >
-                            {done ? "Wanted" : `Add to Wanted · ${action.kind}`}
+                            Add to Wanted
                           </button>
                         );
                       })}
-                    </div>
-                  </li>
-                ))}
+                    </NotedBookCard>
+                  );
+                })}
               </ul>
             </section>
           )

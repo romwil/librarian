@@ -41,6 +41,7 @@ describe("beyond Get save", () => {
       },
     });
     assert.equal(calls[0][0], "add");
+    assert.equal(calls[0][1].hit.guid, "guid-scientific");
     assert.equal(calls[1][0], "ask");
     assert.equal(calls[1][1], "w1");
     assert.equal(calls[1][2].guid, "guid-scientific");

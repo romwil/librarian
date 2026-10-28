@@ -1,3 +1,22 @@
+import { memo } from "react";
+
+/**
+ * Desk tally is its own line, with one text node per count.
+ * Polls must not remount it or rewrite a count that did not change —
+ * a shared flex row of conditional paragraphs was swapping those nodes.
+ */
+const DeskTally = memo(function DeskTally({ trusted, ambiguous, failed }) {
+  const ready = Number(trusted) || 0;
+  const need = Number(ambiguous) || 0;
+  const unavailable = Number(failed) || 0;
+  if (ready + need + unavailable <= 0) return null;
+  return (
+    <p className="muted review-desk-tally" data-testid="review-triage-counts" role="status">
+      {"On the desk: "}<span>{ready}</span>{" ready to file · "}<span>{need}</span>{" need a decision · "}<span>{unavailable}</span>{" model unavailable"}
+    </p>
+  );
+});
+
 /** Holds desk bulk bar: unpack repair/retry, clear extra-files, purge, and model triage. */
 export default function ReviewBulkBar({
   show,
@@ -30,84 +49,77 @@ export default function ReviewBulkBar({
 }) {
   if (!show) return null;
   const counts = triageCounts || {};
-  const deskTally =
-    counts.trusted || counts.ambiguous || counts.failed
-      ? `On the desk: ${counts.trusted} ready to file · ${counts.ambiguous} need a decision · ` +
-        `${counts.failed} model unavailable`
-      : "";
 
   return (
-    <div className="cta-row review-bulk" data-testid="review-bulk">
-      {unpackCount ? (
-        <>
-          <button type="button" className="cta outline compact" onClick={() => onRepair()}>
-            Repair unpack slips
+    <div className="review-bulk" data-testid="review-bulk">
+      <div className="cta-row" role="group" aria-label="Holds desk actions">
+        {unpackCount ? (
+          <>
+            <button type="button" className="cta outline compact" onClick={() => onRepair()}>
+              Repair unpack slips
+            </button>
+            <button type="button" className="cta outline compact" onClick={() => onRetry()}>
+              Retry unpack slips
+            </button>
+          </>
+        ) : null}
+        {showBulkClear ? (
+          <button
+            type="button"
+            className="cta compact"
+            onClick={() => onClearExtraFiles()}
+            disabled={extraFilesClearing}
+            data-testid="review-bulk-extra-files"
+          >
+            {extraFilesClearing
+              ? "Clearing…"
+              : extraFilesBacklog > 0 && extraFilesCount === 0
+                ? `Clear extra-files slips (${extraFilesBacklog})`
+                : "Clear extra-files slips"}
           </button>
-          <button type="button" className="cta outline compact" onClick={() => onRetry()}>
-            Retry unpack slips
+        ) : null}
+        {showBulkPurge ? (
+          <button
+            type="button"
+            className="cta outline compact"
+            onClick={() => onPurgeDuplicates()}
+            disabled={purgeRunning}
+            data-testid="review-bulk-purge-duplicates"
+            title="Dismiss slips whose content is already on the shelf, or exact duplicate slips of each other (keeps one)."
+          >
+            {purgeRunning
+              ? "Purging…"
+              : reviewBacklog > slipCount
+                ? `Purge duplicates (${reviewBacklog})`
+                : "Purge duplicates"}
           </button>
-        </>
-      ) : null}
-      {showBulkClear ? (
-        <button
-          type="button"
-          className="cta compact"
-          onClick={() => onClearExtraFiles()}
-          disabled={extraFilesClearing}
-          data-testid="review-bulk-extra-files"
-        >
-          {extraFilesClearing
-            ? "Clearing…"
-            : extraFilesBacklog > 0 && extraFilesCount === 0
-              ? `Clear extra-files slips (${extraFilesBacklog})`
-              : "Clear extra-files slips"}
-        </button>
-      ) : null}
-      {showBulkPurge ? (
-        <button
-          type="button"
-          className="cta outline compact"
-          onClick={() => onPurgeDuplicates()}
-          disabled={purgeRunning}
-          data-testid="review-bulk-purge-duplicates"
-          title="Dismiss slips whose content is already on the shelf, or exact duplicate slips of each other (keeps one)."
-        >
-          {purgeRunning
-            ? "Purging…"
-            : reviewBacklog > slipCount
-              ? `Purge duplicates (${reviewBacklog})`
-              : "Purge duplicates"}
-        </button>
-      ) : null}
-      {lowConfidenceCount || triageRunning ? (
-        <button type="button" className="cta outline compact" onClick={() => onStartTriage()} disabled={triageRunning}>
-          {triageRunning
-            ? `Checking slips (${Number(triageProgress?.done || 0)}/${Number(triageProgress?.total || 0)})…`
-            : `Check low-confidence slips (${lowConfidenceCount})`}
-        </button>
-      ) : null}
-      {trustedCount ? (
-        <button type="button" className="cta compact" onClick={() => onApplyTrusted()} disabled={applyingTrusted}>
-          {applyingTrusted ? "Filing trusted matches…" : `Apply trusted matches (${trustedCount})`}
-        </button>
-      ) : null}
+        ) : null}
+        {lowConfidenceCount || triageRunning ? (
+          <button type="button" className="cta outline compact" onClick={() => onStartTriage()} disabled={triageRunning}>
+            {triageRunning
+              ? `Checking slips (${Number(triageProgress?.done || 0)}/${Number(triageProgress?.total || 0)})…`
+              : `Check low-confidence slips (${lowConfidenceCount})`}
+          </button>
+        ) : null}
+        {trustedCount ? (
+          <button type="button" className="cta compact" onClick={() => onApplyTrusted()} disabled={applyingTrusted}>
+            {applyingTrusted ? "Filing trusted matches…" : `Apply trusted matches (${trustedCount})`}
+          </button>
+        ) : null}
+      </div>
+      <DeskTally trusted={counts.trusted} ambiguous={counts.ambiguous} failed={counts.failed} />
       {triageLine ? (
-        <p className="muted" role="status" data-testid="review-model-triage">
+        <p key="model-triage" className="muted" role="status" data-testid="review-model-triage">
           {triageLine}
         </p>
       ) : null}
-      {deskTally ? (
-        <p className="muted" data-testid="review-triage-counts">
-          {deskTally}
-        </p>
-      ) : null}
       {modelNote ? (
-        <p className="muted" role="status">
+        <p key="model-note" className="muted" role="status">
           {modelNote}
         </p>
       ) : null}
       {bulkNote && !showExtraFilesProgress && !showPurgeProgress ? (
-        <p className="muted" role="status">
+        <p key="bulk-note" className="muted" role="status">
           {bulkNote}
         </p>
       ) : null}

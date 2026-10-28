@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef } from "react";
+import { ThinkingButton } from "./Thinking.jsx";
 
 /** Modal confirm. Escape cancels; focus starts on Cancel and returns to the opener on close. */
 export default function ConfirmDialog({
@@ -74,9 +75,9 @@ export default function ConfirmDialog({
             {cancelLabel}
           </button>
           {confirmLabel && onConfirm ? (
-            <button type="button" className="cta" onClick={() => onConfirm()} disabled={busy}>
-              {busy ? "Working…" : confirmLabel}
-            </button>
+            <ThinkingButton type="button" className="cta" onClick={() => onConfirm()} busy={busy}>
+              {confirmLabel}
+            </ThinkingButton>
           ) : null}
         </div>
       </div>

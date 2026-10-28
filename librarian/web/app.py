@@ -184,7 +184,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
                         return FileResponse(candidate)
             index = root / "index.html"
             if index.is_file():
-                return FileResponse(index)
+                return FileResponse(index, headers={"Cache-Control": "no-cache"})
             return JSONResponse({"detail": "SPA is not built"}, status_code=404)
 
     return app

@@ -57,6 +57,7 @@ export default function ReviewPage() {
   const [actionNotes, setActionNotes] = useState({});
   const [bulkNote, setBulkNote] = useState("");
   const [groupNote, setGroupNote] = useState("");
+  const [groupNoteReason, setGroupNoteReason] = useState("");
   const [modelNote, setModelNote] = useState("");
   const [applyingTrusted, setApplyingTrusted] = useState(false);
   const [migration, setMigration] = useState(null);
@@ -592,6 +593,7 @@ export default function ReviewPage() {
 
   function onGroupChanged(result) {
     setGroupNote(bulkResultSummary(result));
+    setGroupNoteReason(String(result?.reason || ""));
     reload();
   }
 
@@ -741,6 +743,8 @@ export default function ReviewPage() {
   const extraFilesStatusLine = showExtraFilesProgress ? extraFilesReprocessProgressSummary(extraFilesProgress) : "";
   const purgeStatusLine = showPurgeProgress ? purgeDuplicatesProgressSummary(purgeProgress) : "";
   const holdGroups = groupHoldSlipsByReason(works);
+  const actingPileRemains =
+    Boolean(groupNoteReason) && holdGroups.some((group) => group.reason === groupNoteReason);
 
   return (
     <div className="admin-room review-page page-settle">
@@ -876,14 +880,15 @@ export default function ReviewPage() {
           title={migration.current_title || ""}
           stats={[
             `returned ${Number(migration.returned || 0)}`,
-            `left for you ${Number(migration.left_on_desk || 0)}`,
+            Number(migration.dismissed || 0) ? `cleared ${Number(migration.dismissed)}` : "",
+            Number(migration.left_on_desk || 0) ? `left for you ${Number(migration.left_on_desk)}` : "",
             migration.failed ? `failed ${migration.failed}` : "",
           ]}
           statusLine={badReleaseMigrationSummary(migration)}
           meterLabel="Returning bad downloads to Wanted"
         />
       ) : null}
-      {groupNote ? (
+      {groupNote && !actingPileRemains ? (
         <p className="muted" role="status" data-testid="review-group-note">
           {groupNote}
         </p>

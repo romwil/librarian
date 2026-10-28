@@ -38,6 +38,8 @@ import {
   extraFilesReprocessProgressPercent,
   extraFilesReprocessProgressSummary,
   groupHoldSlipsByReason,
+  badReleaseMigrationSummary,
+  badReleaseMigrationVisible,
   holdsDeskLedeCopy,
   inferRecommendedMotion,
   recommendedMotionCtaClass,
@@ -508,7 +510,7 @@ describe("smart Holds desk grouping", () => {
     assert.match(line, /ticket-title/);
     assert.match(line, /holdSlipReasonWords/);
     assert.match(line, /data-testid="review-reason-copy"/);
-    const buttons = line.match(/<button/g) || [];
+    const buttons = line.match(/<ThinkingButton|<button/g) || [];
     assert.equal(buttons.length, 1);
     const groupActionsSrc = readFileSync(join(root, "components/HoldsGroupActions.jsx"), "utf8");
     assert.match(reviewPageSrc, /HoldsGroupActions/);
@@ -545,5 +547,24 @@ describe("smart Holds desk grouping", () => {
       folder_diagnosis: {},
     });
     assert.equal(diagnosis.whatsWrong, "");
+  });
+});
+
+describe("bad download migration copy", () => {
+  it("says cleared slips left the desk instead of being left for the owner", () => {
+    const summary = badReleaseMigrationSummary({
+      status: "completed",
+      returned: 5,
+      dismissed: 334,
+      left_on_desk: 0,
+    });
+    assert.match(summary, /5 returned to Wanted/);
+    assert.match(summary, /334 cleared from the desk/);
+    assert.doesNotMatch(summary, /left for you/);
+    assert.equal(
+      badReleaseMigrationVisible({ status: "completed", returned: 5, dismissed: 334, left_on_desk: 0 }),
+      false,
+    );
+    assert.equal(badReleaseMigrationVisible({ status: "running", dismissed: 10, left_on_desk: 0 }), true);
   });
 });

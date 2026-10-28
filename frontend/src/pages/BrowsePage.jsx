@@ -17,6 +17,7 @@ import BrowseListView from "../components/BrowseListView.jsx";
 import CoverCard from "../components/CoverCard.jsx";
 import StacksCommandBar from "../components/StacksCommandBar.jsx";
 import WarmLoad from "../components/WarmLoad.jsx";
+import { ThinkingButton } from "../components/Thinking.jsx";
 import { humanError } from "../copy.js";
 
 const DEFAULT_PAGE_SIZE = 48;
@@ -213,9 +214,9 @@ export default function BrowsePage() {
         )}
         {!loading && items.length < total ? (
           <div className="cta-row compact browse-more">
-            <button type="button" className="cta outline compact" onClick={loadMore} disabled={loadingMore}>
-              {loadingMore ? "Loading…" : "Show more"}
-            </button>
+            <ThinkingButton type="button" className="cta outline compact" onClick={loadMore} busy={loadingMore}>
+              Show more
+            </ThinkingButton>
           </div>
         ) : null}
       </section>

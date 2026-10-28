@@ -164,14 +164,21 @@ def preset_prompt(*, preset: str, date: str = "current", query: str = "") -> str
             f"Prefer books (fiction/nonfiction as appropriate). "
             f"Date hint: {when}."
         )
+    expert = (
+        "You are a New York Times books expert listing one published bestseller week. "
+        "Include title, author, rank, and published_date as YYYY-MM-DD. "
+        "Include an ISBN-13 only when you are sure it is real; otherwise use null. "
+    )
     if when == "current":
         return (
-            f"Return the current New York Times bestseller list for category "
+            expert
+            + f'Return the current New York Times bestseller list for category '
             f'"{display}" (slug: {slug}), most recent published list.'
         )
     return (
-        f"Return the New York Times bestseller list for category "
-        f'"{display}" (slug: {slug}) closest to date {when}.'
+        expert
+        + f'Return the New York Times bestseller list for category '
+        f'"{display}" (slug: {slug}) published on {when}.'
     )
 
 

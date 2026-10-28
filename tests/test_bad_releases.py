@@ -8,14 +8,14 @@ import pytest
 
 from librarian.bad_releases import (
     MIGRATION_NAME,
-    NEEDS_OWNER_NOTE,
+    UNRETURNABLE_NOTE,
     migrate_bad_release_slips,
     read_migration_progress,
     release_bad_wanted,
 )
 from librarian.config import Settings
 from librarian.db import Database, safe_release_guid
-from librarian.jobs import BAD_RELEASE_ERROR, poll_job
+from librarian.jobs import BAD_RELEASE_ERROR, BAD_RELEASE_UNRETURNABLE_ERROR, poll_job
 from librarian.wanted import backoff_seconds, dedupe_key
 from librarian.wanted_search import poll_wanted
 
@@ -154,25 +154,34 @@ def test_credential_bearing_url_is_never_stored(db):
     assert "SECRET" not in repr(stored)
 
 
-def test_no_wanted_row_leaves_needs_owner_decision(db, tmp_path):
+def test_no_wanted_row_dismisses_slip_and_keeps_the_folder(db, tmp_path):
     folder = tmp_path / "complete" / "Orphan"
     folder.mkdir(parents=True)
-    slip = _slip(db, folder, reason="no_payload", guid="guid-orphan")
+    (folder / "Orphan.nfo").write_text("nfo only")
+    url = "https://indexer.example/getnzb/abc123.nzb?i=9&r=SECRETKEY&apikey=SECRETKEY"
+    slip = _slip(db, folder, reason="no_payload", guid=url)
 
     result = release_bad_wanted(db, reason="no_payload", work_id=slip["id"], remove_slip=True, now=NOW)
 
     assert result["released"] is False
+    assert result["dismissed"] is True
     assert result["missing"] == "wanted"
-    assert result["note"] == NEEDS_OWNER_NOTE
-    assert db.get_work(slip["id"])["review_state"] == "needs_review"
-    assert slip["id"] in db.review_audit_work_ids("needs_owner")
-    assert "guid-orphan" in db.bad_indexer_guids()
+    assert result["note"] == UNRETURNABLE_NOTE
+    assert db.get_work(slip["id"]) is None
+    assert db.count_works(review_state="needs_review") == 0
+    assert db.count_wanted(include_dismissed=True) == 0
+    assert (folder / "Orphan.nfo").is_file()
+    stored = db.list_bad_indexer_releases()
+    assert stored[0]["guid"] == "abc123"
+    assert "SECRET" not in repr(stored)
+    assert slip["id"] in db.review_audit_work_ids("dismiss_bad_slip")
 
 
-def test_no_guid_leaves_slip_even_with_wanted(db, tmp_path):
+def test_no_guid_dismisses_slip_and_leaves_the_wanted_row(db, tmp_path):
     wanted = _want(db)
     folder = tmp_path / "complete" / "NoGuid"
     folder.mkdir(parents=True)
+    (folder / "NoGuid.nfo").write_text("nfo only")
     slip = db.upsert_work(
         {
             "kind": "audiobook",
@@ -183,10 +192,17 @@ def test_no_guid_leaves_slip_even_with_wanted(db, tmp_path):
         }
     )
     db.reopen_wanted(wanted["id"], now=NOW, fields={"title": "Dune"})
+    before = db.count_wanted(include_dismissed=True)
     result = release_bad_wanted(db, reason="convert_failed", work_id=slip["id"], remove_slip=True)
     assert result["released"] is False
+    assert result["dismissed"] is True
     assert result["missing"] == "guid"
-    assert db.get_work(slip["id"]) is not None
+    assert db.get_work(slip["id"]) is None
+    assert (folder / "NoGuid.nfo").is_file()
+    fresh = db.get_wanted(wanted["id"])
+    assert fresh["status"] == "wanted"
+    assert db.count_wanted(include_dismissed=True) == before
+    assert db.list_bad_indexer_releases() == []
 
 
 def test_completed_no_payload_download_goes_back_to_wanted(db, tmp_path):
@@ -263,6 +279,78 @@ def test_second_failed_comic_convert_releases_instead_of_slip(db, tmp_path, monk
     assert (folder / "Saga 001 (2012).cbr").is_file()
 
 
+def test_second_failed_convert_without_wanted_does_not_open_a_slip(db, tmp_path, monkeypatch):
+    from librarian.organize import organize_identified
+
+    folder = tmp_path / "complete" / "Saga 001"
+    folder.mkdir(parents=True)
+    (folder / "Saga 001 (2012).cbr").write_bytes(b"Rar!\x1a\x07\x00broken")
+
+    def no_convert(_folder, _kind, **_kwargs):
+        return {"converted": False}
+
+    monkeypatch.setattr("librarian.organize.maybe_convert_payload", no_convert)
+    monkeypatch.setattr("librarian.organize.unpack_release", lambda *_a, **_k: {"unpacked": False})
+    settings = Settings(complete_root=str(tmp_path / "complete"), comics_root=str(tmp_path / "comics"))
+    result = organize_identified(
+        db,
+        settings,
+        folder=folder,
+        indexer_item={
+            "kind": "comic",
+            "title": "Saga 001",
+            "series": "Saga",
+            "issue": "1",
+            "guid": "guid-cbr",
+        },
+        move_source=True,
+    )
+    assert result.get("dismissed_bad") is True
+    assert result.get("work") is None
+    assert db.count_works(review_state="needs_review") == 0
+    assert db.count_wanted(include_dismissed=True) == 0
+    assert db.list_bad_indexer_releases()[0]["guid"] == "guid-cbr"
+    assert (folder / "Saga 001 (2012).cbr").is_file()
+
+
+def test_completed_no_payload_without_wanted_keeps_folder_and_skips_the_desk(db, tmp_path):
+    folder = tmp_path / "complete" / "Wolves of the Calla"
+    folder.mkdir(parents=True)
+    (folder / "Wolves.nfo").write_text("nfo only")
+    job = db.create_job(
+        {
+            "status": "downloading",
+            "nzo_id": "nzo-empty",
+            "indexer_guid": "guid-wolves",
+            "title": "Wolves of the Calla",
+            "kind": "audiobook",
+            "payload": {"guid": "guid-wolves", "selected": {"guid": "guid-wolves", "host_id": "nzbfinder"}},
+        }
+    )
+
+    class Sab:
+        def job_status(self, _nzo):
+            return {
+                "status": "completed",
+                "sab_status": "Completed",
+                "name": "Wolves of the Calla",
+                "percentage": "100",
+                "bytes": 10,
+                "storage": str(folder),
+            }
+
+    settings = Settings(complete_root=str(tmp_path / "complete"), audiobooks_root=str(tmp_path / "ab"))
+    polled = poll_job(db, settings, job["id"], sab=Sab())
+
+    assert polled["status"] == "failed"
+    assert polled["error"] == BAD_RELEASE_UNRETURNABLE_ERROR
+    assert polled["work_id"] is None
+    assert db.count_works(review_state="needs_review") == 0
+    assert db.count_wanted(include_dismissed=True) == 0
+    assert db.list_bad_indexer_releases()[0]["guid"] == "guid-wolves"
+    assert (folder / "Wolves.nfo").is_file()
+
+
 def test_migration_returns_bad_slips_once_and_counts_leftovers(db, tmp_path):
     wanted = _want(db)
     job = _asked(db, wanted)
@@ -273,28 +361,38 @@ def test_migration_returns_bad_slips_once_and_counts_leftovers(db, tmp_path):
     db.update_job(job["id"], work_id=slip["id"], status="review")
     orphan_folder = tmp_path / "complete" / "Orphan"
     orphan_folder.mkdir(parents=True)
+    (orphan_folder / "Orphan.nfo").write_text("keep")
     orphan = _slip(db, orphan_folder, reason="convert_failed", guid="", title="Orphan")
     keeper = _slip(db, orphan_folder, reason="low_confidence", guid="g-low", title="Keep Me")
 
     report = migrate_bad_release_slips(db, data_dir=tmp_path, now=NOW)
 
-    assert report == {"total": 2, "returned": 1, "left_on_desk": 1, "failed": 0}
+    assert report == {
+        "total": 2,
+        "returned": 1,
+        "dismissed": 1,
+        "left_on_desk": 0,
+        "failed": 0,
+    }
     assert db.get_work(slip["id"]) is None
     assert db.get_job(job["id"]) is None
     assert db.get_wanted(wanted["id"])["status"] == "wanted"
     assert db.get_wanted(wanted["id"])["job_id"] is None
-    assert db.get_work(orphan["id"])["review_state"] == "needs_review"
+    assert db.get_work(orphan["id"]) is None
     assert db.get_work(keeper["id"])["review_reason"] == "low_confidence"
     assert (folder / "x.nfo").is_file()
+    assert (orphan_folder / "Orphan.nfo").is_file()
     progress = read_migration_progress(tmp_path)
     assert progress["status"] == "completed"
-    assert progress["returned"] == 1 and progress["left_on_desk"] == 1
+    assert progress["returned"] == 1 and progress["dismissed"] == 1 and progress["left_on_desk"] == 0
     assert db.get_migration(MIGRATION_NAME)["report"]["returned"] == 1
+    assert db.get_migration(MIGRATION_NAME)["report"]["dismissed"] == 1
 
     again = migrate_bad_release_slips(db, data_dir=tmp_path, now=NOW + 60)
     assert again["already_done"] is True
     assert again["returned"] == 1
-    assert db.get_work(orphan["id"]) is not None
+    assert again["dismissed"] == 1
+    assert db.get_work(orphan["id"]) is None
     assert db.get_wanted(wanted["id"])["miss_streak"] == 1
 
 
@@ -316,14 +414,17 @@ def test_review_list_explains_leftover_and_reports_migration(tmp_path, monkeypat
     db = app.state.db
     folder = tmp_path / "complete" / "Orphan"
     folder.mkdir(parents=True)
+    (folder / "Orphan.nfo").write_text("still here")
     orphan = _slip(db, folder, reason="convert_failed", guid="", title="Orphan")
     migrate_bad_release_slips(db, data_dir=tmp_path, now=time.time())
 
     body = client.get("/api/review").json()
-    row = next(w for w in body["works"] if w["id"] == orphan["id"])
-    assert row["owner_decision_note"] == NEEDS_OWNER_NOTE
-    assert row["effective_reason"] == "convert_failed"
+    assert all(w["id"] != orphan["id"] for w in body["works"])
+    assert db.get_work(orphan["id"]) is None
+    assert (folder / "Orphan.nfo").is_file()
     assert body["bad_release_migration"]["status"] == "completed"
-    assert body["bad_release_migration"]["left_on_desk"] == 1
+    assert body["bad_release_migration"]["dismissed"] == 1
+    assert body["bad_release_migration"]["left_on_desk"] == 0
     status = client.get("/api/review/bad-release-migration/status").json()
-    assert status["left_on_desk"] == 1
+    assert status["dismissed"] == 1
+    assert status["left_on_desk"] == 0

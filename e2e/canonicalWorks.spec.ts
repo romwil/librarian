@@ -267,14 +267,18 @@ test.describe("Canonical works", () => {
     await page.goto("/noted/history");
     await dismissWhatsNewIfPresent(page);
     await expect(page.getByRole("heading", { name: "New & noted history", exact: true })).toBeVisible();
-    await page.getByLabel("NYT category").fill("hardcover-fiction");
+    await page.getByLabel("NYT category").selectOption("hardcover-fiction");
     await page.getByLabel("Start date").fill("2026-04-01");
     await page.getByLabel("End date").fill("2026-04-30");
     await page.getByRole("button", { name: "Load range", exact: true }).click();
 
     await expect(page.getByText("Missing Novel", { exact: true })).toBeVisible();
     await expect(page.getByText("Already Here", { exact: true })).toBeVisible();
-    await expect(page.getByText(/Not on the shelf/)).toBeVisible();
+    await expect(page.getByText("2026-04-05")).toHaveCount(0);
+    await expect(page.getByText("2026-04-12")).toHaveCount(0);
+    await expect(page.getByText("Missing", { exact: true })).toBeVisible();
+    await expect(page.getByText("Matched", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Add to Wanted" })).toBeVisible();
     expect(historyUrls).toHaveLength(1);
     const loaded = new URL(historyUrls[0]);
     expect(loaded.searchParams.get("list_name")).toBe("hardcover-fiction");

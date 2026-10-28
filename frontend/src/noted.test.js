@@ -4,7 +4,15 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "vitest";
 
-import { notedFindHref, notedFormatActions, notedSearchHref, notedWantedBody } from "./noted.js";
+import {
+  collapseNotedBooks,
+  listFormatActions,
+  notedFindHref,
+  notedFormatActions,
+  notedSearchHref,
+  notedWantedBody,
+  weekCountLabel,
+} from "./noted.js";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const pageSrc = readFileSync(join(root, "pages/NotedPage.jsx"), "utf8");
@@ -53,40 +61,45 @@ test("noted cards link to search and find and build a Wanted body", () => {
   assert.equal(notedWantedBody(card, "book").kind, "book");
 });
 
-test("a shelved format becomes On the shelf and the missing format stays Wanted", () => {
-  const actions = notedFormatActions({
+test("a list card keeps the shelved book and omits the missing audiobook", () => {
+  const item = {
+    kind: "book",
     title: "Atomic Habits",
     author: "James Clear",
     shelved: { id: "book-atomic", title: "Atomic Habits" },
     shelved_audiobook: null,
-  });
-  const book = actions.find((action) => action.kind === "book");
-  const audio = actions.find((action) => action.kind === "audiobook");
+  };
+  const actions = listFormatActions(item);
+  assert.equal(actions.length, 1);
+  const book = actions[0];
+  assert.equal(book.kind, "book");
   assert.equal(book.owned, true);
   assert.equal(book.label, "On the shelf");
   assert.equal(book.href, "/works/book-atomic");
   assert.equal(book.listenHref, "");
   assert.equal(book.readHref, "/works/book-atomic?read=1");
   assert.equal(book.downloadHref, "/api/works/book-atomic/download");
-  assert.equal(audio.owned, false);
-  assert.equal(audio.label, "Add to Wanted · audiobook");
-  assert.equal(audio.readHref, "");
-  assert.equal(audio.downloadHref, "");
+  assert.equal(
+    actions.some((action) => action.kind === "audiobook" || /audiobook/i.test(action.label)),
+    false,
+  );
 
-  const both = notedFormatActions({
+  const pair = notedFormatActions(item);
+  assert.equal(pair.find((action) => action.kind === "audiobook").label, "Add to Wanted · audiobook");
+  assert.equal(listFormatActions({ ...item, kind: "audiobook" }).map((action) => action.kind).join(","), "audiobook");
+
+  const both = listFormatActions({
+    kind: "book",
     shelved: { id: "book-1" },
     shelved_audiobook: { id: "audio-1" },
   });
-  const ownedAudio = both.find((action) => action.kind === "audiobook");
-  assert.equal(ownedAudio.owned, true);
-  assert.equal(ownedAudio.label, "On the shelf");
-  assert.equal(ownedAudio.href, "/works/audio-1");
-  assert.match(ownedAudio.listenHref, /\/works\/audio-1\?listen=1/);
-  assert.equal(ownedAudio.readHref, "");
-  assert.equal(ownedAudio.downloadHref, "");
-  const ownedBook = both.find((action) => action.kind === "book");
-  assert.equal(ownedBook.readHref, "/works/book-1?read=1");
-  assert.equal(ownedBook.downloadHref, "/api/works/book-1/download");
+  assert.deepEqual(
+    both.map((action) => action.kind),
+    ["book"],
+  );
+  assert.equal(both[0].readHref, "/works/book-1?read=1");
+  assert.equal(both[0].downloadHref, "/api/works/book-1/download");
+  assert.equal(both[0].listenHref, "");
 });
 
 test("Search keeps one New & noted door", () => {
@@ -97,6 +110,47 @@ test("Search keeps one New & noted door", () => {
   assert.equal(searchSrc.includes("Trending books"), false);
   assert.match(searchSrc, /discover-panel/);
   assert.match(searchSrc, /On the shelf/);
+});
+
+test("duplicate list rows collapse to one book and a week count", () => {
+  const books = collapseNotedBooks([
+    {
+      title: "The Correspondent",
+      author: "Virginia Evans",
+      isbn13: "978-0-593-44095-5",
+      weeks: ["2026-08-30", "2026-09-06", "2026-09-13", "2026-09-20", "2026-09-27", "2026-10-04"],
+      status: "missing",
+    },
+    {
+      title: " the correspondent ",
+      author: "virginia evans",
+      isbn13: "9780593440962",
+      weeks: ["2026-08-30", "2026-09-06"],
+      status: "missing",
+    },
+    {
+      title: "The Correspondent",
+      author: "Someone Else",
+      isbn13: "9781111111111",
+      weeks: ["2026-10-04"],
+      status: "missing",
+    },
+    {
+      title: "Buckeye",
+      author: "Patrick Ryan",
+      weeks: ["2026-10-04"],
+      status: "matched",
+      work_id: "work-buckeye",
+    },
+  ]);
+  assert.equal(books.length, 3);
+  const correspondent = books.find((book) => book.author === "Virginia Evans");
+  assert.ok(correspondent);
+  assert.equal(correspondent.weekCount, 6);
+  assert.equal(correspondent.weeks, undefined);
+  assert.equal(weekCountLabel(correspondent.weekCount), "6 weeks");
+  assert.equal(weekCountLabel(1), "");
+  assert.equal(books.filter((book) => book.title === "Buckeye")[0].status, "matched");
 });
 
 test("New & noted page searches, finds, and adds to Wanted", () => {
@@ -110,7 +164,9 @@ test("New & noted page searches, finds, and adds to Wanted", () => {
   assert.match(pageSrc, />\s*Download\s*</);
   assert.match(pageSrc, /noted-read-\$\{action\.kind\}/);
   assert.match(pageSrc, /noted-download-\$\{action\.kind\}/);
-  assert.match(pageSrc, /notedFormatActions/);
+  assert.match(pageSrc, /listFormatActions/);
+  assert.equal(pageSrc.includes("companion_note"), false);
+  assert.equal(pageSrc.includes("noted-companion"), false);
   assert.match(pageSrc, /noted-shelf-\$\{action\.kind\}/);
   assert.match(pageSrc, /noted-want-\$\{action\.kind\}/);
   assert.match(pageSrc, /api\.addWanted/);

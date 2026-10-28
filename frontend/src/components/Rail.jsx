@@ -12,6 +12,7 @@ export default function Rail({
   seeAllTo = "",
   /** Continue / tonight presence — settle-in covers + lamp kicker chrome */
   presence = false,
+  cardMode = "",
 }) {
   const head = seeAllTo ? (
     <Link to={seeAllTo} className="rail-title-link">
@@ -65,7 +66,7 @@ export default function Rail({
             className={presence ? "cover-settle" : undefined}
             style={presence ? { "--settle-i": String(Math.min(index, 8)) } : undefined}
           >
-            <CoverCard work={item} onRequest={onRequest} beyond={beyond} role={role} />
+            <CoverCard work={item} onRequest={onRequest} beyond={beyond} role={role} cardMode={cardMode} />
           </div>
         ))}
       </div>

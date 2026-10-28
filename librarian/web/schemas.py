@@ -216,14 +216,6 @@ class NamedShelfSharePayload(BaseModel):
     shared: bool = True
 
 
-class WantedAddPayload(BaseModel):
-    title: str = ""
-    author: str = ""
-    isbn: str = ""
-    kind: str = "audiobook"
-    work_id: str = ""
-
-
 class WantedSearchPayload(BaseModel):
     ids: List[str] = []
     all: bool = False
@@ -265,5 +257,15 @@ class WantedAskPayload(BaseModel):
     kind: str = ""
     book_title: str = ""
     category_name: str = ""
+
+
+class WantedAddPayload(BaseModel):
+    title: str = ""
+    author: str = ""
+    isbn: str = ""
+    kind: str = "audiobook"
+    work_id: str = ""
+    # The indexer posting the owner clicked. With a guid, add files that slip.
+    hit: Optional[WantedAskPayload] = None
 
 

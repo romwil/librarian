@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from librarian.bad_releases import release_bad_wanted
+from librarian.bad_releases import UNRETURNABLE_NOTE, release_bad_wanted
 from librarian.config import Settings
 from librarian.db import Database
 from librarian.identify import inspect_complete_folder, resolve_storage_path
@@ -25,6 +25,7 @@ UNPACK_STUCK_ERROR = "Unpack did not finish; archives remain in the complete fol
 MISSING_FOLDER_ERROR = "Complete folder not found after remapping SAB storage"
 NO_PAYLOAD_ERROR = "No usable files in the complete folder (only par2/nfo/nzb or empty)"
 BAD_RELEASE_ERROR = "Bad release — sent back to Wanted for another one. The download folder is still on disk."
+BAD_RELEASE_UNRETURNABLE_ERROR = UNRETURNABLE_NOTE
 
 # Leftover Projectionist downloads. Leave the complete folder; do not file or delete it.
 _REMOVED_DOWNLOAD_KINDS = frozenset({"movie", "tv", "xxx"})
@@ -324,17 +325,25 @@ def poll_job(
                 **sab_fields,
             )
             return updated or job
+        if organized.get("dismissed_bad"):
+            updated = db.update_job(
+                job_id,
+                status="failed",
+                work_id=None,
+                error=BAD_RELEASE_UNRETURNABLE_ERROR,
+                **sab_fields,
+            )
+            return updated or job
         if organized.get("skipped_unreadable") and organized.get("problem") == REVIEW_NO_PAYLOAD:
             released = release_bad_wanted(db, reason=REVIEW_NO_PAYLOAD, job_id=job_id)
-            if released["released"]:
-                updated = db.update_job(
-                    job_id,
-                    status="failed",
-                    work_id=None,
-                    error=BAD_RELEASE_ERROR,
-                    **sab_fields,
-                )
-                return updated or job
+            updated = db.update_job(
+                job_id,
+                status="failed",
+                work_id=None,
+                error=BAD_RELEASE_ERROR if released["released"] else BAD_RELEASE_UNRETURNABLE_ERROR,
+                **sab_fields,
+            )
+            return updated or job
         if organized.get("skipped_unreadable") or organized.get("skipped_cooldown"):
             final = "skipped"
             work_id = None
