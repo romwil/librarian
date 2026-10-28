@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { test } from "node:test";
+import { test } from "vitest";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const hallSrc = readFileSync(join(root, "pages/HallPage.jsx"), "utf8");
@@ -16,11 +16,7 @@ test("Hall keeps the hunt box and living rails, and leaves the catalog grid off 
   assert.equal(hallSrc.includes("hall-ingest"), false);
   assert.equal(hallSrc.includes("CelebrationBanner"), false);
   assert.equal(hallSrc.includes("celebration-banner"), false);
-  assert.equal(hallSrc.includes("ShelfMore"), false);
-  assert.equal(hallSrc.includes("HallCollection"), false);
   assert.equal(hallSrc.includes("NamedShelves"), false);
-  assert.equal(hallSrc.includes("TonightShelf"), false);
-  assert.equal(hallSrc.includes("SeriesCatchUp"), false);
   assert.equal(hallSrc.includes('title="Books"'), false);
   assert.match(hallSrc, /hero-search-block/);
   assert.match(hallSrc, /variant="hero"/);

@@ -24,8 +24,8 @@ def _tree(parent_id: int, name: str, leaves: Mapping[int, str]) -> Dict[str, Any
 
 # Published DrunkenSlug category ids (standard Newznab numbering).
 # Librarian walks the leaves ``category_feeds`` already understands: the
-# Books family and Audiobook 3030 on the shelf, movies/TV/XXX only when
-# Show categories is on. Console and PC stay in the tree for the record.
+# Books family and Audiobook 3030. Movie, TV, and adult trees are omitted.
+# Console and PC stay in the tree for the record.
 DRUNKENSLUG_CATEGORY_TREE: List[Dict[str, Any]] = [
     _tree(
         1000,
@@ -44,20 +44,6 @@ DRUNKENSLUG_CATEGORY_TREE: List[Dict[str, Any]] = [
             1140: "Xbox One",
             1180: "PS4",
             1999: "Other",
-        },
-    ),
-    _tree(
-        2000,
-        "Movies",
-        {
-            2010: "Foreign",
-            2030: "SD",
-            2040: "HD",
-            2045: "UHD",
-            2050: "3D",
-            2060: "BluRay",
-            2070: "DVD",
-            2999: "Other",
         },
     ),
     _tree(
@@ -83,36 +69,6 @@ DRUNKENSLUG_CATEGORY_TREE: List[Dict[str, Any]] = [
             4060: "Phone-IOS",
             4070: "Phone-Android",
             4999: "Phone-Other",
-        },
-    ),
-    _tree(
-        5000,
-        "TV",
-        {
-            5020: "Foreign",
-            5030: "SD",
-            5040: "HD",
-            5045: "UHD",
-            5060: "Sport",
-            5070: "Anime",
-            5080: "Documentary",
-            5999: "Other",
-        },
-    ),
-    _tree(
-        6000,
-        "XXX",
-        {
-            6010: "DVD",
-            6020: "WMV",
-            6030: "XviD",
-            6040: "HD",
-            6045: "UHD",
-            6050: "VR",
-            6060: "Imageset",
-            6070: "Packs",
-            6080: "SD",
-            6999: "Other",
         },
     ),
     _tree(

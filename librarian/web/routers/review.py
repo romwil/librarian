@@ -2,71 +2,21 @@
 
 from __future__ import annotations
 
-import logging
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
-from fastapi import Body, FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import Body, FastAPI, Request
 
+from librarian import review_suggest_batch as review_suggest_batch_mod
 from librarian.auth import require_role
-from librarian.delight import rank_regrab_candidates
-from librarian.enrich import list_match_candidates
-from librarian.extra_files_reprocess_progress import (
-    ExtraFilesReprocessProgressReporter,
-    begin_extra_files_reprocess_run,
-    finish_extra_files_reprocess_run,
-    is_extra_files_reprocess_running,
-    is_extra_files_reprocess_stale,
-    read_extra_files_reprocess_progress,
-)
-from librarian.identify import diagnose_review_folder
-from librarian.indexers.rank import remember_candidates, search_and_rank
-from librarian.organize import (
-    apply_review,
-    repair_review,
-    reprocess_extra_files_reviews,
-    reprocess_extra_files_work,
-    retry_review,
-    review_slip_actions,
-    shelf_work_for_collision,
-    suggest_review_identity,
-)
-from librarian.purge_duplicates import purge_duplicate_reviews
-from librarian.purge_duplicates_progress import (
-    PurgeDuplicatesProgressReporter,
-    begin_purge_duplicates_run,
-    finish_purge_duplicates_run,
-    is_purge_duplicates_running,
-    is_purge_duplicates_stale,
-    read_purge_duplicates_progress,
-)
-from librarian.review_reasons import (
-    REVIEW_COMICVINE_AMBIGUOUS,
-    REVIEW_COMICVINE_UNMATCHED,
-    REVIEW_EXTRA,
-    REVIEW_LOW,
-    REVIEW_NO_PAYLOAD,
-    REVIEW_UNKNOWN,
-    REVIEW_UNPACK_STUCK,
-)
-from librarian.review_retrieve import SlipDownError, retrieve_slip_release
+from librarian.progress_job import BackgroundJobSlot
+from librarian.services import review as review_service
 from librarian.web.deps import WebDeps
 from librarian.web.schemas import ReviewApplyPayload, ReviewRetrievePayload
-from librarian.web.serializers import public_work_admin, public_works_admin
+from librarian.web.service_errors import http_errors
 
 
-def _shape_review_work_payload(result: Dict[str, Any]) -> Dict[str, Any]:
-    """Allowlist work objects on Review mutation responses (P4-HIGH-02)."""
-    if not isinstance(result, dict):
-        return result
-    out = dict(result)
-    if "work" in out:
-        out["work"] = public_work_admin(out.get("work"))
-    if "shelf_work" in out:
-        out["shelf_work"] = public_work_admin(out.get("shelf_work"))
-    return out
-
-logger = logging.getLogger("librarian.web")
+def _requested_by(user: Dict[str, Any]) -> str:
+    return str(user.get("id") or user.get("display_name") or "owner")
 
 
 def register_review_routes(app: FastAPI, deps: WebDeps) -> None:
@@ -74,149 +24,67 @@ def register_review_routes(app: FastAPI, deps: WebDeps) -> None:
     root = deps.root
     db = deps.db
     settings = deps.settings
-    enrich_job = deps.enrich_job
-    scan_job = deps.scan_job
-    ingest_job = deps.ingest_job
     extra_files_reprocess_job = deps.extra_files_reprocess_job
     purge_duplicates_job = deps.purge_duplicates_job
-    purge_shells_job = deps.purge_shells_job
-    split_mixed_kinds_job = deps.split_mixed_kinds_job
-
-    def current_user(request: Request) -> Optional[Dict[str, Any]]:
-        return deps.current_user(request)
+    suggest_batch_job = BackgroundJobSlot()
 
     @app.get("/api/review")
     def review_list(request: Request, work: str = ""):
         require_role(request.state.user, "owner", "op")
-        # Slip pruning scans the catalog and deletes rows. The poller already
-        # sweeps; doing it here stalls the desk while purge is fingerprinting.
-        from librarian.owned_slip import owned_slip_note
+        return review_service.review_desk(db, settings(), root=root, focus=work)
 
-        note = owned_slip_note(db)
-        cfg = settings()
-        from librarian.llm_providers import resolve_llm_connection
+    @app.get("/api/review/bad-release-migration/status")
+    def review_bad_release_migration_status(request: Request):
+        """One-time return of no-payload / convert-failed slips to Wanted (boot migration)."""
+        require_role(request.state.user, "owner", "op")
+        return review_service.bad_release_migration_status(db, root)
 
-        llm_ok = bool(resolve_llm_connection(cfg).get("api_key"))
-        works = public_works_admin(db.list_works(review_state="needs_review", limit=80))
-        focus = str(work or "").strip()
-        if focus and all(str(row.get("id") or "") != focus for row in works):
-            pinned = db.get_work(focus)
-            if pinned and str(pinned.get("review_state") or "") == "needs_review":
-                works.insert(0, public_work_admin(pinned))
-        from librarian.slip_gate import parse_library_volume
+    @app.post("/api/review/bulk-by-reason")
+    def review_bulk_by_reason(request: Request, body: Optional[Dict[str, Any]] = Body(default=None)):
+        """One group action on a pile, by the server's effective reason. Never deletes files."""
+        require_role(request.state.user, "owner", "op")
+        with http_errors():
+            return review_service.bulk_motion(db, settings(), root=root, payload=body or {})
 
-        jobs_by_work: Dict[str, Any] = {}
-        for job in db.list_jobs(limit=200):
-            work_id = job.get("work_id")
-            if work_id and work_id not in jobs_by_work:
-                jobs_by_work[work_id] = job
-        for work in works:
-            job = jobs_by_work.get(work["id"]) if work else None
-            storage = str((job or {}).get("storage_path") or "")
-            work["storage_path"] = storage or None
-            if not work.get("folder_path") and storage:
-                work["folder_path"] = storage
-            folder_raw = str(work.get("folder_path") or storage or "")
-            diagnosis = diagnose_review_folder(Path(folder_raw), cfg.complete_root)
-            work["folder_diagnosis"] = diagnosis
-            if diagnosis.get("path_clear") and str(work.get("kind") or "") == "book":
-                parsed = parse_library_volume(Path(folder_raw)) if folder_raw else None
-                if parsed and str(work.get("review_reason") or "") in {REVIEW_LOW, REVIEW_UNKNOWN, ""}:
-                    work["author"] = parsed["author"]
-                    work["title"] = parsed["title"]
-                    if parsed.get("series_name"):
-                        work["series_name"] = parsed["series_name"]
-            problem = diagnosis.get("problem")
-            stored = str(work.get("review_reason") or "")
-            # Response overlay only — SQLite soft-repair runs in the poller.
-            if problem == REVIEW_UNPACK_STUCK and stored in {"", REVIEW_NO_PAYLOAD}:
-                work["review_reason"] = REVIEW_UNPACK_STUCK
-            shelf = shelf_work_for_collision(db, work)
-            work["shelf_work"] = public_work_admin(shelf) if shelf else None
-            work["actions"] = review_slip_actions(work, diagnosis, llm_configured=llm_ok)
-            reason = str(work.get("review_reason") or "")
-            if work.get("kind") == "comic" and reason in (
-                REVIEW_COMICVINE_AMBIGUOUS,
-                REVIEW_COMICVINE_UNMATCHED,
-                REVIEW_LOW,
-                REVIEW_UNKNOWN,
-            ):
-                try:
-                    work["match_candidates"] = list_match_candidates(work, settings=cfg, limit=6)
-                except Exception:
-                    work["match_candidates"] = []
-        extra_files_count = db.count_works(review_state="needs_review", review_reason=REVIEW_EXTRA)
-        needs_review_count = db.count_works(review_state="needs_review")
-        return {
-            "works": works,
-            "llm_configured": llm_ok,
-            "extra_files_count": extra_files_count,
-            "needs_review_count": needs_review_count,
-            "owned_slip_note": note,
-        }
+    @app.post("/api/review/suggest-batch")
+    def review_suggest_batch(request: Request, limit: int = 0):
+        """Kick off model triage for low-confidence slips (poll status; each answer persists)."""
+        require_role(request.state.user, "owner", "op")
+        return review_service.start_suggest_batch(
+            db, settings, root=root, slot=suggest_batch_job, limit=limit
+        )
+
+    @app.get("/api/review/suggest-batch/status")
+    def review_suggest_batch_status(request: Request):
+        require_role(request.state.user, "owner", "op")
+        return review_service.suggest_batch_status(root=root, slot=suggest_batch_job)
+
+    @app.post("/api/review/apply-trusted")
+    def review_apply_trusted(request: Request):
+        """File slips whose persisted model answer is trusted, through the normal Apply path."""
+        require_role(request.state.user, "owner", "op")
+        return review_suggest_batch_mod.apply_trusted_matches(db, settings(), data_dir=root)
 
     @app.post("/api/review/reprocess-extra-files")
     def review_reprocess_extra_files(request: Request, limit: int = 0):
         """Owner bulk: kick off background clear for extra_files slips (poll status)."""
         require_role(request.state.user, "owner", "op")
-        user = request.state.user
-        requested_by = str(user.get("id") or user.get("display_name") or "owner")
-        run_limit = max(0, int(limit or 0))
-
-        def run_reprocess() -> None:
-            reporter = ExtraFilesReprocessProgressReporter(root)
-            try:
-                reprocess_extra_files_reviews(
-                    db,
-                    settings(),
-                    requested_by=requested_by,
-                    limit=run_limit,
-                    progress=reporter,
-                )
-            except Exception as error:
-                logger.exception("Clear extra-files slips failed")
-                reporter.fail(str(error) or "Clear extra-files failed")
-
-        kicked = extra_files_reprocess_job.start_if_idle(
-            is_running=lambda: is_extra_files_reprocess_running(root),
-            begin=lambda: begin_extra_files_reprocess_run(root, total=0, phase="starting"),
-            target=run_reprocess,
-            name="librarian-extra-files-reprocess",
+        return review_service.start_extra_files_reprocess(
+            db,
+            settings,
+            root=root,
+            slot=extra_files_reprocess_job,
+            requested_by=_requested_by(request.state.user),
+            limit=limit,
         )
-        payload = read_extra_files_reprocess_progress(root)
-        payload["extra_files_remaining"] = db.count_works(
-            review_state="needs_review", review_reason=REVIEW_EXTRA
-        )
-        return {**payload, "kicked_off": kicked}
 
     @app.get("/api/review/reprocess-extra-files/status")
     def review_reprocess_extra_files_status(request: Request):
         """Poll Clear extra-files slips progress (survives refresh via DATA_DIR JSON)."""
         require_role(request.state.user, "owner", "op")
-        progress = read_extra_files_reprocess_progress(root)
-        if str(progress.get("status") or "") != "running":
-            progress["extra_files_remaining"] = db.count_works(
-                review_state="needs_review", review_reason=REVIEW_EXTRA
-            )
-            return progress
-        alive = extra_files_reprocess_job.alive()
-        if alive and not is_extra_files_reprocess_stale(progress):
-            progress["extra_files_remaining"] = db.count_works(
-                review_state="needs_review", review_reason=REVIEW_EXTRA
-            )
-            return progress
-        if alive:
-            error = (
-                "Clear extra-files stalled (no progress heartbeat). "
-                "Try Clear again — large author folders now queue instead of blocking."
-            )
-        else:
-            error = "Clear extra-files stopped — the lamp was restarted. Try again."
-        finished = finish_extra_files_reprocess_run(root, error=error)
-        finished["extra_files_remaining"] = db.count_works(
-            review_state="needs_review", review_reason=REVIEW_EXTRA
+        return review_service.extra_files_reprocess_status(
+            db, root=root, slot=extra_files_reprocess_job
         )
-        return finished
 
     @app.post("/api/review/accept-clear")
     def review_accept_clear(request: Request, body: Optional[Dict[str, Any]] = Body(default=None)):
@@ -231,271 +99,84 @@ def register_review_routes(app: FastAPI, deps: WebDeps) -> None:
     def review_purge_duplicates(request: Request, limit: int = 0):
         """Owner bulk: dismiss safely redundant Review slips (poll status)."""
         require_role(request.state.user, "owner", "op")
-        run_limit = max(0, int(limit or 0))
-
-        def run_purge() -> None:
-            reporter = PurgeDuplicatesProgressReporter(root)
-            try:
-                purge_duplicate_reviews(
-                    db,
-                    settings(),
-                    limit=run_limit,
-                    progress=reporter,
-                )
-            except Exception as error:
-                logger.exception("Purge duplicates failed")
-                reporter.fail(str(error) or "Purge duplicates failed")
-
-        kicked = purge_duplicates_job.start_if_idle(
-            is_running=lambda: is_purge_duplicates_running(root),
-            begin=lambda: begin_purge_duplicates_run(root, total=0, phase="starting"),
-            target=run_purge,
-            name="librarian-purge-duplicates",
+        return review_service.start_purge_duplicates(
+            db, settings, root=root, slot=purge_duplicates_job, limit=limit
         )
-        payload = read_purge_duplicates_progress(root)
-        payload["needs_review_remaining"] = db.count_works(review_state="needs_review")
-        return {**payload, "kicked_off": kicked}
 
     @app.get("/api/review/purge-duplicates/status")
     def review_purge_duplicates_status(request: Request):
         """Poll Purge duplicates progress (survives refresh via DATA_DIR JSON)."""
         require_role(request.state.user, "owner", "op")
-        progress = read_purge_duplicates_progress(root)
-        if str(progress.get("status") or "") != "running":
-            progress["needs_review_remaining"] = db.count_works(review_state="needs_review")
-            return progress
-        alive = purge_duplicates_job.alive()
-        if alive and not is_purge_duplicates_stale(progress):
-            progress["needs_review_remaining"] = db.count_works(review_state="needs_review")
-            return progress
-        if alive:
-            error = "Purge duplicates stalled (no progress heartbeat). Try Purge again."
-        else:
-            error = "Purge duplicates stopped — the lamp was restarted. Try again."
-        finished = finish_purge_duplicates_run(root, error=error)
-        finished["needs_review_remaining"] = db.count_works(review_state="needs_review")
-        return finished
+        return review_service.purge_duplicates_status(db, root=root, slot=purge_duplicates_job)
 
     @app.post("/api/review/{work_id}/suggest")
     def review_suggest(work_id: str, request: Request):
         """BYO LLM title/author suggest for a Review slip. Pre-fills only — never Apply."""
         require_role(request.state.user, "owner", "op")
-        if db.get_work(work_id) is None:
-            raise HTTPException(status_code=404, detail="Work not found")
-        job = None
-        for row in db.list_jobs(limit=200):
-            if row.get("work_id") == work_id:
-                job = row
-                break
-        try:
-            return suggest_review_identity(db, settings(), work_id=work_id, job=job)
-        except ValueError as error:
-            raise HTTPException(status_code=404, detail=str(error)) from error
+        with http_errors():
+            return review_service.suggest_slip(db, settings(), work_id=work_id)
 
     @app.post("/api/review/{work_id}/apply")
     def review_apply(work_id: str, payload: ReviewApplyPayload, request: Request):
         require_role(request.state.user, "owner", "op")
-        work = db.get_work(work_id)
-        if work is None:
-            raise HTTPException(status_code=404, detail="Work not found")
-        raw = str(payload.folder or work.get("folder_path") or "").strip()
-        folder = Path(raw) if raw else Path()
         overrides = payload.model_dump(exclude_none=True)
         overrides.pop("folder", None)
-        try:
-            return _shape_review_work_payload(
-                apply_review(
-                    db, settings(), work_id=work_id, folder=folder, identity_overrides=overrides
-                )
+        with http_errors():
+            return review_service.apply_slip(
+                db,
+                settings(),
+                work_id=work_id,
+                folder=payload.folder,
+                identity_overrides=overrides,
             )
-        except ValueError as error:
-            raise HTTPException(status_code=400, detail=str(error)) from error
 
     @app.post("/api/review/{work_id}/repair")
     def review_repair(work_id: str, request: Request):
         require_role(request.state.user, "owner", "op")
-        if db.get_work(work_id) is None:
-            raise HTTPException(status_code=404, detail="Work not found")
-        try:
-            return _shape_review_work_payload(repair_review(db, settings(), work_id=work_id))
-        except ValueError as error:
-            raise HTTPException(status_code=400, detail=str(error)) from error
+        with http_errors():
+            return review_service.repair_slip(db, settings(), work_id=work_id)
 
     @app.post("/api/review/{work_id}/retrieve")
     def review_retrieve(work_id: str, payload: ReviewRetrievePayload, request: Request):
         """Search and queue another release on this slip. Does not send the household to Find."""
         require_role(request.state.user, "owner", "op")
         user = request.state.user
-        try:
-            return retrieve_slip_release(
+        with http_errors():
+            return review_service.retrieve_slip(
                 db,
                 settings(),
+                root=root,
                 work_id=work_id,
                 intent=payload.intent,
                 role=str(user.get("role") or ""),
                 requested_by=str(user.get("id") or ""),
-                data_dir=root,
             )
-        except SlipDownError as error:
-            raise HTTPException(status_code=502, detail=error.message) from error
-        except ValueError as error:
-            status = 404 if "not found" in str(error).lower() else 400
-            raise HTTPException(status_code=status, detail=str(error)) from error
 
     @app.get("/api/review/{work_id}/regrab")
     def review_regrab_candidates(work_id: str, request: Request):
         require_role(request.state.user, "owner", "op")
-        work = db.get_work(work_id)
-        if work is None:
-            raise HTTPException(status_code=404, detail="Work not found")
-        fails = int(work.get("repair_fail_count") or 0)
-        if fails < 2:
-            return {"candidates": [], "repair_fail_count": fails, "ready": False}
-        q = " ".join(
-            part
-            for part in [
-                str(work.get("title") or "").strip(),
-                str(work.get("author") or "").strip(),
-            ]
-            if part
-        )
-        failed_guid = str(work.get("indexer_guid") or "").strip()
-        failed_ctx: Dict[str, Any] = {
-            "guid": failed_guid,
-            "title": str(work.get("title") or "").strip(),
-            "host": "",
-            "size": None,
-        }
-        file_sizes = [
-            int(row["size"]) for row in db.files_for_work(work_id) if row.get("size") is not None
-        ]
-        if file_sizes:
-            failed_ctx["size"] = sum(file_sizes)
-        remembered: List[Dict[str, Any]] = []
-        if failed_guid:
-            prior = db.get_job_by_indexer_guid(failed_guid)
-            if prior:
-                payload = prior.get("payload") if isinstance(prior.get("payload"), dict) else {}
-                selected = (
-                    payload.get("selected") if isinstance(payload.get("selected"), dict) else {}
-                )
-                if selected.get("title"):
-                    failed_ctx["title"] = str(selected.get("title") or "")
-                if selected.get("size") is not None:
-                    failed_ctx["size"] = selected.get("size")
-                elif prior.get("bytes") is not None:
-                    failed_ctx["size"] = prior.get("bytes")
-                failed_ctx["host"] = str(
-                    selected.get("host_name")
-                    or selected.get("host")
-                    or selected.get("indexer")
-                    or ""
-                ).strip()
-                if isinstance(payload.get("candidates"), list):
-                    remembered = remember_candidates(payload["candidates"])
-        exclude = db.tried_indexer_guids_for_work(work)
-        beyond_error = None
-        hits: List[Dict[str, Any]] = []
-        search_trace = None
-        rank_method = ""
-        rank_reason = ""
-        ranked_candidates: List[Dict[str, Any]] = []
-        if remembered:
-            hits = [
-                row for row in remembered if str(row.get("guid") or "").strip() not in set(exclude)
-            ]
-        if len(hits) < 3:
-            ranked = search_and_rank(
-                settings(),
-                data_dir=root,
-                q=q,
-                kind=str(work.get("kind") or ""),
-                title=str(work.get("title") or ""),
-                author=str(work.get("author") or ""),
-            )
-            beyond_error = ranked.get("error")
-            if beyond_error:
-                from librarian.llm import friendly_llm_error
-
-                beyond_error = friendly_llm_error(RuntimeError(str(beyond_error)))
-            rank_method = str(ranked.get("rank_method") or "")
-            rank_reason = str(ranked.get("rank_reason") or "")
-            ranked_candidates = list(ranked.get("candidates") or [])
-            search_trace = {
-                "conversation": list(ranked.get("conversation") or []),
-                "steps": list(ranked.get("steps") or []),
-                "results": list(ranked.get("results") or []),
-                "rank_method": rank_method,
-                "rank_reason": rank_reason,
-            }
-            fresh = list(ranked.get("hits") or [])
-            seen = {str(row.get("guid") or "") for row in hits}
-            for row in fresh:
-                guid = str(row.get("guid") or "").strip()
-                if not guid or guid in seen or guid in set(exclude):
-                    continue
-                hits.append(row)
-                seen.add(guid)
-        candidates = rank_regrab_candidates(
-            hits or [],
-            failed_guid=failed_guid,
-            failed=failed_ctx,
-            exclude_guids=exclude,
-            limit=3,
-        )
-        # Prefer full ranked memory for dud-primary fallback on the next request.
-        memory = ranked_candidates or remember_candidates(hits)
-        return {
-            "candidates": candidates,
-            "remembered_candidates": memory,
-            "repair_fail_count": fails,
-            "ready": True,
-            "beyond_error": beyond_error,
-            "from_memory": bool(remembered),
-            "rank_method": rank_method,
-            "rank_reason": rank_reason,
-            "search_trace": search_trace,
-        }
+        with http_errors():
+            return review_service.regrab_candidates(db, settings, root=root, work_id=work_id)
 
     @app.post("/api/review/{work_id}/retry")
     def review_retry(work_id: str, request: Request):
         require_role(request.state.user, "owner", "op")
-        if db.get_work(work_id) is None:
-            raise HTTPException(status_code=404, detail="Work not found")
-        try:
-            return _shape_review_work_payload(retry_review(db, settings(), work_id=work_id))
-        except ValueError as error:
-            raise HTTPException(status_code=400, detail=str(error)) from error
+        with http_errors():
+            return review_service.retry_slip(db, settings(), work_id=work_id)
 
     @app.post("/api/review/{work_id}/skip")
     def review_skip(work_id: str, request: Request):
         require_role(request.state.user, "owner", "op")
-        work = db.get_work(work_id)
-        if work is None:
-            raise HTTPException(status_code=404, detail="Work not found")
-        try:
-            from librarian.grooming_undo import record_grooming_batch
-
-            record_grooming_batch(root, action="skip", works=[work])
-        except Exception:  # noqa: BLE001 — undo must never block Skip
-            pass
-        updated = db.delete_work(work_id)
-        if not updated:
-            raise HTTPException(status_code=404, detail="Work not found")
-        return {"deleted": True, "work_id": work_id}
+        with http_errors():
+            return review_service.skip_slip(db, root=root, work_id=work_id)
 
     @app.post("/api/review/{work_id}/reprocess-extra-files")
     def review_reprocess_extra_files_one(work_id: str, request: Request):
         require_role(request.state.user, "owner", "op")
-        user = request.state.user
-        try:
-            return _shape_review_work_payload(
-                reprocess_extra_files_work(
-                    db,
-                    settings(),
-                    work_id=work_id,
-                    requested_by=str(user.get("id") or user.get("display_name") or "owner"),
-                )
+        with http_errors():
+            return review_service.reprocess_extra_files_slip(
+                db,
+                settings(),
+                work_id=work_id,
+                requested_by=_requested_by(request.state.user),
             )
-        except ValueError as error:
-            raise HTTPException(status_code=400, detail=str(error)) from error

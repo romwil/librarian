@@ -519,3 +519,46 @@ def test_owner_prefers_addfile_over_stripped_url(tmp_path):
     assert seen["addurl"] == 0
     assert seen["nzbname"] == "NFL.Week.01.DEN.KC.1080p"
 
+
+def test_completed_movie_job_leaves_the_folder(tmp_path, monkeypatch):
+    complete = tmp_path / "complete" / "Dune.2021"
+    complete.mkdir(parents=True)
+    video = complete / "dune.mkv"
+    video.write_bytes(b"mkv")
+    db = Database(tmp_path / "librarian.db")
+    job = db.create_job(
+        {
+            "status": "downloading",
+            "nzo_id": "nzo-movie",
+            "title": "Dune",
+            "kind": "movie",
+            "payload": {"kind": "movie", "title": "Dune"},
+        }
+    )
+    monkeypatch.setattr(
+        "librarian.jobs.organize_identified",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("movie downloads are not filed")),
+    )
+    sab = SABClient(
+        "http://downloader.sl",
+        "sab",
+        transport=httpx.MockTransport(
+            _sab_accepts_addfile(
+                "nzo-movie",
+                history_slots=[
+                    {
+                        "nzo_id": "nzo-movie",
+                        "status": "Completed",
+                        "storage": str(complete),
+                        "name": complete.name,
+                    }
+                ],
+            )
+        ),
+    )
+    polled = poll_job(db, Settings(sabnzbd_api_key="sab"), job["id"], sab=sab)
+    assert polled["status"] == "organized"
+    assert not polled.get("error")
+    assert video.is_file()
+    assert complete.is_dir()
+

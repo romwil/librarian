@@ -20,9 +20,9 @@ def test_search_category_for_kind():
     assert search_category_for_kind("book") == "7000"
     assert search_category_for_kind("audiobook") == "3030"
     assert search_category_for_kind("music") == "3000"
-    assert search_category_for_kind("movie") == "2000"
-    assert search_category_for_kind("tv") == "5000"
-    assert search_category_for_kind("xxx") == "6000"
+    assert search_category_for_kind("movie") is None
+    assert search_category_for_kind("tv") is None
+    assert search_category_for_kind("xxx") is None
     assert search_category_for_kind("nope") is None
     assert kind_from_newznab(2000) is None
-    assert kind_from_newznab(2000, extra=True) == "movie"
+    assert kind_from_newznab(2000, extra=True) is None

@@ -1,13 +1,12 @@
-"""Newznab category id → Librarian kind (display / Find / Request).
+"""Newznab category id → Librarian shelf kind.
 
-Movies (2000), TV (5000), and XXX (6000) map to extra kinds for Beyond/Discover.
-Hall identify/organize still refuses those families via ``kind_from_newznab``
-(``extra=False``) and ``REFUSED_FAMILIES`` — extras never become Hall works.
+Movies (2000), TV (5000), and adult (6000) are refused. They are not shelf
+kinds and are not offered on Find or Discover.
 """
 
 from __future__ import annotations
 
-# Families that must never file onto Hall shelves (RSS / identify refuse).
+# Families that must never file onto Hall shelves.
 REFUSED_FAMILIES = (2000, 5000, 6000)
 
 KIND_BOOK = "book"
@@ -15,26 +14,13 @@ KIND_MAGAZINE = "magazine"
 KIND_COMIC = "comic"
 KIND_AUDIOBOOK = "audiobook"
 KIND_MUSIC = "music"
-KIND_MOVIE = "movie"
-KIND_TV = "tv"
-KIND_XXX = "xxx"
-
-EXTRA_KINDS = (KIND_MOVIE, KIND_TV, KIND_XXX)
 
 
 def newznab_cat_to_kind(cat: int) -> str | None:
-    """Map a Newznab category id to a display kind, or None if unknown.
-
-    Includes movie/tv/xxx for Find/Discover/Request. Callers that file onto
-    Hall shelves must use ``kind_from_newznab(..., extra=False)`` instead.
-    """
+    """Map a Newznab category id to a shelf kind, or None if refused/unknown."""
     family = (cat // 1000) * 1000
-    if family == 2000:
-        return KIND_MOVIE
-    if family == 5000:
-        return KIND_TV
-    if family == 6000:
-        return KIND_XXX
+    if family in REFUSED_FAMILIES:
+        return None
     if cat == 7030:
         return KIND_COMIC
     if cat == 7010:

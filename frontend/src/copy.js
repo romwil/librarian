@@ -36,8 +36,6 @@ const INDEXER_COPY = [
   [/missing required parameters/i, "That release id looks wrong for the indexer. Close the peek and open it again, or try Search."],
   [/download needs a guid/i, "This result is missing its NZB id. Close the peek and pick it again from Discover or Search."],
   [/nzbfinder/i, "Could not reach Beyond the shelves. Check the indexer in Settings."],
-  [/radarr is not configured/i, "Radarr needs its URL and key in Settings before a movie can be expected."],
-  [/sonarr is not configured/i, "Sonarr needs its URL and key in Settings before a show can be expected."],
 ];
 
 const SAB_COPY = [
@@ -82,7 +80,7 @@ export const FIELD_HELP = {
   extra_indexer_url: "Base URL for another Newznab host. DrunkenSlug is https://drunkenslug.com.",
   extra_indexer_token: "API token from the indexer (Profile / API). Masked after save.",
   rss_url: "A Newznab RSS URL for this kind. New items wait as Asked slips — confirm on Queue before SAB.",
-  rss_kind: "What this feed is for. TV, movies, and XXX are refused even if the feed includes them.",
+  rss_kind: "What this feed is for. Books, magazines, comics, audiobooks, and music.",
   audiobookshelf_url: "Optional Audiobookshelf base URL. After shelve, Librarian asks ABS to scan. Match + two-way listen progress when linked.",
   audiobookshelf_api_token: "Optional Audiobookshelf API token. Masked after save. Never sent to the music library.",
   goodreads_csv: "Goodreads export CSV. Matched by ISBN onto Favorites — no live Goodreads login.",
@@ -109,14 +107,6 @@ export const FIELD_HELP = {
   searchArtist: "Recording artist. Not an ISBN.",
   searchAlbum: "Album name as you want it on the shelf — not the Usenet dump name.",
   searchYear: "Publication year, if you know it.",
-  show_extra_categories:
-    "When on, Find can peruse Movies, TV, and XXX feeds the indexer actually lists. They do not land on The Hall.",
-  radarr_url: "Radarr base URL. Movies go to the downloader category Radarr watches, then Radarr is told to expect them.",
-  radarr_api_key: "Radarr API key. Masked after save. Never invents a TMDB id.",
-  sonarr_url: "Sonarr base URL. TV goes to the downloader category Sonarr watches, then Sonarr is told to expect it.",
-  sonarr_api_key: "Sonarr API key. Masked after save.",
-  sab_movie_category: "SABnzbd category Radarr watches. Default movies.",
-  sab_tv_category: "SABnzbd category Sonarr watches. Default tv.",
 };
 
 /** ? help on Holds desk slip actions. Matches what each control actually does. */
@@ -262,10 +252,7 @@ export function discoverStatusLine({ kind = "", phase = "idle", count = 0 } = {}
   return kind ? `Trending ${kind} · ${count}` : `Trending on the indexers · ${count}`;
 }
 
-export function discoverKindNote(kind = "") {
-  if (kind === "movie") return "Movies go to the downloader, then Radarr — not The Hall.";
-  if (kind === "tv") return "TV goes to the downloader, then Sonarr — not The Hall.";
-  if (kind === "xxx") return "These go to the default download folder. Not The Hall, and not *arr.";
+export function discoverKindNote(_kind = "") {
   return "Trending on the indexers";
 }
 

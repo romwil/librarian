@@ -2,20 +2,20 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { test } from "node:test";
+import { test } from "vitest";
 import {
   catchUpCtaLabel,
   catchUpInvitation,
   catchUpNoun,
   missingRibbonBeads,
 } from "./lib/seriesCatchUp.js";
+import { readStyles } from "./test/styles.js";
 
 const root = dirname(fileURLToPath(import.meta.url));
-const catchUpSrc = readFileSync(join(root, "components/SeriesCatchUp.jsx"), "utf8");
 const hallSrc = readFileSync(join(root, "pages/HallPage.jsx"), "utf8");
 const workSrc = readFileSync(join(root, "pages/WorkPage.jsx"), "utf8");
 const motionSrc = readFileSync(join(root, "styles/motion.css"), "utf8");
-const stylesSrc = readFileSync(join(root, "styles.css"), "utf8");
+const stylesSrc = readStyles();
 
 test("catch-up nouns follow the shelf, not generic items", () => {
   assert.equal(catchUpNoun("comic"), "issue");
@@ -81,35 +81,7 @@ test("only ribbon holes count as catch-up, malformed beads ignored", () => {
   assert.deepEqual(missingRibbonBeads("nope"), []);
 });
 
-test("SeriesCatchUp keeps invitation voice and alive chrome", () => {
-  assert.match(catchUpSrc, /data-testid="series-catch-up"/);
-  assert.match(catchUpSrc, /aria-label="Series catch-up"/);
-  assert.match(catchUpSrc, /A hole or two from whole/);
-  assert.match(catchUpSrc, /No hurry/);
-  assert.match(catchUpSrc, /series-catch-up-alive/);
-  assert.match(catchUpSrc, /series-catch-up-glow/);
-  assert.match(catchUpSrc, /cover-settle/);
-  assert.match(catchUpSrc, /catchUpCtaLabel/);
-  assert.match(catchUpSrc, /gapFindFields/);
-});
-
-test("SeriesCatchUp hides itself on empty payloads instead of half-painting", () => {
-  assert.match(catchUpSrc, /catchUp\?\.series \|\| \[\]/);
-  assert.match(catchUpSrc, /if \(!catchUp \|\| catchUp\.empty \|\| !series\.length\) return null;/);
-});
-
-test("SeriesCatchUp avoids KPI dashboard chrome", () => {
-  assert.doesNotMatch(catchUpSrc, /owned_count/);
-  assert.doesNotMatch(catchUpSrc, /missing_count/);
-  assert.doesNotMatch(catchUpSrc, /bagging/i);
-  assert.doesNotMatch(catchUpSrc, /streak|badge|score/i);
-});
-
-test("Hall does not mount Tonight’s shelf or Series catch-up", () => {
-  assert.equal(hallSrc.includes("TonightShelf"), false);
-  assert.equal(hallSrc.includes("SeriesCatchUp"), false);
-  assert.equal(hallSrc.includes("<TonightShelf"), false);
-  assert.equal(hallSrc.includes("<SeriesCatchUp"), false);
+test("Hall continue rails stay in reading order", () => {
   const listenAt = hallSrc.indexOf('title="Continue listening"');
   const readAt = hallSrc.indexOf('title="Continue reading"');
   const recentAt = hallSrc.indexOf('title="Recently added"');
@@ -129,19 +101,13 @@ test("Work soft invite rides the series ribbon", () => {
   assert.ok(ribbonAt > -1 && inviteAt > ribbonAt, "invite must sit inside the series spine");
 });
 
-test("catch-up motion honours prefers-reduced-motion", () => {
-  assert.match(motionSrc, /\.series-catch-up-alive/);
-  assert.match(motionSrc, /\.series-catch-up-glow\s*\{[^}]*shelf-breath/s);
+test("series invite motion honours prefers-reduced-motion", () => {
+  assert.match(motionSrc, /\.series-catch-up-invite\s*\{[^}]*soft-enter/s);
   const reduced = motionSrc.slice(motionSrc.indexOf("prefers-reduced-motion"));
-  assert.match(reduced, /\.series-catch-up,/);
-  assert.match(reduced, /\.series-catch-up-glow,/);
   assert.match(reduced, /\.series-catch-up-invite,/);
   assert.match(reduced, /animation: none !important/);
 });
 
-test("catch-up surface borrows lamp atmosphere and gap beads", () => {
-  assert.match(stylesSrc, /\.series-catch-up\s*\{/);
-  assert.match(stylesSrc, /\.series-catch-up-invitation/);
-  assert.match(stylesSrc, /\.series-catch-up-track \.series-bead/);
-  assert.match(stylesSrc, /\.series-catch-up[\s\S]*var\(--lamp\)/);
+test("work page invite keeps its surface styles", () => {
+  assert.match(stylesSrc, /\.series-catch-up-invite\s*\{/);
 });

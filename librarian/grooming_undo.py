@@ -18,6 +18,8 @@ ACTION_LABELS = {
     "skip": "Skip",
     "purge_shells": "Purge shells",
     "purge_duplicates": "Purge twins",
+    "delete_group": "Delete group",
+    "purge_duplicate_group": "Purge duplicate group",
 }
 
 

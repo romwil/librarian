@@ -406,8 +406,10 @@ def test_rss_update_and_fetch(tmp_path):
     items = parse_rss_xml(raw)
     assert items[0]["guid"] == "guid-earthsea"
     assert items[0]["kind"] == "book"
-    # Display map labels TV; poll_feed still refuses via REFUSED_FAMILIES.
-    assert items[1]["kind"] == "tv"
+    # Category 5000 is refused, so parse leaves kind empty. poll_feed still skips it.
+    assert items[1]["guid"] == "guid-tv"
+    assert str(items[1]["category"]) == "5000"
+    assert items[1]["kind"] is None
 
 
 def test_abs_match_by_author_and_title(tmp_path):

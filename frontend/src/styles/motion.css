@@ -1,5 +1,5 @@
 /* Librarian motion tokens — lamp presence, settle-in, warm loads.
-   Contrast/theme tokens stay in styles.css; this file owns animation only. */
+   Contrast/theme tokens stay in tokens.css; this file owns animation only. */
 
 :root {
   /* Presence — short chrome transitions (buttons, peeks, chips) */
@@ -22,8 +22,14 @@
 /* —— Intentional motions (2–3) —— */
 
 @keyframes lamp-breath {
-  from { opacity: 0.45; transform: scale(1); }
-  to { opacity: 0.75; transform: scale(1.04); }
+  from {
+    opacity: 0.45;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0.75;
+    transform: scale(1.04);
+  }
 }
 
 /* 1. Settle-in: main room content arrives gently */
@@ -108,48 +114,9 @@
   }
 }
 
-.tonight-shelf-alive {
-  position: relative;
-  overflow: hidden;
-}
-
-.tonight-lamp-glow {
-  position: absolute;
-  inset: -18% 18% auto;
-  height: 55%;
-  pointer-events: none;
-  background: radial-gradient(
-    ellipse at 50% 0%,
-    color-mix(in srgb, var(--lamp, #f0b85a) 42%, transparent),
-    transparent 68%
-  );
-  opacity: 0.7;
-  animation: shelf-breath var(--motion-breath) infinite;
-}
-
 .cover-settle {
   animation: cover-settle var(--motion-settle) both;
   animation-delay: calc(var(--settle-i, 0) * 70ms);
-}
-
-/* Series catch-up — same lamp breath as Tonight’s Shelf, quieter wash */
-.series-catch-up-alive {
-  position: relative;
-  overflow: hidden;
-}
-
-.series-catch-up-glow {
-  position: absolute;
-  inset: auto -12% -22% 12%;
-  height: 48%;
-  pointer-events: none;
-  background: radial-gradient(
-    ellipse at 50% 100%,
-    color-mix(in srgb, var(--lamp, #f0b85a) 28%, transparent),
-    transparent 70%
-  );
-  opacity: 0.6;
-  animation: shelf-breath var(--motion-breath) infinite;
 }
 
 .series-catch-up-invite {
@@ -383,7 +350,11 @@
 .boot-lamp {
   min-height: 100vh;
   background:
-    radial-gradient(ellipse 55% 40% at 50% 28%, color-mix(in srgb, var(--lamp, #f0b85a) 22%, transparent), transparent 70%),
+    radial-gradient(
+      ellipse 55% 40% at 50% 28%,
+      color-mix(in srgb, var(--lamp, #f0b85a) 22%, transparent),
+      transparent 70%
+    ),
     var(--bg, #110d09);
   animation: boot-lamp-glow 2.2s ease-in-out infinite alternate;
 }
@@ -453,10 +424,6 @@
   .bag.is-pulse[data-count]::after,
   .part-bead.is-pulse,
   .plexamp-toast,
-  .tonight-shelf,
-  .tonight-lamp-glow,
-  .series-catch-up,
-  .series-catch-up-glow,
   .series-catch-up-invite,
   .morning-brief,
   .morning-brief-glow,
@@ -481,16 +448,6 @@
   .room.ambient-lamp::before {
     animation: none !important;
     transition: none !important;
-  }
-
-  .tonight-lamp-glow {
-    opacity: 0.55;
-    transform: none;
-  }
-
-  .series-catch-up-glow {
-    opacity: 0.45;
-    transform: none;
   }
 
   .morning-brief-glow {

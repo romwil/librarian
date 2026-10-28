@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 import { undoIsAvailable, undoLabel, undoPresence } from "./lib/groomingUndo.js";
 
 describe("groomingUndo", () => {

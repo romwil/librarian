@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { test } from "node:test";
+import { test } from "vitest";
+import { readStyles } from "./test/styles.js";
 
 const root = dirname(fileURLToPath(import.meta.url));
-const stylesSrc = readFileSync(join(root, "styles.css"), "utf8");
+const importerSrc = readFileSync(join(root, "styles.css"), "utf8");
+const stylesSrc = readStyles();
 const motionSrc = readFileSync(join(root, "styles/motion.css"), "utf8");
 const warmLoadSrc = readFileSync(join(root, "components/WarmLoad.jsx"), "utf8");
 const queueSrc = readFileSync(join(root, "pages/QueuePage.jsx"), "utf8");
@@ -16,7 +18,7 @@ const settingsSrc = readFileSync(join(root, "pages/SettingsPage.jsx"), "utf8");
 const inboxSrc = readFileSync(join(root, "pages/InboxPage.jsx"), "utf8");
 
 test("styles.css imports motion tokens", () => {
-  assert.match(stylesSrc, /@import\s+"\.\/styles\/motion\.css"/);
+  assert.match(importerSrc, /@import\s+"\.\/styles\/motion\.css"/);
   assert.match(stylesSrc, /--fg:\s*#f4ead6/);
   assert.match(stylesSrc, /html\[data-theme="lights-up"\][\s\S]*--fg:\s*#1c1612/);
 });

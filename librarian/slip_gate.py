@@ -7,12 +7,20 @@ nothing readable is a skip, not a slip. Shelved files are never deleted.
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Sequence
 
 from librarian.db import Database
 from librarian.kinds import KIND_BOOK
+from librarian.naming.library import (
+    parse_library_volume as parse_library_volume,
+)
+from librarian.naming.library import (
+    path_author_title as path_author_title,
+)
+from librarian.naming.library import (
+    restore_path_punctuation as restore_path_punctuation,
+)
 from librarian.review_reasons import (
     REVIEW_COLLISION,
     REVIEW_CONVERT,
@@ -22,121 +30,12 @@ from librarian.review_reasons import (
 )
 
 _BOOK_EXTENSIONS = {".epub", ".pdf", ".mobi", ".azw", ".azw3", ".azw4", ".kfx"}
-_STAGING_ROOTS = frozenset(
-    {
-        "inbox",
-        "complete",
-        "downloads",
-        "download",
-        "usenet",
-        "newlib",
-        "books",
-        "comics",
-        "magazines",
-        "audiobooks",
-        "music",
-        "incoming",
-        "incoming-music",
-        "media",
-        "data",
-        "tmp",
-        "temp",
-        "drop",
-        "watch",
-        "mnt",
-        "user",
-        "appdata",
-        "private",
-        "var",
-        "folders",
-    }
-)
 
 
 def _same(left: object, right: object) -> bool:
     a = str(left or "").strip().casefold()
     b = str(right or "").strip().casefold()
     return bool(a) and a == b
-
-
-def _staging_author(name: str) -> bool:
-    raw = str(name or "").strip()
-    if not raw or raw in {".", ".."}:
-        return True
-    key = raw.casefold()
-    compact = re.sub(r"[\s_\-]+", "", key)
-    if key in _STAGING_ROOTS or compact in _STAGING_ROOTS:
-        return True
-    if "migrated" in key:
-        return True
-    if key.startswith(("test_", "pytest", "tmp", "private")):
-        return True
-    # Calibre-style folders sometimes keep a single trailing underscore after
-    # an author name (for example ``Box, C.J_``). It is cosmetic, unlike
-    # embedded underscore release names such as ``Some_Author_Collection``.
-    if "_" in raw.rstrip("_"):
-        return True
-    if len(raw) > 80:
-        return True
-    return False
-
-
-_CALIBRE_ID = re.compile(r"\s*\(\d+\)\s*$")
-_SERIES_PAREN = re.compile(r"^(?P<title>.+?)\s*\((?P<series>[^)]+)\)$")
-
-
-def restore_path_punctuation(name: str) -> str:
-    """Turn a single folder underscore back into the punctuation it replaced.
-
-    A trailing underscore after initials is a period (``G.G_`` → ``G.G.``).
-    One underscore before the rest of a title is a colon (``Resist_ Tales``).
-    Names with several underscores stay untouched so dumps are still rejected.
-    """
-    text = re.sub(r"\s+", " ", str(name or "").strip())
-    if text.count("_") != 1:
-        return text
-    if text.endswith("_"):
-        return text[:-1] + "."
-    if re.search(r"_\s+\S", text):
-        return re.sub(r"_\s+", ": ", text, count=1)
-    return text
-
-
-def _title_and_series(name: str) -> Tuple[str, str]:
-    text = _CALIBRE_ID.sub("", restore_path_punctuation(name)).strip()
-    match = _SERIES_PAREN.match(text)
-    if match and not match.group("series").strip().isdigit():
-        return match.group("title").strip(), match.group("series").strip()
-    return text, ""
-
-
-def parse_library_volume(folder: Path) -> Optional[Dict[str, str]]:
-    """Author, title, and series from ``Author/Title (id)`` or a Calibre volume.
-
-    Periods in initials stay periods. A clean parse is confident enough to file;
-    a dump name or a staging directory is not a parse.
-    """
-    path = Path(folder)
-    volume = path if path.is_dir() else path.parent
-    author = restore_path_punctuation(volume.parent.name)
-    title, series = _title_and_series(volume.name)
-    if not author or not title:
-        return None
-    if _staging_author(author) or _staging_author(title):
-        return None
-    if "_" in author or "_" in title:
-        return None
-    if author.casefold() == title.casefold():
-        return None
-    return {"author": author, "title": title, "series_name": series}
-
-
-def path_author_title(folder: Path) -> Optional[Tuple[str, str]]:
-    """Author/Title from a volume folder. Staging roots and dump names do not count."""
-    parsed = parse_library_volume(folder)
-    if not parsed:
-        return None
-    return parsed["author"], parsed["title"]
 
 
 def _book_files(files: Sequence[Path]) -> List[Path]:
@@ -298,18 +197,29 @@ def shelf_match_for_organize(db: Database, identity: Dict[str, Any]) -> Dict[str
     return {"drop": False, "work": None, "ambiguous": False}
 
 
-def accept_path_clear_slips(db: Database, *, reason: str) -> Dict[str, Any]:
-    """Shelve path-clear slips in one reason group. Leave every file on disk."""
+def accept_path_clear_slips(
+    db: Database,
+    *,
+    reason: str,
+    works: Sequence[Dict[str, Any]] | None = None,
+) -> Dict[str, Any]:
+    """Shelve path-clear slips in one reason group. Leave every file on disk.
+
+    ``works`` is an already-chosen group (server effective reason); it skips the
+    stored-reason filter.
+    """
     from librarian.identify import list_payload_files
 
     wanted = str(reason or "").strip()
     accepted = 0
     kept = 0
-    works = db.list_works(review_state="needs_review", review_reason=wanted or None, limit=20000)
-    if not wanted:
-        works = db.list_works(review_state="needs_review", limit=20000)
+    chosen = works is not None
+    if works is None:
+        works = db.list_works(review_state="needs_review", review_reason=wanted or None, limit=20000)
+        if not wanted:
+            works = db.list_works(review_state="needs_review", limit=20000)
     for work in works:
-        if wanted and str(work.get("review_reason") or "") != wanted:
+        if not chosen and wanted and str(work.get("review_reason") or "") != wanted:
             continue
         folder_raw = str(work.get("folder_path") or "")
         folder = Path(folder_raw) if folder_raw else Path()

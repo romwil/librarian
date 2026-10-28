@@ -72,7 +72,7 @@ def register_auth_routes(app: FastAPI, deps: WebDeps) -> None:
 
     @app.get("/api/features/ops")
     def features_ops(request: Request) -> Dict[str, Any]:
-        """Authenticated ops posture (session secret, Find extras, notification channels)."""
+        """Authenticated ops posture (session secret, notification channels)."""
         user = getattr(request.state, "user", None) or current_user(request)
         require_role(user, "owner", "op", "reader")
         cfg = settings()
@@ -81,7 +81,6 @@ def register_auth_routes(app: FastAPI, deps: WebDeps) -> None:
 
         return {
             "session_secret_ok": has_usable_session_secret(root),
-            "show_extra_categories": bool(cfg.show_extra_categories),
             "notifications": {
                 "channels": notification_channel_offerings(cfg),
                 "mail_configured": mail_configured(cfg),

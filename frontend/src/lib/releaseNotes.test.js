@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import {
   LAST_SEEN_VERSION_KEY,
   RELEASE_JUMP_RECENT_LIMIT,

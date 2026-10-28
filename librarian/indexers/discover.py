@@ -5,7 +5,7 @@ answers caps with no categories — DrunkenSlug does this — Discover walks tha
 host's documented Newznab tree instead of marking the lantern dark. Latest-in-cat
 is a named trending/latest caps path if present, else category RSS
 (`/rss/category?id=` on NZBFinder, then classic `/rss?t=` / `/api?t=search`).
-TV/movies/XXX stay hidden unless Show categories is on. No HTML scrape.
+Movie, TV, and adult categories stay off Discover. No HTML scrape.
 """
 
 from __future__ import annotations
@@ -19,8 +19,8 @@ from librarian.indexers.hosts import _hit_key, enabled_hosts
 from librarian.indexers.query import selected_from_hit
 from librarian.kinds import (
     ALL_KINDS,
-    EXTRA_KINDS,
     REQUEST_KINDS,
+    category_is_refused,
     kind_from_caps_cat,
     kind_from_newznab,
 )
@@ -139,8 +139,6 @@ def category_feeds(caps: Any, *, extra: bool = False) -> List[Dict[str, Any]]:
                 kind = kind_from_caps_cat(cat_id, parent=parent_id, extra=extra)
                 if not kind or kind not in REQUEST_KINDS:
                     continue
-                if kind in EXTRA_KINDS and not extra:
-                    continue
                 if cat_id in seen:
                     continue
                 seen.add(cat_id)
@@ -158,8 +156,6 @@ def category_feeds(caps: Any, *, extra: bool = False) -> List[Dict[str, Any]]:
             continue
         kind = kind_from_caps_cat(parent_id, extra=extra)
         if not kind or kind not in REQUEST_KINDS:
-            continue
-        if kind in EXTRA_KINDS and not extra:
             continue
         if parent_id in seen:
             continue
@@ -212,27 +208,22 @@ def _wanted_feeds(feeds: List[Dict[str, Any]], *, kind: str = "", cat: str = "")
         rows = [row for row in rows if row.get("kind") == wanted_kind]
     if wanted_cat:
         rows = [row for row in rows if row.get("id") == wanted_cat]
-    elif not wanted_kind:
-        library = [row for row in rows if row.get("kind") not in EXTRA_KINDS]
-        extra_rows = [row for row in rows if row.get("kind") in EXTRA_KINDS]
-        rows = library + extra_rows
     return rows[:MAX_FEEDS]
 
 
 def _retag_kind(item: Dict[str, Any], *, extra: bool, feed_kind: str) -> Optional[str]:
-    """Map item cats to a kind; extras feeds stay movie/tv/xxx, not book."""
+    """Map item cats to a shelf kind. Movie, TV, and adult hits are dropped."""
+    if feed_kind in {"movie", "tv", "xxx"}:
+        return None
+    cats = [item.get("category"), *(item.get("cats") or [])]
+    if any(category_is_refused(cat) for cat in cats):
+        return None
     kind = kind_from_newznab(item.get("category"), extra=extra)
     if not kind and extra:
         for cat in item.get("cats") or []:
             kind = kind_from_newznab(cat, extra=True)
             if kind:
                 break
-    if feed_kind in EXTRA_KINDS and extra:
-        # A Movies/TV/XXX feed wins over a library kind (book/music) from a
-        # stray secondary category — display the honest media kind.
-        if kind in EXTRA_KINDS:
-            return kind
-        return feed_kind
     if kind:
         return kind
     if feed_kind in ALL_KINDS and not kind_from_newznab(item.get("category"), extra=True):
@@ -252,19 +243,12 @@ def public_discover_hit(
     kind = _retag_kind(tagged, extra=extra, feed_kind=_text(feed.get("kind")))
     if not kind or kind not in REQUEST_KINDS:
         return None
-    if kind in EXTRA_KINDS and not extra:
-        return None
     tagged["kind"] = kind
     tagged["host_id"] = host["id"]
     tagged["host_name"] = host["name"]
     if not tagged.get("category_name"):
         tagged["category_name"] = feed.get("name") or ""
     selected = selected_from_hit(tagged)
-    if extra:
-        for key in ("tmdb_id", "tvdb_id", "imdb_id"):
-            value = tagged.get(key)
-            if value not in (None, ""):
-                selected[key] = value
     selected["kind"] = kind
     selected["title"] = selected.get("title") or _text(tagged.get("title"))
     if not selected.get("guid") and not selected.get("title"):
@@ -377,7 +361,7 @@ def discover_beyond(
     data_dir: Optional[Path] = None,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], Optional[str]]:
     """Fetch allowed category feeds from every enabled host. Fail closed per host."""
-    allow_extra = bool(settings.show_extra_categories) if extra is None else bool(extra)
+    allow_extra = bool(extra)
     feed_limit = resolve_feed_limit(cat=cat, limit=limit)
     hosts = enabled_hosts(settings)
     if not hosts:

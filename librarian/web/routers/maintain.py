@@ -47,6 +47,7 @@ from librarian.scan_progress import (
     is_scan_running,
     read_scan_progress,
 )
+from librarian.screen_leftovers import screen_leftover_report
 from librarian.shelf_health import shelf_permission_report
 from librarian.shelf_health_score import assemble_shelf_health_score
 from librarian.split_mixed_kinds import count_mixed_kind_works, split_mixed_kind_works
@@ -62,6 +63,19 @@ from librarian.suggest import refresh_suggest_cache
 from librarian.web.deps import WebDeps
 
 logger = logging.getLogger("librarian.web")
+
+
+def _background_poller_status(app: FastAPI) -> Dict[str, Any]:
+    """Last run and last error for each poller step."""
+    poller = getattr(app.state, "poller", None)
+    report = getattr(poller, "step_status", None)
+    if not callable(report):
+        return {"steps": []}
+    payload = report()
+    steps = payload.get("steps") if isinstance(payload, dict) else None
+    if not isinstance(steps, list):
+        return {"steps": []}
+    return {"steps": steps}
 
 
 def register_maintain_routes(app: FastAPI, deps: WebDeps) -> None:
@@ -137,7 +151,7 @@ def register_maintain_routes(app: FastAPI, deps: WebDeps) -> None:
         holds = max(0, int(needs) - int(extra))
         shells = db.count_shell_works()
         blends = count_mixed_kind_works(db)
-        return assemble_morning_brief(
+        brief = assemble_morning_brief(
             shelf_health=health,
             stuck_jobs=stuck,
             holds_desk_slips=holds,
@@ -145,10 +159,12 @@ def register_maintain_routes(app: FastAPI, deps: WebDeps) -> None:
             unshelved_shells=shells,
             comic_book_blends=blends,
         )
+        brief["screen_leftovers"] = screen_leftover_report(db)
+        return brief
 
     @app.get("/api/maintain/jobs/status")
     def maintain_jobs_status(request: Request):
-        """Multiplex Maintain dock telemetry — one round-trip for four job blobs."""
+        """Dock telemetry plus each background poller step's last run and last error."""
         require_role(current_user(request), "owner")
 
         scan = read_scan_progress(root)
@@ -196,6 +212,7 @@ def register_maintain_routes(app: FastAPI, deps: WebDeps) -> None:
             "enrich": enrich,
             "ingest": ingest,
             "extra_files": extra_files,
+            "poller": _background_poller_status(app),
         }
 
     @app.get("/api/maintain/indexer-scorecard")

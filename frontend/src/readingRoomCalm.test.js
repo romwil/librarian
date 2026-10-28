@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,6 +9,7 @@ import {
   readerCalmClassNames,
 } from "./lib/readingRoomCalm.js";
 import { EPUB_READER_STYLES } from "./reader.js";
+import { readStyles } from "./test/styles.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -48,7 +49,7 @@ describe("reading room calm", () => {
   });
 
   it("styles tune margins and lights-up/down for calm reading", () => {
-    const styles = readFileSync(join(root, "src/styles.css"), "utf8");
+    const styles = readStyles();
     assert.match(styles, /\.reader\.reader-calm/);
     assert.match(styles, /html\[data-theme="lights-down"\] \.reader\.reader-calm/);
     assert.match(styles, /html\[data-theme="lights-up"\] \.reader\.reader-calm/);
@@ -56,7 +57,7 @@ describe("reading room calm", () => {
   });
 
   it("drops the work-page transform while the reader is open so the volume can fill the window", () => {
-    const styles = readFileSync(join(root, "src/styles.css"), "utf8");
+    const styles = readStyles();
     assert.match(styles, /body:has\(\.reader\) \.work-page\s*\{[^}]*animation:\s*none/s);
     assert.match(styles, /body:has\(\.reader\) \.work-page\s*\{[^}]*transform:\s*none/s);
   });

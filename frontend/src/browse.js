@@ -1,4 +1,4 @@
-/** Build `/browse` query URLs for Stacks (author A–Z, kind, series, favorites). */
+/** Build `/browse` query URLs for Stacks (date added, kind, series, favorites). */
 
 const BROWSE_KINDS = ["book", "magazine", "comic", "audiobook", "music"];
 
@@ -23,12 +23,15 @@ export function normalizeBrowseShelf(value) {
 /** Sort keys the stacks command bar and `GET /api/browse` both understand. */
 export const BROWSE_SORTS = ["author", "title", "updated", "year"];
 
+/** Omitted sort. `updated` is date added (works.created_at, or shelf added_at). */
+export const BROWSE_DEFAULT_SORT = "updated";
+
 /** Library-word labels for the sort select, in display order. */
 export const BROWSE_SORT_OPTIONS = [
+  ["updated", "Date added"],
   ["author", "Author"],
   ["title", "Title"],
   ["year", "Year"],
-  ["updated", "Recently shelved"],
 ];
 
 /** Columns the CSV export and the List view both recognize. */
@@ -36,19 +39,24 @@ export const BROWSE_EXPORT_COLUMNS = ["title", "author", "year", "kind", "series
 
 const DEFAULT_LIST_COLUMNS = ["title", "author", "year", "kind"];
 
+/** Known sort, or date added when the key is omitted or unknown. */
+export function resolveBrowseSort(sort) {
+  const key = String(sort || "").trim().toLowerCase();
+  return BROWSE_SORTS.includes(key) ? key : BROWSE_DEFAULT_SORT;
+}
+
 /**
  * Sensible per-sort direction when the household hasn't picked one —
- * author/title read A→Z, updated/year read newest-first.
+ * author/title read A→Z, date added and year read newest-first.
  */
 export function defaultSortDir(sort) {
-  const key = BROWSE_SORTS.includes(sort) ? sort : "author";
+  const key = resolveBrowseSort(sort);
   return key === "updated" || key === "year" ? "desc" : "asc";
 }
 
 /** Patch to apply when the Sort select changes — resets direction to that sort's default. */
 export function sortChangePatch(nextSort) {
-  const key = String(nextSort || "").trim().toLowerCase();
-  const sort = BROWSE_SORTS.includes(key) ? key : "author";
+  const sort = resolveBrowseSort(nextSort);
   return { sort, sort_dir: defaultSortDir(sort) };
 }
 
@@ -132,8 +140,7 @@ export function browseQueryParams(filters = {}, { offset, limit } = {}) {
   const letter = String(filters.letter || "").trim().toUpperCase();
   const series = String(filters.series || "").trim();
   const shelf = normalizeBrowseShelf(filters.shelf);
-  const sortRaw = String(filters.sort || "").trim().toLowerCase();
-  const sort = BROWSE_SORTS.includes(sortRaw) ? sortRaw : "author";
+  const sort = resolveBrowseSort(filters.sort);
   const sortDirRaw = String(filters.sort_dir || filters.sortDir || "").trim().toLowerCase();
   const genre = String(filters.genre || "").trim();
   if (kind) params.set("kind", kind);
@@ -141,7 +148,7 @@ export function browseQueryParams(filters = {}, { offset, limit } = {}) {
   if (letter) params.set("letter", letter);
   if (series) params.set("series", series);
   if (shelf) params.set("shelf", shelf);
-  if (sort && sort !== "author") params.set("sort", sort);
+  if (sort !== BROWSE_DEFAULT_SORT) params.set("sort", sort);
   if (genre) params.set("genre", genre);
   if ((sortDirRaw === "asc" || sortDirRaw === "desc") && sortDirRaw !== defaultSortDir(sort)) {
     params.set("sort_dir", sortDirRaw);
@@ -163,8 +170,7 @@ export function browseFiltersFromSearchParams(params) {
   };
   const letter = get("letter").toUpperCase();
   const shelf = normalizeBrowseShelf(get("shelf"));
-  const sortRaw = get("sort").toLowerCase();
-  const sort = BROWSE_SORTS.includes(sortRaw) ? sortRaw : "author";
+  const sort = resolveBrowseSort(get("sort"));
   const sortDirRaw = get("sort_dir").toLowerCase();
   const sortDir = sortDirRaw === "asc" || sortDirRaw === "desc" ? sortDirRaw : defaultSortDir(sort);
   return {

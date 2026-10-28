@@ -53,7 +53,7 @@ Tokens never belong in git. `.env.example` keeps empty placeholders.
 - [docs/build-progress.md](docs/build-progress.md) — append-only shipped log
 - [docs/ops/AUTOMAT.md](docs/ops/AUTOMAT.md) — Automat kit, LAN hosts, first-boot env
 - [docs/DOCKER.md](docs/DOCKER.md) — volumes, PUID/PGID, extra_hosts
-- [docs/TESTING.md](docs/TESTING.md) / [TESTING.md](TESTING.md) — value-based tests
+- [docs/TESTING.md](docs/TESTING.md) — testing (root [TESTING.md](TESTING.md) points here)
 - [docs/SECURITY.md](docs/SECURITY.md) — handshake allowlist, proxy trust, invite HMAC
 - [docs/HELP.md](docs/HELP.md) — how to use The Hall
 - [Design spec](docs/superpowers/specs/2026-09-14-librarian-design.md) — north star and UX contracts

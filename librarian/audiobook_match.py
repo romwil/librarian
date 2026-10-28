@@ -9,7 +9,7 @@ not a match.
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Mapping, Optional
+from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 from librarian.covers import cover_file_ok
 from librarian.identify import isbn_match_keys
@@ -103,7 +103,7 @@ def prepare_catalog_candidates(candidates: List[Mapping[str, Any]]) -> List[Dict
 
 def match_prepared_catalog(
     sought: Mapping[str, Any],
-    prepared: List[Mapping[str, Any]],
+    prepared: Sequence[Mapping[str, Any]],
 ) -> Optional[Dict[str, Any]]:
     """Same rules as ``match_catalog_work`` against a pre-normalized pool."""
     want_isbn = _isbn_keys(sought)

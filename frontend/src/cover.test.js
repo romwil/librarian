@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 import {
   clothFor,
   coverAltText,
@@ -26,6 +25,7 @@ import {
   partHint,
   shouldOpenPeek,
 } from "./cover.js";
+import { readStyles } from "./test/styles.js";
 
 describe("reading room cover helpers", () => {
   it("picks a stable cloth color from the title", () => {
@@ -127,7 +127,7 @@ describe("reading room cover helpers", () => {
   });
 
   it("draws audiobook chips square, with the narrator under the title", () => {
-    const css = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
+    const css = readStyles();
     const width = css.match(/--rail-audio-w:\s*([^;]+);/)[1].trim();
     const height = css.match(/--rail-audio-h:\s*([^;]+);/)[1].trim();
     const book = css.match(/--rail-cover-w:\s*([^;]+);/)[1].trim();

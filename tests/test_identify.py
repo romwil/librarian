@@ -57,9 +57,9 @@ def test_movie_category_refused_as_book_fallback_low():
     identity = parse_usenet_name("Some.Movie.2024", category=2000)
     assert identity.kind == "book"
     assert identity.confidence == "low"
-    # Display map knows movie; Hall identify path must not.
-    assert newznab_cat_to_kind(2000) == "movie"
+    assert newznab_cat_to_kind(2000) is None
     assert kind_from_newznab(2000) is None
+    assert kind_from_newznab(2000, extra=True) is None
 
 
 def test_identify_no_payload_review(tmp_path):
@@ -143,7 +143,7 @@ def test_resolve_storage_path_empty_root_uses_fallback(tmp_path, monkeypatch):
     host.mkdir(parents=True)
     (host / "01.flac").write_bytes(b"flac")
     monkeypatch.setattr(
-        "librarian.identify.COMPLETE_ROOT_FALLBACKS",
+        "librarian.identify.paths.COMPLETE_ROOT_FALLBACKS",
         (str(tmp_path / "usenet" / "complete"),),
     )
     mapped = resolve_storage_path(Path("/downloads/downloads/VA-Mix"), "")

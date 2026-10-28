@@ -1,0 +1,795 @@
+/* Chrome — topbar, phone tab row, release notes, profile menu, inbox badge, room stacking. */
+
+/* ═══════════ Chrome ═══════════ */
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 200;
+  height: var(--topbar-h);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: 0 var(--gutter);
+  border-bottom: 1px solid color-mix(in srgb, var(--border-subtle) 80%, transparent);
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
+  backdrop-filter: blur(14px);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.05rem;
+  letter-spacing: -0.02em;
+}
+
+.brand-mark {
+  width: 28px;
+  height: 28px;
+  color: var(--gilt);
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.nav-links a {
+  color: var(--muted);
+}
+.nav-links a.is-current,
+.nav-links a:hover {
+  color: var(--text);
+}
+
+.topbar-end {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.bag {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  cursor: pointer;
+}
+.bag[data-count]::after {
+  content: attr(data-count);
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+}
+
+.avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: linear-gradient(145deg, #8a5a32, #3a2418);
+  border: 1px solid color-mix(in srgb, var(--gilt) 40%, transparent);
+}
+
+/* Phone tab row. Fixed to the visual viewport; `.room > *` would otherwise
+   win on specificity and put the bar back in document flow. The clearance
+   token lives on :root so the page padding (an ancestor) can use it.
+   Height includes the home-indicator inset so labels sit above it. */
+:root {
+  --mobile-tabbar-clearance: calc(48px + env(safe-area-inset-bottom, 0px));
+}
+.mobile-tabbar {
+  display: none;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 50;
+  width: 100%;
+  max-width: 100%;
+  min-height: var(--mobile-tabbar-clearance);
+  padding: 2px 2px env(safe-area-inset-bottom, 0px);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: blur(14px);
+  border-top: 1px solid var(--border-subtle);
+  grid-template-columns: repeat(var(--tab-count, 6), minmax(0, 1fr));
+  align-items: stretch;
+}
+.mobile-tabbar a {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  min-height: 44px;
+  padding: 4px 1px;
+  color: var(--muted);
+  font-size: clamp(8px, 2.6vw, 11px);
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  text-align: center;
+  text-decoration: none;
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+.mobile-tabbar a:hover,
+.mobile-tabbar a:focus-visible {
+  color: var(--text);
+  text-decoration: none;
+}
+.mobile-tabbar a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.mobile-tabbar a.is-current {
+  color: var(--text);
+}
+
+@media (max-width: 720px) {
+  .nav-links {
+    display: none;
+  }
+  .mobile-tabbar {
+    display: grid;
+  }
+  html:has(.mobile-tabbar) {
+    scroll-padding-bottom: var(--mobile-tabbar-clearance);
+  }
+  body:has(.mobile-tabbar) {
+    padding-bottom: var(--mobile-tabbar-clearance);
+  }
+  .topbar {
+    gap: 8px;
+    padding-inline: 12px;
+  }
+  .topbar-end {
+    gap: 6px;
+    min-width: 0;
+  }
+  .profile-menu-name,
+  .profile-menu-role {
+    display: none;
+  }
+}
+
+.font-mono {
+  font-family: var(--font-mono);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cover,
+  .cover-caption,
+  .cta,
+  .lamp-shaft,
+  .dust,
+  .page-turn,
+  .peek {
+    animation: none !important;
+    transition: none !important;
+  }
+  .cover:hover,
+  .cover:focus-visible,
+  .cta:hover {
+    transform: none;
+  }
+  .work-hero-art.has-wash,
+  .peek-wash {
+    /* Wash stays; drop bloom scale only. */
+    transform: none;
+  }
+  .foyer {
+    background: radial-gradient(
+      ellipse 70% 50% at 50% 0%,
+      color-mix(in srgb, var(--lamp) 18%, transparent),
+      #0c0907 58%
+    );
+  }
+  .foyer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.07;
+    background-image: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255, 255, 255, 0.18) 3px);
+  }
+}
+
+.nav-ops {
+  opacity: 0.85;
+}
+.nav-ops a {
+  font-size: 0.92em;
+}
+
+.skeleton-rail {
+  margin: 0 var(--gutter) var(--space-6);
+}
+.skeleton-rail-label {
+  font-family: var(--font-display);
+  color: var(--muted);
+  margin: 0 0 var(--space-3);
+  text-align: center;
+}
+.skeleton-rail-track {
+  display: flex;
+  gap: var(--space-3);
+  overflow: hidden;
+}
+.skeleton-cover {
+  flex: 0 0 5.5rem;
+  height: 8.2rem;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(
+    110deg,
+    color-mix(in srgb, var(--surface-raised) 80%, transparent) 25%,
+    color-mix(in srgb, var(--gilt) 12%, var(--surface)) 45%,
+    color-mix(in srgb, var(--surface-raised) 80%, transparent) 65%
+  );
+  background-size: 200% 100%;
+  animation: part-chase-shimmer 1.6s ease-in-out infinite;
+}
+
+.empty-illustration {
+  display: grid;
+  place-items: center;
+  margin: 0 0 var(--space-3);
+}
+.empty-lamp {
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 999px;
+  background: radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--lamp, #e8c98a) 70%, #fff), transparent 70%);
+  box-shadow: 0 0 24px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.hall-empty,
+.review-empty {
+  text-align: center;
+  max-width: 28rem;
+  margin-inline: auto;
+}
+.review-loading {
+  margin-top: var(--space-4);
+}
+.review-loading .hall-shelves-skeleton {
+  max-width: 28rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .part-chase.is-shimmer,
+  .skeleton-cover,
+  .ticket-enter,
+  .bag.is-pulse,
+  .bag.is-pulse[data-count]::after,
+  .part-bead.is-pulse {
+    animation: none !important;
+  }
+  .part-chase.is-shimmer {
+    color: color-mix(in srgb, var(--gilt) 80%, var(--muted));
+    background: none;
+    -webkit-background-clip: unset;
+    background-clip: unset;
+  }
+}
+
+/* —— Release notes / What’s New (Reading Room brass + Literata) —— */
+.settings-release-notes {
+  margin-top: var(--space-7);
+  scroll-margin-top: calc(var(--topbar-h) + var(--space-3));
+}
+
+.release-notes-panel.is-scrollable {
+  max-height: min(52vh, 420px);
+  overflow: auto;
+  padding-right: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--surface-raised) 55%, transparent);
+  scroll-behavior: smooth;
+}
+
+.release-notes-jumps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 1;
+}
+
+.release-notes-jumps.is-compact {
+  max-height: none;
+}
+
+.release-notes-jump-picker {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.release-notes-jump-picker-label {
+  color: var(--muted);
+  font-size: var(--text-sm);
+  flex-shrink: 0;
+}
+
+.release-notes-jump-select {
+  min-width: 0;
+  flex: 1 1 auto;
+  max-width: 16rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  padding: 0.3rem 0.5rem;
+}
+
+.release-notes-jump-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  max-height: 4.75rem;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.release-notes-jump-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent);
+  text-decoration: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.35;
+}
+
+.release-notes-jump-chip:hover {
+  border-color: var(--accent-2);
+  text-decoration: none;
+}
+
+.release-notes-version {
+  padding: var(--space-4) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  scroll-margin-top: 56px;
+}
+
+.release-notes-version:last-child {
+  border-bottom: none;
+}
+
+.release-notes-version-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.release-notes-version-header h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  color: var(--accent);
+}
+
+.release-notes-version-header time {
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.release-notes-summary {
+  margin: 0 0 var(--space-3);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+}
+
+.release-notes-section h4 {
+  margin: var(--space-3) 0 var(--space-2);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.release-notes-section ul {
+  margin: 0;
+  padding-left: 1.2rem;
+  display: grid;
+  gap: 6px;
+}
+
+.release-notes-section li {
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+}
+
+.release-notes-highlights {
+  border-left: 3px solid var(--accent);
+  padding: var(--space-1) 0 var(--space-1) var(--space-3);
+}
+
+.release-notes-highlights h4 {
+  color: var(--accent);
+  font-family: var(--font-display);
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: var(--text-md);
+}
+
+.whats-new-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 130;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(17, 13, 9, 0.78);
+  backdrop-filter: blur(4px);
+}
+
+.whats-new-panel {
+  width: min(480px, 100%);
+  max-height: min(85vh, 640px);
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-lg);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  background: var(--surface);
+  padding: 18px 20px;
+  box-shadow:
+    0 0 0 6px var(--accent-soft),
+    0 20px 50px rgba(0, 0, 0, 0.45);
+}
+
+.whats-new-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.whats-new-header h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  color: var(--accent);
+}
+
+.whats-new-close {
+  font-size: 16px;
+  line-height: 1;
+  padding: 4px 8px;
+}
+
+.whats-new-body {
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+  margin-bottom: 14px;
+}
+
+.whats-new-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.whats-new-actions a {
+  text-decoration: none;
+}
+.room.ambient-paper::before {
+  background-image:
+    radial-gradient(circle at 20% 30%, rgba(232, 220, 196, 0.35), transparent 40%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.35'/%3E%3C/svg%3E");
+}
+.room.ambient-lamp::before {
+  background: radial-gradient(ellipse at 12% 0%, rgba(240, 184, 90, 0.35), transparent 42%);
+  opacity: 0.18;
+}
+.room > * {
+  position: relative;
+  z-index: 1;
+}
+/* `.room > *` is more specific than `.topbar` / `.mobile-tabbar`, so it
+   flattened chrome to position: relative and z-index 1. That put the phone
+   tab bar back in document flow (it scrolled away with the article) and let
+   main paint over the Library card panel. Restore each chrome piece here. */
+.room > .topbar {
+  position: sticky;
+  z-index: 200;
+}
+.room > .mobile-tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 50;
+}
+.ambient-toggle {
+  opacity: 0.85;
+}
+
+.theme-toggle {
+  opacity: 0.9;
+  min-width: 2.4rem;
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+/* Profile indicator menu */
+.profile-menu {
+  position: relative;
+  z-index: 80;
+}
+
+.profile-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px 4px 4px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--surface-raised) 70%, transparent);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+}
+
+.profile-menu-avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 35%, var(--surface-2));
+  color: var(--accent-text);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* Painted, not text: the accessible name must contain every visible word,
+   and a lone initial would not appear in "Library card <name> <role>". */
+.profile-menu-avatar::before {
+  content: attr(data-initial);
+}
+
+.profile-menu-name {
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.profile-menu-role {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--gilt) 45%, transparent);
+  background: var(--accent-soft);
+}
+
+.profile-menu-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 220px;
+  padding: 10px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface-raised) 96%, transparent);
+  box-shadow: 0 14px 36px color-mix(in srgb, var(--bg) 55%, transparent);
+  display: grid;
+  gap: 6px;
+  z-index: 60;
+}
+
+.profile-menu-meta {
+  margin: 0 0 4px;
+  display: grid;
+  gap: 2px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.profile-menu-meta span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.profile-menu-section {
+  display: grid;
+  gap: 6px;
+  padding: 4px 0;
+}
+
+.profile-menu-section-label {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.profile-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.profile-chip {
+  padding: 5px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.profile-chip.is-selected,
+.profile-chip:hover,
+.profile-chip:focus-visible {
+  color: var(--text);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.profile-menu-links {
+  padding-top: 2px;
+}
+
+.profile-font-control {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  margin-bottom: 4px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--surface-2) 70%, transparent);
+}
+
+.profile-font-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.profile-font-value {
+  color: var(--gilt);
+  font-variant-numeric: tabular-nums;
+}
+
+.profile-font-control input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.profile-menu-link {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  font: inherit;
+}
+
+.profile-menu-link:hover,
+.profile-menu-link:focus-visible {
+  background: var(--menu-hover);
+}
+
+.profile-menu-logout {
+  margin-top: 4px;
+  border-top: 1px solid var(--border-subtle);
+  border-radius: 0 0 var(--radius) var(--radius);
+  color: var(--danger);
+  font-weight: 600;
+}
+
+/* Inbox + notification prefs */
+.inbox-badge-btn {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  text-decoration: none;
+}
+.inbox-badge-btn.is-active,
+.inbox-badge-btn:hover,
+.inbox-badge-btn:focus-visible {
+  background: var(--paper-deep, var(--surface-2, rgba(0, 0, 0, 0.06)));
+}
+.inbox-badge-glyph {
+  font-size: 1rem;
+  line-height: 1;
+}
+.inbox-unread-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plexamp-toast,
+  .morning-brief,
+  .ingest-preview-map,
+  .named-shelves-alive .named-shelves-glow,
+  .calibre-renormalize-alive .calibre-renormalize-glow,
+  .room.ambient-paper::before,
+  .room.ambient-lamp::before {
+    animation: none !important;
+    transition: none !important;
+  }
+}

@@ -29,7 +29,7 @@ codegraph index -f
 ## 3. Coverage stays green while we build
 
 - **Every sprint PR/ship** keeps backend coverage ≥ **70%** (`pyproject.toml` `--cov-fail-under=70`) and frontend unit tests green (`cd frontend && npm test`).
-- New behavior ships **with** value-based tests — see [TESTING.md](../../TESTING.md). Not a cleanup pass later.
+- New behavior ships **with** value-based tests — see [TESTING.md](../TESTING.md). Not a cleanup pass later.
 - Coverage must not drop relative to the prior release on touched packages; if a refactor shrinks lines, replace with tests on the new surface.
 - Mock NZBFinder / SAB / LLM HTTP only; **never mock SQLite**.
 - Front-end ships follow the **Testing Triad** and release-tier cadence in
@@ -102,7 +102,7 @@ Library card pass on Automat LAN (`http://10.10.1.202:8793`).
 - [ ] Backend: `LIBRARIAN_PBKDF2_ITERATIONS=1000 LIBRARIAN_SKIP_APP_BOOT=1 .venv/bin/python -m pytest tests/` (≥70% coverage)
 - [ ] Frontend unit (Layer 1): `cd frontend && npm test` — Vitest when migrated; see [UI_TESTING_ARCHITECTURE.md](UI_TESTING_ARCHITECTURE.md)
 - [ ] Playwright: `npm run test:e2e` on **:8794** — targeted for patch UI; full matrix for major closeout
-- [ ] axe WCAG 2.1 AA when core chrome touched or on major gauntlet (once axe-core is wired)
+- [ ] axe WCAG 2.1 AA when core chrome touched or on major gauntlet (`e2e/axe.spec.ts`)
 - [ ] `cd frontend && npm run build` succeeds; no unexplained Vite bundle-size regression
 - [ ] CHANGELOG `### Highlights` + version bump
 - [ ] Automat `./docker-run.sh` smoke on `:8793` when shipping to the household host

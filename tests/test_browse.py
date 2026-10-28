@@ -305,6 +305,7 @@ def _seed_catalog(db: Database, root: Path) -> dict[str, dict]:
             "series_name": "+series",
             "genre": "-genre",
             "updated": 10,
+            "added": 10,
         },
         {
             "key": "hello",
@@ -315,6 +316,7 @@ def _seed_catalog(db: Database, root: Path) -> dict[str, dict]:
             "series_name": "Analytical",
             "genre": "Computing",
             "updated": 150,
+            "added": 20,
         },
         {
             "key": "saga",
@@ -324,6 +326,7 @@ def _seed_catalog(db: Database, root: Path) -> dict[str, dict]:
             "kind": "comic",
             "series_name": "Saga",
             "updated": 400,
+            "added": 30,
         },
         {
             "key": "dune",
@@ -334,6 +337,7 @@ def _seed_catalog(db: Database, root: Path) -> dict[str, dict]:
             "series_name": "Dune",
             "genre": "Science Fiction",
             "updated": 200,
+            "added": 40,
         },
         {
             "key": "carrie",
@@ -343,6 +347,7 @@ def _seed_catalog(db: Database, root: Path) -> dict[str, dict]:
             "kind": "book",
             "genre": "Horror",
             "updated": 100,
+            "added": 50,
         },
         {
             "key": "shining",
@@ -353,6 +358,7 @@ def _seed_catalog(db: Database, root: Path) -> dict[str, dict]:
             "series_name": "Overlook",
             "genre": "Horror",
             "updated": 300,
+            "added": 60,
             "cover_path": str(root / "SECRET-COVER-PATH.jpg"),
             "atmosphere_path": str(root / "SECRET-ATMOSPHERE-PATH.jpg"),
             "isbn": "SECRET-ISBN-TOKEN",
@@ -370,16 +376,19 @@ def _seed_catalog(db: Database, root: Path) -> dict[str, dict]:
             "kind": "book",
             "genre": "Fiction",
             "updated": 50,
+            "added": 70,
         },
     ]
     works: dict[str, dict] = {}
     for spec in specs:
         updated = spec.pop("updated")
+        added = spec.pop("added")
         key = spec.pop("key")
         folder = root / "SECRET-HOST-PATH" / key
         work = db.upsert_work({**spec, "folder_path": str(folder)})
         _shelve(db, work, filename=f"{key}.epub")
         _stamp(db, "UPDATE works SET updated_at = ? WHERE id = ?", (updated, work["id"]))
+        _stamp(db, "UPDATE works SET created_at = ? WHERE id = ?", (added, work["id"]))
         works[key] = work
     review_folder = root / "SECRET-HOST-PATH" / "review"
     review = db.upsert_work(
@@ -443,16 +452,17 @@ _YEAR_ASC = [
     "=1+1",
     "Undated",
 ]
-_UPDATED_DESC = [
-    "Saga #1",
-    "The Shining",
-    "Dune",
-    'Say "hello", José',
-    "Carrie",
+# Date added is works.created_at, which is stamped independently of updated_at.
+_ADDED_DESC = [
     "Undated",
+    "The Shining",
+    "Carrie",
+    "Dune",
+    "Saga #1",
+    'Say "hello", José',
     "=1+1",
 ]
-_UPDATED_ASC = list(reversed(_UPDATED_DESC))
+_ADDED_ASC = list(reversed(_ADDED_DESC))
 _LEAK_MARKERS = (
     "SECRET-HOST-PATH",
     "SECRET-COVER-PATH",
@@ -476,10 +486,13 @@ def test_browse_sort_direction_and_year(tmp_path, monkeypatch):
 
     default = client.get("/api/browse")
     assert default.status_code == 200
-    assert default.json()["sort"] == "author"
-    assert default.json()["sort_dir"] == "asc"
-    assert _titles(default) == _AUTHOR_ASC
+    assert default.json()["sort"] == "updated"
+    assert default.json()["sort_dir"] == "desc"
+    assert _titles(default) == _ADDED_DESC
     assert "Needs Review Marker" not in _titles(default)
+
+    exported = client.get("/api/browse/export.csv")
+    assert [row[0] for row in _csv_rows(exported)[1:]] == [_csv_title(title) for title in _ADDED_DESC]
 
     author_desc = client.get("/api/browse", params={"sort": "author", "sort_dir": "desc"})
     assert _titles(author_desc) == _AUTHOR_DESC
@@ -496,10 +509,10 @@ def test_browse_sort_direction_and_year(tmp_path, monkeypatch):
     updated = client.get("/api/browse", params={"sort": "updated"})
     assert updated.json()["sort"] == "updated"
     assert updated.json()["sort_dir"] == "desc"
-    assert _titles(updated) == _UPDATED_DESC
+    assert _titles(updated) == _ADDED_DESC
 
     updated_asc = client.get("/api/browse", params={"sort": "updated", "sort_dir": "asc"})
-    assert _titles(updated_asc) == _UPDATED_ASC
+    assert _titles(updated_asc) == _ADDED_ASC
 
     year = client.get("/api/browse", params={"sort": "year"})
     assert year.json()["sort"] == "year"
@@ -546,17 +559,17 @@ def test_browse_hostile_query_params(tmp_path, monkeypatch):
         },
     )
     assert injected.status_code == 200
-    assert injected.json()["sort"] == "author"
-    assert injected.json()["sort_dir"] == "asc"
-    assert _titles(injected) == ["Carrie", "The Shining"]
+    assert injected.json()["sort"] == "updated"
+    assert injected.json()["sort_dir"] == "desc"
+    assert _titles(injected) == ["The Shining", "Carrie"]
     for marker in ("SECRET-HOST-PATH", "SECRET-COVER-PATH", "SECRET-GUID-TOKEN"):
         assert marker not in injected.text
 
     still_there = client.get("/api/browse", params={"sort": "year;drop", "sort_dir": "sideways"})
     assert still_there.status_code == 200
-    assert still_there.json()["sort"] == "author"
-    assert still_there.json()["sort_dir"] == "asc"
-    assert _titles(still_there) == _AUTHOR_ASC
+    assert still_there.json()["sort"] == "updated"
+    assert still_there.json()["sort_dir"] == "desc"
+    assert _titles(still_there) == _ADDED_DESC
 
     unknown_kind = client.get("/api/browse", params={"kind": "book'; DROP TABLE works--"})
     assert unknown_kind.status_code == 200
@@ -629,6 +642,19 @@ def test_browse_shelf_updated_direction_follows_added_at(tmp_path, monkeypatch):
         "UPDATE shelf_items SET added_at = ? WHERE shelf_id = ? AND work_id = ?",
         (20, shelf_id, newer["id"]),
     )
+    # created_at runs the other way, so a shelf sort that used it would flip.
+    _stamp(db, "UPDATE works SET created_at = ? WHERE id = ?", (50, older["id"]))
+    _stamp(db, "UPDATE works SET created_at = ? WHERE id = ?", (10, newer["id"]))
+
+    off_shelf = client.get("/api/browse")
+    assert off_shelf.json()["sort"] == "updated"
+    assert off_shelf.json()["sort_dir"] == "desc"
+    assert _titles(off_shelf) == ["Older Shelf", "Newer Shelf"]
+
+    omitted = client.get("/api/browse", params={"shelf": "favorites"})
+    assert omitted.json()["sort"] == "updated"
+    assert omitted.json()["sort_dir"] == "desc"
+    assert _titles(omitted) == ["Newer Shelf", "Older Shelf"]
 
     desc = client.get("/api/browse", params={"shelf": "favorites", "sort": "updated"})
     assert desc.status_code == 200
@@ -766,7 +792,7 @@ def test_browse_export_rejects_bad_columns_and_caps_rows(tmp_path, monkeypatch):
     assert blank.status_code == 400
     assert blank.json()["detail"] == "columns must name at least one export column"
 
-    monkeypatch.setattr("librarian.web.routers.search.BROWSE_EXPORT_ROW_CAP", 2)
+    monkeypatch.setattr("librarian.services.search.BROWSE_EXPORT_ROW_CAP", 2)
     capped = client.get("/api/browse/export.csv", params={"sort": "author", "sort_dir": "asc"})
     assert capped.status_code == 200
     assert capped.headers["x-librarian-export-cap"] == "2"

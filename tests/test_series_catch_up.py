@@ -209,9 +209,9 @@ def test_hall_invites_every_role_to_catch_up(tmp_path, monkeypatch):
     owner_hall = client.get("/api/hall")
     assert owner_hall.status_code == 200
     owner_body = owner_hall.json()
-    assert owner_body["gaps_pending"] is True
-    assert owner_body["gaps"] == []
-    assert owner_body["series_catch_up"] == {"series": [], "empty": True}
+    assert "gaps_pending" not in owner_body
+    assert "gaps" not in owner_body
+    assert "series_catch_up" not in owner_body
 
     owner_local = client.get("/api/gaps/local")
     assert owner_local.status_code == 200
@@ -235,7 +235,8 @@ def test_hall_invites_every_role_to_catch_up(tmp_path, monkeypatch):
 
     reader_hall = client.get("/api/hall")
     assert reader_hall.status_code == 200
-    assert reader_hall.json()["gaps_pending"] is True
+    assert "series_catch_up" not in reader_hall.json()
+    assert "gaps_pending" not in reader_hall.json()
 
     reader_local = client.get("/api/gaps/local")
     assert reader_local.status_code == 200
@@ -261,7 +262,7 @@ def test_hall_catch_up_empty_on_a_whole_shelf(tmp_path, monkeypatch):
     client.post("/api/auth/local/login", json={"username": "owner", "password": "password123"})
 
     body = client.get("/api/hall").json()
-    assert body["gaps_pending"] is True
-    assert body["series_catch_up"] == {"series": [], "empty": True}
+    assert "gaps_pending" not in body
+    assert "series_catch_up" not in body
     soft = client.get("/api/gaps/local").json()
     assert soft["series_catch_up"] == {"series": [], "empty": True}

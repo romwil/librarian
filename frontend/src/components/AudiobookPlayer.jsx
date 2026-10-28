@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
 import { humanError } from "../copy.js";
+import { useAudioTransport } from "../hooks/useAudioTransport.js";
 import {
   LISTEN_PERSIST_MIN_MS,
   chapterAt,
@@ -36,9 +37,7 @@ export default function AudiobookPlayer({
   onClose,
   onProgress,
 }) {
-  const audioRef = useRef(null);
   const tracks = playableTracks(files);
-  const tracksRef = useRef(tracks);
   const persistTimer = useRef(0);
   const lastPersist = useRef({ fileId: "", seconds: 0, fraction: 0, at: 0 });
   const readyRef = useRef(false);
@@ -49,10 +48,7 @@ export default function AudiobookPlayer({
 
   const bookmark = decodeListenPosition(progress?.position || "");
   bookmarkRef.current = bookmark;
-  const initialFile =
-    String(fileId || "").trim() ||
-    bookmark.fileId ||
-    String(tracks[0]?.id || "");
+  const initialFile = String(fileId || "").trim() || bookmark.fileId || String(tracks[0]?.id || "");
   const [activeId, setActiveId] = useState(initialFile);
   const [chapters, setChapters] = useState([]);
   const [status, setStatus] = useState("Opening the volume…");
@@ -63,7 +59,6 @@ export default function AudiobookPlayer({
   const [rate, setRate] = useState(bookmark.rate > 0 ? bookmark.rate : 1);
   const [sleepId, setSleepId] = useState("off");
 
-  tracksRef.current = tracks;
   const fileIndex = Math.max(
     0,
     tracks.findIndex((row) => String(row.id) === String(activeId)),
@@ -73,9 +68,46 @@ export default function AudiobookPlayer({
   const chapterLeft = chapterRemainingSeconds(chapters, currentTime, duration);
   const rememberLine = listenRememberPresence(progress, remember);
 
+  const transport = useAudioTransport({
+    onTimeUpdate: (audio) => {
+      const now = audio.currentTime || 0;
+      setCurrentTime(now);
+      if (audio.duration) setDuration(audio.duration);
+      maybeTripSleep(now);
+      persist();
+    },
+    onPlay: () => setPlaying(true),
+    onPause: () => {
+      setPlaying(false);
+      persist(true);
+    },
+    onEnded: () => {
+      const next = tracks[fileIndex + 1];
+      if (next?.id) {
+        loadTrack(String(next.id), 0);
+        return;
+      }
+      setPlaying(false);
+      if (work?.id) {
+        api
+          .progress(work.id, { finished: true })
+          .then((res) => {
+            if (res?.progress && typeof onProgress === "function") onProgress(res.progress);
+          })
+          .catch(() => {});
+      }
+    },
+    onError: () => {
+      setStatus("");
+      setError(humanError(new Error("This file could not be streamed.")));
+      setPlaying(false);
+    },
+    onPlayRejected: () => setPlaying(false),
+  });
+
   function persist(force = false) {
     if (!work?.id || !activeTrack) return;
-    const audio = audioRef.current;
+    const audio = transport.getAudio();
     const seconds = audio ? audio.currentTime : currentTime;
     if (
       !shouldWriteListenProgress({
@@ -145,81 +177,63 @@ export default function AudiobookPlayer({
   }
 
   function loadTrack(nextId, seekSeconds = 0) {
-    const audio = audioRef.current;
     const id = String(nextId || "");
     const src = workStreamUrl(work.id, id);
-    if (!audio || !src) return;
+    if (!transport.getAudio() || !src) return;
     readyRef.current = false;
     resumeSecondsRef.current = Math.max(0, Number(seekSeconds) || 0);
     setActiveId(id);
     setStatus("Opening the volume…");
     setError("");
-    audio.src = src;
-    audio.playbackRate = rate;
-    const onMeta = () => {
-      audio.removeEventListener("loadedmetadata", onMeta);
-      const target = resumeSecondsRef.current;
-      if (target > 0 && Number.isFinite(target)) {
-        const arm = () => {
-          audio.removeEventListener("seeked", arm);
-          markReady();
-          setCurrentTime(audio.currentTime || target);
-        };
-        audio.addEventListener("seeked", arm);
-        try {
-          audio.currentTime = target;
-        } catch {
+    transport.start(src, {
+      rate,
+      onReady: (audio) => {
+        const target = resumeSecondsRef.current;
+        if (target > 0 && Number.isFinite(target)) {
+          const arm = () => {
+            audio.removeEventListener("seeked", arm);
+            markReady();
+            setCurrentTime(audio.currentTime || target);
+          };
+          audio.addEventListener("seeked", arm);
+          try {
+            audio.currentTime = target;
+          } catch {
+            markReady();
+          }
+          window.setTimeout(() => {
+            if (!readyRef.current) markReady();
+          }, 400);
+        } else {
           markReady();
         }
-        window.setTimeout(() => {
-          if (!readyRef.current) markReady();
-        }, 400);
-      } else {
-        markReady();
-      }
-      setDuration(audio.duration || 0);
-      setStatus("");
-      const playAttempt = audio.play();
-      if (playAttempt && typeof playAttempt.catch === "function") {
-        playAttempt.catch(() => setPlaying(false));
-      }
-    };
-    audio.addEventListener("loadedmetadata", onMeta);
-    audio.load();
+        setDuration(audio.duration || 0);
+        setStatus("");
+        transport.play();
+      },
+    });
   }
 
   function togglePlay() {
-    const audio = audioRef.current;
-    if (!audio) return;
-    if (audio.paused) {
-      const playAttempt = audio.play();
-      if (playAttempt && typeof playAttempt.catch === "function") {
-        playAttempt.catch(() => setPlaying(false));
-      }
-    } else {
-      audio.pause();
-    }
+    transport.toggle();
   }
 
   function seekTo(seconds) {
-    const audio = audioRef.current;
-    if (!audio || !Number.isFinite(seconds)) return;
+    if (!transport.getAudio() || !Number.isFinite(seconds)) return;
     markReady();
     resumeSecondsRef.current = 0;
-    audio.currentTime = Math.max(0, seconds);
-    setCurrentTime(audio.currentTime);
+    setCurrentTime(transport.seek(seconds));
     persist();
   }
 
   function skipSeconds(delta) {
-    const audio = audioRef.current;
+    const audio = transport.getAudio();
     if (!audio) return;
     seekTo((audio.currentTime || 0) + delta);
   }
 
   function jumpChapter(direction) {
-    const target =
-      direction < 0 ? prevChapter(chapters, currentTime) : nextChapter(chapters, currentTime);
+    const target = direction < 0 ? prevChapter(chapters, currentTime) : nextChapter(chapters, currentTime);
     if (target) seekTo(Number(target.start) || 0);
     else if (direction < 0) seekTo(0);
   }
@@ -227,7 +241,7 @@ export default function AudiobookPlayer({
   function changeRate() {
     const next = nextListenRate(rate);
     setRate(next);
-    if (audioRef.current) audioRef.current.playbackRate = next;
+    transport.setRate(next);
     if (readyRef.current) persist(true);
   }
 
@@ -244,7 +258,7 @@ export default function AudiobookPlayer({
   }
 
   function maybeTripSleep(nowSeconds) {
-    const audio = audioRef.current;
+    const audio = transport.getAudio();
     if (!audio || audio.paused) return;
     if (sleepChapterEndRef.current) {
       const left = chapterRemainingSeconds(chapters, nowSeconds, duration);
@@ -307,8 +321,7 @@ export default function AudiobookPlayer({
         setChapters([]);
       });
     const mark = bookmarkRef.current;
-    const resume =
-      String(activeTrack.id) === String(mark.fileId || activeTrack.id) ? mark.seconds : 0;
+    const resume = String(activeTrack.id) === String(mark.fileId || activeTrack.id) ? mark.seconds : 0;
     if (mark.rate > 0) setRate(mark.rate);
     loadTrack(activeTrack.id, resume);
     function onPageHide() {
@@ -329,57 +342,6 @@ export default function AudiobookPlayer({
   }, [work?.id, activeTrack?.id]);
 
   useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return undefined;
-
-    function onTime() {
-      const now = audio.currentTime || 0;
-      setCurrentTime(now);
-      if (audio.duration) setDuration(audio.duration);
-      maybeTripSleep(now);
-      persist();
-    }
-    function onPlay() {
-      setPlaying(true);
-    }
-    function onPause() {
-      setPlaying(false);
-      persist(true);
-    }
-    function onEnded() {
-      const next = tracksRef.current[fileIndex + 1];
-      if (next?.id) {
-        loadTrack(String(next.id), 0);
-        return;
-      }
-      setPlaying(false);
-      if (work?.id) {
-        api.progress(work.id, { finished: true }).then((res) => {
-          if (res?.progress && typeof onProgress === "function") onProgress(res.progress);
-        }).catch(() => {});
-      }
-    }
-    function onError() {
-      setStatus("");
-      setError(humanError(new Error("This file could not be streamed.")));
-      setPlaying(false);
-    }
-
-    audio.addEventListener("timeupdate", onTime);
-    audio.addEventListener("play", onPlay);
-    audio.addEventListener("pause", onPause);
-    audio.addEventListener("ended", onEnded);
-    audio.addEventListener("error", onError);
-    return () => {
-      audio.removeEventListener("timeupdate", onTime);
-      audio.removeEventListener("play", onPlay);
-      audio.removeEventListener("pause", onPause);
-      audio.removeEventListener("ended", onEnded);
-      audio.removeEventListener("error", onError);
-    };
-  }, [fileIndex, work?.id, chapters, duration, sleepId]);
-
-  useEffect(() => {
     if (!("mediaSession" in navigator) || !work) return undefined;
     const art = coverUrl(work);
     try {
@@ -389,8 +351,8 @@ export default function AudiobookPlayer({
         album: chapter?.title || activeTrack?.filename || "Listening room",
         artwork: art ? [{ src: art, sizes: "512x512", type: "image/jpeg" }] : [],
       });
-      navigator.mediaSession.setActionHandler("play", () => audioRef.current?.play());
-      navigator.mediaSession.setActionHandler("pause", () => audioRef.current?.pause());
+      navigator.mediaSession.setActionHandler("play", () => transport.play());
+      navigator.mediaSession.setActionHandler("pause", () => transport.pause());
       navigator.mediaSession.setActionHandler("seekbackward", () => skipSeconds(-15));
       navigator.mediaSession.setActionHandler("seekforward", () => skipSeconds(30));
       navigator.mediaSession.setActionHandler("previoustrack", () => jumpChapter(-1));
@@ -417,7 +379,13 @@ export default function AudiobookPlayer({
   }, [work, chapter?.title, activeTrack?.filename, chapters]);
 
   return (
-    <div className="reader listen-room" role="dialog" aria-modal="true" aria-labelledby="listen-title" data-testid="listen-room">
+    <div
+      className="reader listen-room"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="listen-title"
+      data-testid="listen-room"
+    >
       <header className="reader-head">
         <div className="reader-titleblock">
           <p className="kicker">Listening room</p>
@@ -516,7 +484,13 @@ export default function AudiobookPlayer({
             ) : null}
             {player?.href ? (
               <p className="listen-external">
-                <a className="cta outline compact" href={player.href} target="_blank" rel="noreferrer" data-testid="listen-open-player">
+                <a
+                  className="cta outline compact"
+                  href={player.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  data-testid="listen-open-player"
+                >
                   {player.label || "Open in player"}
                 </a>
               </p>
@@ -528,7 +502,7 @@ export default function AudiobookPlayer({
           </div>
         </div>
       </div>
-      <audio ref={audioRef} preload="metadata" hidden data-testid="listen-audio" />
+      <audio ref={transport.audioRef} preload="metadata" hidden data-testid="listen-audio" />
     </div>
   );
 }

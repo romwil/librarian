@@ -26,7 +26,6 @@ const HASH_ALIASES = {
   quiet: "household",
   "quiet-hours": "household",
   rss: "indexers",
-  bagging: "shelving",
 };
 
 /** Resolve hash → nav item (supports #release-notes → About, #indexer → Indexers). */

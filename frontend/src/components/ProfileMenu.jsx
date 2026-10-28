@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api.js";
+import { useAnchoredPopover } from "../hooks/useAnchoredPopover.js";
 import { pointerEventInsideNode } from "../lib/pointerInside.js";
 import {
   FONT_STEP_MAX,
@@ -39,39 +39,13 @@ export default function ProfileMenu({
   op = false,
 }) {
   const navigate = useNavigate();
-  const rootRef = useRef(null);
-  const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    if (!open) return undefined;
-    const root = rootRef.current;
-    function eventInsideMenu(event) {
-      return pointerEventInsideNode(event, rootRef.current);
-    }
-    function stopIfInside(event) {
-      if (eventInsideMenu(event)) event.stopPropagation();
-    }
-    function onPointerDown(event) {
-      if (!eventInsideMenu(event)) setOpen(false);
-    }
-    function onKey(event) {
-      if (event.key === "Escape") setOpen(false);
-    }
-    // Native stop on the menu root is more reliable than React's delegated
-    // onPointerDown: React 18 listens on #root, so a document bubble listener
-    // can still see in-menu events. Range thumbs may also retarget onto
-    // document — those never pass through `root`, so onPointerDown hit-tests.
-    root?.addEventListener("pointerdown", stopIfInside);
-    root?.addEventListener("mousedown", stopIfInside);
-    document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      root?.removeEventListener("pointerdown", stopIfInside);
-      root?.removeEventListener("mousedown", stopIfInside);
-      document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
+  // Range thumbs retarget onto document, so outside-dismiss hit-tests the pointer.
+  const { open, setOpen, rootRef } = useAnchoredPopover({
+    outsideEvent: "pointerdown",
+    closeOnEscape: true,
+    eventInside: pointerEventInsideNode,
+    stopInsidePropagation: true,
+  });
 
   async function handleLogout() {
     setOpen(false);
@@ -118,15 +92,13 @@ export default function ProfileMenu({
         type="button"
         className="profile-menu-trigger"
         data-testid="profile-menu-trigger"
-        aria-label="Library card"
+        aria-label={`Library card ${user.display_name} ${roleLabel}`}
         aria-expanded={open}
         aria-haspopup="menu"
         onClick={() => setOpen((value) => !value)}
       >
-        <span className="profile-menu-avatar" aria-hidden="true">
-          {initials}
-        </span>
-        <span className="profile-menu-name">{user.display_name}</span>
+        <span className="profile-menu-avatar" aria-hidden="true" data-initial={initials} />
+        <span className="profile-menu-name">{user.display_name}</span>{" "}
         <span className="profile-menu-role">{roleLabel}</span>
       </button>
       {open ? (
@@ -174,9 +146,7 @@ export default function ProfileMenu({
           >
             <span className="profile-font-label">
               Text size
-              <span className="profile-font-value">
-                {fontStep === 0 ? "Default" : `+${fontStep}`}
-              </span>
+              <span className="profile-font-value">{fontStep === 0 ? "Default" : `+${fontStep}`}</span>
             </span>
             <input
               type="range"
@@ -214,82 +184,42 @@ export default function ProfileMenu({
           </div>
 
           <div className="profile-menu-section profile-menu-links">
-            <Link
-              to="/card"
-              className="profile-menu-link"
-              role="menuitem"
-              onClick={() => setOpen(false)}
-            >
+            <Link to="/card" className="profile-menu-link" role="menuitem" onClick={() => setOpen(false)}>
               Your library
             </Link>
-            <Link
-              to="/inbox"
-              className="profile-menu-link"
-              role="menuitem"
-              onClick={() => setOpen(false)}
-            >
+            <Link to="/inbox" className="profile-menu-link" role="menuitem" onClick={() => setOpen(false)}>
               Inbox
             </Link>
-            <Link
-              to="/notifications"
-              className="profile-menu-link"
-              role="menuitem"
-              onClick={() => setOpen(false)}
-            >
+            <Link to="/notifications" className="profile-menu-link" role="menuitem" onClick={() => setOpen(false)}>
               Notifications
             </Link>
             {showHouseholdLinks ? (
               <>
-              {owner ? (
-                <Link
-                  to="/maintain"
-                  className="profile-menu-link"
-                  role="menuitem"
-                  onClick={() => setOpen(false)}
-                >
-                  Maintain
-                </Link>
-              ) : null}
-              {owner ? (
-                <Link
-                  to="/settings"
-                  className="profile-menu-link"
-                  role="menuitem"
-                  onClick={() => setOpen(false)}
-                >
-                  Settings
-                </Link>
-              ) : null}
-              {owner ? (
-                <Link
-                  to="/people"
-                  className="profile-menu-link"
-                  role="menuitem"
-                  onClick={() => setOpen(false)}
-                >
-                  People
-                </Link>
-              ) : null}
-              {op ? (
-                <Link
-                  to="/review"
-                  className="profile-menu-link"
-                  role="menuitem"
-                  onClick={() => setOpen(false)}
-                >
-                  Holds
-                </Link>
-              ) : null}
-              {op ? (
-                <Link
-                  to="/queue"
-                  className="profile-menu-link"
-                  role="menuitem"
-                  onClick={() => setOpen(false)}
-                >
-                  Downloads
-                </Link>
-              ) : null}
+                {owner ? (
+                  <Link to="/maintain" className="profile-menu-link" role="menuitem" onClick={() => setOpen(false)}>
+                    Maintain
+                  </Link>
+                ) : null}
+                {owner ? (
+                  <Link to="/settings" className="profile-menu-link" role="menuitem" onClick={() => setOpen(false)}>
+                    Settings
+                  </Link>
+                ) : null}
+                {owner ? (
+                  <Link to="/people" className="profile-menu-link" role="menuitem" onClick={() => setOpen(false)}>
+                    People
+                  </Link>
+                ) : null}
+                {op ? (
+                  <Link to="/review" className="profile-menu-link" role="menuitem" onClick={() => setOpen(false)}>
+                    Holds
+                  </Link>
+                ) : null}
+                {op ? (
+                  <Link to="/queue" className="profile-menu-link" role="menuitem" onClick={() => setOpen(false)}>
+                    Downloads
+                  </Link>
+                ) : null}
               </>
             ) : null}
           </div>

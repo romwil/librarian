@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 import {
   buildFindSearchParams,
   bestsellersFromSearchParams,
@@ -50,7 +50,7 @@ describe("Find query builder", () => {
     assert.equal(discoverHref({ kind: "comic" }), "/search?kind=comic");
     assert.equal(discoverHref({}), "/search");
     assert.equal(findKindOptions(false).some(([value]) => value === "movie"), false);
-    assert.equal(findKindOptions(true).some(([value]) => value === "movie"), true);
+    assert.equal(findKindOptions(true).some(([value]) => value === "movie"), false);
   });
 
   it("builds Discover category browse hrefs from cat id", () => {
@@ -82,8 +82,6 @@ describe("Find query builder", () => {
     const groups = groupDiscoverCategories([
       { id: "7030", name: "Comics", kind: "comic", parent_id: "7000", parent_name: "Books" },
       { id: "7010", name: "Magazines", kind: "magazine", parent_id: "7000", parent_name: "Books" },
-      { id: "2040", name: "HD", kind: "movie", parent_id: "2000", parent_name: "Movies" },
-      { id: "2010", name: "Foreign", kind: "movie", parent_id: "2000", parent_name: "Movies" },
       { id: "3030", name: "Audiobook", kind: "audiobook", parent_id: "3000", parent_name: "Audio" },
       { id: "7030", name: "Comics", kind: "comic", parent_id: "7000", parent_name: "Books" },
       { id: "7060", name: "Foreign", kind: "book", parent_id: "7000", parent_name: "Books" },
@@ -91,7 +89,6 @@ describe("Find query builder", () => {
     assert.deepEqual(
       groups.map((g) => [g.id, g.name, g.categories.map((c) => c.id)]),
       [
-        ["2000", "Movies", ["2040", "2010"]],
         ["3000", "Audio", ["3030"]],
         ["7000", "Books", ["7030", "7010", "7060"]],
       ],

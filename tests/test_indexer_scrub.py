@@ -46,6 +46,21 @@ def test_public_indexer_hit_strips_tokens_and_drops_raw():
     assert scrubbed["download_url"] == "https://nzb.example/get?id=g-dune.nzb"
 
 
+def test_public_indexer_hit_folds_poster_into_cover():
+    scrubbed = public_indexer_hit(
+        _leaky_hit(cover="", poster="https://cdn.example/poster.jpg?api_token=poster-tok")
+    )
+    assert "poster" not in scrubbed
+    assert scrubbed["cover"] == "https://cdn.example/poster.jpg"
+    assert "poster-tok" not in scrubbed["cover"]
+
+    kept = public_indexer_hit(
+        _leaky_hit(poster="https://cdn.example/other.jpg?api_token=poster-tok")
+    )
+    assert "poster" not in kept
+    assert kept["cover"].startswith("https://cdn.example/cover.jpg")
+
+
 def test_public_indexer_hits_skips_non_dicts():
     rows = public_indexer_hits([_leaky_hit(), "skip", None, 3, _leaky_hit(guid="g2")])
     assert len(rows) == 2

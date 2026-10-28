@@ -2,13 +2,14 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { test } from "node:test";
+import { test } from "vitest";
+import { readStyles } from "./test/styles.js";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const chromeSrc = readFileSync(join(root, "components/AppChrome.jsx"), "utf8");
 const menuSrc = readFileSync(join(root, "components/ProfileMenu.jsx"), "utf8");
 const mainSrc = readFileSync(join(root, "main.jsx"), "utf8");
-const stylesSrc = readFileSync(join(root, "styles.css"), "utf8");
+const stylesSrc = readStyles();
 
 test("top nav is Hall, Stacks, Search, Favorites, and Wanted, with Downloads and Holds for owner and op", () => {
   assert.match(chromeSrc, />\s*Hall\s*</);
@@ -44,7 +45,7 @@ test("Library card text-size slider stays inside dismiss hit-testing", () => {
   assert.match(menuSrc, /profile-font-slider/);
   assert.match(menuSrc, /type="range"/);
   assert.match(menuSrc, /ui_font_step/);
-  assert.match(menuSrc, /aria-label="Library card"/);
+  assert.match(menuSrc, /aria-label=\{`Library card \$\{user\.display_name\} \$\{roleLabel\}`\}/);
   assert.match(menuSrc, /Text size/);
 });
 

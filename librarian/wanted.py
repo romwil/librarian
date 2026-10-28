@@ -189,6 +189,7 @@ def add_wanted(db: Database, payload: Mapping[str, Any], *, now: Optional[float]
             "next_search_at": moment,
             "created_at": moment,
             "updated_at": moment,
+            "source": "manual",
         }
     )
 
@@ -249,18 +250,17 @@ def page_wanted(
     if size < 1:
         size = DEFAULT_WANTED_PAGE_SIZE
     size = min(size, MAX_WANTED_PAGE_SIZE)
-    scope = {
-        "status": status_arg,
-        "include_dismissed": include_dismissed,
-    }
-    total = db.count_wanted(kind=kind_key or None, **scope)
+    total = db.count_wanted(
+        kind=kind_key or None, status=status_arg, include_dismissed=include_dismissed
+    )
     rows = db.list_wanted(
         kind=kind_key or None,
         limit=size,
         offset=(page_no - 1) * size,
-        **scope,
+        status=status_arg,
+        include_dismissed=include_dismissed,
     )
-    kinds = db.distinct_wanted_kinds(**scope)
+    kinds = db.distinct_wanted_kinds(status=status_arg, include_dismissed=include_dismissed)
     return {
         "items": rows,
         "total": total,

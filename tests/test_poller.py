@@ -1,14 +1,26 @@
 import json
+import threading
+import time
 from pathlib import Path
 
 import httpx
+from fastapi.testclient import TestClient
 
 from librarian.config import Settings
 from librarian.db import Database
 from librarian.indexers.sync import ping_nzbfinder, summarize_capabilities, sync_nzbfinder
 from librarian.jobs import enqueue_indexer_item
-from librarian.poller import JobPoller
-from librarian.sabnzbd import SABClient
+from librarian.poller import (
+    DEFAULT_ENRICH_POLL_SECONDS,
+    DEFAULT_RSS_POLL_SECONDS,
+    DEFAULT_SAB_POLL_SECONDS,
+    DEFAULT_SWEEP_POLL_SECONDS,
+    DEFAULT_WANTED_POLL_SECONDS,
+    JobPoller,
+    poll_interval_seconds,
+)
+from librarian.sabnzbd import SABClient, SABError
+from librarian.web.app import create_app
 
 
 def test_summarize_capabilities_fixture():
@@ -143,3 +155,269 @@ def test_poller_loop_waits_between_ticks(tmp_path, monkeypatch):
     monkeypatch.setattr(poller, "tick", lambda: (_ for _ in ()).throw(AssertionError("tick")))
     poller._loop()
     assert waits == [12.5]
+
+
+class _Clock:
+    def __init__(self) -> None:
+        self.now = 10_000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+_POLL_ENV = (
+    "LIBRARIAN_POLL_SECONDS",
+    "LIBRARIAN_ENRICH_POLL_SECONDS",
+    "LIBRARIAN_RSS_POLL_SECONDS",
+    "LIBRARIAN_SWEEP_POLL_SECONDS",
+    "LIBRARIAN_WANTED_POLL_SECONDS",
+)
+
+
+def _clear_poll_env(monkeypatch) -> None:
+    for name in _POLL_ENV:
+        monkeypatch.delenv(name, raising=False)
+
+
+def _status(poller: JobPoller) -> dict:
+    return {step["id"]: step for step in poller.step_status()["steps"]}
+
+
+def _record(calls, name):
+    def run(_settings):
+        calls.append(name)
+        return 1 if name == "sab" else 0
+
+    return run
+
+
+def test_poll_seconds_and_step_env_overrides(tmp_path, monkeypatch):
+    _clear_poll_env(monkeypatch)
+    monkeypatch.setenv("LIBRARIAN_POLL_SECONDS", "soon")
+    assert poll_interval_seconds() == DEFAULT_SAB_POLL_SECONDS
+    monkeypatch.setenv("LIBRARIAN_POLL_SECONDS", "1")
+    assert poll_interval_seconds() == 5.0
+
+    monkeypatch.setenv("LIBRARIAN_POLL_SECONDS", "15")
+    monkeypatch.setenv("LIBRARIAN_ENRICH_POLL_SECONDS", "nope")
+    monkeypatch.setenv("LIBRARIAN_RSS_POLL_SECONDS", "600")
+    monkeypatch.setenv("LIBRARIAN_SWEEP_POLL_SECONDS", "4")
+    monkeypatch.setenv("LIBRARIAN_WANTED_POLL_SECONDS", "90")
+    poller = JobPoller(Database(tmp_path / "librarian.db"), lambda: Settings())
+    status = _status(poller)
+    assert poller.interval == 15
+    assert status["sab"]["interval_seconds"] == 15
+    assert status["watch"]["interval_seconds"] == 15
+    assert status["repair"]["interval_seconds"] == 15
+    assert status["enrich"]["interval_seconds"] == DEFAULT_ENRICH_POLL_SECONDS
+    assert status["rss"]["interval_seconds"] == 600
+    assert status["sweep"]["interval_seconds"] == 5
+    assert status["wanted"]["interval_seconds"] == 90
+    assert status["sab"]["last_run"] is None
+    assert status["sab"]["last_error"] is None
+
+    forced = JobPoller(Database(tmp_path / "other.db"), lambda: Settings(), interval=12.5)
+    assert forced.interval == 12.5
+    assert _status(forced)["sab"]["interval_seconds"] == 12.5
+    assert _status(forced)["rss"]["interval_seconds"] == 600
+
+
+def test_step_intervals_are_independent(tmp_path, monkeypatch):
+    _clear_poll_env(monkeypatch)
+    clock = _Clock()
+    calls = []
+    poller = JobPoller(
+        Database(tmp_path / "librarian.db"),
+        lambda: Settings(),
+        interval=30,
+        clock=clock,
+    )
+    for name in list(poller._runners):
+        poller._runners[name] = _record(calls, name)
+
+    poller.tick()
+    assert calls == ["watch", "rss", "repair", "abs", "sweep", "owned", "wanted", "sab"]
+    assert _status(poller)["enrich"]["last_run"] is None
+    assert _status(poller)["sab"]["last_run"]
+
+    calls.clear()
+    clock.now += DEFAULT_ENRICH_POLL_SECONDS
+    poller.tick()
+    assert "enrich" in calls
+    assert "sweep" not in calls
+    assert "rss" in calls
+    assert _status(poller)["enrich"]["last_error"] is None
+    assert DEFAULT_RSS_POLL_SECONDS == DEFAULT_ENRICH_POLL_SECONDS
+    assert DEFAULT_SWEEP_POLL_SECONDS > DEFAULT_WANTED_POLL_SECONDS > DEFAULT_SAB_POLL_SECONDS
+
+
+def test_one_step_failure_does_not_skip_the_others(tmp_path, monkeypatch):
+    _clear_poll_env(monkeypatch)
+    calls = []
+    poller = JobPoller(Database(tmp_path / "librarian.db"), lambda: Settings(), interval=30)
+    for name in list(poller._runners):
+        poller._runners[name] = _record(calls, name)
+
+    def fail_rss(_settings):
+        calls.append("rss")
+        raise RuntimeError("rss down")
+
+    poller._runners["rss"] = fail_rss
+    assert poller.tick() == 1
+    assert calls.index("rss") < calls.index("sweep") < calls.index("wanted") < calls.index("sab")
+    assert "enrich" not in calls
+    status = _status(poller)
+    assert status["rss"]["last_error"] == "rss down"
+    assert status["rss"]["last_run"]
+    assert status["sab"]["last_error"] is None
+    assert status["sweep"]["last_error"] is None
+    assert status["wanted"]["last_run"]
+
+    calls.clear()
+
+    def fail_sab(_settings):
+        calls.append("sab")
+        raise SABError("downloader offline")
+
+    poller._runners["sab"] = fail_sab
+    clock_now = poller._clock()
+    with poller._lock:
+        poller._next_due["sab"] = clock_now
+    assert poller.tick() == 0
+    assert calls == ["sab"]
+    assert _status(poller)["sab"]["last_error"] == "downloader offline"
+    assert _status(poller)["wanted"]["last_error"] is None
+
+
+def test_download_loop_does_not_run_enrich(tmp_path, monkeypatch):
+    calls = []
+    poller = JobPoller(Database(tmp_path / "librarian.db"), lambda: Settings(), interval=12.5)
+    for name in list(poller._runners):
+        poller._runners[name] = _record(calls, name)
+    with poller._lock:
+        poller._next_due["enrich"] = poller._clock()
+    waits = []
+
+    def fake_wait(timeout=None):
+        waits.append(timeout)
+        return len(waits) > 1
+
+    monkeypatch.setattr(poller._stop, "wait", fake_wait)
+    poller._loop()
+    assert calls == ["sab", "watch"]
+    assert waits == [12.5, 12.5]
+
+
+def test_housekeeping_failure_does_not_skip_later_steps(tmp_path, monkeypatch):
+    _clear_poll_env(monkeypatch)
+    clock = _Clock()
+    calls = []
+    poller = JobPoller(
+        Database(tmp_path / "librarian.db"),
+        lambda: Settings(),
+        interval=30,
+        clock=clock,
+    )
+
+    def fail_rss(_settings):
+        calls.append("rss")
+        raise RuntimeError("feed down")
+
+    def enrich(_settings):
+        calls.append("enrich")
+        return 0
+
+    for name in list(poller._runners):
+        poller._runners[name] = _record(calls, name)
+    poller._runners["rss"] = fail_rss
+    poller._runners["enrich"] = enrich
+    with poller._lock:
+        for name in poller._next_due:
+            poller._next_due[name] = clock.now + 10_000
+        poller._next_due["rss"] = clock.now
+        poller._next_due["enrich"] = clock.now
+
+    monkeypatch.setattr(poller._stop, "wait", lambda timeout=None: True)
+    poller._steps_loop()
+    assert calls == ["rss", "enrich"]
+    assert _status(poller)["rss"]["last_error"] == "feed down"
+    assert _status(poller)["enrich"]["last_error"] is None
+    assert _status(poller)["sab"]["last_run"] is None
+
+
+def test_slow_enrich_does_not_hold_back_downloads(tmp_path, monkeypatch):
+    _clear_poll_env(monkeypatch)
+    monkeypatch.delenv("LIBRARIAN_SKIP_APP_BOOT")
+    monkeypatch.delenv("LIBRARIAN_DISABLE_POLLER", raising=False)
+    held = threading.Event()
+    entered = threading.Event()
+    sab_runs = {"n": 0}
+    enrich_runs = {"n": 0}
+
+    poller = JobPoller(Database(tmp_path / "librarian.db"), lambda: Settings(), interval=0.05)
+    for name in list(poller._runners):
+        poller._runners[name] = lambda _settings: 0
+
+    def enrich(_settings):
+        enrich_runs["n"] += 1
+        entered.set()
+        held.wait(timeout=5)
+        return 0
+
+    def sab(_settings):
+        sab_runs["n"] += 1
+        return 0
+
+    poller._runners["enrich"] = enrich
+    poller._runners["sab"] = sab
+    with poller._lock:
+        poller._next_due["enrich"] = poller._clock()
+
+    poller.start()
+    try:
+        assert entered.wait(2)
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline and sab_runs["n"] < 2:
+            time.sleep(0.02)
+        assert sab_runs["n"] >= 2
+        assert enrich_runs["n"] == 1
+    finally:
+        held.set()
+        poller.stop()
+
+
+def test_disable_poller_and_skip_boot_do_not_start(tmp_path, monkeypatch):
+    monkeypatch.delenv("LIBRARIAN_SKIP_APP_BOOT")
+    monkeypatch.setenv("LIBRARIAN_DISABLE_POLLER", "1")
+    poller = JobPoller(Database(tmp_path / "librarian.db"), lambda: Settings(), interval=0.05)
+    poller.start()
+    assert poller.is_running is False
+    poller.stop()
+
+    monkeypatch.delenv("LIBRARIAN_DISABLE_POLLER")
+    monkeypatch.setenv("LIBRARIAN_SKIP_APP_BOOT", "1")
+    poller.start()
+    assert poller.is_running is False
+
+
+def test_maintain_jobs_status_reports_poller_steps(tmp_path, monkeypatch):
+    _clear_poll_env(monkeypatch)
+    with TestClient(create_app(tmp_path)) as client:
+        login = client.post(
+            "/api/auth/local/login",
+            json={"username": "owner", "password": "password123"},
+        )
+        assert login.status_code == 200
+        body = client.get("/api/maintain/jobs/status").json()
+    steps = body["poller"]["steps"]
+    by_id = {step["id"]: step for step in steps}
+    assert [step["id"] for step in steps[:5]] == ["sab", "enrich", "rss", "sweep", "wanted"]
+    assert by_id["sab"]["interval_seconds"] == DEFAULT_SAB_POLL_SECONDS
+    assert by_id["enrich"]["interval_seconds"] == DEFAULT_ENRICH_POLL_SECONDS
+    assert by_id["rss"]["interval_seconds"] == DEFAULT_RSS_POLL_SECONDS
+    assert by_id["sweep"]["interval_seconds"] == DEFAULT_SWEEP_POLL_SECONDS
+    assert by_id["wanted"]["interval_seconds"] == DEFAULT_WANTED_POLL_SECONDS
+    for step in steps:
+        assert step["label"]
+        assert step["last_run"] is None
+        assert step["last_error"] is None

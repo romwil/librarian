@@ -4,7 +4,6 @@ Living product/build source of truth: what’s shipped, what’s next, and the l
 Flip boxes when a slice ships. Append the story to [build-progress.md](build-progress.md).
 Design north star: [2026-09-14 librarian design](superpowers/specs/2026-09-14-librarian-design.md).
 Major-build cadence: [ops/MAJOR_BUILDS.md](ops/MAJOR_BUILDS.md).
-Active staged plan (agent pickup): `~/.cursor/plans/librarian_unified_recommend_dd19f677.plan.md`.
 
 ---
 
@@ -12,10 +11,10 @@ Active staged plan (agent pickup): `~/.cursor/plans/librarian_unified_recommend_
 
 | | |
 | --- | --- |
-| **Date** | 2026-09-29 |
+| **Date** | 2026-10-20 |
 | **Branch** | `main` |
-| **Version** | **0.5.22** |
-| **Arc** | Living-library Phases **0–5** complete; Phase R/D done. Review-2026-09-29 remediation **F1–F5** complete through **0.5.22**. |
+| **Version** | **0.5.23** |
+| **Arc** | Living-library Phases **0–5** complete; Phase R/D done. Review-2026-09-29 remediation **F1–F5** complete through **0.5.22**. Current package **0.5.23**. |
 | **Green** | pytest coverage floor **70%**; frontend `npm test`; Playwright e2e on **8794**. LAN truth `http://10.10.1.202:8793`. |
 | **Next** | Remediation arc complete. Quiet-hours / Ask-the-house polish when touching mail surfaces. Hub reverse-proxy-only remains the exit for the accepted `0.0.0.0:8793` bind (P3-MED-02 / S3); Hub publish itself stays deferred. |
 | **Automat** | Host `./docker-run.sh` only. Hub `romwil/librarian` deferred. Never bind **8788 / 8790 / 8791 / 8792**. |
@@ -72,7 +71,7 @@ Remediation first (2026-09-25 review Critical/High), then Top-10 delight. Each s
 | **F4** | `catalog-decouple` | **0.5.21** | **done** — catalog split into hall/search/works/queue/reader_media; `make_job` + thin progress re-exports; NYT list routes removed; `#bagging` kept |
 | **F5** | `findings-closeout` | **0.5.22** | **done** — P3-MED-02 accepted bind documented (Hub reverse-proxy-only exit; listen stays `0.0.0.0`); review register closed |
 
-Phase D Top-10 sequence complete through **0.5.14** (D1–D7). Review-2026-09-29 remediation arc **complete** (F1–F5, **0.5.18–0.5.22**). Bind stays `0.0.0.0:8793`; the exit is Hub reverse-proxy-only ([SECURITY.md](SECURITY.md) S3).
+Phase D Top-10 sequence complete through **0.5.14** (D1–D7). Review-2026-09-29 remediation arc **complete** (F1–F5, **0.5.18–0.5.22**). **0.5.23** (2026-10-20) is the current package: catalog hunt. Bind stays `0.0.0.0:8793`; the exit is Hub reverse-proxy-only ([SECURITY.md](SECURITY.md) S3).
 
 ---
 

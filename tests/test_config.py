@@ -81,11 +81,41 @@ def test_audiobookshelf_blank_secret_takes_env(tmp_path, monkeypatch):
     assert settings.audiobookshelf_api_token == "from-env"
 
 
-def test_invalid_audiobook_target_falls_back_to_plex():
+def test_audiobook_target_defaults_to_librarian_only_when_unset():
     from librarian.config import Settings
 
-    settings = Settings.from_mapping({"audiobook_target": "plexamp"})
-    assert settings.audiobook_target == "plex"
+    assert Settings().audiobook_target == "librarian_only"
+    assert Settings.from_mapping({}).audiobook_target == "librarian_only"
+    assert Settings.from_mapping({"audiobook_target": ""}).audiobook_target == "librarian_only"
+    assert Settings.from_mapping({"audiobook_target": "plexamp"}).audiobook_target == "librarian_only"
+    assert Settings.from_mapping({"audiobook_target": "plex"}).audiobook_target == "plex"
+
+
+def test_unknown_settings_keys_are_ignored(tmp_path, monkeypatch):
+    from librarian.config import load_merged_settings, settings_path
+
+    monkeypatch.delenv("AUDIOBOOK_TARGET", raising=False)
+
+    settings_path(tmp_path).write_text(
+        """{
+  "radarr_url": "http://radarr.example",
+  "radarr_api_key": "secret",
+  "sonarr_url": "http://sonarr.example",
+  "sonarr_api_key": "secret",
+  "sab_movie_category": "movies",
+  "sab_tv_category": "tv",
+  "show_extra_categories": true,
+  "household_name": "The Hall"
+}
+""",
+        encoding="utf-8",
+    )
+    settings = load_merged_settings(tmp_path)
+    assert settings.household_name == "The Hall"
+    assert settings.audiobook_target == "librarian_only"
+    assert not hasattr(settings, "radarr_url")
+    assert not hasattr(settings, "show_extra_categories")
+    assert "secret" not in str(settings)
 
 
 def test_watch_enabled_coerces_from_env(tmp_path, monkeypatch):

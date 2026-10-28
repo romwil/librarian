@@ -439,8 +439,8 @@ def test_hall_gaps_do_not_queue_sab(tmp_path, monkeypatch):
     assert client.post("/api/auth/local/login", json={"username": "owner", "password": "password123"}).status_code == 200
     hall = client.get("/api/hall")
     assert hall.status_code == 200
-    assert hall.json()["gaps_pending"] is True
-    assert hall.json()["gaps"] == []
+    assert "gaps" not in hall.json()
+    assert "gaps_pending" not in hall.json()
     local = client.get("/api/gaps/local")
     assert local.status_code == 200
     gaps = local.json()["gaps"]
@@ -493,9 +493,10 @@ def test_hall_skips_local_and_catalog_fanout(tmp_path, monkeypatch):
     assert calls["catalog"] == 0
     assert calls["local"] == 0
     body = hall.json()
-    assert body["gaps_pending"] is True
-    assert body["gaps"] == []
-    assert body["series_catch_up"] == {"series": [], "empty": True}
+    assert "gaps_pending" not in body
+    assert "gaps" not in body
+    assert "series_catch_up" not in body
+    assert "tonight" not in body
 
     soft = client.get("/api/gaps/local")
     assert soft.status_code == 200
@@ -537,5 +538,5 @@ def test_hall_first_paint_skips_slow_local_gaps(tmp_path, monkeypatch):
     hall = client.get("/api/hall")
     elapsed = time.perf_counter() - started
     assert hall.status_code == 200
-    assert hall.json()["gaps_pending"] is True
+    assert "gaps_pending" not in hall.json()
     assert elapsed < 0.25, f"Hall waited on local_gaps ({elapsed:.3f}s)"

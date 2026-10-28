@@ -40,7 +40,6 @@ class RequestPayload(BaseModel):
     size: Optional[int] = None
     cover: str = ""
     book_title: str = ""
-    poster: str = ""
     category_name: str = ""
     sought: Optional[Dict[str, Any]] = None
     selected: Optional[Dict[str, Any]] = None
@@ -131,13 +130,6 @@ class SettingsPayload(BaseModel):
     extra_indexers: Optional[List[ExtraIndexerPayload]] = None
     audiobookshelf_url: Optional[str] = None
     audiobookshelf_api_token: Optional[str] = None
-    show_extra_categories: Optional[bool] = None
-    radarr_url: Optional[str] = None
-    radarr_api_key: Optional[str] = None
-    sonarr_url: Optional[str] = None
-    sonarr_api_key: Optional[str] = None
-    sab_movie_category: Optional[str] = None
-    sab_tv_category: Optional[str] = None
     quiet_hours_enabled: Optional[bool] = None
     quiet_hours_start: Optional[str] = None
     quiet_hours_end: Optional[str] = None

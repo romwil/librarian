@@ -69,7 +69,7 @@ def _enclosure_url(elem: ET.Element) -> str:
 def parse_rss_xml(raw: str) -> List[Dict[str, Any]]:
     """Parse Newznab/RSS XML into normalize_item dicts.
 
-    Movie/TV/XXX cats get a display kind from the map; RSS poll still refuses
+    Movie, TV, and adult categories have no shelf kind. RSS poll refuses
     those families via REFUSED_FAMILIES before they become Asked jobs.
     """
     text = (raw or "").strip()

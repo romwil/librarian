@@ -10,15 +10,37 @@ FIXTURE = Path(__file__).parent / "fixtures" / "nzbfinder_search.json"
 V2 = Path(__file__).parent / "fixtures" / "nzbfinder"
 
 
-def test_parse_fixture_maps_movies_and_shelf_kinds():
+def test_parse_fixture_maps_shelf_kinds_and_drops_movies():
     payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
     items = parse_search_payload(payload)
     kinds = [item["kind"] for item in items]
-    assert kinds == ["magazine", "comic", "movie"]
+    assert kinds == ["magazine", "comic", None]
+    assert "poster" not in items[0]
     assert "api_token" not in json.dumps(payload)
     assert items[0]["guid"] == "guid-linux-mag-2026-10"
     assert items[1]["kind"] == "comic"
-    assert items[2]["kind"] == "movie"
+    assert items[2]["kind"] is None
+
+
+def test_normalize_item_folds_poster_into_cover():
+    from librarian.nzbfinder import normalize_item
+
+    item = normalize_item(
+        {"title": "Dune", "guid": "g-dune", "poster": "https://img.example/p.jpg", "category": 7020}
+    )
+    assert item["cover"] == "https://img.example/p.jpg"
+    assert "poster" not in item
+    cover_wins = normalize_item(
+        {
+            "title": "Dune",
+            "guid": "g-dune",
+            "poster": "https://img.example/poster.jpg",
+            "cover": "https://img.example/cover.jpg",
+            "category": 7020,
+        }
+    )
+    assert cover_wins["cover"] == "https://img.example/cover.jpg"
+    assert "poster" not in cover_wins
 
 
 def test_client_sends_user_agent_and_api_token():
@@ -297,9 +319,9 @@ def test_empty_query_v2_is_not_used_for_latest():
 def test_v2_capabilities_fixture_matches_kind_map():
     payload = json.loads((V2 / "capabilities.json").read_text(encoding="utf-8"))
     expected = {
-        2000: "movie",
-        5000: "tv",
-        6000: "xxx",
+        2000: None,
+        5000: None,
+        6000: None,
         7010: "magazine",
         7020: "book",
         7030: "comic",

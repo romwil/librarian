@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 
 from librarian import __version__
 from librarian.auth import has_real_owner, is_public_handshake, seed_env_owner, user_from_request
+from librarian.bad_releases import start_bad_release_migration
 from librarian.config import load_merged_settings
 from librarian.db import Database
 from librarian.indexers.sync import sync_nzbfinder
@@ -65,6 +66,7 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         poller = JobPoller(db, lambda: load_merged_settings(root), data_dir=root)
         poller.start()
         application.state.poller = poller
+        start_bad_release_migration(db, root)
         try:
             yield
         finally:

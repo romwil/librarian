@@ -175,7 +175,7 @@ def test_classic_caps_xml_feeds_books_not_movies_by_default():
     library = category_feeds(caps, extra=False)
     extra = category_feeds(caps, extra=True)
     assert {row["id"] for row in library} == {"7010", "7020", "7030"}
-    assert "2040" in {row["id"] for row in extra}
+    assert "2040" not in {row["id"] for row in extra}
     assert "2040" not in {row["id"] for row in library}
 
 
@@ -273,8 +273,8 @@ def test_documented_tree_covers_books_and_audiobook_without_credentials():
     assert "1010" not in feeds
     assert "2040" not in feeds
     extra = {row["id"] for row in category_feeds(DRUNKENSLUG_CAPS, extra=True)}
-    assert "2040" in extra
-    assert "5040" in extra
+    assert "2040" not in extra
+    assert "5040" not in extra
     assert documented_caps_for_host({"id": "nzbfinder", "url": "https://nzbfinder.ws"}) is None
     assert documented_caps_for_host({"id": "alt", "url": "https://drunkenslug.com"}) is DRUNKENSLUG_CAPS
 

@@ -52,7 +52,7 @@ def test_features_ops_returns_ops_posture(tmp_path, monkeypatch):
     assert resp.status_code == 200
     body = resp.json()
     assert "session_secret_ok" in body
-    assert "show_extra_categories" in body
+    assert "show_extra_categories" not in body
     assert "notifications" in body
     assert "mail_configured" in body["notifications"]
     assert "channels" in body["notifications"]

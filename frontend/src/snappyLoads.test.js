@@ -2,12 +2,11 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { test } from "node:test";
+import { test } from "vitest";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const appSrc = readFileSync(join(root, "App.jsx"), "utf8");
 const hallSrc = readFileSync(join(root, "pages/HallPage.jsx"), "utf8");
-const collectionSrc = readFileSync(join(root, "components/HallCollection.jsx"), "utf8");
 const workSrc = readFileSync(join(root, "pages/WorkPage.jsx"), "utf8");
 const warmLoadSrc = readFileSync(join(root, "components/WarmLoad.jsx"), "utf8");
 
@@ -20,18 +19,13 @@ test("App boots auth once and soft-refreshes badges without clearing the shell",
   assert.equal(/setUser\(undefined\)/.test(appSrc), false);
 });
 
-test("Hall shelves cancel on unmount and load with one short line", () => {
+test("Hall shelves cancel on unmount and show a warm load", () => {
   assert.match(hallSrc, /cancelled = true/);
-  assert.doesNotMatch(hallSrc, /Warming the lamp/);
-  assert.doesNotMatch(hallSrc, /Still warming the shelves/);
-  assert.match(collectionSrc, /Loading the shelves\./);
-});
-
-test("Hall soft-fills local gaps after shelves paint", () => {
-  assert.match(hallSrc, /gapsLocal\(\)/);
-  assert.match(hallSrc, /gaps_pending/);
-  assert.match(hallSrc, /tonight_gap/);
-  assert.match(hallSrc, /gaps_pending: false/);
+  assert.match(hallSrc, /WarmLoad/);
+  assert.match(hallSrc, /Warming the lamp on the Hall/);
+  assert.match(hallSrc, /testId="hall-loading"/);
+  assert.match(warmLoadSrc, /aria-busy="true"/);
+  assert.doesNotMatch(hallSrc, /gapsLocal\(\)/);
 });
 
 test("WorkPage cancels in-flight detail loads on unmount or id change", () => {
