@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
 import { ADD_TO_LIBRARY_LEDE, FIELD_HELP, humanError } from "../copy.js";
 import {
@@ -39,11 +39,16 @@ export default function AddToLibrary({ embedded = false } = {}) {
     setPreviewLoading(false);
   }
 
-  function load(next = path) {
+  const pathRef = useRef(path);
+  pathRef.current = path;
+
+  const load = useCallback((next) => {
+    const target = next === undefined ? pathRef.current : next;
     setError("");
-    clearPreview();
+    setPreview(null);
+    setPreviewLoading(false);
     return api
-      .fs(next)
+      .fs(target)
       .then((data) => {
         setRoot(data.root || "");
         setPath(data.path || "");
@@ -51,11 +56,11 @@ export default function AddToLibrary({ embedded = false } = {}) {
         setEntries(filterBrowseEntries(data.entries || []));
       })
       .catch((err) => setError(humanError(err)));
-  }
+  }, []);
 
   useEffect(() => {
     load("");
-  }, []);
+  }, [load]);
 
   useEffect(() => {
     let cancelled = false;
@@ -111,7 +116,7 @@ export default function AddToLibrary({ embedded = false } = {}) {
       cancelled = true;
       window.clearTimeout(pollRef.current);
     };
-  }, [busy]);
+  }, [busy, load]);
 
   async function onLookFirst() {
     if (!path || busy) return;

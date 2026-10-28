@@ -372,7 +372,7 @@ export function toggleBrowseFold(current, id, storage = globalThis.sessionStorag
     author: Boolean(current?.author),
     series: Boolean(current?.series),
     genre: Boolean(current?.genre),
-    [id]: !Boolean(current?.[id]),
+    [id]: !current?.[id],
   };
   try {
     storage?.setItem?.(FOLD_STORAGE_KEY, JSON.stringify(next));

@@ -19,7 +19,7 @@ export function looksLikeDumpTitle(value) {
   const dots = (text.match(/\./g) || []).length;
   if (dots >= 3) return true;
   if (
-    /\b(audio[\.\s_\-]*book|ebook|epub|mobi|azw3|hybrid|retail|proper|repack|bitbook|comic|cbr|cbz|mp3|flac|m4b|unabridged|abridged)\b/i.test(
+    /\b(audio[.\s_-]*book|ebook|epub|mobi|azw3|hybrid|retail|proper|repack|bitbook|comic|cbr|cbz|mp3|flac|m4b|unabridged|abridged)\b/i.test(
       text,
     )
   ) {

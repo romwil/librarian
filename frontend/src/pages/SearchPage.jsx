@@ -37,6 +37,11 @@ function fieldsFromState(draft, kind, advanced) {
   });
 }
 
+/** Property list, so an effect can depend on each field without the object identity. */
+function snapshotFindFields(q, kind, author, title, isbn, series, issue, artist, album, year) {
+  return { q, kind, author, title, isbn, series, issue, artist, album, year };
+}
+
 function FacetGroup({ legend, options, value, onChange, counts, always }) {
   const visible = options.filter(([key]) => always || value === key || (counts[key] || 0) > 0);
   if (!visible.length) return null;
@@ -104,7 +109,19 @@ export default function SearchPage() {
   const [jobs, setJobs] = useState({});
 
   useEffect(() => {
-    const next = fieldsFromState(fields.q, fields.kind, fields);
+    const bag = snapshotFindFields(
+      fields.q,
+      fields.kind,
+      fields.author,
+      fields.title,
+      fields.isbn,
+      fields.series,
+      fields.issue,
+      fields.artist,
+      fields.album,
+      fields.year,
+    );
+    const next = fieldsFromState(fields.q, fields.kind, bag);
     setDraft(next.q);
     setKind(next.kind);
     setAdvanced(next);
@@ -124,8 +141,20 @@ export default function SearchPage() {
     let alive = true;
     setPhase("local");
     setError("");
+    const bag = snapshotFindFields(
+      fields.q,
+      fields.kind,
+      fields.author,
+      fields.title,
+      fields.isbn,
+      fields.series,
+      fields.issue,
+      fields.artist,
+      fields.album,
+      fields.year,
+    );
     api
-      .search(composed, { beyond: true, kind: fields.kind, mode, ...fields })
+      .search(composed, { beyond: true, kind: fields.kind, mode, ...bag })
       .then((data) => {
         if (!alive) return;
         setResult({
@@ -145,7 +174,7 @@ export default function SearchPage() {
     return () => {
       alive = false;
     };
-  }, [composed, fields.kind, mode, fields.author, fields.title, fields.isbn, fields.series, fields.year, fields.issue, fields.artist, fields.album]);
+  }, [composed, fields.q, fields.kind, mode, fields.author, fields.title, fields.isbn, fields.series, fields.year, fields.issue, fields.artist, fields.album]);
 
   useEffect(() => {
     if (!discoverOpen) return undefined;
@@ -262,7 +291,7 @@ export default function SearchPage() {
   const counts = countSearchFacets(result);
   const filtered = applySearchFacets(result, facet);
   const yearEntries = yearFacetEntries(counts.years);
-  const yearOptions = yearEntries.map(([year, count]) => [year, year]);
+  const yearOptions = yearEntries.map(([year]) => [year, year]);
   const yearCounts = Object.fromEntries(yearEntries);
   const beyondItems = (filtered.beyond || []).map((item) => ({
     ...item,
