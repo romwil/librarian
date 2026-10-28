@@ -226,7 +226,7 @@ def suggest_items(
     if key not in SUGGEST_FIELDS:
         return []
     kind_key = str(kind or "").strip().lower()
-    if kind_key and kind_key not in ALL_KINDS and kind_key not in {"movie", "tv", "xxx"}:
+    if kind_key and kind_key not in ALL_KINDS:
         kind_key = ""
     try:
         capped = max(1, min(int(limit or DEFAULT_LIMIT), MAX_LIMIT))

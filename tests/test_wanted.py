@@ -87,19 +87,22 @@ def _audiobook_want(database: Database, **overrides):
         author=fields["author"],
         isbn=fields["isbn"],
     )
-    return database.insert_wanted(
-        {
-            "dedupe_key": key,
-            "work_id": fields.get("work_id") or None,
-            "title": fields["title"],
-            "author": fields["author"],
-            "isbn": fields["isbn"],
-            "kind": fields["kind"],
-            "status": "wanted",
-            "miss_streak": 0,
-            "next_search_at": NOW,
-        }
-    )
+    row = {
+        "dedupe_key": key,
+        "work_id": fields.get("work_id") or None,
+        "title": fields["title"],
+        "author": fields["author"],
+        "isbn": fields["isbn"],
+        "kind": fields["kind"],
+        "status": fields.get("status") or "wanted",
+        "miss_streak": 0,
+        "next_search_at": NOW,
+    }
+    if "source" in overrides:
+        row["source"] = overrides["source"]
+    if overrides.get("job_id"):
+        row["job_id"] = overrides["job_id"]
+    return database.insert_wanted(row)
 
 
 def test_sweep_marks_unmatched_book_and_isbn_match_clears(db):
@@ -109,6 +112,7 @@ def test_sweep_marks_unmatched_book_and_isbn_match_clears(db):
         title="Dune",
         author="Frank Herbert",
         isbn=DUNE_ISBN,
+        genre="Fiction",
     )
     _shelve(db, kind="magazine", title="Wired", author="")
     unshelved = db.upsert_work({"kind": "book", "title": "Shell", "author": "Nobody"})
@@ -118,6 +122,7 @@ def test_sweep_marks_unmatched_book_and_isbn_match_clears(db):
     assert rows[0]["work_id"] == book["id"]
     assert rows[0]["kind"] == "audiobook"
     assert rows[0]["status"] == "wanted"
+    assert rows[0]["source"] == "sweep"
     assert all(row["work_id"] != unshelved["id"] for row in rows)
     assert sweep_wanted_audiobooks(db, now=NOW) == 0
     assert len(db.list_wanted()) == 1
@@ -136,7 +141,14 @@ def test_sweep_marks_unmatched_book_and_isbn_match_clears(db):
 
 def test_idle_sweep_does_not_reconnect_per_book(db, monkeypatch):
     for index in range(30):
-        _shelve(db, kind="book", title=f"Title {index}", author=f"Author {index}", isbn="")
+        _shelve(
+            db,
+            kind="book",
+            title=f"Title {index}",
+            author=f"Author {index}",
+            isbn="",
+            genre="Fiction",
+        )
     assert sweep_wanted_audiobooks(db, now=NOW) == 30
     calls = {"n": 0}
     original = Database._connect
@@ -151,7 +163,7 @@ def test_idle_sweep_does_not_reconnect_per_book(db, monkeypatch):
 
 
 def test_sweep_does_not_call_the_indexer(db, monkeypatch):
-    _shelve(db, kind="book", title="Dune", author="Frank Herbert", isbn=DUNE_ISBN)
+    _shelve(db, kind="book", title="Dune", author="Frank Herbert", isbn=DUNE_ISBN, genre="Fiction")
 
     def explode(self, *args, **kwargs):
         raise AssertionError("sweep called the indexer")
@@ -162,7 +174,7 @@ def test_sweep_does_not_call_the_indexer(db, monkeypatch):
 
 
 def test_dismissed_row_is_never_searched(db):
-    book = _shelve(db, kind="book", title="Dune", author="Frank Herbert", isbn=DUNE_ISBN)
+    book = _shelve(db, kind="book", title="Dune", author="Frank Herbert", isbn=DUNE_ISBN, genre="Fiction")
     assert sweep_wanted_audiobooks(db, now=NOW) == 1
     row = db.list_wanted()[0]
     assert row["work_id"] == book["id"]
@@ -178,6 +190,159 @@ def test_dismissed_row_is_never_searched(db):
     assert calls == []
     assert sweep_wanted_audiobooks(db, now=NOW + 5) == 0
     assert db.get_wanted(row["id"])["status"] == "dismissed"
+
+
+def test_sweep_skips_nonfiction_book(db):
+    history = _shelve(
+        db,
+        kind="book",
+        title="The Power Broker",
+        author="Robert Caro",
+        genre="Biography, History",
+    )
+    fiction = _shelve(
+        db,
+        kind="book",
+        title="Dune",
+        author="Frank Herbert",
+        isbn=DUNE_ISBN,
+        genre="Science Fiction, Fantasy",
+    )
+    assert sweep_wanted_audiobooks(db, now=NOW) == 1
+    rows = db.list_wanted()
+    assert [row["work_id"] for row in rows] == [fiction["id"]]
+    assert rows[0]["source"] == "sweep"
+    assert all(row["work_id"] != history["id"] for row in rows)
+
+
+def test_sweep_skips_unknown_genre(db):
+    _shelve(db, kind="book", title="Untitled Poems", author="Ada Lovelace", genre="")
+    _shelve(db, kind="book", title="Field Notes", author="Ada Lovelace", genre="Poetry")
+    assert sweep_wanted_audiobooks(db, now=NOW) == 0
+    assert db.list_wanted() == []
+
+
+def test_sweep_clears_untouched_nonfiction_row(db):
+    book = _shelve(
+        db,
+        kind="book",
+        title="Circe",
+        author="Madeline Miller",
+        genre="Fiction",
+    )
+    assert sweep_wanted_audiobooks(db, now=NOW) == 1
+    row = db.list_wanted()[0]
+    assert row["source"] == "sweep"
+    assert row["job_id"] is None
+    stored = db.get_work(book["id"])
+    assert stored is not None
+    stored["genre"] = "Biography"
+    db.upsert_work(stored)
+    assert sweep_wanted_audiobooks(db, now=NOW) == 0
+    assert db.get_wanted(row["id"]) is None
+
+    kept = _shelve(
+        db,
+        kind="book",
+        title="The Left Hand of Darkness",
+        author="Ursula K. Le Guin",
+        genre="Fiction",
+    )
+    assert sweep_wanted_audiobooks(db, now=NOW) == 1
+    dismissed_row = next(item for item in db.list_wanted() if item["work_id"] == kept["id"])
+    assert db.dismiss_wanted(dismissed_row["id"], now=NOW)["status"] == "dismissed"
+    kept_stored = db.get_work(kept["id"])
+    assert kept_stored is not None
+    kept_stored["genre"] = "History"
+    db.upsert_work(kept_stored)
+    assert sweep_wanted_audiobooks(db, now=NOW) == 0
+    assert db.get_wanted(dismissed_row["id"])["status"] == "dismissed"
+    kept_stored["genre"] = "Science Fiction"
+    db.upsert_work(kept_stored)
+    assert sweep_wanted_audiobooks(db, now=NOW) == 0
+    assert db.get_wanted(dismissed_row["id"])["status"] == "dismissed"
+
+    legacy_book = _shelve(
+        db,
+        kind="book",
+        title="Salt Fat Acid Heat",
+        author="Samin Nosrat",
+        genre="Cooking",
+    )
+    legacy = _audiobook_want(db, title="Salt Fat Acid Heat", author="Samin Nosrat", work_id=legacy_book["id"], isbn="")
+    assert legacy.get("source") in (None, "")
+    unknown_book = _shelve(db, kind="book", title="Field Guide", author="Ada Lovelace", genre="Essays")
+    unknown = _audiobook_want(db, title="Field Guide", author="Ada Lovelace", work_id=unknown_book["id"], isbn="")
+    assert sweep_wanted_audiobooks(db, now=NOW) == 0
+    assert db.get_wanted(legacy["id"]) is None
+    assert db.get_wanted(unknown["id"]) is None
+
+
+def test_sweep_keeps_row_with_job_and_manual_row(db):
+    job_book = _shelve(
+        db,
+        kind="book",
+        title="Team of Rivals",
+        author="Doris Kearns Goodwin",
+        genre="History",
+    )
+    job_row = _audiobook_want(
+        db,
+        title="Team of Rivals",
+        author="Doris Kearns Goodwin",
+        work_id=job_book["id"],
+        isbn="",
+        source="sweep",
+        job_id="job-rivals",
+    )
+    manual_book = _shelve(
+        db,
+        kind="book",
+        title="Good to Great",
+        author="Jim Collins",
+        genre="Business",
+    )
+    manual = _audiobook_want(
+        db,
+        title="Good to Great",
+        author="Jim Collins",
+        work_id=manual_book["id"],
+        isbn="",
+        source="manual",
+    )
+    legacy_book = _shelve(
+        db,
+        kind="book",
+        title="A Brief History of Time",
+        author="Stephen Hawking",
+        genre="Science",
+    )
+    legacy_job = _audiobook_want(
+        db,
+        title="A Brief History of Time",
+        author="Stephen Hawking",
+        work_id=legacy_book["id"],
+        isbn="",
+        job_id="job-hawking",
+    )
+    fiction = _shelve(
+        db,
+        kind="book",
+        title="The Hobbit",
+        author="J.R.R. Tolkien",
+        genre="Fantasy",
+    )
+    assert sweep_wanted_audiobooks(db, now=NOW) == 1
+    assert db.get_wanted(job_row["id"])["job_id"] == "job-rivals"
+    assert db.get_wanted(job_row["id"])["status"] == "wanted"
+    kept_manual = db.get_wanted(manual["id"])
+    assert kept_manual["source"] == "manual"
+    assert kept_manual["job_id"] is None
+    assert kept_manual["status"] == "wanted"
+    assert db.get_wanted(legacy_job["id"])["job_id"] == "job-hawking"
+    created = [row for row in db.list_wanted() if row["work_id"] == fiction["id"]]
+    assert len(created) == 1
+    assert created[0]["source"] == "sweep"
 
 
 def test_due_row_enqueues_one_asked_job_and_second_poll_is_quiet(db, monkeypatch):
@@ -515,6 +680,13 @@ def test_add_wanted_with_work_id_copies_catalog_fields(tmp_path, monkeypatch):
     assert item["title"] == "Parable of the Sower"
     assert item["author"] == "Octavia Butler"
     assert item["kind"] == "audiobook"
+    database = Database(tmp_path / "librarian.db")
+    try:
+        stored = database.get_wanted(item["id"])
+        assert stored is not None
+        assert stored["source"] == "manual"
+    finally:
+        database.close()
     missing = client.post("/api/wanted", json={"work_id": "missing-work", "kind": "book"})
     assert missing.status_code == 404
 

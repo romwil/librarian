@@ -21,6 +21,10 @@ REVIEW_COMICVINE_UNMATCHED = "comicvine_unmatched"
 REVIEW_AUDNEXUS_AMBIGUOUS = "audnexus_ambiguous"
 REVIEW_AUDNEXUS_UNMATCHED = "audnexus_unmatched"
 REVIEW_QUIET_HOURS = "quiet_hours"
+REVIEW_POSSIBLE_DUPLICATE = "possible_duplicate"
+
+# Piles where Purge duplicate group is offered.
+DUPLICATE_REVIEW_REASONS = frozenset({REVIEW_POSSIBLE_DUPLICATE, REVIEW_COLLISION})
 
 # Alias kept for jobs / ingest comparisons that historically used this name.
 UNPACK_STUCK = REVIEW_UNPACK_STUCK
@@ -41,11 +45,14 @@ ALL_REVIEW_REASONS = frozenset(
         REVIEW_AUDNEXUS_AMBIGUOUS,
         REVIEW_AUDNEXUS_UNMATCHED,
         REVIEW_QUIET_HOURS,
+        REVIEW_POSSIBLE_DUPLICATE,
     }
 )
 
 __all__ = [
     "ALL_REVIEW_REASONS",
+    "DUPLICATE_REVIEW_REASONS",
+    "REVIEW_POSSIBLE_DUPLICATE",
     "REVIEW_AUDNEXUS_AMBIGUOUS",
     "REVIEW_AUDNEXUS_UNMATCHED",
     "REVIEW_COLLISION",

@@ -1,7 +1,8 @@
 ---
 description: >-
-  UI & Testing Architecture — adversarial triad (Vitest target / Node interim,
-  Playwright, axe). Use when writing or reviewing frontend UI, e2e, or locators.
+  UI & Testing Architecture — adversarial triad (Vitest + Testing Library unit
+  runner via `npm test`; Playwright; axe wired in e2e/axe.spec.ts).
+  Use when writing or reviewing frontend UI, e2e, or locators.
   Prohibits mocked-state-toggle tests.
 globs: frontend/**/*,**/e2e/**/*,playwright.config.*,docs/TESTING.md,TESTING.md,.cursor/skills/interactive-ui-qa/**
 alwaysApply: false
@@ -35,9 +36,9 @@ Ports / hosts stay elsewhere — do not fork them here:
 
 | Layer | This repo | Proves |
 |-------|-----------|--------|
-| **1. Unit** | Target = **Vitest**. Interim = `cd frontend && npm test` (`node --test`). Same rigor either way. | Contracts, validation, malformed-payload fuzz |
+| **1. Unit** | **Vitest** is the runner: `cd frontend && npm test`. Component tests render with Testing Library (jsdom). | Contracts, validation, malformed-payload fuzz |
 | **2. Playwright** | `npm run test:e2e` on **:8794** | Journeys, layout, multi-viewport, races |
-| **3. axe-core** | **Not wired yet** — required for major gauntlet / core-chrome once adopted | WCAG 2.1 AA, focus, Lights Up/Down |
+| **3. axe-core** | **Wired** — `e2e/axe.spec.ts` (`@axe-core/playwright` on **:8794**). Required for major gauntlet and core-chrome changes. | WCAG 2.1 AA, focus, Lights Up/Down |
 
 ## Guardrails
 
@@ -49,6 +50,6 @@ Stay **defensive**. No exploit PoCs.
 
 ## Cadence
 
-- **Patch / sprint UI:** Layer 1 on touched surfaces + targeted Playwright. axe when Hall shell, top bar, Settings, or auth gate changes (once wired).
+- **Patch / sprint UI:** Layer 1 on touched surfaces + targeted Playwright. axe when Hall shell, top bar, Settings, or auth gate changes.
 - **Major / full gauntlet:** full Layer 1 + Playwright matrix (desktop + reasonable mobile) + axe on `/`, login/setup, Hall, Review/Holds, Settings + unauthenticated secret-leak fuzz.
 - Gate: zero unit failures; `npm run build` succeeds; no unexplained Vite bundle growth; backend pytest **≥70%** when Python is touched.

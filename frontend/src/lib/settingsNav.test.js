@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { SETTINGS_NAV, settingsNavFromHash, settingsNavHref } from "./settingsNav.js";
 
 test("SETTINGS_NAV lists flat sections without wizard Prev/Next", () => {
@@ -32,7 +32,7 @@ test("SETTINGS_NAV lists flat sections without wizard Prev/Next", () => {
   );
 });
 
-test("settingsNavFromHash maps legacy indexer, bagging, and release-notes", () => {
+test("settingsNavFromHash maps legacy indexer and release-notes", () => {
   assert.equal(settingsNavFromHash("#about")?.id, "about");
   assert.equal(settingsNavFromHash("#release-notes")?.id, "about");
   assert.equal(settingsNavFromHash("#whats-new")?.id, "about");
@@ -41,7 +41,7 @@ test("settingsNavFromHash maps legacy indexer, bagging, and release-notes", () =
   assert.equal(settingsNavFromHash("#indexer")?.id, "indexers");
   assert.equal(settingsNavFromHash("#rss")?.id, "indexers");
   assert.equal(settingsNavFromHash("#shelving")?.id, "shelving");
-  assert.equal(settingsNavFromHash("#bagging")?.id, "shelving");
+  assert.equal(settingsNavFromHash("#bagging"), null);
   assert.equal(settingsNavFromHash("#downloader")?.step, 0);
   assert.equal(settingsNavFromHash("#missing"), null);
 });

@@ -4,6 +4,7 @@ import { api } from "../api.js";
 import { browseHref } from "../browse.js";
 import QueryForm from "../components/QueryForm.jsx";
 import Rail from "../components/Rail.jsx";
+import WarmLoad from "../components/WarmLoad.jsx";
 import { emptyHallCopy, humanError, setupComplete } from "../copy.js";
 import { continueRailItems, notedRailItems } from "../hallRails.js";
 
@@ -59,43 +60,6 @@ function HallRails({ owner, configured }) {
   }, []);
 
   useEffect(() => {
-    if (phase !== "ready" || !hall?.gaps_pending) return undefined;
-    let cancelled = false;
-    api
-      .gapsLocal()
-      .then((data) => {
-        if (cancelled) return;
-        setHall((prev) => {
-          if (!prev) return prev;
-          const nextGap = data?.tonight_gap ?? null;
-          const tonight = prev.tonight
-            ? {
-                ...prev.tonight,
-                gap: nextGap,
-                empty: !(prev.tonight.continue || nextGap || prev.tonight.surprise),
-              }
-            : prev.tonight;
-          return {
-            ...prev,
-            gaps: Array.isArray(data?.gaps) ? data.gaps : [],
-            gaps_presence: data?.gaps_presence ?? prev.gaps_presence,
-            series_catch_up: data?.series_catch_up ?? prev.series_catch_up,
-            gaps_pending: false,
-            tonight,
-          };
-        });
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setHall((prev) => (prev ? { ...prev, gaps_pending: false } : prev));
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [phase, hall?.gaps_pending]);
-
-  useEffect(() => {
     if (phase !== "ready") return undefined;
     let cancelled = false;
     api
@@ -116,7 +80,9 @@ function HallRails({ owner, configured }) {
   const recent = continueRailItems(hall?.whats_new);
   const favorites = continueRailItems(hall?.favorites);
 
-  if (phase === "loading") return null;
+  if (phase === "loading") {
+    return <WarmLoad message="Warming the lamp on the Hall…" testId="hall-loading" />;
+  }
 
   return (
     <div className="hall-shelves" data-testid="hall-shelves">

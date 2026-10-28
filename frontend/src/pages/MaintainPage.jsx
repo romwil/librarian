@@ -66,6 +66,38 @@ function splitMixedProgressSummary(status) {
   return status.phase ? `Splitting blends… ${status.phase}` : "Splitting blends…";
 }
 
+function formatPollerInterval(seconds) {
+  const n = Number(seconds);
+  if (!Number.isFinite(n) || n <= 0) return "";
+  if (n % 3600 === 0) {
+    const hours = n / 3600;
+    return `every ${hours} ${hours === 1 ? "hour" : "hours"}`;
+  }
+  if (n % 60 === 0) {
+    const minutes = n / 60;
+    return `every ${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
+  }
+  const rounded = Math.round(n);
+  return `every ${rounded} ${rounded === 1 ? "second" : "seconds"}`;
+}
+
+function formatPollerTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Not run yet";
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function pollerStepsFrom(body) {
+  const steps = body?.poller?.steps;
+  if (!Array.isArray(steps)) return [];
+  return steps.filter((step) => step && typeof step.id === "string" && typeof step.label === "string");
+}
+
 export default function MaintainPage() {
   const { user } = useOutletContext() || {};
   const [scan, setScan] = useState("");
@@ -112,6 +144,28 @@ export default function MaintainPage() {
   const [calibreLoading, setCalibreLoading] = useState(false);
   const [calibreBusy, setCalibreBusy] = useState(false);
   const [calibreNote, setCalibreNote] = useState("");
+  const [pollerSteps, setPollerSteps] = useState([]);
+
+  useEffect(() => {
+    if (user?.role !== "owner") return undefined;
+    let cancelled = false;
+
+    async function loadPoller() {
+      try {
+        const body = await api.maintainJobsStatus();
+        if (!cancelled) setPollerSteps(pollerStepsFrom(body));
+      } catch {
+        if (!cancelled) setPollerSteps([]);
+      }
+    }
+
+    loadPoller();
+    const id = window.setInterval(loadPoller, 30000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [user?.role]);
 
   useEffect(() => {
     if (user?.role !== "owner") return undefined;
@@ -630,6 +684,26 @@ export default function MaintainPage() {
       </p>
 
       <MorningBrief brief={morningBrief} loading={morningBriefLoading} />
+      {Array.isArray(morningBrief?.screen_leftovers?.items) && morningBrief.screen_leftovers.items.length > 0 ? (
+        <section
+          className="maintain-section"
+          data-testid="maintain-screen-leftovers"
+          aria-labelledby="maintain-screen-leftovers-heading"
+        >
+          <p className="kicker">Catalog</p>
+          <h2 id="maintain-screen-leftovers-heading">Movie and TV rows</h2>
+          <p className="lede">{morningBrief.screen_leftovers.note}</p>
+          <ul>
+            {morningBrief.screen_leftovers.items.map((row) => (
+              <li key={row.id || `${row.kind}-${row.title}`}>
+                {row.title || "Untitled"}
+                {row.kind ? ` · ${row.kind}` : ""}
+                {row.author ? ` · ${row.author}` : ""}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <IndexerScorecard
         card={indexerCard}
@@ -649,6 +723,37 @@ export default function MaintainPage() {
       {groomingUndoNote ? <p className="muted">{groomingUndoNote}</p> : null}
 
       <MaintainStatusDock />
+
+      {pollerSteps.length ? (
+        <section className="maintain-section" id="maintain-poller" data-testid="maintain-poller">
+          <p className="kicker">Cadence</p>
+          <h2>Background checks</h2>
+          <p className="lede">
+            Downloads poll on the short cadence. Enrich, RSS, the audiobook sweep, and wanted search
+            each keep their own interval.
+          </p>
+          {pollerSteps.map((step) => {
+            const error = typeof step.last_error === "string" ? step.last_error.trim() : "";
+            const interval = formatPollerInterval(step.interval_seconds);
+            const ran = step.last_run ? `Last run ${formatPollerTime(step.last_run)}` : "Not run yet";
+            return (
+              <div key={step.id}>
+                <p className="muted" data-testid={`maintain-poller-${step.id}`}>
+                  {step.label}
+                  {interval ? ` · ${interval}` : ""}
+                  {" · "}
+                  {ran}
+                </p>
+                {error ? (
+                  <p className="alert" role="status" data-testid={`maintain-poller-${step.id}-error`}>
+                    {step.label}: {error}
+                  </p>
+                ) : null}
+              </div>
+            );
+          })}
+        </section>
+      ) : null}
 
       <section className="maintain-section" data-testid="maintain-curated">
         <p className="kicker">Curated</p>

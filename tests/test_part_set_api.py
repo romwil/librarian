@@ -79,8 +79,9 @@ def test_hall_gaps_include_multipart_cards(tmp_path, monkeypatch):
             "part": 3,
         }
     )
-    hall = client.get("/api/hall").json()
-    assert hall.get("gaps_pending") is True
+    hall = client.get("/api/hall")
+    assert hall.status_code == 200
+    assert "gaps_pending" not in hall.json()
     soft = client.get("/api/gaps/local").json()
     multipart = [card for card in soft.get("gaps") or [] if card.get("gap_type") == "multipart"]
     assert multipart

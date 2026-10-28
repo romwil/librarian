@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import { continueRailItems, notedRailItems } from "./hallRails.js";
 
 test("a continue rail is omitted when it has no items", () => {

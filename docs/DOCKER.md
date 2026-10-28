@@ -1,17 +1,6 @@
 # Librarian — Docker / Unraid
 
-Librarian is a single container. The web UI listens on **8793**.
-
-Everyday Automat path **now:** on-host build with `./docker-run.sh` (same early Smart Map kit). Hub `romwil/librarian` + pull-only `rollout.sh` are **not** current truth — deferred milestone. Never treat public DNS as version truth; LAN host only — [ops/AUTOMAT.md](ops/AUTOMAT.md).
-
-## Ports — do not collide
-
-| App | Port |
-| --- | --- |
-| **Librarian** | **8793** |
-| Projectionist | 8788 |
-| Smart Map / Projectionist QA | 8790 |
-| Lobby / QA Lobby | 8791 / 8792 |
+Librarian is a single container. Ports, the Automat kit, and deploy (`./docker-run.sh` on the host) are in [ops/AUTOMAT.md](ops/AUTOMAT.md). This page is volumes, the Unraid user, DNS, owner env, data layout, and image build.
 
 ## Volumes
 
@@ -59,31 +48,16 @@ Rotating the env password on restart updates the **same** username’s hash (Unr
 
 `settings.json` wins for keys already saved in the UI. Env fills missing keys. Blank secrets still take env until you save a key. `docker-run.sh` also passes optional `HARDCOVER_API_TOKEN`, `NYT_BOOKS_API_KEY`, `COMICVINE_API_KEY`, `AUDIOBOOKSHELF_URL`, `AUDIOBOOKSHELF_API_TOKEN`, `RADARR_URL`, `RADARR_API_KEY`, `SONARR_URL`, `SONARR_API_KEY`, and `SHOW_EXTRA_CATEGORIES` from `.env` (names only — never log values).
 
-## Unraid (no Compose)
+## Deploy
 
-Stock Unraid has no Compose. Kit lives at `/mnt/user/appdata/librarian`:
+Kit path, rsync, on-host `./docker-run.sh`, and the LAN URL are in [ops/AUTOMAT.md](ops/AUTOMAT.md#deploy-now-on-host-build). Hub `rollout.sh` is not the current path.
 
-```bash
-ssh automat
-cd /mnt/user/appdata/librarian
-./docker-run.sh          # on-host build — current Automat path
-# ./rollout.sh           # Hub stub only — not current; fails until romwil/librarian exists
-```
-
-When rsyncing the kit, stamp the checkout rev so `.build-info` is honest:
-
-```bash
-git rev-parse --short HEAD > .source-rev
-```
-
-Or Compose on a host that has it:
+On a host that has Compose, the same image can be built with:
 
 ```bash
 cp .env.example .env
 DATA_HOST=/mnt/user/data docker compose up --build -d
 ```
-
-Open **http://10.10.1.202:8793** on Automat LAN (not a public VIP).
 
 ## Data layout
 

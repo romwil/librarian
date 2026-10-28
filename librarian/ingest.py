@@ -769,7 +769,7 @@ def progress_ingest_job(db: Database, settings: Settings, job_id: str) -> Dict[s
         )
         return updated or job
     identity = organized.get("identity") or {}
-    if organized.get("skipped_unreadable"):
+    if organized.get("skipped_unreadable") or organized.get("skipped_cooldown"):
         final = "skipped"
         work = None
     else:

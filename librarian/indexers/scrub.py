@@ -15,6 +15,9 @@ def public_indexer_hit(hit: Optional[Mapping[str, Any]]) -> Optional[Dict[str, A
     if not isinstance(hit, Mapping):
         return None
     out = {key: value for key, value in hit.items() if key not in _DROP_KEYS}
+    poster = str(out.pop("poster", "") or "").strip()
+    if poster and not str(out.get("cover") or "").strip():
+        out["cover"] = poster
     for key in _URL_KEYS:
         if key in out:
             out[key] = strip_secret_query(str(out.get(key) or ""))
@@ -35,6 +38,9 @@ def public_job_payload(payload: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
     if not isinstance(payload, Mapping):
         return {}
     out = {key: value for key, value in payload.items() if key not in _DROP_KEYS}
+    poster = str(out.pop("poster", "") or "").strip()
+    if poster and not str(out.get("cover") or "").strip():
+        out["cover"] = poster
     for key in ("selected", "retrieved", "details"):
         nested = out.get(key)
         if isinstance(nested, Mapping):

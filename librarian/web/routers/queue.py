@@ -18,7 +18,6 @@ from librarian.jobs import (
     poll_active_jobs,
     poll_job,
 )
-from librarian.kinds import EXTRA_KINDS
 from librarian.nzbfinder import NZBFinderError
 from librarian.rss import poll_rss_feeds
 from librarian.sabnzbd import SABError
@@ -41,8 +40,8 @@ def register_queue_routes(app: FastAPI, deps: WebDeps) -> None:
         require_role(user, "owner", "op", "reader")
         item = payload.model_dump()
         kind = str(item.get("kind") or (item.get("selected") or {}).get("kind") or "")
-        if kind in EXTRA_KINDS and not settings().show_extra_categories:
-            raise HTTPException(status_code=400, detail="Show categories is off")
+        if kind in {"movie", "tv", "xxx"}:
+            raise HTTPException(status_code=400, detail="That kind is not on these shelves.")
         try:
             job = enqueue_indexer_item(
                 db, settings(), item=item, requested_by=user["id"], role=user["role"]

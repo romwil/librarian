@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 import { fileURLToPath } from "node:url";
 import { placeActionMenu, primaryActionOrder, primaryWorkAction, splitWorkActions } from "./workActionMenu.js";
+import { readStyles } from "../test/styles.js";
 
 const root = dirname(fileURLToPath(import.meta.url));
 
@@ -209,7 +210,7 @@ describe("placeActionMenu", () => {
 describe("peek grip placement in the sheet", () => {
   const peekSrc = readFileSync(join(root, "../components/WorkPeek.jsx"), "utf8");
   const menuSrc = readFileSync(join(root, "../components/WorkActionMenu.jsx"), "utf8");
-  const stylesSrc = readFileSync(join(root, "../styles.css"), "utf8");
+  const stylesSrc = readStyles();
 
   it("puts the peek grip in the action row, under Read on a phone", () => {
     assert.match(peekSrc, /className="peek-action-menu"/);

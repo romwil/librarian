@@ -6,15 +6,15 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from librarian.arr import ArrError, expect_on_arr, notify_arr_downloaded, sab_category_for_kind
+from librarian.bad_releases import release_bad_wanted
 from librarian.config import Settings
 from librarian.db import Database
 from librarian.identify import inspect_complete_folder, resolve_storage_path
 from librarian.indexers.hosts import client_for_host
 from librarian.indexers.query import build_job_payload, catalog_author, catalog_title
-from librarian.kinds import EXTRA_KINDS, KIND_MOVIE, KIND_TV, KIND_XXX
 from librarian.nzbfinder import NZBFinderClient, NZBFinderError
 from librarian.organize import organize_identified
+from librarian.review_reasons import REVIEW_NO_PAYLOAD
 from librarian.sabnzbd import SABClient
 
 logger = logging.getLogger(__name__)
@@ -24,6 +24,10 @@ ACTIVE_STATUSES = ("asked", "queued", "downloading", "extracting", "identifying"
 UNPACK_STUCK_ERROR = "Unpack did not finish; archives remain in the complete folder"
 MISSING_FOLDER_ERROR = "Complete folder not found after remapping SAB storage"
 NO_PAYLOAD_ERROR = "No usable files in the complete folder (only par2/nfo/nzb or empty)"
+BAD_RELEASE_ERROR = "Bad release — sent back to Wanted for another one. The download folder is still on disk."
+
+# Leftover Projectionist downloads. Leave the complete folder; do not file or delete it.
+_REMOVED_DOWNLOAD_KINDS = frozenset({"movie", "tv", "xxx"})
 
 
 def _fetch_details(finder: NZBFinderClient, guid: str) -> Dict[str, Any]:
@@ -80,19 +84,10 @@ def _queue_download(
         finder,
         guid=guid,
         nzbname=_sab_nzbname(selected=selected, item=item, catalog_title=str(title or "")),
-        cat=sab_category_for_kind(settings, kind),
+        cat="",
     )
     status = "queued"
     error = None
-    if kind in {KIND_MOVIE, KIND_TV}:
-        try:
-            payload["arr"] = expect_on_arr(settings, kind, {**item, **payload, "selected": selected})
-        except ArrError as err:
-            status = "review"
-            error = str(err)
-            payload["arr_error"] = str(err)
-    if kind == KIND_XXX:
-        payload["arr"] = {"service": None}
     fields = {
         "status": status,
         "nzo_id": nzo_id,
@@ -232,6 +227,7 @@ def find_identity_item(job: Dict[str, Any]) -> Dict[str, Any]:
     payload["isbn"] = isbn
     payload["kind"] = kind
     payload["guid"] = job.get("indexer_guid") or payload.get("guid") or selected.get("guid") or ""
+    payload["job_id"] = job.get("id") or ""
     payload["category"] = payload.get("category") or selected.get("category")
     payload["book_title"] = payload.get("book_title") or retrieved.get("book_title") or ""
     payload["series"] = sought.get("series") or payload.get("series") or ""
@@ -291,15 +287,8 @@ def poll_job(
         storage = resolve_storage_path(raw, settings.complete_root)
         sab_fields = _snapshot_job_fields(snapshot, storage_path=str(storage))
         kind = str(job.get("kind") or (job.get("payload") or {}).get("kind") or "")
-        if kind in EXTRA_KINDS:
-            if kind == KIND_XXX:
-                updated = db.update_job(job_id, status="organized", error=None, **sab_fields)
-                return updated or job
-            try:
-                notify_arr_downloaded(settings, kind, str(storage))
-            except ArrError as error:
-                updated = db.update_job(job_id, status="review", error=str(error), **sab_fields)
-                return updated or job
+        if kind in _REMOVED_DOWNLOAD_KINDS:
+            # Do not call Radarr/Sonarr, do not open a review slip, do not move files.
             updated = db.update_job(job_id, status="organized", error=None, **sab_fields)
             return updated or job
         # Missing folder is a hard fail (nothing to unpack). Archives-only /
@@ -326,7 +315,27 @@ def poll_job(
             indexer_item=item,
             move_source=True,
         )
-        if organized.get("skipped_unreadable"):
+        if organized.get("released_bad"):
+            updated = db.update_job(
+                job_id,
+                status="failed",
+                work_id=None,
+                error=BAD_RELEASE_ERROR,
+                **sab_fields,
+            )
+            return updated or job
+        if organized.get("skipped_unreadable") and organized.get("problem") == REVIEW_NO_PAYLOAD:
+            released = release_bad_wanted(db, reason=REVIEW_NO_PAYLOAD, job_id=job_id)
+            if released["released"]:
+                updated = db.update_job(
+                    job_id,
+                    status="failed",
+                    work_id=None,
+                    error=BAD_RELEASE_ERROR,
+                    **sab_fields,
+                )
+                return updated or job
+        if organized.get("skipped_unreadable") or organized.get("skipped_cooldown"):
             final = "skipped"
             work_id = None
         elif organized.get("skipped_duplicate") or organized.get("already_on_shelf"):

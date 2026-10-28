@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useOutletContext, useParams, useSearchParams } from "react-router-dom";
+import { Link, useOutletContext, useParams } from "react-router-dom";
 import { api } from "../api.js";
 import { busyLabel } from "../actionBusy.js";
 import { browseHref } from "../browse.js";
@@ -13,27 +13,19 @@ import AvailabilityActions from "../components/AvailabilityActions.jsx";
 import CatalogVerb from "../components/CatalogVerb.jsx";
 import { isIncompleteOwnedPartSet, ownedPartSetStatusLine, partSetFindFields } from "../findParts.js";
 import { useAlbumPlayer } from "../hooks/useAlbumPlayer.js";
+import { useWorkRooms, workCanListen, workCanRead } from "../hooks/useWorkRooms.js";
 import { finishRitualCopy, finishWhisperInvite, hallLampPeriod } from "../lib/lampRituals.js";
 import { catchUpCtaLabel, catchUpInvitation, missingRibbonBeads } from "../lib/seriesCatchUp.js";
-import { canListenInApp, isAudioFile } from "../listen.js";
-import {
-  canOpenInlineMedia,
-  canReadInApp,
-  primaryReadingFile,
-  readerCtaLabel,
-  workDownloadUrl,
-  workPrimaryVerb,
-} from "../reader.js";
+import { isAudioFile } from "../listen.js";
+import { canOpenInlineMedia, primaryReadingFile, readerCtaLabel, workDownloadUrl, workPrimaryVerb } from "../reader.js";
 import Rail from "../components/Rail.jsx";
 import WorkActionMenu from "../components/WorkActionMenu.jsx";
-import Reader from "../components/Reader.jsx";
-import AudiobookPlayer from "../components/AudiobookPlayer.jsx";
+import { WorkListenShell, WorkReaderShell } from "../components/WorkRoomShells.jsx";
 import PlexampToast from "../components/PlexampToast.jsx";
 import WarmLoad from "../components/WarmLoad.jsx";
 
 export default function WorkPage() {
   const { id } = useParams();
-  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useOutletContext();
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
@@ -47,10 +39,6 @@ export default function WorkPage() {
   const [matchCandidates, setMatchCandidates] = useState([]);
   const [matchLoading, setMatchLoading] = useState(false);
   const [matchApplying, setMatchApplying] = useState("");
-  const [reading, setReading] = useState(false);
-  const [readingFileId, setReadingFileId] = useState("");
-  const [listening, setListening] = useState(false);
-  const [listeningFileId, setListeningFileId] = useState("");
   const [whisperBody, setWhisperBody] = useState("");
   const [whisperNote, setWhisperNote] = useState("");
   const [plexamp, setPlexamp] = useState(null);
@@ -63,6 +51,8 @@ export default function WorkPage() {
     files: data?.files || [],
     enabled: Boolean(data?.can_download && data?.work?.kind === "music"),
   });
+  const rooms = useWorkRooms({ id, data, setData });
+  const { openReader, openListen } = rooms;
 
   useEffect(() => {
     let alive = true;
@@ -86,77 +76,6 @@ export default function WorkPage() {
     };
   }, [id]);
 
-  useEffect(() => {
-    if (!data) return;
-    const readable = Boolean(data.can_read) && canReadInApp(data.work, data.files);
-    const listenable =
-      Boolean(data.listen?.can_listen) && canListenInApp(data.work, data.files, Boolean(data.can_download));
-    if (searchParams.get("listen") === "1" && listenable) {
-      setListeningFileId(searchParams.get("file") || "");
-      setListening(true);
-      return;
-    }
-    if (searchParams.get("read") === "1" && readable) {
-      setReadingFileId(searchParams.get("file") || "");
-      setReading(true);
-    }
-  }, [searchParams, data]);
-
-  function openReader(fileId = "") {
-    const wanted = String(fileId || "").trim();
-    setReadingFileId(wanted);
-    setReading(true);
-    // Shareable deep link — same `?read=1&file=` contract as WorkPeek (`workReaderPath`).
-    const next = new URLSearchParams(searchParams);
-    next.delete("listen");
-    next.set("read", "1");
-    if (wanted) next.set("file", wanted);
-    else next.delete("file");
-    setSearchParams(next, { replace: true });
-  }
-
-  function closeReader() {
-    setReading(false);
-    setReadingFileId("");
-    if (searchParams.get("read") || searchParams.get("file")) {
-      const next = new URLSearchParams(searchParams);
-      next.delete("read");
-      next.delete("file");
-      setSearchParams(next, { replace: true });
-    }
-  }
-
-  async function openListen(fileId = "") {
-    const wanted = String(fileId || "").trim();
-    setListeningFileId(wanted);
-    // Refresh per-user progress so resume is not stale after a prior Listen session.
-    try {
-      const fresh = await api.work(id);
-      setData(fresh);
-    } catch {
-      /* keep existing payload */
-    }
-    setListening(true);
-    const next = new URLSearchParams(searchParams);
-    next.delete("read");
-    next.set("listen", "1");
-    if (wanted) next.set("file", wanted);
-    else next.delete("file");
-    setSearchParams(next, { replace: true });
-  }
-
-  function closeListen() {
-    setListening(false);
-    setListeningFileId("");
-    if (searchParams.get("listen") || searchParams.get("file")) {
-      const next = new URLSearchParams(searchParams);
-      next.delete("listen");
-      next.delete("file");
-      setSearchParams(next, { replace: true });
-    }
-    api.work(id).then(setData).catch(() => {});
-  }
-
   if (error) {
     return (
       <div className="admin-room page-settle">
@@ -173,13 +92,11 @@ export default function WorkPage() {
   }
 
   const work = data.work;
-  const canRead = Boolean(data.can_read) && canReadInApp(work, data.files);
-  const canListen =
-    Boolean(data.listen?.can_listen) && canListenInApp(work, data.files, Boolean(data.can_download));
+  const canRead = workCanRead(data);
+  const canListen = workCanListen(data);
   const canInlineOpen = canOpenInlineMedia(work, Boolean(data.can_download), canRead);
   const playerLink = data.listen?.player || null;
   const playerNote = data.listen?.player_note || "";
-  const listenRemember = data.listen?.remember || "";
   const komgaLink = data.komga?.reader || null;
   const mediaNote = peekMediaNote(work, { canDownload: Boolean(data.can_download), ready: true });
   const descriptionHtml = looksLikeHtml(work.description) ? sanitizeDescriptionHtml(work.description) : "";
@@ -466,7 +383,9 @@ export default function WorkPage() {
             {work.abs_item_id ? <span className="chip">On the player</span> : null}
           </div>
           <h1>{work.title}</h1>
-          <p className="work-sub">{[work.author, work.year, work.series_name, work.series_index].filter(Boolean).join(" · ")}</p>
+          <p className="work-sub">
+            {[work.author, work.year, work.series_name, work.series_index].filter(Boolean).join(" · ")}
+          </p>
           {work.cover_story ? (
             <p className="cover-story" data-testid="cover-story">
               {work.cover_story}
@@ -621,12 +540,7 @@ export default function WorkPage() {
             ) : null}
           </div>
           {finishCeremony ? (
-            <div
-              className="finish-ceremony"
-              data-testid="finish-ceremony"
-              role="region"
-              aria-label="Finished ceremony"
-            >
+            <div className="finish-ceremony" data-testid="finish-ceremony" role="region" aria-label="Finished ceremony">
               <p className="finish-ritual-note" data-testid="finish-ritual-note" role="status">
                 {finishRitualCopy(hallLampPeriod())}
               </p>
@@ -807,7 +721,11 @@ export default function WorkPage() {
               />
             ) : (
               <CatalogVerb
-                view={verb && verb !== "Want" ? { ...status, verb: "", canAdd: false } : { ...status, canAdd: verb !== "Want" && status.canAdd }}
+                view={
+                  verb && verb !== "Want"
+                    ? { ...status, verb: "", canAdd: false }
+                    : { ...status, canAdd: verb !== "Want" && status.canAdd }
+                }
                 onAdd={addWanted}
               />
             )}
@@ -867,279 +785,275 @@ export default function WorkPage() {
               {playerNote}
             </p>
           ) : null}
-        {(data.series_ribbon || []).length ? (
-          <section className="series-ribbon" data-testid="series-ribbon" aria-label="Series progress">
-            <h2 className="kicker">Series spine</h2>
-            <div className="series-ribbon-track" role="list">
-              {data.series_ribbon.map((bead) => (
-                <Link
-                  key={bead.value}
-                  role="listitem"
-                  className={`series-bead is-${bead.state}`}
-                  to={
-                    bead.state === "owned"
-                      ? browseHref({ series: work.series_name })
-                      : findHref({
-                          q: `${work.series_name || ""} ${bead.value}`.trim(),
-                          kind: work.kind || "",
-                          series: work.series_name || "",
-                          issue: bead.value,
-                        })
-                  }
-                  title={bead.state === "owned" ? `Owned ${bead.value}` : `Find ${bead.value}`}
-                  aria-label={bead.state === "owned" ? `Owned ${bead.value}` : `Find missing ${bead.value}`}
-                />
-              ))}
-            </div>
-            {catchUpCopy ? (
-              <p className="series-catch-up-invite" data-testid="series-catch-up-invite">
-                <span>{catchUpCopy}</span>
-                {catchUpHref ? (
-                  <Link className="cta outline compact" to={catchUpHref}>
-                    {catchUpCtaLabel(user?.role)}
-                  </Link>
-                ) : null}
-              </p>
-            ) : null}
-          </section>
-        ) : null}
-        {canCatalog && canEnrichKind ? (
-          <section className="work-meta" data-testid="work-catalog">
-            <h2 className="kicker">Catalog</h2>
-            {work.series_name ? (
-              <p className="muted">
-                Series · {[work.series_name, work.series_index].filter(Boolean).join(" ")}
-              </p>
-            ) : null}
-            {work.synopsis_source ? (
-              <p className="muted" data-testid="work-synopsis-source">
-                Filled from {work.synopsis_source}
-                {work.genre ? ` · ${work.genre}` : ""}
-              </p>
-            ) : null}
-            <div className="cta-row compact">
-              <button
-                type="button"
-                className="cta outline compact"
-                disabled={enriching}
-                aria-busy={enriching || undefined}
-                data-testid="work-enrich"
-                onClick={async () => {
-                  setEnrichNote(busyLabel("enrich"));
-                  setEnriching(true);
-                  try {
-                    const result = await api.enrichWork(work.id);
-                    const payload = await api.work(work.id);
-                    setData(payload);
-                    const conf =
-                      result.match_confidence != null
-                        ? ` · ${Math.round(Number(result.match_confidence) * 100)}%`
-                        : "";
-                    const key = result.match_key ? ` (${result.match_key})` : "";
-                    setEnrichNote(
-                      result.updated
-                        ? `Filled from ${result.source || "Open Library"}${key}${conf}`
-                        : result.thin
-                          ? "Providers had nothing new — try Fix match, or Edit the author"
-                          : "Already as complete as Hardcover and Open Library allow",
-                    );
-                  } catch (err) {
-                    setEnrichNote(humanError(err));
-                  } finally {
-                    setEnriching(false);
-                  }
-                }}
-              >
-                {enriching ? busyLabel("enrich") : "Enrich"}
-              </button>
-              <button
-                type="button"
-                className="cta outline compact"
-                data-testid="work-edit-metadata"
-                onClick={beginEdit}
-                disabled={editing}
-              >
-                Edit
-              </button>
-              <button
-                type="button"
-                className="cta outline compact"
-                data-testid="work-fix-match"
-                onClick={openFixMatch}
-                disabled={matchLoading}
-              >
-                {matchLoading ? busyLabel("match") : "Fix match"}
-              </button>
-              {work.description || work.synopsis_source || work.llm_blurb ? (
+          {(data.series_ribbon || []).length ? (
+            <section className="series-ribbon" data-testid="series-ribbon" aria-label="Series progress">
+              <h2 className="kicker">Series spine</h2>
+              <div className="series-ribbon-track" role="list">
+                {data.series_ribbon.map((bead) => (
+                  <Link
+                    key={bead.value}
+                    role="listitem"
+                    className={`series-bead is-${bead.state}`}
+                    to={
+                      bead.state === "owned"
+                        ? browseHref({ series: work.series_name })
+                        : findHref({
+                            q: `${work.series_name || ""} ${bead.value}`.trim(),
+                            kind: work.kind || "",
+                            series: work.series_name || "",
+                            issue: bead.value,
+                          })
+                    }
+                    title={bead.state === "owned" ? `Owned ${bead.value}` : `Find ${bead.value}`}
+                    aria-label={bead.state === "owned" ? `Owned ${bead.value}` : `Find missing ${bead.value}`}
+                  />
+                ))}
+              </div>
+              {catchUpCopy ? (
+                <p className="series-catch-up-invite" data-testid="series-catch-up-invite">
+                  <span>{catchUpCopy}</span>
+                  {catchUpHref ? (
+                    <Link className="cta outline compact" to={catchUpHref}>
+                      {catchUpCtaLabel(user?.role)}
+                    </Link>
+                  ) : null}
+                </p>
+              ) : null}
+            </section>
+          ) : null}
+          {canCatalog && canEnrichKind ? (
+            <section className="work-meta" data-testid="work-catalog">
+              <h2 className="kicker">Catalog</h2>
+              {work.series_name ? (
+                <p className="muted">Series · {[work.series_name, work.series_index].filter(Boolean).join(" ")}</p>
+              ) : null}
+              {work.synopsis_source ? (
+                <p className="muted" data-testid="work-synopsis-source">
+                  Filled from {work.synopsis_source}
+                  {work.genre ? ` · ${work.genre}` : ""}
+                </p>
+              ) : null}
+              <div className="cta-row compact">
                 <button
                   type="button"
-                  className="cta ghost compact"
-                  data-testid="work-clear-enrich"
-                  onClick={undoEnrich}
+                  className="cta outline compact"
+                  disabled={enriching}
+                  aria-busy={enriching || undefined}
+                  data-testid="work-enrich"
+                  onClick={async () => {
+                    setEnrichNote(busyLabel("enrich"));
+                    setEnriching(true);
+                    try {
+                      const result = await api.enrichWork(work.id);
+                      const payload = await api.work(work.id);
+                      setData(payload);
+                      const conf =
+                        result.match_confidence != null
+                          ? ` · ${Math.round(Number(result.match_confidence) * 100)}%`
+                          : "";
+                      const key = result.match_key ? ` (${result.match_key})` : "";
+                      setEnrichNote(
+                        result.updated
+                          ? `Filled from ${result.source || "Open Library"}${key}${conf}`
+                          : result.thin
+                            ? "Providers had nothing new — try Fix match, or Edit the author"
+                            : "Already as complete as Hardcover and Open Library allow",
+                      );
+                    } catch (err) {
+                      setEnrichNote(humanError(err));
+                    } finally {
+                      setEnriching(false);
+                    }
+                  }}
                 >
-                  Undo enrich
+                  {enriching ? busyLabel("enrich") : "Enrich"}
                 </button>
-              ) : null}
-            </div>
-            {editing && editDraft ? (
-              <form className="catalog-edit" data-testid="work-edit-form" onSubmit={saveEdit}>
-                <label className="field">
-                  <span>Title</span>
-                  <input value={editDraft.title} onChange={(e) => patchDraft("title", e.target.value)} required />
-                </label>
-                <label className="field">
-                  <span>Author</span>
-                  <input value={editDraft.author} onChange={(e) => patchDraft("author", e.target.value)} />
-                </label>
-                <label className="field">
-                  <span>Year</span>
-                  <input
-                    value={editDraft.year}
-                    onChange={(e) => patchDraft("year", e.target.value)}
-                    inputMode="numeric"
-                  />
-                </label>
-                <label className="field">
-                  <span>Kind</span>
-                  <select value={editDraft.kind} onChange={(e) => patchDraft("kind", e.target.value)}>
-                    <option value="book">book</option>
-                    <option value="audiobook">audiobook</option>
-                    <option value="magazine">magazine</option>
-                    <option value="comic">comic</option>
-                    <option value="music">music</option>
-                  </select>
-                </label>
-                <label className="field">
-                  <span>Genre</span>
-                  <input value={editDraft.genre} onChange={(e) => patchDraft("genre", e.target.value)} />
-                </label>
-                <label className="field">
-                  <span>Series</span>
-                  <input value={editDraft.series_name} onChange={(e) => patchDraft("series_name", e.target.value)} />
-                </label>
-                <label className="field">
-                  <span>Series index</span>
-                  <input
-                    value={editDraft.series_index}
-                    onChange={(e) => patchDraft("series_index", e.target.value)}
-                  />
-                </label>
-                <label className="field field-wide">
-                  <span>Description</span>
-                  <textarea
-                    rows={6}
-                    value={editDraft.description}
-                    onChange={(e) => patchDraft("description", e.target.value)}
-                  />
-                </label>
-                <label className="field field-wide">
-                  <span>Cover URL</span>
-                  <input
-                    value={editDraft.cover_url}
-                    onChange={(e) => patchDraft("cover_url", e.target.value)}
-                    placeholder="Optional — downloads a new cover"
-                  />
-                </label>
-                <div className="cta-row compact">
-                  <button type="submit" className="cta compact" disabled={editSaving} data-testid="work-edit-save">
-                    {editSaving ? busyLabel("save") : "Save"}
+                <button
+                  type="button"
+                  className="cta outline compact"
+                  data-testid="work-edit-metadata"
+                  onClick={beginEdit}
+                  disabled={editing}
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  className="cta outline compact"
+                  data-testid="work-fix-match"
+                  onClick={openFixMatch}
+                  disabled={matchLoading}
+                >
+                  {matchLoading ? busyLabel("match") : "Fix match"}
+                </button>
+                {work.description || work.synopsis_source || work.llm_blurb ? (
+                  <button
+                    type="button"
+                    className="cta ghost compact"
+                    data-testid="work-clear-enrich"
+                    onClick={undoEnrich}
+                  >
+                    Undo enrich
                   </button>
+                ) : null}
+              </div>
+              {editing && editDraft ? (
+                <form className="catalog-edit" data-testid="work-edit-form" onSubmit={saveEdit}>
+                  <label className="field">
+                    <span>Title</span>
+                    <input value={editDraft.title} onChange={(e) => patchDraft("title", e.target.value)} required />
+                  </label>
+                  <label className="field">
+                    <span>Author</span>
+                    <input value={editDraft.author} onChange={(e) => patchDraft("author", e.target.value)} />
+                  </label>
+                  <label className="field">
+                    <span>Year</span>
+                    <input
+                      value={editDraft.year}
+                      onChange={(e) => patchDraft("year", e.target.value)}
+                      inputMode="numeric"
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Kind</span>
+                    <select value={editDraft.kind} onChange={(e) => patchDraft("kind", e.target.value)}>
+                      <option value="book">book</option>
+                      <option value="audiobook">audiobook</option>
+                      <option value="magazine">magazine</option>
+                      <option value="comic">comic</option>
+                      <option value="music">music</option>
+                    </select>
+                  </label>
+                  <label className="field">
+                    <span>Genre</span>
+                    <input value={editDraft.genre} onChange={(e) => patchDraft("genre", e.target.value)} />
+                  </label>
+                  <label className="field">
+                    <span>Series</span>
+                    <input value={editDraft.series_name} onChange={(e) => patchDraft("series_name", e.target.value)} />
+                  </label>
+                  <label className="field">
+                    <span>Series index</span>
+                    <input
+                      value={editDraft.series_index}
+                      onChange={(e) => patchDraft("series_index", e.target.value)}
+                    />
+                  </label>
+                  <label className="field field-wide">
+                    <span>Description</span>
+                    <textarea
+                      rows={6}
+                      value={editDraft.description}
+                      onChange={(e) => patchDraft("description", e.target.value)}
+                    />
+                  </label>
+                  <label className="field field-wide">
+                    <span>Cover URL</span>
+                    <input
+                      value={editDraft.cover_url}
+                      onChange={(e) => patchDraft("cover_url", e.target.value)}
+                      placeholder="Optional — downloads a new cover"
+                    />
+                  </label>
+                  <div className="cta-row compact">
+                    <button type="submit" className="cta compact" disabled={editSaving} data-testid="work-edit-save">
+                      {editSaving ? busyLabel("save") : "Save"}
+                    </button>
+                    <button
+                      type="button"
+                      className="cta ghost compact"
+                      onClick={() => {
+                        setEditing(false);
+                        setEditDraft(null);
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              ) : null}
+              {fixing ? (
+                <div className="match-candidates" data-testid="work-match-candidates">
+                  {matchLoading ? <p className="muted">Searching Open Library…</p> : null}
+                  {!matchLoading && !matchCandidates.length ? (
+                    <p className="muted">No ranked candidates. Try Edit and write the blurb by hand.</p>
+                  ) : null}
+                  <ul className="match-candidate-list">
+                    {matchCandidates.map((row) => (
+                      <li key={row.match_key || `${row.title}-${row.author}`}>
+                        <div>
+                          <strong>{row.title}</strong>
+                          <span className="muted">
+                            {[row.author, row.year, row.match_key].filter(Boolean).join(" · ")}
+                          </span>
+                          {row.match_confidence != null ? (
+                            <span className="chip">{Math.round(Number(row.match_confidence) * 100)}%</span>
+                          ) : null}
+                        </div>
+                        <button
+                          type="button"
+                          className="cta outline compact"
+                          disabled={Boolean(matchApplying)}
+                          data-testid="work-apply-match"
+                          onClick={() => chooseMatch(row.match_key)}
+                        >
+                          {matchApplying === row.match_key ? busyLabel("match") : "Use this"}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
                   <button
                     type="button"
                     className="cta ghost compact"
                     onClick={() => {
-                      setEditing(false);
-                      setEditDraft(null);
+                      setFixing(false);
+                      setMatchCandidates([]);
                     }}
                   >
-                    Cancel
+                    Close
                   </button>
                 </div>
-              </form>
-            ) : null}
-            {fixing ? (
-              <div className="match-candidates" data-testid="work-match-candidates">
-                {matchLoading ? <p className="muted">Searching Open Library…</p> : null}
-                {!matchLoading && !matchCandidates.length ? (
-                  <p className="muted">No ranked candidates. Try Edit and write the blurb by hand.</p>
-                ) : null}
-                <ul className="match-candidate-list">
-                  {matchCandidates.map((row) => (
-                    <li key={row.match_key || `${row.title}-${row.author}`}>
-                      <div>
-                        <strong>{row.title}</strong>
-                        <span className="muted">
-                          {[row.author, row.year, row.match_key].filter(Boolean).join(" · ")}
-                        </span>
-                        {row.match_confidence != null ? (
-                          <span className="chip">{Math.round(Number(row.match_confidence) * 100)}%</span>
-                        ) : null}
-                      </div>
-                      <button
-                        type="button"
-                        className="cta outline compact"
-                        disabled={Boolean(matchApplying)}
-                        data-testid="work-apply-match"
-                        onClick={() => chooseMatch(row.match_key)}
-                      >
-                        {matchApplying === row.match_key ? busyLabel("match") : "Use this"}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-                <button
-                  type="button"
-                  className="cta ghost compact"
-                  onClick={() => {
-                    setFixing(false);
-                    setMatchCandidates([]);
-                  }}
-                >
-                  Close
-                </button>
-              </div>
-            ) : null}
-            {enrichNote ? (
-              <p className="muted" role="status" data-testid="work-enrich-note">
-                {enrichNote}
-              </p>
-            ) : null}
+              ) : null}
+              {enrichNote ? (
+                <p className="muted" role="status" data-testid="work-enrich-note">
+                  {enrichNote}
+                </p>
+              ) : null}
+            </section>
+          ) : work.series_name ? (
+            <section className="work-meta">
+              <p className="muted">Series · {[work.series_name, work.series_index].filter(Boolean).join(" ")}</p>
+            </section>
+          ) : null}
+          <section className="family-whispers" data-testid="family-whispers">
+            <h2 className="kicker">Family whispers</h2>
+            <p className="muted">A short note for the household — not a social feed.</p>
+            <ul className="whisper-list">
+              {(data.whispers || []).map((row) => (
+                <li key={row.id}>
+                  <strong>{row.author_name || "Someone"}</strong>
+                  <span>{row.body}</span>
+                </li>
+              ))}
+            </ul>
+            <form className="whisper-form" onSubmit={sendWhisper}>
+              <label className="sr-only" htmlFor="whisper-body">
+                Whisper
+              </label>
+              <input
+                id="whisper-body"
+                value={whisperBody}
+                onChange={(e) => setWhisperBody(e.target.value)}
+                maxLength={280}
+                placeholder="Leave a quiet note…"
+              />
+              <button type="submit" className="cta outline compact" disabled={!whisperBody.trim()}>
+                Whisper
+              </button>
+            </form>
+            {whisperNote ? <p className="alert">{whisperNote}</p> : null}
           </section>
-        ) : work.series_name ? (
-          <section className="work-meta">
-            <p className="muted">
-              Series · {[work.series_name, work.series_index].filter(Boolean).join(" ")}
-            </p>
-          </section>
-        ) : null}
-        <section className="family-whispers" data-testid="family-whispers">
-          <h2 className="kicker">Family whispers</h2>
-          <p className="muted">A short note for the household — not a social feed.</p>
-          <ul className="whisper-list">
-            {(data.whispers || []).map((row) => (
-              <li key={row.id}>
-                <strong>{row.author_name || "Someone"}</strong>
-                <span>{row.body}</span>
-              </li>
-            ))}
-          </ul>
-          <form className="whisper-form" onSubmit={sendWhisper}>
-            <label className="sr-only" htmlFor="whisper-body">
-              Whisper
-            </label>
-            <input
-              id="whisper-body"
-              value={whisperBody}
-              onChange={(e) => setWhisperBody(e.target.value)}
-              maxLength={280}
-              placeholder="Leave a quiet note…"
-            />
-            <button type="submit" className="cta outline compact" disabled={!whisperBody.trim()}>
-              Whisper
-            </button>
-          </form>
-          {whisperNote ? <p className="alert">{whisperNote}</p> : null}
-        </section>
         </details>
       </div>
       <Rail
@@ -1147,28 +1061,8 @@ export default function WorkPage() {
         items={data.related}
         seeAllTo={work.author ? browseHref({ author: work.author }) : ""}
       />
-      {reading && canRead ? (
-        <Reader
-          work={work}
-          files={data.files}
-          fileId={readingFileId}
-          progress={data.progress}
-          onClose={closeReader}
-        />
-      ) : null}
-      {listening && canListen ? (
-        <AudiobookPlayer
-          work={work}
-          files={data.files}
-          fileId={listeningFileId}
-          progress={data.progress}
-          player={playerLink}
-          playerNote={playerNote}
-          remember={listenRemember}
-          onClose={closeListen}
-          onProgress={(row) => setData((prev) => (prev ? { ...prev, progress: row } : prev))}
-        />
-      ) : null}
+      <WorkReaderShell rooms={rooms} data={data} />
+      <WorkListenShell rooms={rooms} data={data} setData={setData} />
       {plexamp ? <PlexampToast handoff={plexamp} onClose={() => setPlexamp(null)} /> : null}
     </article>
   );

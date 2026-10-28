@@ -1,18 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { api } from "../api.js";
 import { busyLabel, doneLabel, ticketStatusNote } from "../actionBusy.js";
-import FieldHelp, { FieldLabel } from "../components/FieldHelp.jsx";
+import HoldSlipCard from "../components/HoldSlipCard.jsx";
+import HoldsGroupActions from "../components/HoldsGroupActions.jsx";
 import JobProgress from "../components/JobProgress.jsx";
-import { FIELD_HELP, SLIP_ACTION_HELP, emptyReviewCopy, humanError } from "../copy.js";
+import ReviewBulkBar from "../components/ReviewBulkBar.jsx";
+import { emptyReviewCopy, humanError } from "../copy.js";
 import { requestBodyFromHit } from "../find.js";
-import SearchTraceDisclosure from "../components/SearchTraceDisclosure.jsx";
 import { useProgressJob } from "../hooks/useProgressJob.js";
 import {
   applyBodyFromDraft,
   applySuggestionToDraft,
-  collisionActionCopy,
-  collisionApplyAllowed,
+  badReleaseMigrationSummary,
+  badReleaseMigrationVisible,
+  bulkResultSummary,
   effectiveReviewReason,
   extraFilesReprocessIsRunning,
   extraFilesReprocessProgressPercent,
@@ -24,24 +26,25 @@ import {
   purgeDuplicatesIsRunning,
   purgeDuplicatesProgressPercent,
   purgeDuplicatesProgressSummary,
-  recommendedMotionCtaClass,
   recommendedMotionLabel,
   reviewActionsFromWork,
   reviewBulkClearVisible,
   reviewBulkPurgeVisible,
   reviewBulkRowVisible,
-  reviewDiagnosisCopy,
   reviewExtraFilesProgressVisible,
   reviewProgressDwellRemainingMs,
   reviewPurgeProgressVisible,
-  reviewReasonCopy,
-  holdSlipReasonWords,
-  slipRowIsPathClear,
+  slipTriage,
+  suggestBatchIsRunning,
+  suggestBatchSummary,
+  triageCountsFromWorks,
   extraFilesWorks,
   unpackStuckWorks,
 } from "../review.js";
 
-const KINDS = ["book", "magazine", "comic", "audiobook", "music"];
+function migrationIsRunning(status) {
+  return String(status?.status || "") === "running";
+}
 
 export default function ReviewPage() {
   const [params] = useSearchParams();
@@ -53,7 +56,11 @@ export default function ReviewPage() {
   const [busy, setBusy] = useState({});
   const [actionNotes, setActionNotes] = useState({});
   const [bulkNote, setBulkNote] = useState("");
-  const [modelSweep, setModelSweep] = useState(null);
+  const [groupNote, setGroupNote] = useState("");
+  const [modelNote, setModelNote] = useState("");
+  const [applyingTrusted, setApplyingTrusted] = useState(false);
+  const [migration, setMigration] = useState(null);
+  const lastTriageDone = useRef(-1);
   const [extraFilesBacklog, setExtraFilesBacklog] = useState(0);
   const [progressClock, setProgressClock] = useState(() => Date.now());
   const [reviewBacklog, setReviewBacklog] = useState(0);
@@ -67,6 +74,7 @@ export default function ReviewPage() {
   const focusRef = useRef(null);
   const autoMatchTried = useRef(new Set());
   const autoSuggestTried = useRef(new Set());
+  const triageSeeded = useRef(new Set());
   const reloadRef = useRef(() => {});
 
   function reload() {
@@ -84,6 +92,7 @@ export default function ReviewPage() {
           setReviewBacklog(next.length);
         }
         setOwnedSlipNote(String(data.owned_slip_note || "").trim());
+        if (data.bad_release_migration) setMigration(data.bad_release_migration);
         setDrafts((prev) => {
           const merged = { ...prev };
           next.forEach((work) => {
@@ -94,6 +103,12 @@ export default function ReviewPage() {
                 ...base,
                 folder: base.folder || suggested || "",
               };
+            }
+            const triaged = slipTriage(work)?.suggestion;
+            const seedKey = `${work.id}:${slipTriage(work)?.outcome || ""}`;
+            if (triaged && !triageSeeded.current.has(seedKey)) {
+              triageSeeded.current.add(seedKey);
+              merged[work.id] = applySuggestionToDraft(merged[work.id], triaged);
             }
           });
           return merged;
@@ -130,7 +145,10 @@ export default function ReviewPage() {
         setExtraFilesBacklog(Number(status.extra_files_remaining) || 0);
       }
       const summary = extraFilesReprocessProgressSummary(status);
-      if (summary && (extraFilesReprocessIsRunning(status) || status?.status === "completed" || status?.status === "failed")) {
+      if (
+        summary &&
+        (extraFilesReprocessIsRunning(status) || status?.status === "completed" || status?.status === "failed")
+      ) {
         setBulkNote(summary);
       }
     },
@@ -158,7 +176,10 @@ export default function ReviewPage() {
         setReviewBacklog(Number(status.needs_review_remaining) || 0);
       }
       const summary = purgeDuplicatesProgressSummary(status);
-      if (summary && (purgeDuplicatesIsRunning(status) || status?.status === "completed" || status?.status === "failed")) {
+      if (
+        summary &&
+        (purgeDuplicatesIsRunning(status) || status?.status === "completed" || status?.status === "failed")
+      ) {
         setBulkNote(summary);
       }
     },
@@ -170,6 +191,52 @@ export default function ReviewPage() {
         reloadRef.current();
       }
     },
+  });
+
+  const fetchTriageStatus = useCallback(() => api.reviewSuggestBatchStatus(), []);
+  const [triageKicked, setTriageKicked] = useState(false);
+  const {
+    status: triageProgress,
+    setStatus: setTriageProgress,
+    running: triageRunning,
+    setRunning: setTriageRunning,
+  } = useProgressJob({
+    fetchStatus: fetchTriageStatus,
+    isRunning: suggestBatchIsRunning,
+    active: triageKicked,
+    probe: true,
+    liveMs: 1500,
+    onUpdate: (status) => {
+      if (!suggestBatchIsRunning(status)) {
+        if (triageKicked && status?.status && status.status !== "idle") {
+          setTriageKicked(false);
+          reloadRef.current();
+        }
+        return;
+      }
+      const done = Number(status?.done || 0);
+      if (done !== lastTriageDone.current) {
+        lastTriageDone.current = done;
+        reloadRef.current();
+      }
+    },
+    onSettled: () => {
+      lastTriageDone.current = -1;
+      setTriageKicked(false);
+      reloadRef.current();
+    },
+  });
+
+  const fetchMigrationStatus = useCallback(() => api.reviewBadReleaseMigrationStatus(), []);
+  useProgressJob({
+    fetchStatus: fetchMigrationStatus,
+    isRunning: migrationIsRunning,
+    probe: true,
+    liveMs: 1500,
+    onUpdate: (status) => {
+      if (status) setMigration(status);
+    },
+    onSettled: () => reloadRef.current(),
   });
 
   useEffect(() => {
@@ -323,17 +390,48 @@ export default function ReviewPage() {
     const key = candidate?.match_key || candidate?.asin || "";
     if (!key) return;
     try {
-      await runTicketAction(work, "applyMatch", async () => {
-        await api.applyMatch(work.id, key);
-        setMatchBags((prev) => {
-          const next = { ...prev };
-          delete next[work.id];
-          return next;
-        });
-        reload();
-      }, { successNote: "Match applied." });
+      await runTicketAction(
+        work,
+        "applyMatch",
+        async () => {
+          await api.applyMatch(work.id, key);
+          setMatchBags((prev) => {
+            const next = { ...prev };
+            delete next[work.id];
+            return next;
+          });
+          reload();
+        },
+        { successNote: "Match applied." },
+      );
     } catch {
       /* note already set */
+    }
+  }
+
+  async function applyListedMatch(work, row) {
+    setWorkBusy(work.id, "match");
+    setErrors((prev) => ({ ...prev, [work.id]: "" }));
+    try {
+      const result = await api.applyMatch(work.id, row.match_key);
+      const next = result?.work || {};
+      setDrafts((prev) => ({
+        ...prev,
+        [work.id]: applySuggestionToDraft(prev[work.id] || fieldsFromWork(work), {
+          title: next.title,
+          author: next.author,
+          series_name: next.series_name,
+          series_index: next.series_index,
+          year: next.year,
+          kind: "comic",
+        }),
+      }));
+      setTicketNote(work.id, "Match applied — confirm folder and Apply to file.");
+      reload();
+    } catch (err) {
+      setErrors((prev) => ({ ...prev, [work.id]: humanError(err) }));
+    } finally {
+      setWorkBusy(work.id, "");
     }
   }
 
@@ -381,11 +479,13 @@ export default function ReviewPage() {
   }
 
   useEffect(() => {
+    if (triageRunning) return;
     for (const work of works) {
       const actions = reviewActionsFromWork(work);
       if (!actions.canSuggestLlm && !actions.needsLlmSuggest) continue;
       if (!actions.llmConfigured) continue;
       if (autoSuggestTried.current.has(work.id)) continue;
+      if (slipTriage(work)) continue;
       const draft = drafts[work.id] || fieldsFromWork(work);
       if (!looksLikeDumpTitle(draft.title) && draft.author) continue;
       if (!actions.needsLlmSuggest && !looksLikeDumpTitle(draft.title)) continue;
@@ -394,7 +494,7 @@ export default function ReviewPage() {
     }
     // Auto-suggest once for dump-looking slips so the form is not pre-filled with junk.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [works, drafts]);
+  }, [works, drafts, triageRunning]);
 
   async function requestRegrab(work, candidate) {
     try {
@@ -490,71 +590,53 @@ export default function ReviewPage() {
     }
   }
 
-  async function acceptClear(reason) {
-    setBulkNote("");
-    try {
-      const result = await api.reviewAcceptClear(reason);
-      const count = Number(result?.accepted || 0);
-      setBulkNote(count ? `Shelved ${count} clear ones.` : "No path-clear rows left.");
-      reload();
-    } catch (err) {
-      setBulkNote(humanError(err));
-    }
+  function onGroupChanged(result) {
+    setGroupNote(bulkResultSummary(result));
+    reload();
   }
 
   function lowConfidenceSlips() {
     return works.filter((work) => {
       const actions = reviewActionsFromWork(work);
-      return actions.canSuggestLlm || actions.needsLlmSuggest;
+      const settled = ["trusted", "ambiguous"].includes(slipTriage(work)?.outcome || "");
+      return (actions.canSuggestLlm || actions.needsLlmSuggest) && !settled;
     });
   }
 
-  async function sweepLowConfidenceSlips() {
-    const slips = lowConfidenceSlips();
-    if (!slips.length) {
-      setBulkNote("No low-confidence hold slips are ready for the model.");
-      return;
+  async function startModelTriage() {
+    if (triageRunning) return;
+    setModelNote("");
+    setTriageRunning(true);
+    try {
+      const started = await api.reviewSuggestBatch();
+      setTriageProgress(started);
+      setTriageRunning(suggestBatchIsRunning(started));
+      if (suggestBatchIsRunning(started)) setTriageKicked(true);
+      else reload();
+    } catch (err) {
+      setTriageRunning(false);
+      setModelNote(humanError(err));
     }
-    setModelSweep({ phase: "suggesting", sent: 0, total: slips.length, trusted: [], applied: 0 });
-    const trusted = [];
-    for (let index = 0; index < slips.length; index += 1) {
-      const work = slips[index];
-      try {
-        const data = await api.reviewSuggest(work.id);
-        const suggestion = data?.suggestion;
-        if (suggestion) {
-          setDrafts((prev) => ({
-            ...prev,
-            [work.id]: applySuggestionToDraft(prev[work.id] || fieldsFromWork(work), suggestion),
-          }));
-          if (suggestion.confidence === "high") {
-            trusted.push({ work, suggestion });
-          }
-        }
-      } catch {
-        // The final count leaves failed or uncertain slips for a person.
-      }
-      setModelSweep({ phase: "suggesting", sent: index + 1, total: slips.length, trusted: [...trusted], applied: 0 });
-    }
-    setModelSweep({ phase: "ready", sent: slips.length, total: slips.length, trusted, applied: 0 });
   }
 
   async function applyTrustedModelMatches() {
-    const trusted = modelSweep?.trusted || [];
-    if (!trusted.length || modelSweep?.phase === "applying") return;
-    let applied = 0;
-    setModelSweep((prev) => ({ ...prev, phase: "applying", applied }));
-    for (const { work, suggestion } of trusted) {
-      try {
-        await api.reviewApply(work.id, applyBodyFromDraft(applySuggestionToDraft(fieldsFromWork(work), suggestion)));
-        applied += 1;
-      } catch {
-        // A collision or a changed folder stays on the desk for a person.
-      }
-      setModelSweep((prev) => ({ ...prev, phase: "applying", applied }));
+    if (applyingTrusted) return;
+    setApplyingTrusted(true);
+    setModelNote("");
+    try {
+      const result = await api.reviewApplyTrusted();
+      const applied = Number(result?.applied || 0);
+      const failed = Number(result?.failed || 0);
+      setModelNote(
+        `Filed ${applied} of ${Number(result?.examined || 0)} trusted matches.` +
+          (failed ? ` ${failed} stayed on the desk (collision or moved folder).` : ""),
+      );
+      reload();
+    } catch (err) {
+      setModelNote(humanError(err));
+    } finally {
+      setApplyingTrusted(false);
     }
-    setModelSweep((prev) => ({ ...prev, phase: "done", applied }));
-    reload();
   }
 
   function runPrimary(work) {
@@ -638,21 +720,25 @@ export default function ReviewPage() {
     progress: purgeProgress,
     now: progressNow,
   });
+  const triageCounts = triageCountsFromWorks(works);
+  const trustedCount = triageCounts.trusted;
+  const triageLine = suggestBatchSummary(triageProgress);
+  const showMigration = badReleaseMigrationVisible(migration);
   const showBulkRow =
     lowConfidenceCount ||
+    trustedCount ||
+    triageRunning ||
+    triageLine ||
+    modelNote ||
     reviewBulkRowVisible({
       unpackCount,
       showClear: showBulkClear,
       showPurge: showBulkPurge,
       showProgress: showExtraFilesProgress || showPurgeProgress,
     });
-  const extraFilesPercent = showExtraFilesProgress
-    ? extraFilesReprocessProgressPercent(extraFilesProgress)
-    : null;
+  const extraFilesPercent = showExtraFilesProgress ? extraFilesReprocessProgressPercent(extraFilesProgress) : null;
   const purgePercent = showPurgeProgress ? purgeDuplicatesProgressPercent(purgeProgress) : null;
-  const extraFilesStatusLine = showExtraFilesProgress
-    ? extraFilesReprocessProgressSummary(extraFilesProgress)
-    : "";
+  const extraFilesStatusLine = showExtraFilesProgress ? extraFilesReprocessProgressSummary(extraFilesProgress) : "";
   const purgeStatusLine = showPurgeProgress ? purgeDuplicatesProgressSummary(purgeProgress) : "";
   const holdGroups = groupHoldSlipsByReason(works);
 
@@ -704,84 +790,35 @@ export default function ReviewPage() {
         </details>
       ) : null}
       {error ? <p className="alert">{error}</p> : null}
-      {showBulkRow ? (
-        <div className="cta-row review-bulk" data-testid="review-bulk">
-          {unpackCount ? (
-            <>
-              <button type="button" className="cta outline compact" onClick={() => bulkAction("repair")}>
-                Repair unpack slips
-              </button>
-              <button type="button" className="cta outline compact" onClick={() => bulkAction("retry")}>
-                Retry unpack slips
-              </button>
-            </>
-          ) : null}
-          {showBulkClear ? (
-            <button
-              type="button"
-              className="cta compact"
-              onClick={() => bulkReprocessExtraFiles()}
-              disabled={extraFilesClearing}
-              data-testid="review-bulk-extra-files"
-            >
-              {extraFilesClearing
-                ? "Clearing…"
-                : extraFilesBacklog > 0 && extraFilesCount === 0
-                  ? `Clear extra-files slips (${extraFilesBacklog})`
-                  : "Clear extra-files slips"}
-            </button>
-          ) : null}
-          {showBulkPurge ? (
-            <button
-              type="button"
-              className="cta outline compact"
-              onClick={() => bulkPurgeDuplicates()}
-              disabled={purgeRunning}
-              data-testid="review-bulk-purge-duplicates"
-              title="Dismiss slips whose content is already on the shelf, or exact duplicate slips of each other (keeps one)."
-            >
-              {purgeRunning
-                ? "Purging…"
-                : reviewBacklog > works.length
-                  ? `Purge duplicates (${reviewBacklog})`
-                  : "Purge duplicates"}
-            </button>
-          ) : null}
-          {lowConfidenceCount ? (
-            <button
-              type="button"
-              className="cta outline compact"
-              onClick={() => sweepLowConfidenceSlips()}
-              disabled={modelSweep?.phase === "suggesting" || modelSweep?.phase === "applying"}
-            >
-              {modelSweep?.phase === "suggesting"
-                ? `Checking slips (${modelSweep.sent}/${modelSweep.total})…`
-                : `Check low-confidence slips (${lowConfidenceCount})`}
-            </button>
-          ) : null}
-          {modelSweep?.phase === "ready" && modelSweep.trusted.length ? (
-            <button type="button" className="cta compact" onClick={() => applyTrustedModelMatches()}>
-              Apply trusted matches ({modelSweep.trusted.length})
-            </button>
-          ) : null}
-          {modelSweep ? (
-            <p className="muted" role="status">
-              {modelSweep.phase === "suggesting"
-                ? `${modelSweep.sent} of ${modelSweep.total} sent to the model.`
-                : modelSweep.phase === "applying"
-                  ? `${modelSweep.applied} of ${modelSweep.trusted.length} trusted matches applied.`
-                  : `${modelSweep.sent} sent to the model; ${modelSweep.applied} applied; ${
-                      Math.max(0, modelSweep.total - modelSweep.applied)
-                    } still need a person.`}
-            </p>
-          ) : null}
-          {bulkNote && !showExtraFilesProgress && !showPurgeProgress ? (
-            <p className="muted" role="status">
-              {bulkNote}
-            </p>
-          ) : null}
-        </div>
-      ) : null}
+      <ReviewBulkBar
+        show={showBulkRow}
+        unpackCount={unpackCount}
+        onRepair={() => bulkAction("repair")}
+        onRetry={() => bulkAction("retry")}
+        showBulkClear={showBulkClear}
+        extraFilesClearing={extraFilesClearing}
+        extraFilesBacklog={extraFilesBacklog}
+        extraFilesCount={extraFilesCount}
+        onClearExtraFiles={bulkReprocessExtraFiles}
+        showBulkPurge={showBulkPurge}
+        purgeRunning={purgeRunning}
+        reviewBacklog={reviewBacklog}
+        slipCount={works.length}
+        onPurgeDuplicates={bulkPurgeDuplicates}
+        lowConfidenceCount={lowConfidenceCount}
+        triageRunning={triageRunning}
+        triageProgress={triageProgress}
+        onStartTriage={startModelTriage}
+        trustedCount={trustedCount}
+        applyingTrusted={applyingTrusted}
+        onApplyTrusted={applyTrustedModelMatches}
+        triageLine={triageLine}
+        triageCounts={triageCounts}
+        modelNote={modelNote}
+        bulkNote={bulkNote}
+        showExtraFilesProgress={showExtraFilesProgress}
+        showPurgeProgress={showPurgeProgress}
+      />
       {showExtraFilesProgress ? (
         <JobProgress
           className="ingest-progress review-extra-files-progress"
@@ -823,6 +860,34 @@ export default function ReviewPage() {
           meterLabel="Purge duplicates progress"
         />
       ) : null}
+      {showMigration ? (
+        <JobProgress
+          className="ingest-progress review-extra-files-progress"
+          testId="review-bad-release-migration"
+          kicker="Returning bad downloads to Wanted"
+          phaseLabel={migration.status === "running" ? "returning" : migration.status}
+          done={migration.done || 0}
+          total={migration.total || 0}
+          percent={
+            Number(migration.total || 0) > 0
+              ? Math.round((Number(migration.done || 0) / Number(migration.total)) * 100)
+              : null
+          }
+          title={migration.current_title || ""}
+          stats={[
+            `returned ${Number(migration.returned || 0)}`,
+            `left for you ${Number(migration.left_on_desk || 0)}`,
+            migration.failed ? `failed ${migration.failed}` : "",
+          ]}
+          statusLine={badReleaseMigrationSummary(migration)}
+          meterLabel="Returning bad downloads to Wanted"
+        />
+      ) : null}
+      {groupNote ? (
+        <p className="muted" role="status" data-testid="review-group-note">
+          {groupNote}
+        </p>
+      ) : null}
       {loading ? (
         <section className="review-loading" data-testid="review-loading" aria-busy="true">
           <p className="muted">Warming the lamp on the Holds desk…</p>
@@ -853,458 +918,39 @@ export default function ReviewPage() {
                 </h2>
                 <p className="muted holds-group-hint">{group.hint}</p>
               </div>
-              <div className="cta-row compact">
-                {group.works.some((row) => slipRowIsPathClear(row)) ? (
-                  <button
-                    type="button"
-                    className="cta compact"
-                    data-testid="accept-clear-ones"
-                    onClick={() => acceptClear(group.reason)}
-                  >
-                    Accept the clear ones
-                  </button>
-                ) : null}
+              <div>
+                <HoldsGroupActions group={group} onChanged={onGroupChanged} />
                 <p className="chip holds-group-motion" data-testid="holds-group-motion">
                   Recommended: {recommendedMotionLabel(group.recommendedMotion)}
                 </p>
               </div>
             </header>
             <ul className="stack holds-group-slips">
-              {group.works.map((work) => {
-          const draft = drafts[work.id] || fieldsFromWork(work);
-          const focused = Boolean(focusId) && work.id === focusId;
-          const reason = effectiveReviewReason(work);
-          const collision = reason === "collision";
-          const canApply = collisionApplyAllowed(reason, draft, work);
-          const shelf = work.shelf_work;
-          const diagnosis = reviewDiagnosisCopy(work);
-          const actions = reviewActionsFromWork(work);
-          const workBusy = Boolean(busy[work.id]);
-          const activeAction = typeof busy[work.id] === "string" ? busy[work.id] : "";
-          const statusNote = ticketStatusNote(busy, actionNotes, work.id) || suggestNotes[work.id] || "";
-          const slipError = errors[work.id] || "";
-          const visibleNote = statusNote && statusNote !== slipError ? statusNote : "";
-          const primaryLabel = recommendedMotionLabel(actions.recommendedMotion);
-          return (
-            <li
-              key={work.id}
-              ref={focused ? focusRef : null}
-              className={["card", "ticket", "hold-slip", "ticket-enter", focused ? "is-focus" : ""].filter(Boolean).join(" ")}
-              data-testid="hold-slip"
-              data-work-id={work.id}
-              data-focused={focused ? "true" : "false"}
-              data-reason={reason || ""}
-              aria-busy={workBusy || undefined}
-            >
-              <div className="hold-slip-line" data-testid="hold-slip-line">
-                <strong className="ticket-title">{draft.title || work.title || "Untitled"}</strong>
-                <span className="muted hold-slip-reason" data-testid="review-reason-copy">
-                  {holdSlipReasonWords(work)}
-                </span>
-                <button
-                  type="button"
-                  className="cta compact"
-                  data-testid="hold-slip-primary"
-                  disabled={workBusy || (actions.recommendedMotion === "apply" && !canApply)}
-                  onClick={() => runPrimary(work)}
-                >
-                  {workBusy ? busyLabel(activeAction || "apply") : primaryLabel}
-                </button>
-              </div>
-              <details className="ticket-diagnosis" data-testid="hold-slip-more" open={focused || undefined}>
-                <summary>More</summary>
-              <header className="ticket-head">
-                <p className="kicker">{focused ? "From Queue" : "Slip"}</p>
-                <span className="seal">{draft.kind || work.kind}</span>
-              </header>
-              {actions.recommendedMotion ? (
-                <p className="chip is-on" data-testid="hold-slip-recommended">
-                  Recommended: {recommendedMotionLabel(actions.recommendedMotion)}
-                </p>
-              ) : null}
-              {actions.quietHours ? (
-                <p className="chip is-on" data-testid="quiet-hours-chip">
-                  Queued for tonight
-                </p>
-              ) : null}
-              <details className="ticket-diagnosis" data-testid="review-diagnosis">
-                <summary>About this slip</summary>
-                <div className="empty-note">
-                  <p>
-                    <strong>What this slip means.</strong> {diagnosis.meaning}
-                  </p>
-                  <p>
-                    <strong>What we tried.</strong> {diagnosis.tried}
-                  </p>
-                  {diagnosis.whatsWrong &&
-                  diagnosis.whatsWrong !== reviewReasonCopy(reason, work.folder_diagnosis || {}) ? (
-                    <p>
-                      <strong>What’s wrong.</strong> {diagnosis.whatsWrong}
-                    </p>
-                  ) : null}
-                  <p>
-                    <strong>What to do.</strong> {diagnosis.nextSteps}
-                  </p>
-                  {diagnosis.pathNote ? (
-                    <p data-testid="review-path-note">
-                      <strong>About this path.</strong> {diagnosis.pathNote}
-                    </p>
-                  ) : null}
-                  {diagnosis.suggestedFolder ? (
-                    <p data-testid="review-suggested-folder">
-                      <strong>Suggested folder.</strong>{" "}
-                      <code className="font-mono">{diagnosis.suggestedFolder}</code>{" "}
-                      <button
-                        type="button"
-                        className="cta ghost compact"
-                        onClick={() => patch(work.id, "folder", diagnosis.suggestedFolder)}
-                      >
-                        Use this path
-                      </button>
-                    </p>
-                  ) : null}
-                </div>
-              </details>
-              {collision ? (
-                <p className="empty-note" data-testid="collision-action-copy">
-                  {collisionActionCopy()}
-                </p>
-              ) : null}
-              {shelf?.id ? (
-                <p className="muted" data-testid="collision-shelf-link">
-                  Already cataloged:{" "}
-                  <Link to={`/works/${encodeURIComponent(shelf.id)}`}>
-                    {shelf.title || "Open on Hall"}
-                    {shelf.author ? ` — ${shelf.author}` : ""}
-                  </Link>
-                </p>
-              ) : null}
-              {Array.isArray(work.match_candidates) && work.match_candidates.length ? (
-                <div className="match-candidates" data-testid="review-match-candidates">
-                  <p className="kicker">Match candidates</p>
-                  <ul className="match-candidate-list">
-                    {work.match_candidates.map((row) => (
-                      <li key={row.match_key || `${row.title}-${row.series_name}`}>
-                        <div>
-                          <strong>{row.title || row.series_name}</strong>
-                          <span className="muted">
-                            {[
-                              row.series_name,
-                              row.series_index ? `#${row.series_index}` : "",
-                              row.volume_year || row.year,
-                              row.publisher,
-                              row.match_confidence != null
-                                ? `${Math.round(Number(row.match_confidence) * 100)}%`
-                                : "",
-                            ]
-                              .filter(Boolean)
-                              .join(" · ")}
-                          </span>
-                        </div>
-                        <button
-                          type="button"
-                          className="cta outline compact"
-                          disabled={workBusy}
-                          data-testid="review-apply-match"
-                          onClick={async () => {
-                            setWorkBusy(work.id, "match");
-                            setErrors((prev) => ({ ...prev, [work.id]: "" }));
-                            try {
-                              const result = await api.applyMatch(work.id, row.match_key);
-                              const next = result?.work || {};
-                              setDrafts((prev) => ({
-                                ...prev,
-                                [work.id]: applySuggestionToDraft(prev[work.id] || fieldsFromWork(work), {
-                                  title: next.title,
-                                  author: next.author,
-                                  series_name: next.series_name,
-                                  series_index: next.series_index,
-                                  year: next.year,
-                                  kind: "comic",
-                                }),
-                              }));
-                              setTicketNote(work.id, "Match applied — confirm folder and Apply to file.");
-                              reload();
-                            } catch (err) {
-                              setErrors((prev) => ({ ...prev, [work.id]: humanError(err) }));
-                            } finally {
-                              setWorkBusy(work.id, "");
-                            }
-                          }}
-                        >
-                          Use this
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-              {(actions.canRepair ||
-                actions.canRetry ||
-                actions.canRequestNew ||
-                actions.canRegrab ||
-                actions.canSuggestLlm) && (
-                <div className="cta-row ticket-recovery" data-testid="review-recovery">
-                  {actions.canSuggestLlm ? (
-                    <button
-                      type="button"
-                      className={recommendedMotionCtaClass(work, "suggest")}
-                      disabled={workBusy}
-                      aria-busy={activeAction === "suggest" || undefined}
-                      onClick={() => suggestWithLlm(work)}
-                      data-testid="review-suggest-llm"
-                    >
-                      {activeAction === "suggest" ? busyLabel("suggest") : "Suggest with LLM"}
-                    </button>
-                  ) : null}
-                  {actions.canRepair ? (
-                    <span className="cta-help">
-                      <button
-                        type="button"
-                        className={recommendedMotionCtaClass(work, "repair")}
-                        disabled={workBusy}
-                        aria-busy={activeAction === "repair" || undefined}
-                        onClick={() => repair(work)}
-                        data-testid="review-repair"
-                      >
-                        {activeAction === "repair" ? busyLabel("repair") : "Repair"}
-                      </button>
-                      <FieldHelp label="Repair">{SLIP_ACTION_HELP.repair}</FieldHelp>
-                    </span>
-                  ) : null}
-                  {actions.canRetry ? (
-                    <span className="cta-help">
-                      <button
-                        type="button"
-                        className={recommendedMotionCtaClass(work, "retry")}
-                        disabled={workBusy}
-                        aria-busy={activeAction === "retry" || undefined}
-                        onClick={() => retry(work)}
-                        data-testid="review-retry"
-                      >
-                        {activeAction === "retry" ? busyLabel("retry") : "Retry"}
-                      </button>
-                      <FieldHelp label="Retry">{SLIP_ACTION_HELP.retry}</FieldHelp>
-                    </span>
-                  ) : null}
-                  {actions.canRegrab ? (
-                    <span className="cta-help">
-                      <button
-                        type="button"
-                        className={recommendedMotionCtaClass(work, "regrab")}
-                        disabled={workBusy}
-                        aria-busy={activeAction === "regrab" || undefined}
-                        onClick={() => retrieveRelease(work, "regrab")}
-                        data-testid="review-regrab"
-                      >
-                        {activeAction === "regrab" ? busyLabel("regrab") : "Smart re-grab"}
-                      </button>
-                      <FieldHelp label="Smart re-grab">{SLIP_ACTION_HELP.regrab}</FieldHelp>
-                    </span>
-                  ) : null}
-                  {actions.canRequestNew ? (
-                    <span className="cta-help">
-                      <button
-                        type="button"
-                        className={recommendedMotionCtaClass(work, "request_new")}
-                        disabled={workBusy}
-                        aria-busy={activeAction === "requestNew" || undefined}
-                        onClick={() => retrieveRelease(work, "new_version")}
-                        data-testid="review-request-new"
-                      >
-                        {activeAction === "requestNew" ? busyLabel("requestNew") : "Request new version"}
-                      </button>
-                      <FieldHelp label="Request new version">{SLIP_ACTION_HELP.requestNew}</FieldHelp>
-                    </span>
-                  ) : null}
-                </div>
-              )}
-              {visibleNote ? (
-                <p className="muted" data-testid="review-action-note" role="status">
-                  {visibleNote}
-                </p>
-              ) : null}
-              {matchBags[work.id]?.candidates?.length ? (
-                <ul className="regrab-list" data-testid="authority-match-candidates">
-                  {matchBags[work.id].candidates.map((candidate, index) => (
-                    <li key={candidate.match_key || candidate.asin || candidate.title || index}>
-                      <span>
-                        {candidate.title || "Untitled"}
-                        {candidate.author ? ` — ${candidate.author}` : ""}
-                        {candidate.asin ? ` · ${candidate.asin}` : ""}
-                        {candidate.score != null || candidate.match_confidence != null
-                          ? ` · ${Math.round(Number(candidate.score ?? candidate.match_confidence) * 100)}%`
-                          : ""}
-                      </span>
-                      <button
-                        type="button"
-                        className={index === 0 ? "cta compact" : "cta compact outline"}
-                        disabled={workBusy}
-                        aria-busy={activeAction === "applyMatch" || undefined}
-                        onClick={() => applyAuthorityMatch(work, candidate)}
-                        data-testid="authority-match-apply"
-                      >
-                        {activeAction === "applyMatch" ? busyLabel("applyMatch") : "Use this match"}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-              {regrabs[work.id]?.beyond_error ? (
-                <p className="muted" role="status" data-testid="regrab-beyond-error">
-                  {humanError(regrabs[work.id].beyond_error)}
-                </p>
-              ) : null}
-              {regrabs[work.id]?.search_trace || regrabs[work.id]?.remembered_candidates?.length ? (
-                <SearchTraceDisclosure
-                  conversation={regrabs[work.id]?.search_trace?.conversation || []}
-                  steps={regrabs[work.id]?.search_trace?.steps || []}
-                  results={regrabs[work.id]?.search_trace?.results || []}
-                  candidates={regrabs[work.id]?.remembered_candidates || regrabs[work.id]?.candidates || []}
-                  rankMethod={regrabs[work.id]?.rank_method || ""}
-                  rankReason={regrabs[work.id]?.rank_reason || ""}
-                  testId={`regrab-trace-${work.id}`}
+              {group.works.map((work) => (
+                <HoldSlipCard
+                  key={work.id}
+                  work={work}
+                  draft={drafts[work.id] || fieldsFromWork(work)}
+                  focused={Boolean(focusId) && work.id === focusId}
+                  focusRef={focusRef}
+                  busyValue={busy[work.id]}
+                  slipError={errors[work.id] || ""}
+                  statusNote={ticketStatusNote(busy, actionNotes, work.id) || suggestNotes[work.id] || ""}
+                  matchBag={matchBags[work.id]}
+                  regrab={regrabs[work.id]}
+                  onPatch={(key, value) => patch(work.id, key, value)}
+                  onPrimary={() => runPrimary(work)}
+                  onApply={() => apply(work)}
+                  onSkip={() => skip(work)}
+                  onRepair={() => repair(work)}
+                  onRetry={() => retry(work)}
+                  onRetrieve={(intent) => retrieveRelease(work, intent)}
+                  onSuggest={() => suggestWithLlm(work)}
+                  onApplyAuthority={(candidate) => applyAuthorityMatch(work, candidate)}
+                  onRequestCandidate={(candidate) => requestRegrab(work, candidate)}
+                  onUseListedMatch={(row) => applyListedMatch(work, row)}
                 />
-              ) : null}
-              {regrabs[work.id]?.candidates?.length ? (
-                <ul className="regrab-list" data-testid="regrab-candidates">
-                  {regrabs[work.id].candidates.map((candidate, index) => (
-                    <li key={candidate.guid || candidate.title}>
-                      <span>{candidate.diff || candidate.title}</span>
-                      {regrabs[work.id]?.queued || regrabs[work.id]?.already_active ? null : (
-                        <button
-                          type="button"
-                          className={index === 0 ? "cta compact" : "cta compact outline"}
-                          disabled={workBusy}
-                          aria-busy={activeAction === "request" || undefined}
-                          onClick={() => requestRegrab(work, candidate)}
-                          data-testid="regrab-request"
-                        >
-                          {activeAction === "request" ? busyLabel("request") : "Request this"}
-                        </button>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              ) : regrabs[work.id]?.searched && !regrabs[work.id]?.candidates?.length ? (
-                <p className="muted" data-testid="regrab-empty">
-                  {regrabs[work.id].note || "No other release turned up for this slip."}
-                </p>
-              ) : null}
-              <form
-                className="identify-form"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  if (!canApply) return;
-                  apply(work);
-                }}
-              >
-                <div className="field">
-                  <FieldLabel htmlFor={`kind-${work.id}`} label="Kind" help={FIELD_HELP.reviewKind} />
-                  <select
-                    id={`kind-${work.id}`}
-                    value={draft.kind}
-                    onChange={(e) => patch(work.id, "kind", e.target.value)}
-                  >
-                    {KINDS.map((item) => (
-                      <option key={item} value={item}>
-                        {item}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="field">
-                  <FieldLabel htmlFor={`title-${work.id}`} label="Title" help={FIELD_HELP.reviewTitle} />
-                  <input
-                    id={`title-${work.id}`}
-                    value={draft.title}
-                    onChange={(e) => patch(work.id, "title", e.target.value)}
-                  />
-                </div>
-                <div className="field">
-                  <FieldLabel htmlFor={`author-${work.id}`} label="Author" help={FIELD_HELP.reviewAuthor} />
-                  <input
-                    id={`author-${work.id}`}
-                    value={draft.author}
-                    onChange={(e) => patch(work.id, "author", e.target.value)}
-                  />
-                </div>
-                <div className="field">
-                  <FieldLabel htmlFor={`isbn-${work.id}`} label="ISBN" help={FIELD_HELP.reviewIsbn} />
-                  <input
-                    id={`isbn-${work.id}`}
-                    className="font-mono"
-                    value={draft.isbn}
-                    onChange={(e) => patch(work.id, "isbn", e.target.value)}
-                  />
-                </div>
-                <div className="field">
-                  <FieldLabel htmlFor={`series-${work.id}`} label="Series" help={FIELD_HELP.reviewSeries} />
-                  <input
-                    id={`series-${work.id}`}
-                    value={draft.series_name}
-                    onChange={(e) => patch(work.id, "series_name", e.target.value)}
-                  />
-                </div>
-                <div className="field">
-                  <FieldLabel htmlFor={`index-${work.id}`} label="Issue / index" help={FIELD_HELP.reviewIndex} />
-                  <input
-                    id={`index-${work.id}`}
-                    value={draft.series_index}
-                    onChange={(e) => patch(work.id, "series_index", e.target.value)}
-                  />
-                </div>
-                <div className="field field-wide">
-                  <FieldLabel htmlFor={`folder-${work.id}`} label="Complete folder" help={FIELD_HELP.reviewFolder} />
-                  <input
-                    id={`folder-${work.id}`}
-                    value={draft.folder}
-                    onChange={(e) => patch(work.id, "folder", e.target.value)}
-                    placeholder="Path this Librarian process can read"
-                  />
-                </div>
-                {errors[work.id] ? <p className="alert field-wide">{errors[work.id]}</p> : null}
-                <div className="cta-row field-wide">
-                  <span className="cta-help">
-                    <button
-                      type="submit"
-                      className={recommendedMotionCtaClass(work, "apply", { compact: false })}
-                      disabled={!canApply || workBusy}
-                      aria-busy={activeAction === "apply" || undefined}
-                      title={
-                        collision && !canApply
-                          ? "Change title, author, series, or folder so the destination is free — Apply will not overwrite."
-                          : undefined
-                      }
-                      data-testid="review-apply"
-                    >
-                      {activeAction === "apply" ? busyLabel("apply") : "Apply"}
-                    </button>
-                    <FieldHelp label="Apply">{SLIP_ACTION_HELP.apply}</FieldHelp>
-                  </span>
-                  <span className="cta-help">
-                    <button
-                      type="button"
-                      className={
-                        actions.recommendedMotion === "skip"
-                          ? recommendedMotionCtaClass(work, "skip", { compact: false })
-                          : "cta ghost"
-                      }
-                      disabled={workBusy}
-                      aria-busy={activeAction === "skip" || undefined}
-                      onClick={() => skip(work)}
-                      data-testid="review-skip"
-                    >
-                      {activeAction === "skip" ? busyLabel("skip") : "Skip"}
-                    </button>
-                    <FieldHelp label="Skip">{SLIP_ACTION_HELP.skip}</FieldHelp>
-                  </span>
-                </div>
-              </form>
-              </details>
-            </li>
-          );
-              })}
+              ))}
             </ul>
           </section>
         ))}

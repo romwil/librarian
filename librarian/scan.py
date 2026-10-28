@@ -18,7 +18,6 @@ from librarian.identify import (
     extract_isbn,
     is_mixed_comic_ebook_payload,
     list_payload_files,
-    parse_usenet_name,
     tidy_title,
 )
 from librarian.kinds import KIND_AUDIOBOOK, KIND_BOOK, KIND_COMIC, KIND_MAGAZINE, KIND_MUSIC
@@ -28,6 +27,7 @@ from librarian.metadata import (
     read_folder_metadata,
     sidecar_named,
 )
+from librarian.naming.library import library_file_fields
 
 logger = logging.getLogger(__name__)
 
@@ -415,7 +415,7 @@ def identity_from_library_folder(
     sidecar = read_folder_metadata(folder)
     embedded = _embedded_identity(kind, files)
     tags = _tag_identity(kind, files)
-    parsed = _filename_identity(kind, folder, files)
+    parsed = library_file_fields(kind, folder, files)
     identity: Dict[str, Any] = {"kind": kind, "title": "", "author": "", "source": "scan"}
     for layer in (parsed, layout, tags, embedded, sidecar):
         for key, value in layer.items():
@@ -524,27 +524,6 @@ def _tag_identity(kind: str, files: Sequence[Path]) -> Dict[str, Any]:
     if kind == KIND_MUSIC and merged.get("album") and not merged.get("title"):
         merged["title"] = merged["album"]
     return merged
-
-
-def _filename_identity(kind: str, folder: Path, files: Sequence[Path]) -> Dict[str, Any]:
-    name = files[0].stem if files else folder.name
-    parsed = parse_usenet_name(name)
-    out: Dict[str, Any] = {}
-    if parsed.title:
-        out["title"] = parsed.title
-    if parsed.author:
-        out["author"] = parsed.author
-    if parsed.series_name:
-        out["series_name"] = parsed.series_name
-    if parsed.series_index:
-        out["series_index"] = parsed.series_index
-    if parsed.year:
-        out["year"] = parsed.year
-    if parsed.isbn:
-        out["isbn"] = parsed.isbn
-    if kind in (KIND_COMIC, KIND_MAGAZINE) and not out.get("series_name"):
-        out["series_name"] = tidy_title(folder.parent.name if folder.parent != folder else folder.name)
-    return out
 
 
 def _existing_cover(

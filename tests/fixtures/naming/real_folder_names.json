@@ -1,0 +1,450 @@
+[
+  {
+    "id": "magazine-no",
+    "layer": "release",
+    "name": "Linux-Magazin.No.10.2026.eBook-GROUP",
+    "kind": null,
+    "category": 7010,
+    "expect": {
+      "kind": "magazine",
+      "title": "Linux Magazin",
+      "series_name": "Linux Magazin",
+      "series_index": "2026-10",
+      "year": 2026,
+      "confidence": "high"
+    }
+  },
+  {
+    "id": "magazine-iso",
+    "layer": "release",
+    "name": "Linux Magazin 2026-09",
+    "kind": "magazine",
+    "category": null,
+    "expect": {
+      "kind": "magazine",
+      "title": "Linux Magazin",
+      "series_name": "Linux Magazin",
+      "series_index": "2026-09",
+      "year": 2026,
+      "confidence": "high"
+    }
+  },
+  {
+    "id": "comic-year-issue",
+    "layer": "release",
+    "name": "Saga.2012.001.Digital",
+    "kind": null,
+    "category": 7030,
+    "expect": {
+      "kind": "comic",
+      "title": "Saga #1",
+      "series_name": "Saga",
+      "series_index": "1",
+      "year": 2012,
+      "volume_year": 2012,
+      "confidence": "high"
+    }
+  },
+  {
+    "id": "comic-hash-year",
+    "layer": "release",
+    "name": "Saga #1 (2024).cbz",
+    "kind": "comic",
+    "category": null,
+    "expect": {
+      "kind": "comic",
+      "title": "Saga #1",
+      "series_name": "Saga",
+      "series_index": "1",
+      "year": 2024,
+      "confidence": "high"
+    }
+  },
+  {
+    "id": "comic-volume",
+    "layer": "release",
+    "name": "Saga v1 003",
+    "kind": "comic",
+    "category": null,
+    "expect": {
+      "kind": "comic",
+      "title": "Saga #3",
+      "series_name": "Saga",
+      "series_index": "3",
+      "confidence": "high"
+    }
+  },
+  {
+    "id": "comic-tpb",
+    "layer": "release",
+    "name": "Descender.Vol.01.Tin.Stars.(2015).TPB",
+    "kind": "comic",
+    "category": null,
+    "expect": {
+      "kind": "comic",
+      "title": "Descender - Tin Stars",
+      "series_name": "Descender",
+      "year": 2015,
+      "comic_subtitle": "Tin Stars",
+      "confidence": "low"
+    }
+  },
+  {
+    "id": "comic-variant",
+    "layer": "release",
+    "name": "Sandman.Overture.#1.(2013).CVR.B",
+    "kind": "comic",
+    "category": null,
+    "expect": {
+      "kind": "comic",
+      "title": "Sandman Overture #1",
+      "series_name": "Sandman Overture",
+      "series_index": "1",
+      "year": 2013,
+      "confidence": "high"
+    }
+  },
+  {
+    "id": "book-isbn",
+    "layer": "release",
+    "name": "Le Guin - The Left Hand of Darkness 9780441478125 eBook-GROUP",
+    "kind": null,
+    "category": 7020,
+    "expect": {
+      "kind": "book",
+      "title": "The Left Hand of Darkness",
+      "author": "Le Guin",
+      "isbn": "9780441478125",
+      "confidence": "high"
+    }
+  },
+  {
+    "id": "book-retail-epub",
+    "layer": "release",
+    "name": "Whoopi Goldberg - Bits and Pieces (retail) (epub)",
+    "kind": "book",
+    "category": null,
+    "expect": {
+      "kind": "book",
+      "title": "Bits and Pieces (retail) (epub)",
+      "author": "Whoopi Goldberg",
+      "confidence": "low"
+    }
+  },
+  {
+    "id": "book-dashed-dump",
+    "layer": "release",
+    "name": "Herbert-Dune-1977-ebook-GROUP",
+    "kind": "book",
+    "category": null,
+    "expect": {
+      "kind": "book",
+      "title": "Herbert Dune ebook GROUP",
+      "year": 1977,
+      "confidence": "low"
+    }
+  },
+  {
+    "id": "book-dotted-dump",
+    "layer": "release",
+    "name": "Three.Weeks.To.Say.Goodbye.2024.RETAIL.EPUB",
+    "kind": "book",
+    "category": null,
+    "expect": {
+      "kind": "book",
+      "title": "Three Weeks To Say Goodbye RETAIL",
+      "year": 2024,
+      "confidence": "low"
+    }
+  },
+  {
+    "id": "book-by",
+    "layer": "release",
+    "name": "The Martian by Andy Weir",
+    "kind": "book",
+    "category": null,
+    "expect": {
+      "kind": "book",
+      "title": "The Martian",
+      "author": "Andy Weir",
+      "confidence": "low"
+    }
+  },
+  {
+    "id": "movie-category",
+    "layer": "release",
+    "name": "Some.Movie.2024",
+    "kind": null,
+    "category": 2000,
+    "expect": {
+      "kind": "book",
+      "title": "Some Movie",
+      "confidence": "low"
+    }
+  },
+  {
+    "id": "audiobook-part-counter",
+    "layer": "release",
+    "name": "Raymond E. Feist - Magician [6/8].mp3",
+    "kind": "audiobook",
+    "category": null,
+    "expect": {
+      "kind": "audiobook",
+      "title": "Magician",
+      "author": "Raymond E. Feist",
+      "confidence": "low"
+    }
+  },
+  {
+    "id": "audiobook-dotted-unhinted",
+    "layer": "release",
+    "name": "Andy.Weir.-.Project.Hail.Mary.Unabridged.Audiobook.m4b",
+    "kind": null,
+    "category": null,
+    "expect": {
+      "kind": "audiobook",
+      "title": "Project Hail Mary",
+      "author": "Andy Weir",
+      "confidence": "low"
+    }
+  },
+  {
+    "id": "audiobook-series-book",
+    "layer": "release",
+    "name": "Jim Butcher - Dresden Files Book 01 Storm Front Audiobook",
+    "kind": "audiobook",
+    "category": null,
+    "expect": {
+      "kind": "audiobook",
+      "title": "Storm Front",
+      "author": "Jim Butcher",
+      "series_name": "Dresden Files",
+      "series_index": "1",
+      "confidence": "low"
+    }
+  },
+  {
+    "id": "audiobook-asin",
+    "layer": "release",
+    "name": "Andy Weir - Project Hail Mary ASIN B08G9PRS1K",
+    "kind": "audiobook",
+    "category": null,
+    "expect": {
+      "kind": "audiobook",
+      "title": "Project Hail Mary",
+      "author": "Andy Weir",
+      "isbn": "B08G9PRS1K",
+      "asin": "B08G9PRS1K",
+      "confidence": "low"
+    }
+  },
+  {
+    "id": "audiobook-narrator",
+    "layer": "release",
+    "name": "Frank Herbert - Dune (Narrated by Scott Brick) Unabridged",
+    "kind": "audiobook",
+    "category": null,
+    "expect": {
+      "kind": "audiobook",
+      "title": "Dune",
+      "author": "Frank Herbert",
+      "narrator": "Scott Brick",
+      "confidence": "low"
+    }
+  },
+  {
+    "id": "music-va-dump",
+    "layer": "release",
+    "name": "VA-Guardians.Of.The.Galaxy.Awesome.Mix.Vol.1-202",
+    "kind": "music",
+    "category": null,
+    "expect": {
+      "kind": "music",
+      "title": "VA Guardians Of The Galaxy Awesome Mix Vol 1 202",
+      "confidence": "low"
+    }
+  },
+  {
+    "id": "calibre-colon",
+    "layer": "library",
+    "path": [
+      "Calibre Library",
+      "Hugh Howey",
+      "Resist_ Tales from a Future Worth Fighting Against (3134)"
+    ],
+    "expect": {
+      "author": "Hugh Howey",
+      "title": "Resist: Tales from a Future Worth Fighting Against",
+      "series_name": ""
+    }
+  },
+  {
+    "id": "calibre-initials-series",
+    "layer": "library",
+    "path": [
+      "Vandagriff, G.G_",
+      "Rescuing Rosalind (Three Original Ladies and Their Gentlemen) (4164)"
+    ],
+    "expect": {
+      "author": "Vandagriff, G.G.",
+      "title": "Rescuing Rosalind",
+      "series_name": "Three Original Ladies and Their Gentlemen"
+    }
+  },
+  {
+    "id": "calibre-initials",
+    "layer": "library",
+    "path": [
+      "Box, C.J_",
+      "Three Weeks to Say Goodbye (9989)"
+    ],
+    "expect": {
+      "author": "Box, C.J.",
+      "title": "Three Weeks to Say Goodbye",
+      "series_name": ""
+    }
+  },
+  {
+    "id": "calibre-periods-kept",
+    "layer": "library",
+    "path": [
+      "Ursula K. Le Guin",
+      "The Dispossessed (12)"
+    ],
+    "expect": {
+      "author": "Ursula K. Le Guin",
+      "title": "The Dispossessed",
+      "series_name": ""
+    }
+  },
+  {
+    "id": "author-title",
+    "layer": "library",
+    "path": [
+      "Stephen King",
+      "Christine"
+    ],
+    "expect": {
+      "author": "Stephen King",
+      "title": "Christine",
+      "series_name": ""
+    }
+  },
+  {
+    "id": "numeric-paren-not-series",
+    "layer": "library",
+    "path": [
+      "Andy Weir",
+      "Project Hail Mary (2021)"
+    ],
+    "expect": {
+      "author": "Andy Weir",
+      "title": "Project Hail Mary",
+      "series_name": ""
+    }
+  },
+  {
+    "id": "staging-downloads",
+    "layer": "library",
+    "path": [
+      "downloads",
+      "messy-release"
+    ],
+    "expect": null
+  },
+  {
+    "id": "staging-inbox",
+    "layer": "library",
+    "path": [
+      "inbox",
+      "Dune"
+    ],
+    "expect": null
+  },
+  {
+    "id": "underscore-dump-author",
+    "layer": "library",
+    "path": [
+      "Some_Author_Collection",
+      "Book One"
+    ],
+    "expect": null
+  },
+  {
+    "id": "underscore-dump-title",
+    "layer": "library",
+    "path": [
+      "Frank Herbert",
+      "Dune_Messiah_Children"
+    ],
+    "expect": null
+  },
+  {
+    "id": "author-equals-title",
+    "layer": "library",
+    "path": [
+      "Frank Herbert",
+      "Frank Herbert"
+    ],
+    "expect": null
+  },
+  {
+    "id": "scan-comic-file",
+    "layer": "scan",
+    "kind": "comic",
+    "path": [
+      "Image",
+      "Saga (2012)"
+    ],
+    "file": "Saga 001.cbz",
+    "expect": {
+      "title": "Saga #1",
+      "series_name": "Saga",
+      "series_index": "1"
+    }
+  },
+  {
+    "id": "scan-comic-folder-series",
+    "layer": "scan",
+    "kind": "comic",
+    "path": [
+      "Saga Collection",
+      "Extras"
+    ],
+    "file": "cover-gallery.cbz",
+    "expect": {
+      "title": "cover gallery",
+      "series_name": "Saga Collection"
+    }
+  },
+  {
+    "id": "scan-audiobook-file",
+    "layer": "scan",
+    "kind": "audiobook",
+    "path": [
+      "Andy Weir",
+      "Project Hail Mary"
+    ],
+    "file": "Andy Weir - Project Hail Mary.m4b",
+    "expect": {
+      "title": "Project Hail Mary",
+      "author": "Andy Weir"
+    }
+  },
+  {
+    "id": "scan-magazine-file",
+    "layer": "scan",
+    "kind": "magazine",
+    "path": [
+      "Linux Magazin",
+      "2026-09"
+    ],
+    "file": "Linux Magazin 2026-09.pdf",
+    "expect": {
+      "title": "Linux Magazin",
+      "series_name": "Linux Magazin",
+      "series_index": "2026-09",
+      "year": 2026
+    }
+  }
+]

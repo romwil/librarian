@@ -1,38 +1,15 @@
+// @vitest-environment jsdom
 import assert from "node:assert/strict";
-import { mkdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-import { describe, it } from "node:test";
-import * as esbuild from "esbuild";
-import {
-  askHitFromItem,
-  beyondGetLabel,
-  beyondGetPhase,
-  saveBeyondGet,
-  wantedBodyFromHit,
-} from "./beyondGet.js";
+import { render, screen } from "@testing-library/react";
+import { describe, it } from "vitest";
+import CatalogVerb from "./components/CatalogVerb.jsx";
+import { askHitFromItem, beyondGetLabel, beyondGetPhase, saveBeyondGet, wantedBodyFromHit } from "./beyondGet.js";
 
-const frontendRoot = fileURLToPath(new URL("..", import.meta.url));
 const srcRoot = dirname(fileURLToPath(import.meta.url));
-
-async function loadCatalogVerb() {
-  const cache = join(frontendRoot, "node_modules/.cache");
-  mkdirSync(cache, { recursive: true });
-  const outfile = join(cache, "librarian-catalog-verb-test.mjs");
-  await esbuild.build({
-    absWorkingDir: frontendRoot,
-    entryPoints: ["src/components/CatalogVerb.jsx"],
-    bundle: true,
-    format: "esm",
-    outfile,
-    jsx: "automatic",
-    platform: "node",
-    packages: "external",
-  });
-  return (await import(pathToFileURL(outfile).href)).default;
-}
 
 const hit = {
   title: "Scientific American 2026-10",
@@ -104,34 +81,26 @@ describe("beyond Get save", () => {
 });
 
 describe("CatalogVerb Get", () => {
-  it("shows Get, then Getting…, then Queued, and restores Get with an error", async () => {
-    const CatalogVerb = await loadCatalogVerb();
+  it("shows Get, then Getting…, then Queued, and restores Get with an error", () => {
     const getView = { show: true, status: "Not on the shelf", verb: "Get", canAdd: true };
-    const idle = renderToStaticMarkup(createElement(CatalogVerb, { view: getView }));
-    assert.match(idle, />Get</);
-    assert.equal(idle.includes("Getting"), false);
+    const { rerender } = render(createElement(CatalogVerb, { view: getView }));
+    const idle = screen.getByRole("button", { name: "Get" });
+    assert.equal(idle.disabled, false);
+    assert.equal(screen.queryByText("Getting…"), null);
 
-    const getting = renderToStaticMarkup(createElement(CatalogVerb, { view: getView, busy: true }));
-    assert.match(getting, />Getting…</);
-    assert.match(getting, /disabled/);
-    assert.match(getting, /aria-busy="true"/);
+    rerender(createElement(CatalogVerb, { view: getView, busy: true }));
+    const getting = screen.getByRole("button", { name: "Getting…" });
+    assert.equal(getting.disabled, true);
+    assert.equal(getting.getAttribute("aria-busy"), "true");
 
-    const queued = renderToStaticMarkup(
-      createElement(CatalogVerb, {
-        view: { show: true, status: "Asked", verb: "Queued", canAdd: false },
-      }),
-    );
-    assert.match(queued, />Queued</);
-    assert.match(queued, />Asked</);
-    assert.match(queued, /disabled/);
-    assert.equal(queued.includes(">Get<"), false);
+    rerender(createElement(CatalogVerb, { view: { show: true, status: "Asked", verb: "Queued", canAdd: false } }));
+    assert.equal(screen.getByRole("button", { name: "Queued" }).disabled, true);
+    assert.ok(screen.getByText("Asked"));
+    assert.equal(screen.queryByRole("button", { name: "Get" }), null);
 
-    const failed = renderToStaticMarkup(
-      createElement(CatalogVerb, { view: getView, error: "The indexer token was refused." }),
-    );
-    assert.match(failed, />Get</);
-    assert.match(failed, /role="alert"/);
-    assert.match(failed, /The indexer token was refused/);
+    rerender(createElement(CatalogVerb, { view: getView, error: "The indexer token was refused." }));
+    assert.ok(screen.getByRole("button", { name: "Get" }));
+    assert.match(screen.getByRole("alert").textContent, /The indexer token was refused/);
   });
 });
 

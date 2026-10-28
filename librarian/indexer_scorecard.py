@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 from librarian.indexers.hosts import NZBFINDER_ID, normalize_extra_indexers
-from librarian.indexers.kind_map import EXTRA_KINDS
 from librarian.kinds import ALL_KINDS
 
 SCORECARD_FILENAME = "indexer_scorecard.json"
@@ -19,8 +18,7 @@ HISTORY_LIMIT = 24
 SQLITE_BUSY_TIMEOUT_MS = 30000
 
 HOUSEHOLD_STAT_KINDS = ALL_KINDS
-EXTRA_STAT_KINDS = EXTRA_KINDS
-KNOWN_STAT_KINDS = frozenset(HOUSEHOLD_STAT_KINDS + EXTRA_STAT_KINDS)
+KNOWN_STAT_KINDS = frozenset(HOUSEHOLD_STAT_KINDS)
 
 KIND_LABELS = {
     "book": "Books",
@@ -28,9 +26,6 @@ KIND_LABELS = {
     "comic": "Comics",
     "audiobook": "Audiobooks",
     "music": "Music",
-    "movie": "Movies",
-    "tv": "TV",
-    "xxx": "XXX",
     "": "Any",
 }
 
@@ -170,7 +165,7 @@ def _record_kind_stat(
         return
     stored_kind = normalize_stat_kind(kind)
     if stored_kind is None:
-        stored_kind = ""
+        return
     spoke_hit = bool(ok) and int(hit_count or 0) > 0
     spoke_empty = bool(ok) and not spoke_hit
     errored = not bool(ok)
@@ -245,9 +240,8 @@ def summarize_host_stats(
     extra: bool = False,
 ) -> Dict[str, Any]:
     """Roll kind counters into a compact BI payload (match rate by media type)."""
+    _ = extra  # movie/TV stats are no longer rolled up
     allowed = set(HOUSEHOLD_STAT_KINDS) | {""}
-    if extra:
-        allowed.update(EXTRA_STAT_KINDS)
     by_kind: Dict[str, Dict[str, Any]] = {}
     for raw in kind_rows or []:
         if not isinstance(raw, Mapping):
@@ -268,8 +262,6 @@ def summarize_host_stats(
         if hit_at > _text(row.get("last_hit_at")):
             row["last_hit_at"] = hit_at
     order = list(HOUSEHOLD_STAT_KINDS)
-    if extra:
-        order.extend(EXTRA_STAT_KINDS)
     order.append("")
     kinds: List[Dict[str, Any]] = []
     searches = hits = empty = errors = rate_limited = 0
@@ -544,7 +536,6 @@ def assemble_indexer_scorecard(
     """Living lanterns for Maintain — weather + mute, plus match rate by kind."""
     blob = stats if isinstance(stats, Mapping) else read_scorecard(data_dir)
     stored = blob.get("hosts") if isinstance(blob.get("hosts"), dict) else {}
-    extra = bool(getattr(settings, "show_extra_categories", False))
     kind_stats = load_kind_stats(data_dir)
     lanterns: List[Dict[str, Any]] = []
     sick = 0
@@ -583,7 +574,7 @@ def assemble_indexer_scorecard(
                 "last_error": _text(row.get("last_error")) if row else "",
                 "last_latency_ms": row.get("last_latency_ms") if row else None,
                 "can_mute": bool(host.get("configured")),
-                "stats": summarize_host_stats(kind_stats.get(host["id"]) or [], extra=extra),
+                "stats": summarize_host_stats(kind_stats.get(host["id"]) or []),
             }
         )
     if sick > 0:
@@ -599,7 +590,6 @@ def assemble_indexer_scorecard(
         "lanterns": lanterns,
         "updated_at": _text(blob.get("updated_at")),
         "ok": sick < 1,
-        "show_extra_categories": extra,
     }
 
 

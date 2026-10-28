@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 from fastapi import FastAPI, HTTPException, Request
 
@@ -15,7 +15,6 @@ from librarian.delight import (
     normalize_ui_theme,
     pick_fast_gap,
     series_catch_up,
-    tonight_shelf,
 )
 from librarian.gaps import (
     cached_local_gaps,
@@ -36,7 +35,7 @@ from librarian.web.schemas import (
     NamedShelfSharePayload,
     PrefsPayload,
 )
-from librarian.web.serializers import public_work, public_works
+from librarian.web.serializers import public_works
 
 
 def register_hall_routes(app: FastAPI, deps: WebDeps) -> None:
@@ -59,18 +58,8 @@ def register_hall_routes(app: FastAPI, deps: WebDeps) -> None:
                 kind="music", music_state="incoming", limit=12, require_files=True
             ),
         }
-        # Hall paints shelves first — local gap fan-out is deferred to
-        # GET /api/gaps/local (SPA soft-fills gifts + catch-up). Catalog HTTP
-        # stays on GET /api/gaps only.
-        gaps: List[Dict[str, Any]] = []
-        catch_up = series_catch_up([])
         continue_rows = db.continue_works(user["id"], limit=18)
         continue_split = split_continue_rails(continue_rows)
-        surprise = None
-        if recent:
-            surprise = public_work(recent[0])
-        elif favorites:
-            surprise = public_work(favorites[0])
         counts = db.kind_counts()
         celebrations = db.unseen_celebrations(
             user["id"],
@@ -78,11 +67,6 @@ def register_hall_routes(app: FastAPI, deps: WebDeps) -> None:
                 kind_counts=counts,
                 author_year_counts=db.author_year_counts(year=datetime.now().year),
             ),
-        )
-        tonight = tonight_shelf(
-            continue_items=continue_rows,
-            gaps=gaps,
-            surprise=surprise,
         )
         named_rows = db.list_named_shelves(user["id"], include_shared=True)
         named_shelves = []
@@ -109,13 +93,8 @@ def register_hall_routes(app: FastAPI, deps: WebDeps) -> None:
             "named_shelves": named_shelves,
             "named_shelves_presence": shelf_presence(named_shelves),
             "areas": {key: public_works(value) for key, value in areas.items()},
-            "gaps": gaps,
-            "gaps_presence": "",
-            "gaps_pending": True,
-            "series_catch_up": catch_up,
             "continue": continue_split["reading"],
             "continue_listening": continue_split["listening"],
-            "tonight": tonight,
             "celebrations": celebrations,
             "kind_counts": counts,
             "owner_ready": True,
@@ -250,7 +229,7 @@ def register_hall_routes(app: FastAPI, deps: WebDeps) -> None:
 
     @app.get("/api/gaps/local")
     def gaps_local(request: Request):
-        """Hall soft-fill: local holes only (no catalog HTTP). Short TTL under DATA_DIR."""
+        """Local holes only (no catalog HTTP). Short TTL under DATA_DIR."""
         require_role(request.state.user, "owner", "op", "reader")
         rows = cached_local_gaps(db, root)
         cards = gap_cards(rows)

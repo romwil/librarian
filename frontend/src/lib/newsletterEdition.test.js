@@ -2,7 +2,7 @@
  * Pure helpers for owner library-letter push UI (unit coverage twin of notificationInbox).
  */
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import {
   NEWSLETTER_SCOPES,
   NEWSLETTER_TIMINGS,

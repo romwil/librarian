@@ -236,7 +236,7 @@ def audiobook_player_link(
         return None
     abs_url = _text(getattr(settings, "audiobookshelf_url", ""))
     item_id = _text(work.get("abs_item_id"))
-    target = _text(getattr(settings, "audiobook_target", "plex")).lower() or "plex"
+    target = _text(getattr(settings, "audiobook_target", "librarian_only")).lower() or "librarian_only"
     href = abs_item_href(abs_url, item_id)
     # Prefer ABS when target is Audiobookshelf, or whenever the title is already matched.
     if href and (target == "audiobookshelf" or item_id):
@@ -254,7 +254,7 @@ def player_empty_note(work: Optional[Mapping[str, Any]], settings: Settings) -> 
         return ""
     if audiobook_player_link(work, settings):
         return ""
-    target = _text(getattr(settings, "audiobook_target", "plex")).lower() or "plex"
+    target = _text(getattr(settings, "audiobook_target", "librarian_only")).lower() or "librarian_only"
     abs_url = _text(getattr(settings, "audiobookshelf_url", ""))
     if target == "audiobookshelf" and abs_url and not _text(work.get("abs_item_id")):
         return "Not matched to Audiobookshelf yet — run Match from Settings."

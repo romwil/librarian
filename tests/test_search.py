@@ -205,28 +205,17 @@ def test_search_comics_use_7030_and_music_ignores_isbn(tmp_path, monkeypatch):
     assert music.json()["beyond"][0]["kind"] == "music"
 
 
-def test_search_movie_maps_kind_from_category(tmp_path, monkeypatch):
-    client = _client(tmp_path, monkeypatch, nzbfinder_api_token="tok", show_extra_categories=True)
+def test_search_movie_kind_does_not_query_the_indexer(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch, nzbfinder_api_token="tok")
     _login(client)
 
     def fake_search_traced(self, query, *, cat=None, kind=None, limit=25, offset=0, keep_untyped=False):
-        assert keep_untyped is True
-        assert cat == "2000"
-        hit = {
-            "title": "SUPERCARS.CHAMPIONSHIP.2022.Race.21.OTR",
-            "kind": None,
-            "guid": "g-otr",
-            "category": 2040,
-        }
-        # keep_untyped path returns accepted as-is; hosts map kind later
-        return {"raw": [hit], "accepted": [hit], "rejected": [], "default_kind": ""}
+        raise AssertionError("movie search must not call the indexer")
 
     monkeypatch.setattr("librarian.nzbfinder.NZBFinderClient.search_traced", fake_search_traced)
     resp = client.get("/api/search", params={"beyond": 1, "kind": "movie", "q": "OTR"})
     assert resp.status_code == 200
-    beyond = resp.json()["beyond"]
-    assert [row["kind"] for row in beyond] == ["movie"]
-    assert beyond[0]["title"].startswith("SUPERCARS")
+    assert resp.json()["beyond"] == []
 
 
 def test_search_beyond_scrubs_tokens_and_raw(tmp_path, monkeypatch):

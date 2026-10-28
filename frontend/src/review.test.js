@@ -47,6 +47,8 @@ import {
 
 const root = dirname(fileURLToPath(import.meta.url));
 const reviewPageSrc = readFileSync(join(root, "pages/ReviewPage.jsx"), "utf8");
+const reviewBulkSrc = readFileSync(join(root, "components/ReviewBulkBar.jsx"), "utf8");
+const holdSlipSrc = readFileSync(join(root, "components/HoldSlipCard.jsx"), "utf8");
 
 describe("review identify form", () => {
   it("explains no_payload without blaming SAB path mapping first", () => {
@@ -184,11 +186,14 @@ describe("review recovery actions", () => {
     assert.match(SLIP_ACTION_HELP.requestNew, /different release/i);
     assert.match(SLIP_ACTION_HELP.requestNew, /English retail EPUB/i);
     assert.match(SLIP_ACTION_HELP.requestNew, /does not open Find/i);
-    assert.match(reviewPageSrc, /SLIP_ACTION_HELP\.regrab/);
-    assert.match(reviewPageSrc, /SLIP_ACTION_HELP\.requestNew/);
+    assert.match(holdSlipSrc, /SLIP_ACTION_HELP\.regrab/);
+    assert.match(holdSlipSrc, /SLIP_ACTION_HELP\.requestNew/);
     assert.match(reviewPageSrc, /reviewRetrieve/);
+    assert.match(reviewPageSrc, /HoldSlipCard/);
     assert.doesNotMatch(reviewPageSrc, /to=\{findTo\}/);
+    assert.doesNotMatch(holdSlipSrc, /to=\{findTo\}/);
     assert.doesNotMatch(reviewPageSrc, /Request new version on Find/);
+    assert.doesNotMatch(holdSlipSrc, /Request new version on Find/);
     assert.match(SLIP_ACTION_HELP.repair, /par2/i);
     assert.match(SLIP_ACTION_HELP.retry, /does not look for a different release/i);
     assert.match(SLIP_ACTION_HELP.apply, /unar/i);
@@ -258,14 +263,8 @@ describe("review recovery actions", () => {
       }),
       true,
     );
-    assert.equal(
-      reviewBulkRowVisible({ unpackCount: 0, showClear: false, showProgress: true }),
-      true,
-    );
-    assert.equal(
-      reviewBulkRowVisible({ unpackCount: 0, showClear: false, showProgress: false }),
-      false,
-    );
+    assert.equal(reviewBulkRowVisible({ unpackCount: 0, showClear: false, showProgress: true }), true);
+    assert.equal(reviewBulkRowVisible({ unpackCount: 0, showClear: false, showProgress: false }), false);
     assert.equal(
       reviewBulkRowVisible({ unpackCount: 0, showClear: false, showPurge: true, showProgress: false }),
       true,
@@ -293,10 +292,7 @@ describe("review recovery actions", () => {
     assert.equal(reviewPurgeProgressVisible(recent, false, { now }), true);
     assert.equal(reviewPurgeProgressVisible(stale, false, { now }), false);
     assert.equal(reviewExtraFilesProgressVisible(stale, false, { now }), false);
-    assert.equal(
-      reviewProgressDwellRemainingMs(recent, { now }),
-      REVIEW_PROGRESS_DWELL_MS - 5000,
-    );
+    assert.equal(reviewProgressDwellRemainingMs(recent, { now }), REVIEW_PROGRESS_DWELL_MS - 5000);
     assert.equal(reviewProgressDwellRemainingMs(stale, { now }), null);
 
     const clearRunning = {
@@ -350,10 +346,7 @@ describe("review recovery actions", () => {
       }),
       /purged 10/,
     );
-    assert.match(
-      purgeDuplicatesProgressSummary({ status: "failed", error: "Disk gone" }),
-      /Disk gone/,
-    );
+    assert.match(purgeDuplicatesProgressSummary({ status: "failed", error: "Disk gone" }), /Disk gone/);
   });
 
   it("summarizes Clear extra-files progress for the meter", () => {
@@ -378,19 +371,14 @@ describe("review recovery actions", () => {
       }),
       "Extra files: shelved 3, split 1, applied 2.",
     );
-    assert.equal(
-      extraFilesReprocessProgressSummary({ status: "failed", error: "Disk gone" }),
-      "Disk gone",
-    );
+    assert.equal(extraFilesReprocessProgressSummary({ status: "failed", error: "Disk gone" }), "Disk gone");
   });
 });
 
 describe("review LLM suggest helpers", () => {
   it("detects dotted Usenet dump titles", () => {
     assert.equal(
-      looksLikeDumpTitle(
-        "102.Minutes.The.Untold.Story.of.the.Fight.to.Survive.Inside.the.Twin.Towers.Audio.book.MP3",
-      ),
+      looksLikeDumpTitle("102.Minutes.The.Untold.Story.of.the.Fight.to.Survive.Inside.the.Twin.Towers.Audio.book.MP3"),
       true,
     );
     assert.equal(looksLikeDumpTitle("Piranesi"), false);
@@ -426,9 +414,10 @@ describe("ReviewPage loading", () => {
   });
 
   it("exposes Purge duplicates bulk control", () => {
-    assert.match(reviewPageSrc, /data-testid="review-bulk-purge-duplicates"/);
-    assert.match(reviewPageSrc, /Purge duplicates/);
+    assert.match(reviewPageSrc, /ReviewBulkBar/);
     assert.match(reviewPageSrc, /bulkPurgeDuplicates/);
+    assert.match(reviewBulkSrc, /data-testid="review-bulk-purge-duplicates"/);
+    assert.match(reviewBulkSrc, /Purge duplicates/);
   });
 
   it("binds each progress panel to its own summary, not shared bulkNote", () => {
@@ -448,12 +437,16 @@ describe("ReviewPage loading", () => {
   });
 });
 
-
 describe("smart Holds desk grouping", () => {
   it("groups hold slips by effective reason with sorting-returns order", () => {
     const groups = groupHoldSlipsByReason([
       { id: "a", title: "A", review_reason: "collision" },
-      { id: "b", title: "B", review_reason: "extra_files", folder_diagnosis: { collection_dump: true, distinct_title_count: 4 } },
+      {
+        id: "b",
+        title: "B",
+        review_reason: "extra_files",
+        folder_diagnosis: { collection_dump: true, distinct_title_count: 4 },
+      },
       { id: "c", title: "C", review_reason: "no_payload", folder_diagnosis: { problem: "unpack_stuck" } },
       { id: "d", title: "D", review_reason: "extra_files" },
     ]);
@@ -498,25 +491,29 @@ describe("smart Holds desk grouping", () => {
     assert.match(reviewPageSrc, /holdsDeskLedeCopy/);
     assert.match(reviewPageSrc, /data-testid="holds-desk-groups"/);
     assert.match(reviewPageSrc, /data-testid="holds-group"/);
-    assert.match(reviewPageSrc, /data-testid="hold-slip"/);
-    assert.match(reviewPageSrc, /data-testid="hold-slip-recommended"/);
+    assert.match(reviewPageSrc, /HoldSlipCard/);
+    assert.match(holdSlipSrc, /data-testid="hold-slip"/);
+    assert.match(holdSlipSrc, /data-testid="hold-slip-recommended"/);
+    assert.match(holdSlipSrc, /recommendedMotionCtaClass/);
     assert.match(reviewPageSrc, /data-testid="owned-slip-note"/);
-    assert.match(reviewPageSrc, /recommendedMotionCtaClass/);
     assert.doesNotMatch(reviewPageSrc, /bagging/i);
+    assert.doesNotMatch(holdSlipSrc, /bagging/i);
   });
 
   it("renders a slip as one line: title, four-word reason, one button", () => {
-    const start = reviewPageSrc.indexOf('data-testid="hold-slip-line"');
-    const end = reviewPageSrc.indexOf('data-testid="hold-slip-more"');
+    const start = holdSlipSrc.indexOf('data-testid="hold-slip-line"');
+    const end = holdSlipSrc.indexOf('data-testid="hold-slip-more"');
     assert.ok(start >= 0 && end > start);
-    const line = reviewPageSrc.slice(start, end);
+    const line = holdSlipSrc.slice(start, end);
     assert.match(line, /ticket-title/);
     assert.match(line, /holdSlipReasonWords/);
     assert.match(line, /data-testid="review-reason-copy"/);
     const buttons = line.match(/<button/g) || [];
     assert.equal(buttons.length, 1);
-    assert.match(reviewPageSrc, /Accept the clear ones/);
-    assert.match(reviewPageSrc, /slipRowIsPathClear/);
+    const groupActionsSrc = readFileSync(join(root, "components/HoldsGroupActions.jsx"), "utf8");
+    assert.match(reviewPageSrc, /HoldsGroupActions/);
+    assert.match(groupActionsSrc, /Accept the clear ones/);
+    assert.match(groupActionsSrc, /slipRowIsPathClear/);
     assert.equal(reviewReasonFourWords("unknown_identity").split(/\s+/).length, 4);
     assert.equal(
       holdSlipReasonWords({
@@ -525,10 +522,7 @@ describe("smart Holds desk grouping", () => {
       }),
       "Author and title clear",
     );
-    assert.equal(
-      holdSlipReasonWords({ review_reason: "low_confidence", folder_diagnosis: {} }),
-      "Path is not clear",
-    );
+    assert.equal(holdSlipReasonWords({ review_reason: "low_confidence", folder_diagnosis: {} }), "Path is not clear");
     assert.equal(reviewReasonFourWords("convert_failed"), "Convert failed twice now");
     assert.equal(
       slipRowIsPathClear({

@@ -246,8 +246,12 @@ def test_prefs_whispers_quiet_hours_api(tmp_path, monkeypatch):
     hall = client.get("/api/hall")
     assert hall.status_code == 200
     body = hall.json()
-    assert "tonight" in body
+    assert "continue" in body
+    assert "whats_new" in body
     assert "celebrations" in body
+    assert "tonight" not in body
+    assert "series_catch_up" not in body
+    assert "gaps" not in body
 
     detail = client.get(f"/api/works/{work['id']}")
     assert detail.status_code == 200

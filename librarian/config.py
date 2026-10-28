@@ -40,13 +40,6 @@ ENV_TO_FIELD = {
     "WATCH_ENABLED": "watch_enabled",
     "AUDIOBOOKSHELF_URL": "audiobookshelf_url",
     "AUDIOBOOKSHELF_API_TOKEN": "audiobookshelf_api_token",
-    "SHOW_EXTRA_CATEGORIES": "show_extra_categories",
-    "RADARR_URL": "radarr_url",
-    "RADARR_API_KEY": "radarr_api_key",
-    "SONARR_URL": "sonarr_url",
-    "SONARR_API_KEY": "sonarr_api_key",
-    "SAB_MOVIE_CATEGORY": "sab_movie_category",
-    "SAB_TV_CATEGORY": "sab_tv_category",
 }
 
 MEDIA_ROOT_FIELDS = (
@@ -67,8 +60,6 @@ SECRET_FIELDS = (
     "comicvine_api_key",
     "komga_api_key",
     "audiobookshelf_api_token",
-    "radarr_api_key",
-    "sonarr_api_key",
 )
 
 MAIL_SECRET_FIELDS = (
@@ -191,7 +182,7 @@ class Settings:
     incoming_music_root: str = "/data/media/library/incoming-music"
     music_root: str = "/data/media/music"
     complete_root: str = ""
-    audiobook_target: str = "plex"
+    audiobook_target: str = "librarian_only"
     llm_provider: str = "openai"
     llm_base_url: str = ""
     llm_api_key: str = ""
@@ -209,13 +200,6 @@ class Settings:
     extra_indexers: list = field(default_factory=list)
     audiobookshelf_url: str = ""
     audiobookshelf_api_token: str = ""
-    show_extra_categories: bool = False
-    radarr_url: str = ""
-    radarr_api_key: str = ""
-    sonarr_url: str = ""
-    sonarr_api_key: str = ""
-    sab_movie_category: str = "movies"
-    sab_tv_category: str = "tv"
     music_write_tags: bool = False
     quiet_hours_enabled: bool = False
     quiet_hours_start: str = "22:00"
@@ -238,8 +222,6 @@ class Settings:
                 filtered[key] = value
         if "watch_enabled" in filtered:
             filtered["watch_enabled"] = _as_bool(filtered["watch_enabled"])
-        if "show_extra_categories" in filtered:
-            filtered["show_extra_categories"] = _as_bool(filtered["show_extra_categories"])
         if "music_write_tags" in filtered:
             filtered["music_write_tags"] = _as_bool(filtered["music_write_tags"])
         if "quiet_hours_enabled" in filtered:
@@ -258,9 +240,11 @@ class Settings:
             filtered["llm_profiles"] = normalize_profiles(filtered.get("llm_profiles"))
             apply_profile_to_active(filtered)
         settings = cls(**filtered)
-        target = str(settings.audiobook_target or "plex").strip().lower()
-        if target not in AUDIOBOOK_TARGETS:
-            settings.audiobook_target = "plex"
+        # Missing or blank stays the dataclass default (librarian_only).
+        # An explicit saved value such as "plex" is kept.
+        target = str(settings.audiobook_target or "").strip().lower()
+        if not target or target not in AUDIOBOOK_TARGETS:
+            settings.audiobook_target = "librarian_only"
         else:
             settings.audiobook_target = target
         return settings
@@ -329,8 +313,6 @@ def load_merged_settings(data_dir: Path) -> Settings:
         merged[field_name] = os.environ[env_name]
     if "watch_enabled" in merged:
         merged["watch_enabled"] = _as_bool(merged["watch_enabled"])
-    if "show_extra_categories" in merged:
-        merged["show_extra_categories"] = _as_bool(merged["show_extra_categories"])
     if "music_write_tags" in merged:
         merged["music_write_tags"] = _as_bool(merged["music_write_tags"])
     if "quiet_hours_enabled" in merged:

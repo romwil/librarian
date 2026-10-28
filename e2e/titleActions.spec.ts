@@ -88,7 +88,7 @@ async function mockStacks(page: Page) {
 }
 
 async function chooseLamp(page: Page, lamp: (typeof LAMPS)[number]) {
-  await page.getByRole("button", { name: "Library card", exact: true }).click();
+  await page.getByRole("button", { name: /^Library card\b/ }).click();
   const theme = page.getByRole("radiogroup", { name: "Theme" });
   await theme.getByRole("radio", { name: lamp, exact: true }).click();
   await expect
@@ -205,7 +205,10 @@ for (const viewport of VIEWPORTS) {
       const sort = page.getByRole("combobox", { name: "Sort", exact: true });
       await expect(sort).toBeVisible();
       await expect(page.getByRole("group", { name: "View" }).getByRole("button", { name: "Covers" })).toBeVisible();
-      await expect(page.getByRole("button", { name: "Sort Descending", exact: true })).toBeVisible();
+      // Date added opens newest-first. The direction control is named for the
+      // direction a click would switch to, so descending offers ascending.
+      await expect(sort).toHaveValue("updated");
+      await expect(page.getByRole("button", { name: "Sort Ascending", exact: true })).toBeVisible();
       await sort.selectOption({ label: "Year" });
       await expect(sort).toHaveValue("year");
       await expect(page.getByRole("button", { name: "Sort Ascending", exact: true })).toBeVisible();

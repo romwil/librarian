@@ -2,19 +2,20 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { test } from "node:test";
+import { test } from "vitest";
 import {
   briefIsEmpty,
   briefPresence,
   morningTendPresence,
   rankMorningKinds,
 } from "./lib/morningBrief.js";
+import { readStyles } from "./test/styles.js";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const briefSrc = readFileSync(join(root, "components/MorningBrief.jsx"), "utf8");
 const maintainSrc = readFileSync(join(root, "pages/MaintainPage.jsx"), "utf8");
 const motionSrc = readFileSync(join(root, "styles/motion.css"), "utf8");
-const stylesSrc = readFileSync(join(root, "styles.css"), "utf8");
+const stylesSrc = readStyles();
 const apiSrc = readFileSync(join(root, "api.js"), "utf8");
 
 test("presence counts in words — never a KPI strip", () => {

@@ -131,6 +131,18 @@ export const api = {
       method: "POST",
     }),
   reviewPurgeDuplicatesStatus: () => request("/review/purge-duplicates/status"),
+  reviewBulkByReason: ({ reason = "", action = "", workIds = [], dryRun = false } = {}) =>
+    request("/review/bulk-by-reason", {
+      method: "POST",
+      body: JSON.stringify({ reason, action, work_ids: workIds, dry_run: Boolean(dryRun) }),
+    }),
+  reviewSuggestBatch: (limit = 0) =>
+    request(`/review/suggest-batch${limit ? `?limit=${encodeURIComponent(String(limit))}` : ""}`, {
+      method: "POST",
+    }),
+  reviewSuggestBatchStatus: () => request("/review/suggest-batch/status"),
+  reviewApplyTrusted: () => request("/review/apply-trusted", { method: "POST" }),
+  reviewBadReleaseMigrationStatus: () => request("/review/bad-release-migration/status"),
   maintainPurgeShells: (limit = 0) =>
     request(`/maintain/purge-shells${limit ? `?limit=${encodeURIComponent(String(limit))}` : ""}`, {
       method: "POST",

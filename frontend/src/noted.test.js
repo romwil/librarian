@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { test } from "node:test";
+import { test } from "vitest";
 
 import { notedFindHref, notedFormatActions, notedSearchHref, notedWantedBody } from "./noted.js";
 
@@ -93,7 +93,6 @@ test("Search keeps a Trending books door to New & noted", () => {
   assert.match(searchSrc, /trending-books-door/);
   assert.match(searchSrc, /TRENDING_BOOKS_LABEL/);
   assert.match(searchSrc, /to="\/noted"/);
-  assert.equal(searchSrc.includes("ShelfMore"), false);
   assert.match(searchSrc, /discover-panel/);
   assert.match(searchSrc, /On the shelf/);
 });

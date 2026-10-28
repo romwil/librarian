@@ -3,7 +3,6 @@
 export const LANTERN_ORDER = ["bright", "dim", "dark", "muted", "idle"];
 
 export const HOUSEHOLD_KIND_ORDER = ["book", "magazine", "comic", "audiobook", "music"];
-export const EXTRA_KIND_ORDER = ["movie", "tv", "xxx"];
 
 export const KIND_LABELS = {
   book: "Books",
@@ -11,9 +10,6 @@ export const KIND_LABELS = {
   comic: "Comics",
   audiobook: "Audiobooks",
   music: "Music",
-  movie: "Movies",
-  tv: "TV",
-  xxx: "XXX",
   "": "Any",
 };
 
@@ -65,11 +61,9 @@ function asCount(value) {
 }
 
 export function lanternKindBars(row, { showExtra = false } = {}) {
+  void showExtra;
   const allowed = new Set(HOUSEHOLD_KIND_ORDER);
   allowed.add("");
-  if (showExtra) {
-    for (const kind of EXTRA_KIND_ORDER) allowed.add(kind);
-  }
   const raw = Array.isArray(row?.stats?.by_kind) ? row.stats.by_kind : [];
   const bars = [];
   for (const item of raw) {

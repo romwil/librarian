@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { test } from "node:test";
+import { test } from "vitest";
 import {
   ingestPreviewIsEmpty,
   ingestPreviewPresence,
@@ -11,12 +11,13 @@ import {
   volumeKindLabel,
   volumeStem,
 } from "./lib/ingestPreview.js";
+import { readStyles } from "./test/styles.js";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const mapSrc = readFileSync(join(root, "components/IngestPreviewMap.jsx"), "utf8");
 const addSrc = readFileSync(join(root, "components/AddToLibrary.jsx"), "utf8");
 const motionSrc = readFileSync(join(root, "styles/motion.css"), "utf8");
-const stylesSrc = readFileSync(join(root, "styles.css"), "utf8");
+const stylesSrc = readStyles();
 const apiSrc = readFileSync(join(root, "api.js"), "utf8");
 
 test("presence prefers server copy and recovers from hostile payloads", () => {

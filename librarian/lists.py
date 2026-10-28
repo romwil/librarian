@@ -335,13 +335,12 @@ def public_beyond_hit(hit: Optional[Mapping[str, Any]]) -> Optional[Dict[str, An
         "isbn": isbn,
         "kind": str(hit.get("kind") or "").strip(),
         "size": hit.get("size"),
-        "cover": strip_secret_query(str(hit.get("cover") or "").strip()),
+        "cover": strip_secret_query(str(hit.get("cover") or hit.get("poster") or "").strip()),
         "download_url": strip_secret_query(str(hit.get("download_url") or "").strip()),
         "category": hit.get("category"),
         "category_name": str(hit.get("category_name") or "").strip(),
         "host_id": str(hit.get("host_id") or "").strip(),
         "host_name": str(hit.get("host_name") or "").strip(),
-        "poster": str(hit.get("poster") or "").strip(),
     }
 
 

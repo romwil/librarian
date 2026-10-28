@@ -4,10 +4,8 @@ from pathlib import Path
 import httpx
 from fastapi.testclient import TestClient
 
-from librarian.arr import expect_on_arr, sab_category_for_kind
-from librarian.config import Settings, mask_settings, save_settings
+from librarian.config import Settings, save_settings
 from librarian.indexers.discover import category_feeds, clear_discover_cache, public_discover_hit
-from librarian.jobs import enqueue_indexer_item
 from librarian.kinds import kind_from_newznab
 from librarian.nzbfinder import NZBFinderError
 from librarian.rate_limit import clear_rate_limits
@@ -94,9 +92,9 @@ def test_discover_requires_auth(tmp_path, monkeypatch):
     assert "5040" not in hidden
     assert "6000" not in hidden
     shown = {row["id"]: row["kind"] for row in category_feeds(CAPS, extra=True)}
-    assert shown["2040"] == "movie"
-    assert shown["5040"] == "tv"
-    assert shown["6030"] == "xxx"
+    assert "2040" not in shown
+    assert "5040" not in shown
+    assert "6030" not in shown
     assert shown["7030"] == "comic"
 
 
@@ -109,8 +107,7 @@ def test_discover_hit_strips_token_and_drops_tv_when_extra_off():
     assert "secret" not in comic["download_url"]
     assert public_discover_hit(TV_HIT, host=host, feed=feed, extra=False) is None
     movie = public_discover_hit(MOVIE_HIT, host=host, feed={"id": "2040", "name": "HD", "kind": "movie"}, extra=True)
-    assert movie is not None
-    assert movie["kind"] == "movie"
+    assert movie is None
 
 
 def test_discover_comic_drops_tv_and_keeps_7030(tmp_path, monkeypatch):
@@ -264,9 +261,9 @@ def test_discover_extra_host_502_keeps_nzbfinder(tmp_path, monkeypatch):
     assert "502" in (body["beyond_error"] or "")
 
 
-def test_discover_flag_off_hides_movie_feed(tmp_path, monkeypatch):
+def test_discover_omits_movie_feeds(tmp_path, monkeypatch):
     monkeypatch.setenv("NZBFINDER_API_TOKEN", "tok")
-    client = _client(tmp_path, monkeypatch, nzbfinder_api_token="tok", show_extra_categories=False)
+    client = _client(tmp_path, monkeypatch, nzbfinder_api_token="tok")
     _login(client)
 
     def latest(self, cat):
@@ -276,31 +273,12 @@ def test_discover_flag_off_hides_movie_feed(tmp_path, monkeypatch):
     resp = client.get("/api/discover")
     assert resp.status_code == 200
     body = resp.json()
-    assert body["show_extra_categories"] is False
+    assert "show_extra_categories" not in body
     kinds = {row["kind"] for row in body["items"]}
     ids = {row["id"] for row in body["categories"]}
     assert "movie" not in kinds
     assert "2040" not in ids
     assert "2000" not in ids
-
-
-def test_discover_flag_on_includes_movie_feed(tmp_path, monkeypatch):
-    monkeypatch.setenv("NZBFINDER_API_TOKEN", "tok")
-    client = _client(tmp_path, monkeypatch, nzbfinder_api_token="tok", show_extra_categories=True)
-    _login(client)
-
-    def latest(self, cat):
-        if str(cat) in {"2040", "2000"} or str(cat).startswith("20"):
-            return [MOVIE_HIT]
-        return []
-
-    _patch_discover_client(monkeypatch, latest=latest)
-    resp = client.get("/api/discover", params={"kind": "movie"})
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["show_extra_categories"] is True
-    assert [row["kind"] for row in body["items"]] == ["movie"]
-    assert any(row["id"] == "2040" for row in body["categories"])
 
 
 def test_reader_can_view_discover_and_request_is_asked(tmp_path, monkeypatch):
@@ -329,222 +307,26 @@ def test_reader_can_view_discover_and_request_is_asked(tmp_path, monkeypatch):
     assert asked.json()["job"]["status"] == "asked"
 
 
-def _quiet_nzb():
-    nzb_xml = b'<?xml version="1.0"?><nzb xmlns="http://www.newzbin.com/DTD/2003/nzb"></nzb>'
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        if "/api/v2/download" in str(request.url) or "/api/v1/getnzb" in str(request.url):
-            return httpx.Response(200, content=nzb_xml, headers={"content-type": "application/x-nzb"})
-        return httpx.Response(200, json={})
-
-    return httpx.MockTransport(handler)
-
-
-def _sab_addfile_handler(nzo_id: str, sab_cats=None):
-    def sab_handler(request: httpx.Request) -> httpx.Response:
-        params = dict(request.url.params)
-        if request.method == "POST" or params.get("mode") == "addfile":
-            if sab_cats is not None:
-                # multipart field cat=
-                body = request.content or b""
-                if b'name="cat"' in body:
-                    start = body.find(b'name="cat"')
-                    chunk = body[start : start + 120]
-                    parts = chunk.split(b"\r\n\r\n", 1)
-                    if len(parts) == 2:
-                        sab_cats.append(parts[1].split(b"\r\n")[0].decode())
-                    else:
-                        sab_cats.append("")
-                else:
-                    sab_cats.append("")
-            return httpx.Response(200, json={"nzo_ids": [nzo_id]})
-        if params.get("mode") == "addurl":
-            raise AssertionError("addurl must not be used")
-        return httpx.Response(200, json={"queue": {"slots": []}})
-
-    return sab_handler
-
-
-def test_movie_request_queues_sab_and_tells_radarr(tmp_path, monkeypatch):
-    from librarian.db import Database
-    from librarian.nzbfinder import NZBFinderClient
-    from librarian.sabnzbd import SABClient
-
-    sab_cats = []
-    arr_calls = []
-
-    def expect(settings, kind, item, **kwargs):
-        arr_calls.append((kind, item.get("tmdb_id") or (item.get("selected") or {}).get("tmdb_id")))
-        return {"service": "radarr", "arr_id": 9, "tmdb_id": 438631}
-
-    monkeypatch.setattr("librarian.jobs.expect_on_arr", expect)
-    db = Database(tmp_path / "librarian.db")
-    settings = Settings(
-        sabnzbd_api_key="sab",
-        nzbfinder_api_token="tok",
-        show_extra_categories=True,
-        radarr_url="http://radarr.example",
-        radarr_api_key="radarr-secret",
+def test_movie_request_is_refused(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch, nzbfinder_api_token="tok")
+    _login(client)
+    resp = client.post(
+        "/api/request",
+        json={"title": "Dune", "guid": "g-dune-movie", "kind": "movie"},
     )
-    job = enqueue_indexer_item(
-        db,
-        settings,
-        item={
-            "title": "Dune",
-            "guid": "g-dune-movie",
-            "kind": "movie",
-            "category": 2040,
-            "tmdb_id": 438631,
-            "download_url": "https://example.test/dune.nzb",
-        },
-        requested_by="owner-1",
-        role="owner",
-        sab=SABClient("http://downloader.sl", "sab", transport=httpx.MockTransport(_sab_addfile_handler("SABnzbd_nzo_movie", sab_cats))),
-        nzb=NZBFinderClient("https://nzbfinder.example", "tok", transport=_quiet_nzb()),
-    )
-    assert job["status"] == "queued"
-    assert job["nzo_id"] == "SABnzbd_nzo_movie"
-    assert sab_cats == ["movies"]
-    assert arr_calls == [("movie", 438631)]
-    assert job["payload"]["arr"]["service"] == "radarr"
+    assert resp.status_code == 400
+    assert "shelves" in resp.json()["detail"]
 
 
-def test_radarr_expect_adds_without_movies_search():
-    commands = []
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        commands.append(f"{request.method} {request.url.path}")
-        path = request.url.path
-        if path.endswith("/qualityprofile"):
-            return httpx.Response(200, json=[{"id": 1}])
-        if path.endswith("/rootfolder"):
-            return httpx.Response(200, json=[{"path": "/media/movies"}])
-        if "/movie/lookup/tmdb" in path:
-            return httpx.Response(200, json={"tmdbId": 438631, "title": "Dune"})
-        if path.endswith("/movie") and request.method == "GET":
-            return httpx.Response(200, json=[])
-        if path.endswith("/movie") and request.method == "POST":
-            body = json.loads(request.content.decode())
-            assert body["addOptions"]["searchForMovie"] is False
-            assert body["rootFolderPath"] == "/media/movies"
-            return httpx.Response(200, json={"id": 9, "tmdbId": 438631, "title": "Dune"})
-        if path.endswith("/command"):
-            body = json.loads(request.content.decode())
-            commands.append(body.get("name"))
-            return httpx.Response(200, json={"name": body.get("name")})
-        return httpx.Response(404, json={})
-
-    settings = Settings(radarr_url="http://radarr.example", radarr_api_key="radarr-secret")
-    result = expect_on_arr(
-        settings,
-        "movie",
-        {"title": "Dune", "tmdb_id": 438631},
-        transport=httpx.MockTransport(handler),
-    )
-    assert result["service"] == "radarr"
-    assert result["arr_id"] == 9
-    assert "POST /api/v3/command" not in commands
-    assert "MoviesSearch" not in commands
-
-
-def test_xxx_request_is_sab_only_no_arr(tmp_path, monkeypatch):
-    from librarian.db import Database
-    from librarian.nzbfinder import NZBFinderClient
-    from librarian.sabnzbd import SABClient
-
-    arr_hits = []
-    sab_cats = []
-
-    def boom(*args, **kwargs):
-        arr_hits.append("called")
-        raise AssertionError("arr should not be called for XXX")
-
-    monkeypatch.setattr("librarian.jobs.expect_on_arr", boom)
-    db = Database(tmp_path / "librarian.db")
-    job = enqueue_indexer_item(
-        db,
-        Settings(sabnzbd_api_key="sab", nzbfinder_api_token="tok", show_extra_categories=True),
-        item={
-            "title": "Clip",
-            "guid": "g-xxx",
-            "kind": "xxx",
-            "category": 6030,
-            "download_url": "https://example.test/x.nzb",
-        },
-        requested_by="owner-1",
-        role="owner",
-        sab=SABClient(
-            "http://downloader.sl",
-            "sab",
-            transport=httpx.MockTransport(_sab_addfile_handler("SABnzbd_nzo_xxx", sab_cats)),
-        ),
-        nzb=NZBFinderClient("https://nzbfinder.example", "tok", transport=_quiet_nzb()),
-    )
-    assert job["status"] == "queued"
-    assert job["nzo_id"] == "SABnzbd_nzo_xxx"
-    assert sab_cats == [""]
-    assert arr_hits == []
-    assert job["payload"].get("arr") == {"service": None}
-
-
-def test_movie_request_without_arr_token_still_sabs_and_needs_you(tmp_path):
-    from librarian.db import Database
-    from librarian.nzbfinder import NZBFinderClient
-    from librarian.sabnzbd import SABClient
-
-    db = Database(tmp_path / "librarian.db")
-    job = enqueue_indexer_item(
-        db,
-        Settings(sabnzbd_api_key="sab", nzbfinder_api_token="tok", show_extra_categories=True),
-        item={
-            "title": "Dune",
-            "guid": "g-dune-movie",
-            "kind": "movie",
-            "category": 2040,
-            "download_url": "https://example.test/dune.nzb",
-        },
-        requested_by="owner-1",
-        role="owner",
-        sab=SABClient(
-            "http://downloader.sl",
-            "sab",
-            transport=httpx.MockTransport(_sab_addfile_handler("SABnzbd_nzo_movie")),
-        ),
-        nzb=NZBFinderClient("https://nzbfinder.example", "tok", transport=_quiet_nzb()),
-    )
-    assert job["nzo_id"] == "SABnzbd_nzo_movie"
-    assert job["status"] == "review"
-    assert "Radarr" in (job.get("error") or "")
-    assert job["payload"].get("arr") is None
-
-
-def test_sab_category_names():
-    settings = Settings(sab_movie_category="radarr", sab_tv_category="sonarr")
-    assert sab_category_for_kind(settings, "movie") == "radarr"
-    assert sab_category_for_kind(settings, "tv") == "sonarr"
-    assert sab_category_for_kind(settings, "xxx") == ""
-    assert sab_category_for_kind(settings, "book") == ""
-
-
-def test_kind_extra_mapping_stays_off_identify_path():
+def test_kind_mapping_refuses_movie_tv_adult():
     assert kind_from_newznab(2040) is None
-    assert kind_from_newznab(2040, extra=True) == "movie"
-    assert kind_from_newznab(5040, extra=True) == "tv"
-    assert kind_from_newznab(6030, extra=True) == "xxx"
+    assert kind_from_newznab(2040, extra=True) is None
+    assert kind_from_newznab(5040, extra=True) is None
+    assert kind_from_newznab(6030, extra=True) is None
     assert kind_from_newznab(7030, extra=True) == "comic"
 
 
-def test_mask_settings_hides_arr_keys():
-    masked = mask_settings(Settings(radarr_api_key="radarr-secret", sonarr_api_key="sonarr-secret"))
-    assert masked["radarr_api_key"] == ""
-    assert masked["radarr_api_key_set"] is True
-    assert masked["sonarr_api_key"] == ""
-    assert "radarr-secret" not in json.dumps(masked)
-    assert "sonarr-secret" not in json.dumps(masked)
-
-
-def test_discover_movie_feed_keeps_movie_kind_despite_book_cat():
-    """Extras feed kind wins over a stray library category on the item."""
+def test_movie_feed_does_not_become_a_book():
     host = {"id": "nzbfinder", "name": "NZBFinder"}
     feed = {"id": "2010", "name": "Foreign", "kind": "movie", "parent_id": "2000", "parent_name": "Movies"}
     hit = {
@@ -554,25 +336,19 @@ def test_discover_movie_feed_keeps_movie_kind_despite_book_cat():
         "cats": [7060, 2010],
         "download_url": "https://example.test/solo.nzb",
     }
-    row = public_discover_hit(hit, host=host, feed=feed, extra=True)
-    assert row is not None
-    assert row["kind"] == "movie"
+    assert public_discover_hit(hit, host=host, feed=feed, extra=True) is None
 
 
-def test_discover_tv_feed_kind_not_book():
+def test_tv_feed_is_not_a_book():
     host = {"id": "nzbfinder", "name": "NZBFinder"}
     feed = {"id": "5020", "name": "Foreign", "kind": "tv"}
     hit = {"title": "Show.S01E01", "guid": "g-show", "category": 7020, "download_url": "https://example.test/s.nzb"}
-    row = public_discover_hit(hit, host=host, feed=feed, extra=True)
-    assert row is not None
-    assert row["kind"] == "tv"
+    assert public_discover_hit(hit, host=host, feed=feed, extra=True) is None
 
 
-def test_category_feeds_include_parent_for_grouping():
+def test_category_feeds_skip_movie_parents():
     rows = category_feeds(CAPS, extra=True)
-    foreign = {row["id"]: row for row in rows}
-    assert foreign["2010"]["parent_id"] == "2000"
-    assert foreign["2010"]["parent_name"] == "Movies"
-    assert foreign["7060"]["parent_id"] == "7000"
-    assert foreign["7060"]["kind"] == "book"
-    assert foreign["2010"]["kind"] == "movie"
+    by_id = {row["id"]: row for row in rows}
+    assert "2010" not in by_id
+    assert by_id["7060"]["parent_id"] == "7000"
+    assert by_id["7060"]["kind"] == "book"

@@ -9,12 +9,6 @@ export const KINDS = [
   ["music", "Music"],
 ];
 
-export const EXTRA_FIND_KINDS = [
-  ["movie", "Movie"],
-  ["tv", "TV"],
-  ["xxx", "XXX"],
-];
-
 export const FIND_KEYS = ["q", "kind", "author", "title", "isbn", "series", "issue", "artist", "album", "year"];
 
 export const FIND_FIELDS_BY_KIND = {
@@ -24,9 +18,6 @@ export const FIND_FIELDS_BY_KIND = {
   comic: ["series", "issue", "year"],
   music: ["artist", "album", "year"],
   audiobook: ["title", "author", "isbn"],
-  movie: ["title", "year"],
-  tv: ["title", "year"],
-  xxx: ["title", "year"],
 };
 
 export function emptyFindFields() {
@@ -166,15 +157,12 @@ export function nytHitFindHref(book = {}) {
 }
 
 /** Newznab top-level parents (approx) for Discover chip grouping. */
-export const NEWZNAB_PARENT_ORDER = ["1000", "2000", "3000", "4000", "5000", "6000", "7000"];
+export const NEWZNAB_PARENT_ORDER = ["1000", "3000", "4000", "7000"];
 
 export const NEWZNAB_PARENT_LABELS = {
   "1000": "Console",
-  "2000": "Movies",
   "3000": "Audio",
   "4000": "PC",
-  "5000": "TV",
-  "6000": "XXX",
   "7000": "Books",
 };
 
@@ -217,7 +205,8 @@ export const DISCOVER_RAIL_LIMIT = 12;
 export const DISCOVER_BROWSE_LIMIT = 50;
 
 export function findKindOptions(showExtra = false) {
-  return showExtra ? [...KINDS, ...EXTRA_FIND_KINDS] : KINDS;
+  void showExtra;
+  return KINDS;
 }
 
 export function buildFindSearchParams(fields = {}, { prune = false } = {}) {
@@ -259,9 +248,6 @@ export function findPlaceholder(kind) {
   if (kind === "audiobook") return "Title or author";
   if (kind === "magazine") return "Magazine title";
   if (kind === "book") return "Title, or fill author / ISBN below";
-  if (kind === "movie") return "Movie title";
-  if (kind === "tv") return "Show title";
-  if (kind === "xxx") return "Title";
   return "Beyond the shelves";
 }
 
@@ -399,7 +385,6 @@ export function catalogGapFanoutQueries(fields = {}, { cap = 6 } = {}) {
 
 /** Rank beyond hits: complete multipart sets first, then fuller sets, then singles. */
 export function rankBeyondByCompleteness(items = []) {
-  // Imported lazily via dynamic would cycle; FindPage groups and sorts — helper for tests/UI.
   const list = Array.isArray(items) ? items : [];
   return [...list].sort((a, b) => {
     const score = (row) => {
@@ -419,8 +404,7 @@ export function selectedFromHit(item = {}) {
     download_url: item.download_url || "",
     category: item.category,
     size: item.size,
-    cover: item.cover || "",
-    poster: item.poster || "",
+    cover: item.cover || item.poster || "",
     category_name: item.category_name || "",
     author: item.author || "",
     isbn: item.isbn || "",
@@ -470,7 +454,6 @@ export function requestBodyFromHit(item = {}, sought = {}, extras = {}) {
     year: fields.year,
     cover: selected.cover,
     book_title: selected.book_title,
-    poster: selected.poster,
     category_name: selected.category_name,
     size: selected.size,
     sought: fields,

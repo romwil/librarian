@@ -318,83 +318,6 @@ export default function SettingsPage() {
                   <h2>Indexer feeds</h2>
                   <RssPanel />
                 </section>
-                <section className="settings-panel" data-testid="settings-show-categories" aria-labelledby="settings-categories-heading">
-                  <p className="kicker" id="settings-categories-heading">
-                    Categories
-                  </p>
-                  <h2>Show categories</h2>
-                  <p className="lede">
-                    Off keeps Find on books, magazines, comics, audiobooks, and music. On, Discover can peruse every feed
-                    the indexer lists — including Movies, TV, and XXX. Those do not land on The Hall.
-                  </p>
-                  <div className="field field-check">
-                    <label htmlFor="setting-show_extra_categories">
-                      <input
-                        id="setting-show_extra_categories"
-                        type="checkbox"
-                        checked={Boolean(settings.show_extra_categories)}
-                        onChange={(e) => patch("show_extra_categories", e.target.checked)}
-                      />
-                      Show categories (beyond normal Librarian use)
-                    </label>
-                  </div>
-                  <div className="field">
-                    <FieldLabel htmlFor="setting-radarr_url" label="Radarr URL" help={FIELD_HELP.radarr_url} />
-                    <input
-                      id="setting-radarr_url"
-                      value={settings.radarr_url || ""}
-                      onChange={(e) => patch("radarr_url", e.target.value)}
-                      spellCheck={false}
-                    />
-                  </div>
-                  <div className="field">
-                    <FieldLabel htmlFor="setting-radarr_api_key" label="Radarr API key" help={FIELD_HELP.radarr_api_key} />
-                    <input
-                      id="setting-radarr_api_key"
-                      type="password"
-                      value={settings.radarr_api_key || ""}
-                      placeholder={settings.radarr_api_key_set ? "saved" : ""}
-                      onChange={(e) => patch("radarr_api_key", e.target.value)}
-                    />
-                  </div>
-                  <div className="field">
-                    <FieldLabel htmlFor="setting-sonarr_url" label="Sonarr URL" help={FIELD_HELP.sonarr_url} />
-                    <input
-                      id="setting-sonarr_url"
-                      value={settings.sonarr_url || ""}
-                      onChange={(e) => patch("sonarr_url", e.target.value)}
-                      spellCheck={false}
-                    />
-                  </div>
-                  <div className="field">
-                    <FieldLabel htmlFor="setting-sonarr_api_key" label="Sonarr API key" help={FIELD_HELP.sonarr_api_key} />
-                    <input
-                      id="setting-sonarr_api_key"
-                      type="password"
-                      value={settings.sonarr_api_key || ""}
-                      placeholder={settings.sonarr_api_key_set ? "saved" : ""}
-                      onChange={(e) => patch("sonarr_api_key", e.target.value)}
-                    />
-                  </div>
-                  <div className="field">
-                    <FieldLabel htmlFor="setting-sab_movie_category" label="SAB movie category" help={FIELD_HELP.sab_movie_category} />
-                    <input
-                      id="setting-sab_movie_category"
-                      value={settings.sab_movie_category || ""}
-                      onChange={(e) => patch("sab_movie_category", e.target.value)}
-                      spellCheck={false}
-                    />
-                  </div>
-                  <div className="field">
-                    <FieldLabel htmlFor="setting-sab_tv_category" label="SAB TV category" help={FIELD_HELP.sab_tv_category} />
-                    <input
-                      id="setting-sab_tv_category"
-                      value={settings.sab_tv_category || ""}
-                      onChange={(e) => patch("sab_tv_category", e.target.value)}
-                      spellCheck={false}
-                    />
-                  </div>
-                </section>
               </>
             ) : null}
 
@@ -428,7 +351,7 @@ export default function SettingsPage() {
                     {key === "audiobook_target" ? (
                       <select
                         id={`setting-${key}`}
-                        value={settings[key] || "plex"}
+                        value={settings[key] || "librarian_only"}
                         onChange={(e) => patch(key, e.target.value)}
                       >
                         <option value="plex">Plex Audiobooks</option>

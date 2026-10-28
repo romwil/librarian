@@ -64,9 +64,8 @@ def compact_candidate(hit: Mapping[str, Any], *, rank: int = 0, note: str = "") 
         "host_id": _text(hit.get("host_id")),
         "host_name": _text(hit.get("host_name") or hit.get("host") or hit.get("indexer")),
         "download_url": strip_secret_query(_text(hit.get("download_url"))),
-        "cover": strip_secret_query(_text(hit.get("cover"))),
+        "cover": strip_secret_query(_text(hit.get("cover") or hit.get("poster"))),
         "isbn": _text(hit.get("isbn")),
-        "poster": _text(hit.get("poster")),
         "rank": int(rank) if rank else None,
         "note": _text(note),
     }
@@ -186,7 +185,8 @@ def _llm_rank(
     guid = _text(payload.get("guid"))
     if guid and guid not in known:
         guid = ""
-    ranked_raw = payload.get("ranked") if isinstance(payload.get("ranked"), list) else []
+    ranked_value = payload.get("ranked")
+    ranked_raw: List[Any] = ranked_value if isinstance(ranked_value, list) else []
     ranked = [_text(item) for item in ranked_raw if _text(item) in known]
     return {
         "guid": guid,

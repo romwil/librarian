@@ -1,8 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { describe, it } from "node:test";
-import { fileURLToPath } from "node:url";
+import { describe, it } from "vitest";
 import {
   formatMatchPercent,
   kindStatLabel,
@@ -12,8 +9,9 @@ import {
   scorecardLanterns,
   scorecardPresence,
 } from "./lib/indexerScorecard.js";
+import { readStyles } from "./test/styles.js";
 
-const stylesSrc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "styles.css"), "utf8");
+const stylesSrc = readStyles();
 
 function hexToRgb(hex) {
   const h = hex.replace("#", "");
@@ -133,6 +131,6 @@ describe("indexerScorecard", () => {
       },
       { showExtra: true },
     );
-    assert.equal(withExtra.kinds[0].label, "Movies");
+    assert.deepEqual(withExtra.kinds, []);
   });
 });

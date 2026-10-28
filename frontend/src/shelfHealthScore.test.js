@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -9,6 +9,7 @@ import {
   scorePresence,
   scoreTend,
 } from "./lib/shelfHealthScore.js";
+import { readStyles } from "./test/styles.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -52,7 +53,7 @@ describe("shelf health score", () => {
 
   it("motion and styles honour reduced-motion for the pulse", () => {
     const motion = readFileSync(join(root, "src/styles/motion.css"), "utf8");
-    const styles = readFileSync(join(root, "src/styles.css"), "utf8");
+    const styles = readStyles();
     assert.match(styles, /\.shelf-health-pulse/);
     assert.match(motion, /shelf-health-pulse/);
     assert.match(motion, /prefers-reduced-motion/);

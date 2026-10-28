@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { renormalizeIsAvailable, renormalizePresence, renormalizeReadyCount } from "./lib/calibreRenormalize.js";
 import { gapsGiftTitle, gapsGiftPresence } from "./lib/gapsAsGifts.js";
 import { didYouMeanList, didYouMeanPresence, searchForgave } from "./lib/searchForgive.js";

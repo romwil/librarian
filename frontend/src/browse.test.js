@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 import {
   BROWSE_EXPORT_COLUMNS,
   BROWSE_LETTERS,
+  BROWSE_SORT_OPTIONS,
   BROWSE_SORTS,
   applyBrowseFilterPatch,
   browseCountLine,
@@ -118,8 +119,8 @@ describe("browse href helpers", () => {
       letter: "",
       series: "Archive Historical",
       shelf: "",
-      sort: "author",
-      sort_dir: "asc",
+      sort: "updated",
+      sort_dir: "desc",
       genre: "Science Fiction",
     });
     const shelfId = "cd".repeat(16);
@@ -132,7 +133,8 @@ describe("browse href helpers", () => {
     assert.equal(browseFiltersFromSearchParams(new URLSearchParams("sort=year")).sort_dir, "desc");
     assert.equal(browseFiltersFromSearchParams(new URLSearchParams("sort=updated")).sort_dir, "desc");
     assert.equal(browseFiltersFromSearchParams(new URLSearchParams("sort=title")).sort_dir, "asc");
-    assert.equal(browseFiltersFromSearchParams(new URLSearchParams()).sort_dir, "asc");
+    assert.equal(browseFiltersFromSearchParams(new URLSearchParams()).sort, "updated");
+    assert.equal(browseFiltersFromSearchParams(new URLSearchParams()).sort_dir, "desc");
     assert.equal(
       browseFiltersFromSearchParams(new URLSearchParams("sort=year&sort_dir=asc")).sort_dir,
       "asc",
@@ -142,8 +144,9 @@ describe("browse href helpers", () => {
       browseFiltersFromSearchParams(new URLSearchParams("sort=year&sort_dir=sideways")).sort_dir,
       "desc",
     );
-    // An unknown sort key falls back to author, same as before.
-    assert.equal(browseFiltersFromSearchParams(new URLSearchParams("sort=nope")).sort, "author");
+    // An unknown sort key falls back to date added, newest first.
+    assert.equal(browseFiltersFromSearchParams(new URLSearchParams("sort=nope")).sort, "updated");
+    assert.equal(browseFiltersFromSearchParams(new URLSearchParams("sort=nope")).sort_dir, "desc");
   });
 });
 
@@ -152,20 +155,29 @@ describe("browse sort direction defaults", () => {
     assert.deepEqual(BROWSE_SORTS, ["author", "title", "updated", "year"]);
   });
 
+  it("lists date added first", () => {
+    assert.deepEqual(BROWSE_SORT_OPTIONS[0], ["updated", "Date added"]);
+    assert.deepEqual(
+      BROWSE_SORT_OPTIONS.map(([key]) => key),
+      ["updated", "author", "title", "year"],
+    );
+  });
+
   it("picks ascending for author/title, descending for updated/year", () => {
     assert.equal(defaultSortDir("author"), "asc");
     assert.equal(defaultSortDir("title"), "asc");
     assert.equal(defaultSortDir("updated"), "desc");
     assert.equal(defaultSortDir("year"), "desc");
-    // Hostile/unknown sort falls back to the author default.
-    assert.equal(defaultSortDir("'; DROP TABLE works;--"), "asc");
-    assert.equal(defaultSortDir(undefined), "asc");
+    // Hostile/unknown sort falls back to date added, newest first.
+    assert.equal(defaultSortDir("'; DROP TABLE works;--"), "desc");
+    assert.equal(defaultSortDir(undefined), "desc");
   });
 
   it("builds a sort change patch with the matching default direction", () => {
     assert.deepEqual(sortChangePatch("year"), { sort: "year", sort_dir: "desc" });
     assert.deepEqual(sortChangePatch("Title"), { sort: "title", sort_dir: "asc" });
-    assert.deepEqual(sortChangePatch("not-a-sort"), { sort: "author", sort_dir: "asc" });
+    assert.deepEqual(sortChangePatch("not-a-sort"), { sort: "updated", sort_dir: "desc" });
+    assert.deepEqual(sortChangePatch("author"), { sort: "author", sort_dir: "asc" });
   });
 
   it("labels sort direction for the toggle button", () => {
@@ -177,9 +189,11 @@ describe("browse sort direction defaults", () => {
 });
 
 describe("browse query params (shared by the route, the API fetch, and CSV export)", () => {
-  it("omits sort_dir when it matches the sort's default", () => {
-    assert.equal(browseQueryParams({ sort: "author", sort_dir: "asc" }).toString(), "");
-    assert.equal(browseQueryParams({ sort: "updated", sort_dir: "desc" }).toString(), "sort=updated");
+  it("omits sort when it is date added and writes author explicitly", () => {
+    assert.equal(browseQueryParams({ sort: "author", sort_dir: "asc" }).toString(), "sort=author");
+    assert.equal(browseQueryParams({ sort: "updated", sort_dir: "desc" }).toString(), "");
+    assert.equal(browseQueryParams({}).toString(), "");
+    assert.equal(browseQueryParams({ sort: "updated", sort_dir: "asc" }).toString(), "sort_dir=asc");
   });
 
   it("writes sort_dir only when it departs from the default", () => {
@@ -365,9 +379,11 @@ describe("browse facet selection helpers", () => {
     assert.deepEqual(browseParamsObject(next), {
       kind: "book",
       genre: "Science Fiction",
+      sort: "author",
     });
     assert.deepEqual(browseParamsObject(applyBrowseFilterPatch(next, { genre: "" })), {
       kind: "book",
+      sort: "author",
     });
   });
 });

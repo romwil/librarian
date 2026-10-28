@@ -13,16 +13,20 @@ Does not delete media on disk — same as Skip / ignored-duplicate Apply.
 
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from librarian.config import Settings
 from librarian.db import Database
+from librarian.duplicate_gate import start_slip_cooldown
 from librarian.file_identity import volume_content_fingerprint
 from librarian.identify import dest_layout, list_payload_files, resolve_storage_path, usable_folder
 
 PURGE_SLIP_LIMIT_DEFAULT = 8000
+
+logger = logging.getLogger(__name__)
 
 
 def _created_sort_key(value: Any) -> float:
@@ -213,6 +217,84 @@ def classify_purge_candidates(
     return to_purge, slip_fps
 
 
+def duplicate_evidence(
+    db: Database,
+    settings: Settings,
+    slips: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Classify each slip's duplicate evidence and name the kept survivor.
+
+    ``exact_fingerprint`` slips are the only ones a purge may dismiss. Different bytes of
+    the same edition and unreadable folders are reported, never purged.
+    """
+    from librarian.duplicate_gate import (
+        EVIDENCE_EXACT,
+        EVIDENCE_KINDS,
+        EVIDENCE_NONE,
+        EVIDENCE_NORMALIZED,
+        EVIDENCE_SAME_IDENTITY,
+        EVIDENCE_UNASSESSABLE,
+        normalized_shelf_matches,
+    )
+
+    to_purge, slip_fps = classify_purge_candidates(db, settings, slips)
+    by_fp: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for slip in slips:
+        fp = slip_fps.get(str(slip.get("id") or ""))
+        if fp:
+            by_fp[fp].append(slip)
+    rows: Dict[str, Dict[str, Any]] = {}
+    counts = {key: 0 for key in EVIDENCE_KINDS}
+    for slip in slips:
+        work_id = str(slip.get("id") or "")
+        fp = slip_fps.get(work_id)
+        survivor: Optional[Dict[str, Any]] = None
+        if work_id in to_purge:
+            evidence = EVIDENCE_EXACT
+            twin = _shelved_identity_twin(db, slip)
+            if to_purge[work_id] == "slip_duplicate" and fp:
+                ordered = sorted(
+                    by_fp[fp],
+                    key=lambda row: (
+                        _created_sort_key(row.get("created_at")),
+                        str(row.get("updated_at") or ""),
+                        str(row.get("id") or ""),
+                    ),
+                )
+                survivor = ordered[0] if ordered else None
+            elif twin is not None:
+                survivor = twin
+        elif not fp:
+            evidence = EVIDENCE_UNASSESSABLE
+        else:
+            twin = _shelved_identity_twin(db, slip)
+            if twin is not None:
+                evidence = EVIDENCE_SAME_IDENTITY
+                survivor = twin
+            else:
+                fuzzy = normalized_shelf_matches(db, slip, exclude_id=work_id)
+                if fuzzy:
+                    evidence = EVIDENCE_NORMALIZED
+                    survivor = fuzzy[0]
+                else:
+                    evidence = EVIDENCE_NONE
+        counts[evidence] += 1
+        rows[work_id] = {
+            "evidence": evidence,
+            "survivor": (
+                {
+                    "id": survivor.get("id"),
+                    "title": survivor.get("title"),
+                    "author": survivor.get("author"),
+                    "on_shelf": str(survivor.get("review_state") or "") != "needs_review",
+                }
+                if survivor
+                else None
+            ),
+        }
+    return {"counts": counts, "works": rows}
+
+
 def purge_duplicate_reviews(
     db: Database,
     settings: Settings,
@@ -257,6 +339,12 @@ def purge_duplicate_reviews(
             )
         if not reason:
             kept += 1
+            if not _slip_fps.get(work_id):
+                logger.info(
+                    "Purge kept %s: folder has no readable media to fingerprint (%s)",
+                    work_id,
+                    slip.get("folder_path") or "no folder",
+                )
             if progress is not None:
                 progress.tick(
                     phase="purging",
@@ -277,6 +365,7 @@ def purge_duplicate_reviews(
                 continue
             removed.append(dict(fresh))
             _dismiss_slip(db, fresh)
+            start_slip_cooldown(db, fresh.get("folder_path"), reason="purge_duplicates")
             purged += 1
             if reason == "shelf_duplicate":
                 shelf_twins += 1

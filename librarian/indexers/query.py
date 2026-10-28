@@ -13,18 +13,16 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from librarian.kinds import (
-    EXTRA_KINDS,
     KIND_AUDIOBOOK,
     KIND_BOOK,
     KIND_COMIC,
     KIND_MAGAZINE,
-    KIND_MOVIE,
     KIND_MUSIC,
-    KIND_TV,
-    KIND_XXX,
     REQUEST_KINDS,
     search_category_for_kind,
 )
+
+_REMOVED_KINDS = frozenset({"movie", "tv", "xxx"})
 
 SOUGHT_KEYS = (
     "kind",
@@ -65,9 +63,6 @@ def prune_sought_for_kind(kind: str, fields: Dict[str, Any]) -> Dict[str, str]:
         KIND_COMIC: {"q", "kind", "series", "issue", "year"},
         KIND_MUSIC: {"q", "kind", "artist", "album", "year"},
         KIND_AUDIOBOOK: {"q", "kind", "title", "author", "isbn", "year"},
-        KIND_MOVIE: {"q", "kind", "title", "year"},
-        KIND_TV: {"q", "kind", "title", "year"},
-        KIND_XXX: {"q", "kind", "title", "year"},
     }.get(kind, {"q", "kind"})
     out = {key: "" for key in SOUGHT_KEYS}
     out["kind"] = kind if kind in REQUEST_KINDS else ""
@@ -117,6 +112,8 @@ def plan_beyond_search(
     offset: int = 0,
 ) -> Optional[Dict[str, Any]]:
     """Return an endpoint + params plan, or None when there is nothing to seek."""
+    if _text(kind).lower() in _REMOVED_KINDS:
+        return None
     sought = clean_sought(
         {
             "kind": kind,
@@ -180,20 +177,6 @@ def plan_beyond_search(
             "params": {"query": query, "cat": "3030", "limit": limit, "offset": offset},
             "sought": sought,
         }
-    if kind in EXTRA_KINDS:
-        query = _join(sought.get("q"), sought.get("title"), year_bit)
-        if not query:
-            return None
-        return {
-            "endpoint": "search",
-            "params": {
-                "query": query,
-                "cat": search_category_for_kind(kind),
-                "limit": limit,
-                "offset": offset,
-            },
-            "sought": sought,
-        }
     query = _join(
         sought.get("q"),
         sought.get("title"),
@@ -224,7 +207,7 @@ def default_kind_for_plan(plan: Optional[Dict[str, Any]]) -> str:
         if sought_kind == KIND_MAGAZINE:
             return KIND_MAGAZINE
         return KIND_BOOK
-    if sought_kind in REQUEST_KINDS and sought_kind not in EXTRA_KINDS:
+    if sought_kind in REQUEST_KINDS:
         return sought_kind
     return ""
 
@@ -236,7 +219,7 @@ def run_beyond_search(client: Any, **fields: Any) -> List[Dict[str, Any]]:
 def run_beyond_search_traced(client: Any, **fields: Any) -> Dict[str, Any]:
     """Run a beyond plan and return accepted hits plus rejected/raw diagnostics."""
     plan = plan_beyond_search(**fields)
-    empty = {
+    empty: Dict[str, Any] = {
         "plan": plan,
         "accepted": [],
         "rejected": [],
@@ -277,7 +260,7 @@ def run_beyond_search_traced(client: Any, **fields: Any) -> Dict[str, Any]:
             "notes": [],
         }
     params = plan["params"]
-    keep_untyped = (plan.get("sought") or {}).get("kind") in EXTRA_KINDS
+    keep_untyped = False
     if hasattr(client, "search_traced"):
         traced = client.search_traced(
             str(params.get("query") or ""),
@@ -296,28 +279,9 @@ def run_beyond_search_traced(client: Any, **fields: Any) -> Dict[str, Any]:
             keep_untyped=keep_untyped,
         )
         traced = {"accepted": rows, "rejected": [], "raw": [], "default_kind": default_kind}
-    if not keep_untyped:
-        return {
-            "plan": plan,
-            "accepted": traced.get("accepted") or [],
-            "rejected": traced.get("rejected") or [],
-            "raw": traced.get("raw") or [],
-            "default_kind": traced.get("default_kind") or default_kind,
-            "notes": [],
-        }
-    from librarian.kinds import kind_from_newznab
-
-    out = []
-    want = (plan.get("sought") or {}).get("kind")
-    for row in traced.get("accepted") or []:
-        tagged = dict(row)
-        kind = kind_from_newznab(tagged.get("category"), extra=True) or want
-        if kind in EXTRA_KINDS:
-            tagged["kind"] = kind
-            out.append(tagged)
     return {
         "plan": plan,
-        "accepted": out,
+        "accepted": traced.get("accepted") or [],
         "rejected": traced.get("rejected") or [],
         "raw": traced.get("raw") or [],
         "default_kind": traced.get("default_kind") or default_kind,
@@ -341,14 +305,17 @@ def retrieved_from_hit(item: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     isbn = _text(hit.get("isbn"))
     year = hit.get("year")
     retrieved: Dict[str, Any] = {}
-    for key in ("author", "book_title", "isbn", "cover", "category_name", "poster", "series", "series_name"):
+    for key in ("author", "book_title", "isbn", "category_name", "series", "series_name"):
         value = _text(hit.get(key))
         if value:
             retrieved[key] = value
+    cover = _text(hit.get("cover") or hit.get("poster"))
+    if cover:
+        retrieved["cover"] = cover
     if isbn:
         retrieved["isbn"] = isbn
     if isinstance(year, int) or _year_text(year):
-        retrieved["year"] = int(year) if str(year).isdigit() else year
+        retrieved["year"] = int(str(year)) if str(year).isdigit() else year
     title = _text(hit.get("book_title"))
     if title:
         retrieved["title"] = title
@@ -369,8 +336,7 @@ def selected_from_hit(item: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         "category": category,
         "cats": cats or [],
         "size": hit.get("size"),
-        "poster": _text(hit.get("poster")),
-        "cover": strip_secret_query(_text(hit.get("cover"))),
+        "cover": strip_secret_query(_text(hit.get("cover") or hit.get("poster"))),
         "category_name": _text(hit.get("category_name")),
         "author": _text(hit.get("author")),
         "isbn": _text(hit.get("isbn")),

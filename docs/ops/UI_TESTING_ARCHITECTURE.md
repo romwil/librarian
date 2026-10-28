@@ -1,8 +1,7 @@
 # UI & Testing Architecture
 
 Canonical front-end testing stance for Librarian. Wire major-build gates through
-[MAJOR_BUILDS.md](MAJOR_BUILDS.md); command inventory lives in [docs/TESTING.md](../TESTING.md)
-and root [TESTING.md](../../TESTING.md).
+[MAJOR_BUILDS.md](MAJOR_BUILDS.md); command inventory lives in [docs/TESTING.md](../TESTING.md).
 
 ## Core operational stance
 
@@ -17,7 +16,7 @@ The SPA is the **outermost perimeter**. Treat every user-facing surface as adver
 toggles** as proof that the UI is safe. Tests must prove **real DOM truth**: visible structure,
 roles/labels users can perceive, and resilience under hostile interaction.
 
-Backend value-based rules still apply ([TESTING.md](../../TESTING.md)): exact outcomes, not shape-only
+Backend value-based rules still apply ([TESTING.md](../TESTING.md)): exact outcomes, not shape-only
 asserts. Front-end unit and e2e extend that discipline to the DOM.
 
 ## Testing triad

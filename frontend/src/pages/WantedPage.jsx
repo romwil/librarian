@@ -299,6 +299,9 @@ export default function WantedPage() {
         <p className="kicker">Stacks</p>
         <h1>Wanted</h1>
         <p className="lede">Titles the house does not have yet.</p>
+        <p className="lede" data-testid="wanted-fiction-only">
+          Automatic audiobook wants: fiction only.
+        </p>
       </section>
       {error ? <p className="alert hall-alert">{error}</p> : null}
       {loading ? (

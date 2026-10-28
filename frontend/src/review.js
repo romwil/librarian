@@ -63,6 +63,8 @@ export function applyBodyFromDraft(draft) {
 
 /** Effective reason: live folder diagnosis can refine a stale no_payload. */
 export function effectiveReviewReason(work) {
+  const fromServer = work?.effective_reason;
+  if (typeof fromServer === "string" && fromServer) return fromServer;
   const problem = work?.folder_diagnosis?.problem;
   const stored = String(work?.review_reason || "");
   if (problem === "unpack_stuck") return "unpack_stuck";
@@ -514,10 +516,12 @@ export function purgeDuplicatesProgressSummary(status) {
 
 /** Desk pile order — bulk-clearable returns first, then stuck unpacks, then identity piles. */
 export const REVIEW_REASON_GROUP_ORDER = [
+  "ready_to_file",
   "extra_files",
   "unpack_stuck",
   "missing_folder",
   "no_payload",
+  "possible_duplicate",
   "collision",
   "quiet_hours",
   "unknown_identity",
@@ -531,6 +535,8 @@ export const REVIEW_REASON_GROUP_ORDER = [
 ];
 
 const REVIEW_REASON_FOUR_WORDS = {
+  ready_to_file: "Model match ready here",
+  possible_duplicate: "Maybe already on shelf",
   extra_files: "Several titles in folder",
   unpack_stuck: "Archive still needs unpack",
   missing_folder: "Folder is not here",
@@ -608,6 +614,8 @@ export function slipRowIsPathClear(work = {}) {
 /** Short pile heading for the Holds desk (sorting returns). */
 export function reviewReasonGroupLabel(reason) {
   const key = String(reason || "").trim();
+  if (key === "ready_to_file") return "Ready to file";
+  if (key === "possible_duplicate") return "Possible duplicate";
   if (key === "extra_files") return "Extra files";
   if (key === "unpack_stuck") return "Unpack stuck";
   if (key === "missing_folder") return "Missing folder";
@@ -636,6 +644,12 @@ export function reviewReasonGroupHint(reason) {
   }
   if (key === "collision") {
     return "Already on the shelf at that path — Skip keeps the shelf copy.";
+  }
+  if (key === "possible_duplicate") {
+    return "Title and author match a shelved work — Skip keeps the shelf copy. Different files are never purged.";
+  }
+  if (key === "ready_to_file") {
+    return "The model is confident about these — Apply trusted matches files them.";
   }
   if (key === "quiet_hours") {
     return "Parked for tonight — Organize waits for the household window.";
@@ -677,7 +691,7 @@ export function inferRecommendedMotion(work = {}, flags = {}) {
     if (diagnosis.collection_dump || titles >= 2) return "clear_extra_files";
     return "apply";
   }
-  if (reason === "collision") return "skip";
+  if (reason === "collision" || reason === "possible_duplicate") return "skip";
   if (
     reason === "comicvine_ambiguous" ||
     reason === "comicvine_unmatched" ||
@@ -757,6 +771,169 @@ export function groupHoldSlipsByReason(works = []) {
       works: groupWorks,
     };
   });
+}
+
+/** Piles that may show Purge duplicate group (server DUPLICATE_REVIEW_REASONS). */
+export const DUPLICATE_GROUP_REASONS = ["possible_duplicate", "collision"];
+
+export function isDuplicateGroup(reason) {
+  return DUPLICATE_GROUP_REASONS.includes(String(reason || "").trim());
+}
+
+/** Confirm copy for Delete group. The download folder always stays on disk. */
+export function deleteGroupConfirmCopy({ count = 0, label = "" } = {}) {
+  const n = Number(count) || 0;
+  const pile = label ? `“${label}”` : "this pile";
+  const slips = n === 1 ? "1 hold slip" : `${n} hold slips`;
+  return {
+    title: `Delete ${slips} from ${pile}?`,
+    body:
+      "This removes each slip, its catalog and job records, and its Wanted request. " +
+      "The completed-download folder is not deleted — its files stay on disk.",
+    confirmLabel: n === 1 ? "Delete 1 slip" : `Delete ${n} slips`,
+  };
+}
+
+const EVIDENCE_LABELS = {
+  exact_fingerprint: "exact fingerprint",
+  same_shelved_identity: "same shelved identity",
+  same_normalized_identity: "same normalized identity",
+  unassessable: "unassessable",
+  no_match: "no shelf match",
+};
+
+export function duplicateEvidenceLabel(evidence) {
+  const key = String(evidence || "").trim();
+  return EVIDENCE_LABELS[key] || (key ? key.replace(/_/g, " ") : "");
+}
+
+/** Dry-run report for Purge duplicate group, shown before the owner confirms. */
+export function purgePreviewCopy(preview = {}) {
+  const counts = preview?.evidence || {};
+  const exact = Number(preview?.purgeable ?? counts.exact_fingerprint ?? 0);
+  const unassessable = Number(preview?.unassessable ?? counts.unassessable ?? 0);
+  const others = Object.entries(counts)
+    .filter(([key]) => key !== "exact_fingerprint" && key !== "unassessable")
+    .reduce((sum, [, value]) => sum + (Number(value) || 0), 0);
+  const lines = [
+    `${exact} exact fingerprint — these slips will be purged.`,
+    `${unassessable} unassessable — no readable media to compare; they stay.`,
+  ];
+  if (others) lines.push(`${others} different files — never purged on a fuzzy match; they stay.`);
+  return {
+    exact,
+    unassessable,
+    others,
+    lines,
+    title: exact ? `Purge ${exact} exact duplicate${exact === 1 ? "" : "s"}?` : "Nothing to purge",
+    confirmLabel: exact ? `Purge ${exact}` : "",
+  };
+}
+
+const SKIP_REASON_COPY = {
+  not_in_group: "not in this group",
+  not_found: "already gone",
+  not_path_clear: "path not clear",
+  unassessable: "unassessable",
+  not_exact_fingerprint: "not an exact fingerprint",
+  failed: "failed",
+};
+
+/** One-line result after a group action. Partial failures are named, not hidden. */
+export function bulkResultSummary(result = {}) {
+  const action = String(result?.action || "");
+  const verb =
+    action === "delete" ? "Deleted" : action === "accept_clear" ? "Filed" : action === "purge_duplicates" ? "Purged" : "Changed";
+  const changed = Number(result?.changed || 0);
+  const examined = Number(result?.examined || 0);
+  const head = `${verb} ${changed} of ${examined}.`;
+  const reasons = Object.entries(result?.reasons || {})
+    .filter(([, value]) => Number(value) > 0)
+    .map(([key, value]) => `${value} ${SKIP_REASON_COPY[key] || key.replace(/_/g, " ")}`);
+  const skipped = reasons.length ? ` Skipped ${Number(result?.skipped || 0)}: ${reasons.join(", ")}.` : "";
+  const folder = action === "delete" && changed ? " Download folders stay on disk." : "";
+  const failures = Array.isArray(result?.failures) ? result.failures : [];
+  const firstError = failures.length ? ` First error: ${failures[0]?.title || failures[0]?.id}: ${failures[0]?.error}.` : "";
+  return `${head}${skipped}${folder}${firstError}`;
+}
+
+export function bulkResultHasFailures(result = {}) {
+  return Number(result?.failed || 0) > 0;
+}
+
+/** Persisted model triage on one slip (GET /api/review → work.llm_triage). */
+export function slipTriage(work = {}) {
+  const triage = work?.llm_triage;
+  if (!triage || typeof triage !== "object" || !triage.outcome) return null;
+  return {
+    outcome: String(triage.outcome),
+    label: String(triage.label || ""),
+    explanation: String(triage.explanation || ""),
+    suggestion: triage.suggestion && typeof triage.suggestion === "object" ? triage.suggestion : null,
+  };
+}
+
+/** Live tallies from persisted slip rows — never sent-minus-applied arithmetic. */
+export function triageCountsFromWorks(works = []) {
+  const counts = { trusted: 0, ambiguous: 0, failed: 0 };
+  for (const work of works || []) {
+    const triage = slipTriage(work);
+    if (triage && triage.outcome in counts) counts[triage.outcome] += 1;
+  }
+  return counts;
+}
+
+export function suggestBatchIsRunning(status) {
+  return String(status?.status || "") === "running";
+}
+
+/** Model triage line: each server counter reported as-is. */
+export function suggestBatchSummary(status) {
+  if (!status || typeof status !== "object") return "";
+  const state = String(status.status || "");
+  if (!state || state === "idle") return "";
+  if (state === "failed") return status.error || "Model check failed.";
+  const done = Number(status.done || 0);
+  const total = Number(status.total || 0);
+  const parts = [
+    `${Number(status.trusted || 0)} ready to file`,
+    `${Number(status.ambiguous || 0)} need a decision`,
+    `${Number(status.failed || 0)} model unavailable`,
+  ];
+  const applied = Number(status.applied || 0);
+  if (applied) parts.push(`${applied} filed`);
+  if (state === "completed") {
+    return `Model check finished — ${Number(status.suggested || 0)} sent: ${parts.join(", ")}.`;
+  }
+  const title = String(status.current_title || "").trim();
+  const count = total > 0 ? `${done} of ${total}` : "";
+  return ["Checking with the model", count, ...parts, title].filter(Boolean).join(" · ");
+}
+
+/** One-time return of bad downloads to Wanted, shown on the Holds desk. */
+export function badReleaseMigrationVisible(status) {
+  const state = String(status?.status || "");
+  if (state === "running" || state === "failed") return true;
+  return state === "completed" && Number(status?.left_on_desk || 0) > 0;
+}
+
+export function badReleaseMigrationSummary(status) {
+  if (!status || typeof status !== "object") return "";
+  const state = String(status.status || "");
+  if (!state || state === "idle") return "";
+  const returned = Number(status.returned || 0);
+  const left = Number(status.left_on_desk || 0);
+  const failed = Number(status.failed || 0);
+  if (state === "failed") return status.error || "Returning bad downloads to Wanted stopped.";
+  const tallies = [`${returned} returned to Wanted`, `${left} left for you`];
+  if (failed) tallies.push(`${failed} failed`);
+  if (state === "running") {
+    const done = Number(status.done || 0);
+    const total = Number(status.total || 0);
+    const count = total > 0 ? `${done} of ${total}` : "";
+    return ["Returning bad downloads to Wanted", count, ...tallies].filter(Boolean).join(" · ");
+  }
+  return `Bad downloads returned to Wanted: ${tallies.join(", ")}.`;
 }
 
 /** Holds desk lede — sorting returns, not a ticket queue. */

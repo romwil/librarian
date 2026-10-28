@@ -21,19 +21,29 @@ const WORK = {
 
 async function setTheme(page: Page, name: "Lights Up" | "Lights Down") {
   const testId = name === "Lights Up" ? "profile-theme-lights_up" : "profile-theme-lights_down";
-  await page.getByTestId("profile-menu-trigger").click({ force: true });
-  await page.getByTestId(testId).click({ force: true });
+  await page.getByTestId("profile-menu-trigger").click();
+  await page.getByTestId(testId).click();
   await page.locator(".room").evaluate((el) => {
     el.setAttribute("data-ambient", "off");
   });
   await page.keyboard.press("Escape");
 }
 
+/** Let page-settle / soft-enter fades finish: axe samples colors mid-fade otherwise. */
+async function settleMotion(page: Page) {
+  await page.evaluate(() =>
+    Promise.all(
+      document
+        .getAnimations()
+        .filter((animation) => Number.isFinite(animation.effect?.getComputedTiming().endTime))
+        .map((animation) => animation.finished.catch(() => undefined)),
+    ),
+  );
+}
+
 async function assertAxe(page: Page) {
-  const results = await new AxeBuilder({ page })
-    // Paper gilt chrome (borders, chips) still fails 1.4.3 on compact type; text uses --fg/--muted.
-    .disableRules(["color-contrast"])
-    .analyze();
+  await settleMotion(page);
+  const results = await new AxeBuilder({ page }).analyze();
   const summary = results.violations
     .map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join("; ")}`)
     .join("\n");

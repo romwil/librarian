@@ -100,4 +100,10 @@ files = [
     "librarian/gaps.py",
     "librarian/proxy.py",
     "librarian/rate_limit.py",
+    "librarian/wanted.py",
+    "librarian/wanted_search.py",
+    "librarian/wanted_sweep.py",
+    "librarian/fiction.py",
+    "librarian/naming/",
+    "librarian/indexers/",
 ]

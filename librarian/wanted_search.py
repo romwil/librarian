@@ -88,6 +88,23 @@ def choose_hit(
     return "miss", None
 
 
+def drop_bad_releases(db: Database, hits: List[Any]) -> List[Any]:
+    """Never pick a release that already came back empty or would not convert."""
+    from librarian.db import safe_release_guid
+
+    bad = db.bad_indexer_guids()
+    if not bad:
+        return list(hits or [])
+    kept = []
+    for hit in hits or []:
+        if isinstance(hit, Mapping):
+            guid = safe_release_guid(hit.get("guid") or hit.get("indexer_guid"))
+            if guid and guid in bad:
+                continue
+        kept.append(hit)
+    return kept
+
+
 def _log_slow(row: Mapping[str, Any]) -> None:
     if int(row.get("miss_streak") or 0) != SLOW_AFTER_MISSES:
         return
@@ -201,7 +218,7 @@ def _consider_row(
             "note": note,
             "searched": True,
         }
-    outcome, hit = choose_hit(sought, list(hits or []))
+    outcome, hit = choose_hit(sought, drop_bad_releases(db, list(hits or [])))
     if outcome == "hit" and hit is not None:
         job = _file_asked(db, fresh, hit, sought, now=now)
         if job is None:
@@ -319,10 +336,14 @@ def beyond_wanted(
     if beyond_error:
         beyond_error = friendly_llm_error(RuntimeError(str(beyond_error)))
     pick = ranked.get("pick")
+    if isinstance(pick, dict) and not drop_bad_releases(db, [pick]):
+        pick = None
     return {
         "id": row.get("id"),
-        "hits": public_indexer_hits(list(ranked.get("hits") or [])),
-        "candidates": public_indexer_hits(list(ranked.get("candidates") or [])),
+        "hits": public_indexer_hits(drop_bad_releases(db, list(ranked.get("hits") or []))),
+        "candidates": public_indexer_hits(
+            drop_bad_releases(db, list(ranked.get("candidates") or []))
+        ),
         "pick": public_indexer_hit(pick) if isinstance(pick, dict) else None,
         "beyond_error": beyond_error,
         "rank_method": str(ranked.get("rank_method") or ""),

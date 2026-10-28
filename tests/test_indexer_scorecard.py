@@ -219,7 +219,7 @@ def test_kind_stats_persist_in_sqlite_and_scorecard(tmp_path: Path):
     assert nzb_kinds["book"]["empty"] == 1
     assert nzb_kinds["book"]["match_rate"] == 0.5
     assert nzb_kinds["audiobook"]["hits"] == 1
-    assert "movie" in nzb_kinds
+    assert "movie" not in nzb_kinds
 
     card = assemble_indexer_scorecard(tmp_path, settings)
     by_id = {row["id"]: row for row in card["lanterns"]}
@@ -236,14 +236,9 @@ def test_kind_stats_persist_in_sqlite_and_scorecard(tmp_path: Path):
     assert slug["match_rate"] is None
     assert slug["by_kind"][0]["label"] == "Comics"
 
-    extra_on = Settings(
-        nzbfinder_url="https://nzbfinder.ws",
-        nzbfinder_api_token="tok",
-        show_extra_categories=True,
-    )
-    extra_card = assemble_indexer_scorecard(tmp_path, extra_on)
-    extra_labels = [row["label"] for row in extra_card["lanterns"][0]["stats"]["by_kind"]]
-    assert "Movies" in extra_labels
+    assert "show_extra_categories" not in card
+    labels_again = [row["label"] for row in card["lanterns"][0]["stats"]["by_kind"]]
+    assert "Movies" not in labels_again
 
 
 def test_summarize_ignores_hostile_kind_rows():
