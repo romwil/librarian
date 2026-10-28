@@ -341,6 +341,15 @@ export default function AudiobookPlayer({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mount / file change only
   }, [work?.id, activeTrack?.id]);
 
+  const transportRef = useRef(transport);
+  const seekToRef = useRef(seekTo);
+  const skipSecondsRef = useRef(skipSeconds);
+  const jumpChapterRef = useRef(jumpChapter);
+  transportRef.current = transport;
+  seekToRef.current = seekTo;
+  skipSecondsRef.current = skipSeconds;
+  jumpChapterRef.current = jumpChapter;
+
   useEffect(() => {
     if (!("mediaSession" in navigator) || !work) return undefined;
     const art = coverUrl(work);
@@ -351,14 +360,14 @@ export default function AudiobookPlayer({
         album: chapter?.title || activeTrack?.filename || "Listening room",
         artwork: art ? [{ src: art, sizes: "512x512", type: "image/jpeg" }] : [],
       });
-      navigator.mediaSession.setActionHandler("play", () => transport.play());
-      navigator.mediaSession.setActionHandler("pause", () => transport.pause());
-      navigator.mediaSession.setActionHandler("seekbackward", () => skipSeconds(-15));
-      navigator.mediaSession.setActionHandler("seekforward", () => skipSeconds(30));
-      navigator.mediaSession.setActionHandler("previoustrack", () => jumpChapter(-1));
-      navigator.mediaSession.setActionHandler("nexttrack", () => jumpChapter(1));
+      navigator.mediaSession.setActionHandler("play", () => transportRef.current.play());
+      navigator.mediaSession.setActionHandler("pause", () => transportRef.current.pause());
+      navigator.mediaSession.setActionHandler("seekbackward", () => skipSecondsRef.current(-15));
+      navigator.mediaSession.setActionHandler("seekforward", () => skipSecondsRef.current(30));
+      navigator.mediaSession.setActionHandler("previoustrack", () => jumpChapterRef.current(-1));
+      navigator.mediaSession.setActionHandler("nexttrack", () => jumpChapterRef.current(1));
       navigator.mediaSession.setActionHandler("seekto", (details) => {
-        if (details?.seekTime != null) seekTo(details.seekTime);
+        if (details?.seekTime != null) seekToRef.current(details.seekTime);
       });
     } catch {
       /* Media Session is best-effort */

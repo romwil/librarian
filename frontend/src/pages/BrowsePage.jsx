@@ -95,7 +95,18 @@ export default function BrowsePage() {
     setError("");
     setOffset(0);
     api
-      .browse({ ...filters, offset: 0, limit: pageSize })
+      .browse({
+        kind: filters.kind,
+        author: filters.author,
+        letter: filters.letter,
+        series: filters.series,
+        shelf: filters.shelf,
+        sort: filters.sort,
+        sort_dir: filters.sort_dir,
+        genre: filters.genre,
+        offset: 0,
+        limit: pageSize,
+      })
       .then((data) => {
         if (!alive) return;
         setItems(data.items || []);
@@ -175,7 +186,6 @@ export default function BrowsePage() {
         </p>
         <StacksCommandBar
           filters={filters}
-          facets={facets}
           onPatchFilters={patchFilters}
           view={view}
           onViewChange={changeView}

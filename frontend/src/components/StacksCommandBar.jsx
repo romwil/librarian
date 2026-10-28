@@ -116,7 +116,6 @@ function ExportMenu({ filters, columns }) {
 
 export default function StacksCommandBar({
   filters,
-  facets,
   onPatchFilters,
   view,
   onViewChange,

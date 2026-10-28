@@ -90,13 +90,11 @@ export default function WantedPage() {
   }
 
   function togglePage() {
-    setSelected((current) => {
-      const next = {};
-      if (!pageChecked) {
-        for (const id of visibleIds) next[id] = true;
-      }
-      return next;
-    });
+    const next = {};
+    if (!pageChecked) {
+      for (const id of visibleIds) next[id] = true;
+    }
+    setSelected(next);
   }
 
   function toggleRow(id) {

@@ -66,16 +66,6 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
     turnReaderPage(viewRef.current, side);
   }
 
-  function turnFromHostKey(event) {
-    if (engine !== "cbz") return false;
-    const side = hostReaderArrow(event);
-    if (!side) return false;
-    event.preventDefault();
-    event.stopPropagation();
-    turnPage(side);
-    return true;
-  }
-
   /** Foliate has no click-to-turn. Section clicks only see the page image. */
   function onPagePointer(event) {
     if (event.defaultPrevented) return;
@@ -126,6 +116,16 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
     turnPage(comicSide(event));
   }
 
+  const filesRef = useRef(files);
+  const progressRef = useRef(progress);
+  const persistRef = useRef(persist);
+  const flushProgressRef = useRef(flushProgress);
+  const onPagePointerRef = useRef(onPagePointer);
+  filesRef.current = files;
+  progressRef.current = progress;
+  persistRef.current = persist;
+  flushProgressRef.current = flushProgress;
+  onPagePointerRef.current = onPagePointer;
 
   useEffect(() => {
     if (reducedMotion) {
@@ -148,6 +148,15 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
   }, [reducedMotion]);
 
   useEffect(() => {
+    function onHostArrow(event) {
+      if (engine !== "cbz") return false;
+      const side = hostReaderArrow(event);
+      if (!side) return false;
+      event.preventDefault();
+      event.stopPropagation();
+      turnPage(side);
+      return true;
+    }
     function onKey(event) {
       if (event.target?.closest?.("input, textarea, select, [contenteditable=true]")) return;
       if (event.key === "Escape") {
@@ -162,7 +171,7 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
         return;
       }
       if (engine === "cbz") {
-        turnFromHostKey(event);
+        onHostArrow(event);
         return;
       }
       if (event.key === "ArrowLeft" || event.key === "PageUp") {
@@ -192,6 +201,8 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
   }, [engine, work?.id]);
 
   useEffect(() => {
+    const filesAtOpen = filesRef.current;
+    const positionAtOpen = progressRef.current?.position || "";
     let cancelled = false;
     let objectUrl = "";
     let view;
@@ -219,7 +230,7 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
       }
       const blob = await response.blob();
       if (cancelled) return;
-      const filename = readingFileName(files, response.headers.get("content-disposition"), fileId);
+      const filename = readingFileName(filesAtOpen, response.headers.get("content-disposition"), fileId);
       const ext = filename.includes(".") ? `.${filename.split(".").pop().toLowerCase()}` : "";
       if (ext && ![".epub", ".cbz", ".pdf"].includes(ext)) {
         throw Object.assign(new Error("This file isn’t a readable EPUB, CBZ, or PDF."), { status: 422 });
@@ -253,7 +264,7 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
       if (!cancelled) setFixedLayout(fixed);
       const flow = readerFlow(engine, fixed);
       if (flow) view.renderer?.setAttribute("flow", flow);
-      view.addEventListener("relocate", (event) => persist(event.detail));
+      view.addEventListener("relocate", (event) => persistRef.current(event.detail));
       const touch = { x: 0, y: 0, active: false };
       function onReaderWheel(event) {
         const renderer = view.renderer;
@@ -295,7 +306,7 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
         if (!doc) return;
         const frame = doc.defaultView?.frameElement;
         if (frame) imageFrame.current = frame;
-        doc.addEventListener("click", onPagePointer);
+        doc.addEventListener("click", (event) => onPagePointerRef.current(event));
         if (engine === "cbz") {
           doc.addEventListener("keydown", (event) => {
             if (event.target?.closest?.("input, textarea, select, [contenteditable=true]")) return;
@@ -310,7 +321,7 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
         doc.addEventListener("touchstart", onTouchStart, { passive: true });
         doc.addEventListener("touchmove", onTouchMove, { passive: false });
       });
-      const lastLocation = progress?.position || "";
+      const lastLocation = positionAtOpen;
       await view.init(lastLocation ? { lastLocation } : {});
       if (!cancelled) setStatus("");
     }
@@ -323,7 +334,7 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
 
     return () => {
       cancelled = true;
-      flushProgress();
+      flushProgressRef.current();
       viewRef.current = null;
       try {
         view?.close?.();

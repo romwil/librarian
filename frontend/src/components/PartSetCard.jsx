@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { beyondHostName } from "../find.js";
 import {
   defaultPartSelectionKeys,
@@ -67,9 +67,13 @@ export default function PartSetCard({
         ? `Searched ${chase.queriesTried} quer${chase.queriesTried === 1 ? "y" : "ies"} for missing parts.`
         : "";
   const showFinish = Boolean(finish) && (chase?.status === "done" || (enriched.missingItems || []).length > 0);
+  const setRef = useRef(set);
+  setRef.current = set;
+  const missingItemsRef = useRef(enriched.missingItems);
+  missingItemsRef.current = enriched.missingItems;
 
   useEffect(() => {
-    setSelected(new Set(defaultPartSelectionKeys(set)));
+    setSelected(new Set(defaultPartSelectionKeys(setRef.current)));
   }, [set.id, set.found, set.missingItems?.length, set.complete]);
 
   useEffect(() => {
@@ -79,7 +83,7 @@ export default function PartSetCard({
     }
     setCollapsed(true);
     let alive = true;
-    const gaps = enriched.missingItems || [];
+    const gaps = missingItemsRef.current || [];
     const totalBytes = gaps.reduce((sum, item) => {
       const n = Number(item?.size);
       return Number.isFinite(n) && n > 0 ? sum + n : sum;

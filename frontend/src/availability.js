@@ -193,9 +193,7 @@ function beyondSaved({ work = {}, role = "reader" } = {}) {
 export function catalogStatus({ work = {}, role = "reader", beyond = false } = {}) {
   if (work.gap || work.kind === "gap") return hidden();
 
-  const manage = canManageWanted(role);
   const kind = work.kind || "book";
-  const addBody = wantedBody(work);
 
   if (work.review_state === "needs_review" || work.job_status === "review") {
     return {
