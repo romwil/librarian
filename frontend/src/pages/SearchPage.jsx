@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useOutletContext, useSearchParams } from "react-router-dom";
 import { api } from "../api.js";
 import { saveBeyondGet } from "../beyondGet.js";
@@ -6,27 +6,16 @@ import CoverCard from "../components/CoverCard.jsx";
 import QueryForm from "../components/QueryForm.jsx";
 import Rail from "../components/Rail.jsx";
 import SearchModeControl, { normalizeSearchMode } from "../components/SearchModeControl.jsx";
+import { FIELD_HELP, discoverStatusLine, humanError, searchStatusLine } from "../copy.js";
 import {
-  FIELD_HELP,
-  TRENDING_BOOKS_LABEL,
-  discoverKindNote,
-  discoverStatusLine,
-  humanError,
-  searchStatusLine,
-} from "../copy.js";
-import {
-  DISCOVER_BROWSE_LIMIT,
+  DISCOVER_PAGE_SIZE,
   buildFindSearchParams,
   composeSearchQuery,
-  discoverCatFromSearchParams,
-  discoverHref,
+  discoverFeedRequest,
   emptyFindFields,
   findFieldsFromSearchParams,
   findKindOptions,
-  groupDiscoverCategories,
-  groupDiscoverRails,
   pruneFieldsForKind,
-  shouldShowDiscover,
 } from "../find.js";
 import { didYouMeanList, didYouMeanPresence, searchForgave } from "../lib/searchForgive.js";
 import {
@@ -96,7 +85,6 @@ export default function SearchPage() {
   const kindOptions = findKindOptions(showExtra);
   const fields = findFieldsFromSearchParams(params);
   const mode = normalizeSearchMode(params.get("mode"));
-  const discoverCat = discoverCatFromSearchParams(params);
   const activeMode = mode || "title";
   const composed = composeSearchQuery(fields);
   const [draft, setDraft] = useState(fields.q);
@@ -109,9 +97,9 @@ export default function SearchPage() {
   const [discover, setDiscover] = useState({ items: [], categories: [], limit: 0 });
   const [discoverPhase, setDiscoverPhase] = useState("idle");
   const [discoverError, setDiscoverError] = useState("");
+  const [discoverOpen, setDiscoverOpen] = useState(false);
+  const [discoverPage, setDiscoverPage] = useState(0);
   const [jobs, setJobs] = useState({});
-  const openDiscover = shouldShowDiscover(fields);
-  const browsing = Boolean(discoverCat) && openDiscover;
 
   useEffect(() => {
     const next = fieldsFromState(fields.q, fields.kind, fields);
@@ -158,11 +146,11 @@ export default function SearchPage() {
   }, [composed, fields.kind, mode, fields.author, fields.title, fields.isbn, fields.series, fields.year, fields.issue, fields.artist, fields.album]);
 
   useEffect(() => {
+    if (!discoverOpen) return undefined;
     let alive = true;
     setDiscoverPhase("loading");
     setDiscoverError("");
-    const extras = { kind: fields.kind, cat: discoverCat };
-    if (discoverCat) extras.limit = DISCOVER_BROWSE_LIMIT;
+    const extras = discoverFeedRequest(discoverPage);
     api
       .discover(extras)
       .then((data) => {
@@ -170,7 +158,8 @@ export default function SearchPage() {
         setDiscover({
           items: data.items || [],
           categories: data.categories || [],
-          limit: data.limit || 0,
+          limit: data.limit || extras.limit,
+          offset: data.offset || extras.offset || 0,
         });
         if (data.beyond_error) {
           setDiscoverError(humanError(data.beyond_error));
@@ -187,7 +176,7 @@ export default function SearchPage() {
     return () => {
       alive = false;
     };
-  }, [fields.kind, discoverCat]);
+  }, [discoverOpen, discoverPage]);
 
   function commitSearch(nextKind = kind, nextAdvanced = advanced, nextMode = activeMode) {
     const next = fieldsFromState(draft, nextKind, nextAdvanced);
@@ -230,20 +219,11 @@ export default function SearchPage() {
     const next = fieldsFromState(draft, nextKind, advanced);
     setKind(next.kind);
     setAdvanced(next);
+    const query = buildFindSearchParams(next);
     if (draft.trim() || composed) {
-      const query = buildFindSearchParams(next);
       if (mode) query.set("mode", mode);
-      setParams(query);
-      return;
     }
-    setParams(discoverParams(next.kind, ""));
-  }
-
-  function discoverParams(nextKind, nextCat) {
-    const next = {};
-    if (nextKind) next.kind = nextKind;
-    if (nextCat) next.discover = nextCat;
-    return next;
+    setParams(query);
   }
 
   function onDidYouMean(title) {
@@ -297,35 +277,59 @@ export default function SearchPage() {
         : item.wanted,
   }));
   const discoverEmpty = discoverStatusLine({
-    kind: fields.kind,
     phase: discoverPhase === "loading" ? "loading" : discoverPhase === "error" ? "error" : "done",
     count: discoverItems.length,
   });
-  const kindCats = useMemo(
-    () => (discover.categories || []).filter((row) => !fields.kind || row.kind === fields.kind),
-    [discover.categories, fields.kind],
-  );
-  const rails = groupDiscoverRails(discoverItems, discover.categories);
-  const browseTitle =
-    kindCats.find((row) => String(row.id) === String(discoverCat))?.name ||
-    discoverItems[0]?.category_name ||
-    discoverCat;
-  const backDiscoverHref = discoverHref({ kind: fields.kind });
-  const getKicker = "Get saves a slip. Confirm on Downloads before SAB.";
 
-  function renderDiscoverBrowse() {
+  function toggleDiscover() {
+    if (discoverOpen) {
+      setDiscoverOpen(false);
+      setDiscoverPage(0);
+      return;
+    }
+    setDiscoverPage(0);
+    setDiscoverPhase("loading");
+    setDiscoverError("");
+    setDiscover({ items: [], categories: [], limit: DISCOVER_PAGE_SIZE, offset: 0 });
+    setDiscoverOpen(true);
+  }
+
+  function goDiscoverPage(nextPage) {
+    setDiscoverPage(Math.max(0, nextPage));
+    setDiscoverPhase("loading");
+    setDiscoverError("");
+    setDiscover((prev) => ({ ...prev, items: [] }));
+  }
+
+  function onDiscoverFold(event) {
+    const open = event.currentTarget.open;
+    if (!open) {
+      setDiscoverOpen(false);
+      setDiscoverPage(0);
+      return;
+    }
+    setDiscoverPage(0);
+    setDiscoverPhase("loading");
+    setDiscoverError("");
+    setDiscover({ items: [], categories: [], limit: DISCOVER_PAGE_SIZE, offset: 0 });
+    setDiscoverOpen(true);
+  }
+
+  function renderDiscoverFeed() {
     return (
-      <section className="discover-browse" data-testid="discover-browse">
-        <header className="discover-browse-head">
-          <Link className="discover-back" to={backDiscoverHref}>
-            ← Discover
-          </Link>
-          <h2>{browseTitle || "Category"}</h2>
-          <p>{getKicker}</p>
-        </header>
-        {discoverPhase === "loading" && !discoverItems.length ? (
-          <SkeletonRail label="The indexers are turning pages…" />
+      <section
+        id="discover-panel"
+        className="discover-panel"
+        data-testid="discover-panel"
+        aria-busy={discoverPhase === "loading"}
+      >
+        <h2 className="sr-only">Discover</h2>
+        {discoverError ? (
+          <p className="callout" role="status" data-testid="discover-error">
+            {discoverError}
+          </p>
         ) : null}
+        {discoverPhase === "loading" && !discoverItems.length ? <SkeletonRail label="Warming Discover…" /> : null}
         {discoverItems.length ? (
           <div className="discover-grid" data-testid="discover-grid">
             {discoverItems.map((item) => (
@@ -341,80 +345,24 @@ export default function SearchPage() {
         ) : discoverPhase !== "loading" ? (
           <p className="lede discover-empty">{discoverEmpty}</p>
         ) : null}
-      </section>
-    );
-  }
-
-  function renderDiscoverRails() {
-    if (discoverPhase === "loading" && !rails.length) {
-      return <SkeletonRail label="Warming Discover…" />;
-    }
-    if (!rails.length) {
-      return <p className="lede discover-empty">{discoverEmpty}</p>;
-    }
-    return rails.map((rail) => {
-      const feedKind =
-        (discover.categories || []).find((row) => String(row.id) === String(rail.id))?.kind || fields.kind;
-      return (
-        <Rail
-          key={rail.id}
-          title={rail.title}
-          kicker={getKicker}
-          items={rail.items}
-          onRequest={request}
-          beyond
-          role={user?.role}
-          seeAllTo={discoverHref({ discover: rail.id, kind: feedKind || fields.kind })}
-        />
-      );
-    });
-  }
-
-  function renderDiscover() {
-    return (
-      <section className="discover-panel" data-testid="discover-panel">
-        <header className="discover-head">
-          <h2>Discover</h2>
-          <p className="lede discover-lede">{discoverKindNote(fields.kind)}</p>
-        </header>
-        {kindCats.length > 1 ? (
-          <div className="discover-cats" data-testid="discover-cats">
-            <div className="search-hero chip-row discover-cats-all">
-              <button
-                type="button"
-                className={`chip${discoverCat === "" ? " is-on" : ""}`}
-                aria-pressed={discoverCat === ""}
-                onClick={() => setParams(discoverParams(fields.kind, ""))}
-              >
-                All
-              </button>
-            </div>
-            {groupDiscoverCategories(kindCats).map((group) => (
-              <div key={group.id} className="discover-cat-group" data-parent={group.id}>
-                <p className="discover-cat-label kicker">{group.name}</p>
-                <div className="search-hero chip-row">
-                  {group.categories.map((row) => (
-                    <button
-                      key={row.id}
-                      type="button"
-                      className={`chip${discoverCat === String(row.id) ? " is-on" : ""}`}
-                      aria-pressed={discoverCat === String(row.id)}
-                      onClick={() => setParams(discoverParams(fields.kind || row.kind, String(row.id)))}
-                    >
-                      {row.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : null}
-        {discoverError ? (
-          <p className="callout" role="status" data-testid="discover-error">
-            {discoverError}
-          </p>
-        ) : null}
-        {browsing ? renderDiscoverBrowse() : renderDiscoverRails()}
+        <div className="discover-pager">
+          <button
+            type="button"
+            className="cta outline compact"
+            onClick={() => goDiscoverPage(discoverPage - 1)}
+            disabled={discoverPage === 0 || discoverPhase === "loading"}
+          >
+            Previous
+          </button>
+          <button
+            type="button"
+            className="cta outline compact"
+            onClick={() => goDiscoverPage(discoverPage + 1)}
+            disabled={discoverItems.length < DISCOVER_PAGE_SIZE || discoverPhase === "loading"}
+          >
+            Next
+          </button>
+        </div>
       </section>
     );
   }
@@ -441,12 +389,22 @@ export default function SearchPage() {
       />
       {!composed ? (
         <>
-          <p className="search-noted-door muted" data-testid="trending-books-door">
-            <Link to="/noted">{TRENDING_BOOKS_LABEL}</Link>
-            {" / "}
+          <p className="search-noted-door muted" data-testid="noted-door">
             <Link to="/noted">New & noted</Link>
           </p>
-          {renderDiscover()}
+          <div className="discover-launch">
+            <button
+              type="button"
+              className="cta outline"
+              data-testid="discover-toggle"
+              aria-expanded={discoverOpen}
+              aria-controls="discover-panel"
+              onClick={toggleDiscover}
+            >
+              Discover
+            </button>
+          </div>
+          {discoverOpen ? renderDiscoverFeed() : null}
         </>
       ) : (
         <div className="search-with-facets">
@@ -548,9 +506,9 @@ export default function SearchPage() {
                 )}
               </div>
             </section>
-            <details className="discover-fold">
-              <summary className="kicker">Discover — trending on the indexers</summary>
-              {renderDiscover()}
+            <details className="discover-fold" onToggle={onDiscoverFold}>
+              <summary className="kicker">Discover</summary>
+              {discoverOpen ? renderDiscoverFeed() : null}
             </details>
           </div>
         </div>

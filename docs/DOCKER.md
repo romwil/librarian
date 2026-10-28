@@ -50,7 +50,7 @@ Rotating the env password on restart updates the **same** username’s hash (Unr
 
 ## Deploy
 
-Kit path, rsync, on-host `./docker-run.sh`, and the LAN URL are in [ops/AUTOMAT.md](ops/AUTOMAT.md#deploy-now-on-host-build). Hub `rollout.sh` is not the current path.
+Kit path, rsync, on-host `./docker-run.sh`, and the LAN URL are in [ops/AUTOMAT.md](ops/AUTOMAT.md#deploy-now-on-host-build). That same command also starts Audiobookshelf (`audiobookshelf`, host port **13378**, audiobooks mounted read-only, config under `/mnt/user/appdata/audiobookshelf`). Hub `rollout.sh` is not the current path.
 
 On a host that has Compose, the same image can be built with:
 

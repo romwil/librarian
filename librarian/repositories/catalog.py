@@ -7,6 +7,8 @@ import time
 import uuid
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from librarian.identity.authors import sort_name
+from librarian.identity.titles import title_sort
 from librarian.repositories._base import (
     RepositoryBase,
     _fts_column_query,
@@ -42,19 +44,35 @@ def resolve_browse_sort(sort: Optional[str], sort_dir: Optional[str] = None) -> 
     return sort_key, direction
 
 
+def _title_order_expr() -> str:
+    """Article-free title key, with the display title only when the key is blank."""
+    return "COALESCE(NULLIF(trim(w.title_sort), ''), w.title) COLLATE NOCASE"
+
+
+def _author_order_expr() -> str:
+    """Surname sort key, with the display author only when the key is blank."""
+    return "COALESCE(NULLIF(trim(w.author_sort), ''), w.author) COLLATE NOCASE"
+
+
 def browse_order_sql(sort_key: str, direction: str, *, on_shelf: bool) -> str:
-    """ORDER BY fragment. ``sort_key`` and ``direction`` must already be whitelisted."""
+    """ORDER BY fragment. ``sort_key`` and ``direction`` must already be whitelisted.
+
+    Title and author order use ``works.title_sort`` and ``works.author_sort``,
+    so a leading article does not decide the letter and a surname does.
+    """
     sql_dir = "DESC" if direction == "desc" else "ASC"
+    title = _title_order_expr()
+    author = _author_order_expr()
     if sort_key == "title":
-        return f"w.title COLLATE NOCASE {sql_dir}, w.author COLLATE NOCASE ASC"
+        return f"{title} {sql_dir}, {author} ASC"
     if sort_key == "year":
         # Null years stay last in both directions.
-        return f"(w.year IS NULL) ASC, w.year {sql_dir}, w.title COLLATE NOCASE ASC"
+        return f"(w.year IS NULL) ASC, w.year {sql_dir}, {title} ASC"
     if sort_key == "updated" and on_shelf:
-        return f"s.added_at {sql_dir}, w.title COLLATE NOCASE ASC"
+        return f"s.added_at {sql_dir}, {title} ASC"
     if sort_key == "updated":
-        return f"w.created_at {sql_dir}, w.title COLLATE NOCASE ASC"
-    return f"w.author COLLATE NOCASE {sql_dir}, w.title COLLATE NOCASE ASC"
+        return f"w.created_at {sql_dir}, {title} ASC"
+    return f"{author} {sql_dir}, {title} ASC"
 
 
 class CatalogRepository(RepositoryBase):
@@ -66,6 +84,9 @@ class CatalogRepository(RepositoryBase):
             "kind": work["kind"],
             "title": work["title"],
             "author": work.get("author"),
+            "title_sort": work.get("title_sort"),
+            "author_sort": work.get("author_sort"),
+            "metadata_locked": 1 if work.get("metadata_locked") else 0,
             "series_name": work.get("series_name"),
             "series_index": work.get("series_index"),
             "year": work.get("year"),
@@ -95,7 +116,12 @@ class CatalogRepository(RepositoryBase):
             "created_at": work.get("created_at") or now,
             "updated_at": now,
         }
+        if "title_sort" not in work or not str(work.get("title_sort") or "").strip():
+            payload["title_sort"] = title_sort(payload.get("title"))
+        if "author_sort" not in work or not str(work.get("author_sort") or "").strip():
+            payload["author_sort"] = sort_name(payload.get("author"))
         preserve = (
+            "metadata_locked",
             "abs_item_id",
             "synopsis_source",
             "llm_blurb",
@@ -124,7 +150,8 @@ class CatalogRepository(RepositoryBase):
                     conn.execute(
                         """
                         UPDATE works SET
-                            kind=?, title=?, author=?, series_name=?, series_index=?, year=?,
+                            kind=?, title=?, author=?, title_sort=?, author_sort=?, metadata_locked=?,
+                            series_name=?, series_index=?, year=?,
                             isbn=?, mbid=?, asin=?, narrator=?, description=?, publisher=?, genre=?, cover_path=?,
                             folder_path=?, abs_item_id=?, synopsis_source=?, llm_blurb=?,
                             atmosphere_path=?, art_attribution=?, review_state=?, review_reason=?,
@@ -136,6 +163,9 @@ class CatalogRepository(RepositoryBase):
                             payload["kind"],
                             payload["title"],
                             payload["author"],
+                            payload["title_sort"],
+                            payload["author_sort"],
+                            payload["metadata_locked"],
                             payload["series_name"],
                             payload["series_index"],
                             payload["year"],
@@ -171,18 +201,22 @@ class CatalogRepository(RepositoryBase):
                     conn.execute(
                         """
                         INSERT INTO works (
-                            id, kind, title, author, series_name, series_index, year, isbn, mbid,
+                            id, kind, title, author, title_sort, author_sort, metadata_locked,
+                            series_name, series_index, year, isbn, mbid,
                             asin, narrator, description, publisher, genre, cover_path, folder_path, abs_item_id,
                             synopsis_source, llm_blurb, atmosphere_path, art_attribution,
                             review_state, review_reason, music_state, indexer_guid, part_total,
                             part_style, part_base, part_origin, repair_fail_count, created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             payload["id"],
                             payload["kind"],
                             payload["title"],
                             payload["author"],
+                            payload["title_sort"],
+                            payload["author_sort"],
+                            payload["metadata_locked"],
                             payload["series_name"],
                             payload["series_index"],
                             payload["year"],
@@ -766,13 +800,24 @@ class CatalogRepository(RepositoryBase):
         return int(row["cnt"] if row else 0)
 
     @staticmethod
-    def _author_letter_sql(column: str = "author") -> str:
+    def _author_letter_sql(column: str = "author_sort") -> str:
+        """A–Z bucket for one name column. Non-letters share ``#``."""
         return (
             f"CASE "
             f"WHEN {column} IS NULL OR trim({column}) = '' THEN '#' "
             f"WHEN upper(substr(trim({column}), 1, 1)) GLOB '[A-Z]' "
             f"THEN upper(substr(trim({column}), 1, 1)) "
             f"ELSE '#' END"
+        )
+
+    @classmethod
+    def _browse_letter_sql(cls) -> str:
+        """Stacks A–Z letter. Surname from ``author_sort``, display name if that key is blank."""
+        sort_letter = cls._author_letter_sql("w.author_sort")
+        name_letter = cls._author_letter_sql("w.author")
+        return (
+            "CASE WHEN w.author_sort IS NULL OR trim(w.author_sort) = '' "
+            f"THEN {name_letter} ELSE {sort_letter} END"
         )
 
     def _browse_base(
@@ -830,7 +875,7 @@ class CatalogRepository(RepositoryBase):
             if letter_key != "#" and (len(letter_key) != 1 or not ("A" <= letter_key <= "Z")):
                 letter_key = ""
             if letter_key:
-                clauses.append(f"{self._author_letter_sql('w.author')} = ?")
+                clauses.append(f"{self._browse_letter_sql()} = ?")
                 args.append(letter_key)
         where_sql = " AND ".join(clauses)
         return from_sql, where_sql, args
@@ -869,12 +914,16 @@ class CatalogRepository(RepositoryBase):
         )
         with self._connect() as conn:
             total = int(
-                conn.execute(f"SELECT COUNT(*) AS n FROM {from_sql} WHERE {where_sql}", args).fetchone()["n"]
+                conn.execute(
+                    f"SELECT COUNT(DISTINCT w.id) AS n FROM {from_sql} WHERE {where_sql}",
+                    args,
+                ).fetchone()["n"]
             )
             rows = conn.execute(
                 f"""
                 SELECT w.* FROM {from_sql}
                 WHERE {where_sql}
+                GROUP BY w.id
                 ORDER BY {order_sql}
                 LIMIT ? OFFSET ?
                 """,
@@ -894,6 +943,55 @@ class CatalogRepository(RepositoryBase):
             "sort_dir": direction,
         }
 
+    def more_by_works(self, work_id: str, *, limit: int = 8) -> List[Dict[str, Any]]:
+        """Other shelved works that share an author id with this work.
+
+        One card per work. A second row of the same title (the 1619 pair:
+        display name versus ``Last, First``) is the same ``title_sort`` and
+        is left out. This does not search the author string.
+        """
+        current_id = str(work_id or "").strip()
+        if not current_id:
+            return []
+        author_ids = [
+            str(row.get("id") or "")
+            for row in self.list_work_authors(current_id)
+            if str(row.get("id") or "")
+        ]
+        if not author_ids:
+            return []
+        current = self.get_work(current_id) or {}
+        current_title = str(current.get("title_sort") or "").strip()
+        placeholders = ", ".join("?" for _ in author_ids)
+        capped = max(1, min(int(limit or 8), 24))
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT w.* FROM works w
+                JOIN work_authors wa ON wa.work_id = w.id
+                WHERE wa.author_id IN ({placeholders})
+                  AND w.id != ?
+                  AND w.review_state != 'needs_review'
+                  AND {self._HAS_FILES_SQL.format(alias="w")}
+                GROUP BY w.id
+                ORDER BY {_title_order_expr()} ASC, w.id ASC
+                """,
+                [*author_ids, current_id],
+            ).fetchall()
+        seen_titles = {current_title} if current_title else set()
+        items: List[Dict[str, Any]] = []
+        for row in rows:
+            item = _row_dict(row) or {}
+            title_key = str(item.get("title_sort") or "").strip()
+            if title_key and title_key in seen_titles:
+                continue
+            if title_key:
+                seen_titles.add(title_key)
+            items.append(item)
+            if len(items) >= capped:
+                break
+        return items
+
     def browse_facets(
         self,
         *,
@@ -908,11 +1006,11 @@ class CatalogRepository(RepositoryBase):
             shelf=shelf,
             user_id=user_id,
         )
-        letter_expr = self._author_letter_sql("w.author")
+        letter_expr = self._browse_letter_sql()
         with self._connect() as conn:
             letter_rows = conn.execute(
                 f"""
-                SELECT {letter_expr} AS letter, COUNT(*) AS n
+                SELECT {letter_expr} AS letter, COUNT(DISTINCT w.id) AS n
                 FROM {from_sql}
                 WHERE {where_sql}
                 GROUP BY letter
@@ -922,7 +1020,7 @@ class CatalogRepository(RepositoryBase):
             ).fetchall()
             kind_rows = conn.execute(
                 f"""
-                SELECT w.kind AS kind, COUNT(*) AS n
+                SELECT w.kind AS kind, COUNT(DISTINCT w.id) AS n
                 FROM {from_sql}
                 WHERE {where_sql}
                 GROUP BY w.kind
@@ -932,7 +1030,7 @@ class CatalogRepository(RepositoryBase):
             ).fetchall()
             author_rows = conn.execute(
                 f"""
-                SELECT w.author AS name, COUNT(*) AS n
+                SELECT w.author AS name, COUNT(DISTINCT w.id) AS n
                 FROM {from_sql}
                 WHERE {where_sql}
                   AND w.author IS NOT NULL AND trim(w.author) != ''
@@ -944,7 +1042,7 @@ class CatalogRepository(RepositoryBase):
             ).fetchall()
             series_rows = conn.execute(
                 f"""
-                SELECT w.series_name AS name, COUNT(*) AS n
+                SELECT w.series_name AS name, COUNT(DISTINCT w.id) AS n
                 FROM {from_sql}
                 WHERE {where_sql}
                   AND w.series_name IS NOT NULL AND trim(w.series_name) != ''
@@ -957,7 +1055,7 @@ class CatalogRepository(RepositoryBase):
             genre_filled = int(
                 conn.execute(
                     f"""
-                    SELECT COUNT(*) AS n FROM {from_sql}
+                    SELECT COUNT(DISTINCT w.id) AS n FROM {from_sql}
                     WHERE {where_sql}
                       AND w.genre IS NOT NULL AND trim(w.genre) != ''
                     """,
@@ -965,7 +1063,10 @@ class CatalogRepository(RepositoryBase):
                 ).fetchone()["n"]
             )
             genre_total = int(
-                conn.execute(f"SELECT COUNT(*) AS n FROM {from_sql} WHERE {where_sql}", args).fetchone()["n"]
+                conn.execute(
+                    f"SELECT COUNT(DISTINCT w.id) AS n FROM {from_sql} WHERE {where_sql}",
+                    args,
+                ).fetchone()["n"]
             )
 
         letters = [{"letter": str(row["letter"]), "count": int(row["n"])} for row in letter_rows]
@@ -976,7 +1077,7 @@ class CatalogRepository(RepositoryBase):
             with self._connect() as conn:
                 genre_rows = conn.execute(
                     f"""
-                    SELECT w.genre AS name, COUNT(*) AS n
+                    SELECT w.genre AS name, COUNT(DISTINCT w.id) AS n
                     FROM {from_sql}
                     WHERE {where_sql}
                       AND w.genre IS NOT NULL AND trim(w.genre) != ''
@@ -1299,8 +1400,8 @@ class CatalogRepository(RepositoryBase):
             with self._connect() as conn:
                 conn.execute(
                     """
-                    INSERT INTO files (id, work_id, path, filename, kind, size, part, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO files (id, work_id, path, filename, kind, size, part, sha256, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         file_id,
@@ -1310,6 +1411,7 @@ class CatalogRepository(RepositoryBase):
                         record.get("kind"),
                         record.get("size"),
                         record.get("part"),
+                        record.get("sha256"),
                         now,
                     ),
                 )
@@ -1338,7 +1440,7 @@ class CatalogRepository(RepositoryBase):
                 part = record["part"] if "part" in record else existing.get("part")
                 conn.execute(
                     """
-                    UPDATE files SET work_id = ?, filename = ?, kind = ?, size = ?, part = ?
+                    UPDATE files SET work_id = ?, filename = ?, kind = ?, size = ?, part = ?, sha256 = ?
                     WHERE id = ?
                     """,
                     (
@@ -1347,6 +1449,7 @@ class CatalogRepository(RepositoryBase):
                         record.get("kind") or existing.get("kind"),
                         record["size"] if record.get("size") is not None else existing.get("size"),
                         part,
+                        record["sha256"] if "sha256" in record else existing.get("sha256"),
                         existing["id"],
                     ),
                 )
@@ -1360,6 +1463,26 @@ class CatalogRepository(RepositoryBase):
                 (work_id,),
             ).fetchall()
         return [_row_dict(row) or {} for row in rows]
+
+    def set_file_sha256(self, file_id: str, sha256: str) -> None:
+        digest = str(sha256 or "").strip().lower()
+
+        def _write() -> None:
+            with self._connect() as conn:
+                conn.execute("UPDATE files SET sha256 = ? WHERE id = ?", (digest or None, file_id))
+
+        self.run_write(_write, label="set_file_sha256")
+
+    def get_file_by_sha256(self, sha256: str) -> Optional[Dict[str, Any]]:
+        digest = str(sha256 or "").strip().lower()
+        if not digest:
+            return None
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM files WHERE sha256 = ? ORDER BY created_at ASC LIMIT 1",
+                (digest,),
+            ).fetchone()
+        return _row_dict(row)
 
     def delete_file(self, file_id: str) -> bool:
         """Remove one file row. Does not touch media on disk."""

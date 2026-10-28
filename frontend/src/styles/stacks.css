@@ -415,6 +415,7 @@
   margin: 0;
   padding: 0 var(--gutter);
   font-size: var(--text-sm);
+  text-align: center;
 }
 .search-noted-door a {
   color: var(--fg);
@@ -1483,6 +1484,17 @@ button.cover {
   color: var(--muted);
 }
 
+.discover-launch {
+  display: flex;
+  justify-content: center;
+  margin: var(--space-4) auto var(--space-6);
+}
+.discover-pager {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-3);
+  margin: var(--space-5) auto 0;
+}
 .discover-panel {
   margin: 0 0 var(--space-8);
 }
@@ -1735,6 +1747,33 @@ button.cover {
     max-width: 100%;
     overflow-wrap: anywhere;
   }
+}
+/* Title and author, one line each, always visible under a Stacks cover. */
+.browse-page .browse-grid .stacks-card-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  margin: 8px 0 0;
+  min-width: 0;
+  max-width: 100%;
+  font-size: max(12px, 0.75rem);
+  line-height: 1.25;
+}
+.browse-page .browse-grid .stacks-card-title,
+.browse-page .browse-grid .stacks-card-author {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.browse-page .browse-grid .stacks-card-title {
+  color: var(--fg);
+  font-weight: 600;
+}
+.browse-page .browse-grid .stacks-card-author {
+  color: var(--muted);
 }
 .browse-empty {
   color: var(--muted);

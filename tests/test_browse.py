@@ -10,6 +10,8 @@ from fastapi.testclient import TestClient
 
 from librarian.config import Settings, save_settings
 from librarian.db import BROWSE_EXPORT_ROW_CAP, BROWSE_PAGE_MAX_LIMIT, Database
+from librarian.identity.authors import sort_name
+from librarian.identity.titles import title_sort
 from librarian.rate_limit import clear_rate_limits
 from librarian.sessions import clear_session_secret_cache
 from librarian.web.app import create_app
@@ -99,7 +101,7 @@ def test_browse_filters_letter_kind_series(tmp_path, monkeypatch):
     db = Database(tmp_path / "librarian.db")
     _seed(db)
 
-    by_letter = client.get("/api/browse", params={"letter": "S"})
+    by_letter = client.get("/api/browse", params={"letter": "K"})
     assert by_letter.status_code == 200
     body = by_letter.json()
     assert body["total"] == 1
@@ -140,8 +142,8 @@ def test_browse_favorites_shelf_and_facets(tmp_path, monkeypatch):
     assert facets.status_code == 200
     data = facets.json()
     letters = {row["letter"]: row["count"] for row in data["letters"]}
-    assert letters.get("S") == 1
-    assert letters.get("F") == 1
+    assert letters.get("K") == 1
+    assert letters.get("H") == 1
     kinds = {row["kind"]: row["count"] for row in data["kinds"]}
     assert kinds["book"] == 2
     assert kinds["comic"] == 1
@@ -406,22 +408,23 @@ def _seed_catalog(db: Database, root: Path) -> dict[str, dict]:
     return works
 
 
+# Author order is author_sort (Last, First), then title_sort. @cmd stays first.
 _AUTHOR_ASC = [
     "=1+1",
-    'Say "hello", José',
-    "Saga #1",
     "Dune",
+    "Undated",
     "Carrie",
     "The Shining",
-    "Undated",
+    'Say "hello", José',
+    "Saga #1",
 ]
 _AUTHOR_DESC = [
-    "Undated",
-    "Carrie",
-    "The Shining",
-    "Dune",
     "Saga #1",
     'Say "hello", José',
+    "Carrie",
+    "The Shining",
+    "Undated",
+    "Dune",
     "=1+1",
 ]
 _TITLE_ASC = [
@@ -530,7 +533,7 @@ def test_browse_sort_direction_and_year(tmp_path, monkeypatch):
     assert body["total"] == 7
     assert body["limit"] == 1
     assert body["offset"] == 1
-    assert _titles(page) == ['Say "hello", José']
+    assert _titles(page) == ["Dune"]
     assert "folder_path" not in body["items"][0]
     assert "cover_path" not in body["items"][0]
 
@@ -555,7 +558,7 @@ def test_browse_hostile_query_params(tmp_path, monkeypatch):
         params={
             "sort": "title; DROP TABLE works--",
             "sort_dir": "desc UNION SELECT password_hash FROM users",
-            "letter": "S",
+            "letter": "K",
         },
     )
     assert injected.status_code == 200
@@ -699,14 +702,59 @@ def test_browse_export_csv_matches_filters_and_hides_secrets(tmp_path, monkeypat
     assert exported.headers["x-librarian-export-total"] == "7"
     assert exported.headers["x-librarian-export-returned"] == "7"
     table = _csv_rows(exported)
-    assert table[0] == ["title", "author", "year", "kind", "series", "genre"]
+    assert table[0] == [
+        "title",
+        "author",
+        "title_sort",
+        "author_sort",
+        "year",
+        "kind",
+        "series",
+        "genre",
+        "work_id",
+        "isbn13",
+        "asin",
+        "ol_work",
+        "hardcover",
+        "comicvine",
+        "calibre",
+    ]
     assert [row[0] for row in table[1:]] == [_csv_title(title) for title in _YEAR_DESC]
     shining_row = next(row for row in table[1:] if row[0] == "The Shining")
-    assert shining_row == ["The Shining", "Stephen King", "1977", "book", "Overlook", "Horror"]
+    assert shining_row[:8] == [
+        "The Shining",
+        "Stephen King",
+        title_sort("The Shining"),
+        sort_name("Stephen King"),
+        "1977",
+        "book",
+        "Overlook",
+        "Horror",
+    ]
+    assert shining_row[8] == shining["id"]
+    assert shining_row[9:] == ["", "", "", "", "", ""]
     hello_row = next(row for row in table[1:] if row[0] == 'Say "hello", José')
-    assert hello_row[1:] == ["Ada Lovelace", "1843", "book", "Analytical", "Computing"]
-    formula = next(row for row in table[1:] if row[2] == "" and row[1] == "'@cmd")
-    assert formula == ["'=1+1", "'@cmd", "", "book", "'+series", "'-genre"]
+    assert hello_row[:8] == [
+        'Say "hello", José',
+        "Ada Lovelace",
+        title_sort('Say "hello", José'),
+        sort_name("Ada Lovelace"),
+        "1843",
+        "book",
+        "Analytical",
+        "Computing",
+    ]
+    formula = next(row for row in table[1:] if row[0] == "'=1+1")
+    assert formula[:8] == [
+        "'=1+1",
+        "'@cmd",
+        title_sort("=1+1"),
+        "'" + sort_name("@cmd"),
+        "",
+        "book",
+        "'+series",
+        "'-genre",
+    ]
     assert "Needs Review Marker" not in exported.text
     for marker in _LEAK_MARKERS:
         assert marker not in exported.text
@@ -722,7 +770,23 @@ def test_browse_export_csv_matches_filters_and_hides_secrets(tmp_path, monkeypat
     assert _csv_rows(ordered)[0] == ["genre", "title"]
 
     every = client.get("/api/browse/export.csv", params={"columns": "all"})
-    assert _csv_rows(every)[0] == ["title", "author", "year", "kind", "series", "genre"]
+    assert _csv_rows(every)[0] == [
+        "title",
+        "author",
+        "title_sort",
+        "author_sort",
+        "year",
+        "kind",
+        "series",
+        "genre",
+        "work_id",
+        "isbn13",
+        "asin",
+        "ol_work",
+        "hardcover",
+        "comicvine",
+        "calibre",
+    ]
 
     ignored_page = client.get(
         "/api/browse/export.csv",
@@ -737,7 +801,7 @@ def test_browse_export_csv_matches_filters_and_hides_secrets(tmp_path, monkeypat
     cases = [
         {"kind": "comic"},
         {"author": "Frank Herbert"},
-        {"letter": "S", "sort": "title", "sort_dir": "desc"},
+        {"letter": "K", "sort": "title", "sort_dir": "desc"},
         {"series": "Dune"},
         {"genre": "horror", "sort": "year", "sort_dir": "asc"},
         {"shelf": "favorites", "sort": "title", "sort_dir": "asc"},
@@ -798,4 +862,288 @@ def test_browse_export_rejects_bad_columns_and_caps_rows(tmp_path, monkeypatch):
     assert capped.headers["x-librarian-export-cap"] == "2"
     assert capped.headers["x-librarian-export-total"] == "7"
     assert capped.headers["x-librarian-export-returned"] == "2"
-    assert [row[0] for row in _csv_rows(capped)[1:]] == ["'=1+1", 'Say "hello", José']
+    assert [row[0] for row in _csv_rows(capped)[1:]] == ["'=1+1", "Dune"]
+
+
+def test_browse_sort_keys_letter_and_one_row_per_work(tmp_path, monkeypatch):
+    """Title sort ignores a leading article and pads numbers. The letter is the surname.
+
+    Two files and two editions of one work stay a single Stacks card.
+    """
+    client = _client(tmp_path, monkeypatch)
+    _login(client)
+    db = Database(tmp_path / "librarian.db")
+    root = tmp_path / "shelf"
+
+    project = _shelve(
+        db,
+        db.upsert_work(
+            {
+                "id": "1619",
+                "kind": "book",
+                "title": "The 1619 Project: A New Origin Story",
+                "author": "Nikole Hannah-Jones",
+                "folder_path": str(root / "1619"),
+            }
+        ),
+        filename="1619.epub",
+    )
+    _shelve(db, project, filename="1619.azw3")
+    db.upsert_edition(
+        {
+            "id": "ed-hard",
+            "work_id": project["id"],
+            "kind": "book",
+            "isbn13": "9780593230572",
+            "format": "Hardcover",
+            "folder_path": str(root / "secret-edition-path"),
+        }
+    )
+    db.upsert_edition(
+        {
+            "id": "ed-ebook",
+            "work_id": project["id"],
+            "kind": "book",
+            "isbn13": "9780593230589",
+            "format": "ebook",
+        }
+    )
+    _shelve(
+        db,
+        db.upsert_work(
+            {
+                "kind": "book",
+                "title": "1984",
+                "author": "George Orwell",
+                "folder_path": str(root / "1984"),
+            }
+        ),
+    )
+    _shelve(
+        db,
+        db.upsert_work(
+            {
+                "kind": "book",
+                "title": "Apple",
+                "author": "Ann Apple",
+                "folder_path": str(root / "apple"),
+            }
+        ),
+    )
+    _shelve(
+        db,
+        db.upsert_work(
+            {
+                "kind": "book",
+                "title": "The Zoo",
+                "author": "Zoe Zebra",
+                "folder_path": str(root / "zoo"),
+            }
+        ),
+    )
+
+    by_title = client.get("/api/browse", params={"sort": "title", "sort_dir": "asc"})
+    assert by_title.status_code == 200
+    assert _titles(by_title) == ["The 1619 Project: A New Origin Story", "1984", "Apple", "The Zoo"]
+    assert by_title.json()["total"] == 4
+
+    stored = db.get_work("1619")
+    assert stored["title_sort"].startswith("0000001619")
+    assert stored["author_sort"].startswith("Hannah-Jones")
+
+    by_surname = client.get("/api/browse", params={"letter": "H"})
+    assert _titles(by_surname) == ["The 1619 Project: A New Origin Story"]
+    given_name = client.get("/api/browse", params={"letter": "N"})
+    assert given_name.json()["total"] == 0
+    assert _titles(client.get("/api/browse", params={"letter": "O"})) == ["1984"]
+    assert _titles(client.get("/api/browse", params={"letter": "Z"})) == ["The Zoo"]
+
+    page = db.browse_works(sort="title")
+    assert page["total"] == 4
+    assert [row["id"] for row in page["items"]].count("1619") == 1
+
+
+def test_more_by_uses_author_id_and_dedupes_1619_pair(tmp_path, monkeypatch):
+    """More by follows work_authors, one card per title, and skips the current work."""
+    client = _client(tmp_path, monkeypatch)
+    _login(client)
+    db = Database(tmp_path / "librarian.db")
+    root = tmp_path / "more"
+    author = db.upsert_author(
+        {"display_name": "Nikole Hannah-Jones", "sort_name": "Hannah-Jones, Nikole"}
+    )
+    project = _shelve(
+        db,
+        db.upsert_work(
+            {
+                "id": "86f007ee",
+                "kind": "book",
+                "title": "The 1619 Project: A New Origin Story",
+                "author": "Nikole Hannah-Jones",
+                "folder_path": str(root / "project"),
+            }
+        ),
+    )
+    sibling = _shelve(
+        db,
+        db.upsert_work(
+            {
+                "id": "5172a6bf",
+                "kind": "book",
+                "title": "The 1619 Project",
+                "author": "Hannah-Jones, Nikole",
+                "folder_path": str(root / "sibling"),
+            }
+        ),
+    )
+    caste = _shelve(
+        db,
+        db.upsert_work(
+            {
+                "id": "caste-long",
+                "kind": "book",
+                "title": "Caste: The Origins of Our Discontents",
+                "author": "Nikole Hannah-Jones",
+                "folder_path": str(root / "caste-long"),
+            }
+        ),
+    )
+    caste_short = _shelve(
+        db,
+        db.upsert_work(
+            {
+                "id": "caste-short",
+                "kind": "book",
+                "title": "Caste",
+                "author": "Hannah-Jones, Nikole",
+                "folder_path": str(root / "caste-short"),
+            }
+        ),
+    )
+    born = _shelve(
+        db,
+        db.upsert_work(
+            {
+                "id": "born",
+                "kind": "book",
+                "title": "Born on the Water",
+                "author": "Nikole Hannah-Jones",
+                "folder_path": str(root / "born"),
+            }
+        ),
+    )
+    decoy = _shelve(
+        db,
+        db.upsert_work(
+            {
+                "id": "decoy",
+                "kind": "book",
+                "title": "Nikole Hannah-Jones: A Life",
+                "author": "Someone Else",
+                "folder_path": str(root / "decoy"),
+            }
+        ),
+    )
+    for work in (project, sibling, caste, caste_short, born):
+        db.add_work_author(work_id=work["id"], author_id=author["id"])
+    db.upsert_edition(
+        {
+            "id": "ed-hard",
+            "work_id": project["id"],
+            "kind": "book",
+            "isbn13": "9780593230572",
+            "format": "Hardcover",
+            "folder_path": str(root / "secret-edition-folder"),
+            "cover_path": str(root / "secret-edition-cover"),
+        }
+    )
+    db.upsert_edition(
+        {
+            "id": "ed-audio",
+            "work_id": project["id"],
+            "kind": "audiobook",
+            "asin": "B09LISTEN",
+            "format": "Audiobook",
+            "folder_path": str(root / "secret-audio-folder"),
+        }
+    )
+
+    detail = client.get(f"/api/works/{project['id']}")
+    assert detail.status_code == 200
+    body = detail.json()
+    related_ids = [row["id"] for row in body["related"]]
+    related_titles = [row["title"] for row in body["related"]]
+    assert project["id"] not in related_ids
+    assert sibling["id"] not in related_ids
+    assert decoy["id"] not in related_ids
+    assert len(related_titles) == 2
+    assert related_titles[0] == "Born on the Water"
+    assert related_titles[1].startswith("Caste")
+    assert related_ids.count("caste-long") + related_ids.count("caste-short") == 1
+    assert "secret-edition-folder" not in detail.text
+    assert "secret-edition-cover" not in detail.text
+    editions = body["editions"]
+    assert [(row["format"], row["isbn13"], row["asin"]) for row in editions] == [
+        ("Audiobook", None, "B09LISTEN"),
+        ("Hardcover", "9780593230572", None),
+    ]
+    assert all("folder_path" not in row and "cover_path" not in row for row in editions)
+
+    other = client.get(f"/api/works/{born['id']}")
+    other_titles = [row["title"] for row in other.json()["related"]]
+    assert sum(title.startswith("The 1619 Project") for title in other_titles) == 1
+    assert sum(title == "Caste" or title.startswith("Caste:") for title in other_titles) == 1
+    assert decoy["title"] not in other_titles
+
+
+def test_browse_export_csv_includes_sort_keys_and_canonical_ids(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    _login(client)
+    db = Database(tmp_path / "librarian.db")
+    work = _shelve(
+        db,
+        db.upsert_work(
+            {
+                "id": "1619",
+                "kind": "book",
+                "title": "The 1619 Project",
+                "author": "Nikole Hannah-Jones",
+                "isbn": "SECRET-RAW-ISBN",
+                "asin": "SECRET-RAW-ASIN",
+                "folder_path": str(tmp_path / "export" / "secret-folder"),
+            }
+        ),
+    )
+    db.upsert_work_identifier(scheme="isbn13", value="9780593230572", work_id=work["id"])
+    db.upsert_work_identifier(scheme="ol_work", value="OL27326673W", work_id=work["id"])
+    db.upsert_edition(
+        {
+            "id": "ed-audio",
+            "work_id": work["id"],
+            "kind": "audiobook",
+            "asin": "B09LISTEN",
+            "format": "Audiobook",
+        }
+    )
+
+    exported = client.get(
+        "/api/browse/export.csv",
+        params={"columns": "title,title_sort,author_sort,work_id,isbn13,asin,ol_work"},
+    )
+    assert exported.status_code == 200
+    table = _csv_rows(exported)
+    assert table[0] == ["title", "title_sort", "author_sort", "work_id", "isbn13", "asin", "ol_work"]
+    assert table[1] == [
+        "The 1619 Project",
+        title_sort("The 1619 Project"),
+        sort_name("Nikole Hannah-Jones"),
+        work["id"],
+        "9780593230572",
+        "B09LISTEN",
+        "OL27326673W",
+    ]
+    assert table[1][1].startswith("0000001619")
+    assert table[1][2].startswith("Hannah-Jones")
+    assert "SECRET-RAW-ISBN" not in exported.text
+    assert "SECRET-RAW-ASIN" not in exported.text
+    assert "secret-folder" not in exported.text

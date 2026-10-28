@@ -43,7 +43,10 @@ def test_search_and_discover_never_call_sab(client, monkeypatch):
         "librarian.services.search.search_and_rank",
         lambda *args, **kwargs: {"results": [], "error": None},
     )
-    monkeypatch.setattr("librarian.web.routers.search.discover_beyond", lambda *args, **kwargs: ([], [], None))
+    monkeypatch.setattr(
+        "librarian.services.search.discover_beyond",
+        lambda *args, **kwargs: ([], [], None),
+    )
 
     _login(client)
     search = client.get("/api/search", params={"q": "NFL", "beyond": 1, "kind": "book"})

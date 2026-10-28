@@ -46,3 +46,18 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+
+  # Sibling player. Automat still deploys with host ./docker-run.sh (no Compose on Unraid).
+  # Port 13378 only — never 8788, 8790, 8791, 8792, 8793, or 8794.
+  audiobookshelf:
+    image: ghcr.io/advplyr/audiobookshelf:latest
+    container_name: audiobookshelf
+    restart: unless-stopped
+    ports:
+      - "${AUDIOBOOKSHELF_PORT:-13378}:80"
+    environment:
+      TZ: ${TZ:-America/New_York}
+    volumes:
+      - ${AUDIOBOOKSHELF_CONFIG:-/mnt/user/appdata/audiobookshelf}/config:/config
+      - ${AUDIOBOOKSHELF_CONFIG:-/mnt/user/appdata/audiobookshelf}/metadata:/metadata
+      - ${DATA_HOST:-/mnt/user/data}/media/library/audiobooks:/audiobooks:ro

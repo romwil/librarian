@@ -5,7 +5,10 @@ import {
   bestsellersFromSearchParams,
   bestsellersHref,
   composeSearchQuery,
+  DISCOVER_EBOOK_CAT,
+  DISCOVER_PAGE_SIZE,
   discoverCatFromSearchParams,
+  discoverFeedRequest,
   discoverHref,
   findFieldsFromSearchParams,
   findHref,
@@ -51,6 +54,17 @@ describe("Find query builder", () => {
     assert.equal(discoverHref({}), "/search");
     assert.equal(findKindOptions(false).some(([value]) => value === "movie"), false);
     assert.equal(findKindOptions(true).some(([value]) => value === "movie"), false);
+  });
+
+  it("pages ebook trending and does not follow a kind chip", () => {
+    assert.equal(DISCOVER_EBOOK_CAT, "7020");
+    assert.equal(DISCOVER_PAGE_SIZE, 12);
+    assert.deepEqual(discoverFeedRequest(0), { cat: "7020", limit: 12 });
+    assert.deepEqual(discoverFeedRequest(1), { cat: "7020", limit: 12, offset: 12 });
+    assert.deepEqual(discoverFeedRequest(2), { cat: "7020", limit: 12, offset: 24 });
+    assert.equal(discoverFeedRequest(-1).kind, undefined);
+    assert.equal(discoverFeedRequest("comic").offset, undefined);
+    assert.equal(discoverFeedRequest(0).kind, undefined);
   });
 
   it("builds Discover category browse hrefs from cat id", () => {

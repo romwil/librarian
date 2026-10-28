@@ -300,6 +300,39 @@ def _seed_mail_from_env(merged_mail: Dict[str, Any], stored: Mapping[str, Any]) 
     return merged_mail
 
 
+def _explicit_audiobook_target(stored: Mapping[str, Any]) -> str:
+    """A target the owner saved in settings.json. Blank or unknown is not a choice."""
+    if "audiobook_target" not in stored:
+        return ""
+    target = str(stored.get("audiobook_target") or "").strip().lower()
+    if target in AUDIOBOOK_TARGETS:
+        return target
+    return ""
+
+
+def _env_audiobook_target() -> str:
+    if "AUDIOBOOK_TARGET" not in os.environ:
+        return ""
+    target = str(os.environ.get("AUDIOBOOK_TARGET") or "").strip().lower()
+    if target in AUDIOBOOK_TARGETS:
+        return target
+    return ""
+
+
+def _recommend_audiobook_target(stored: Mapping[str, Any], merged: Dict[str, Any]) -> None:
+    """When ABS URL and token are set, prefer Audiobookshelf unless a choice is saved.
+
+    A saved ``plex`` or ``librarian_only`` stays. The in-app player remains the
+    fallback for titles that are not linked.
+    """
+    if _explicit_audiobook_target(stored) or _env_audiobook_target():
+        return
+    url = str(merged.get("audiobookshelf_url") or "").strip()
+    token = str(merged.get("audiobookshelf_api_token") or "").strip()
+    if url and token:
+        merged["audiobook_target"] = "audiobookshelf"
+
+
 def load_merged_settings(data_dir: Path) -> Settings:
     """Load settings.json, then fill missing fields from the environment."""
     load_dotenv()
@@ -324,6 +357,7 @@ def load_merged_settings(data_dir: Path) -> Settings:
     if "llm_provider" in merged:
         merged["llm_provider"] = normalize_provider(merged.get("llm_provider"))
     key_sources = seed_llm_profiles_from_env(merged, stored)
+    _recommend_audiobook_target(stored, merged)
     settings = Settings.from_mapping(merged)
     # Non-persisted metadata for mask_settings (never written to settings.json).
     settings.__dict__["_llm_key_sources"] = key_sources  # type: ignore[attr-defined]

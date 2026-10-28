@@ -129,6 +129,9 @@ export default function MaintainPage() {
   const [mixBacklog, setMixBacklog] = useState(0);
   const [mixStatus, setMixStatus] = useState(null);
   const mixPollRef = useRef(0);
+  const [cleanupStatus, setCleanupStatus] = useState(null);
+  const [cleanupBusy, setCleanupBusy] = useState(false);
+  const [cleanupNote, setCleanupNote] = useState("");
   const [morningBrief, setMorningBrief] = useState(null);
   // Progressive load: start quiet so Maintain chrome paints before desk cards.
   const [morningBriefLoading, setMorningBriefLoading] = useState(false);
@@ -145,6 +148,8 @@ export default function MaintainPage() {
   const [calibreBusy, setCalibreBusy] = useState(false);
   const [calibreNote, setCalibreNote] = useState("");
   const [pollerSteps, setPollerSteps] = useState([]);
+  const [notedRefresh, setNotedRefresh] = useState("");
+  const [notedRefreshing, setNotedRefreshing] = useState(false);
 
   useEffect(() => {
     if (user?.role !== "owner") return undefined;
@@ -243,6 +248,11 @@ export default function MaintainPage() {
         }
       })
       .catch(() => {});
+    api.maintainCleanupStatus().then((status) => {
+      if (cancelled) return;
+      setCleanupStatus(status);
+      if (status?.status === "running") setCleanupBusy(true);
+    }).catch(() => {});
 
     // Wave 1 — morning desk hero after first paint.
     later(0, () => {
@@ -603,6 +613,27 @@ export default function MaintainPage() {
     }
   }
 
+  async function runCleanup(approve = false) {
+    setCleanupBusy(true);
+    setCleanupNote(approve ? "Applying approved cleanup…" : "Preparing cleanup preview…");
+    try {
+      const status = await api.maintainCleanup(approve);
+      setCleanupStatus(status);
+      const report = status?.report || status?.result || {};
+      if (status?.status !== "running") {
+        setCleanupBusy(false);
+        setCleanupNote(
+          approve
+            ? `Merged ${Number(report.merged || 0)} duplicates; quarantine is restorable.`
+            : `Preview: ${Number(report.merge_groups || 0)} merge groups · ${Number(report.possible_duplicates || 0)} possible duplicates.`,
+        );
+      }
+    } catch (err) {
+      setCleanupBusy(false);
+      setCleanupNote(humanError(err));
+    }
+  }
+
   async function muteIndexer(hostId) {
     if (!hostId || indexerBusyId) return;
     setIndexerBusyId(hostId);
@@ -763,7 +794,32 @@ export default function MaintainPage() {
           <Link className="cta outline" to={bestsellersHref()} data-testid="maintain-bestsellers">
             Open bestsellers
           </Link>
+          <Link className="cta outline" to="/noted/history">
+            New &amp; noted history
+          </Link>
+          <button
+            type="button"
+            className="cta outline"
+            disabled={notedRefreshing}
+            aria-busy={notedRefreshing || undefined}
+            onClick={async () => {
+              setNotedRefreshing(true);
+              setNotedRefresh("Refreshing New & noted…");
+              try {
+                const result = await api.refreshNoted();
+                const counts = result?.counts || {};
+                setNotedRefresh(`New & noted refreshed · ${Object.values(counts).reduce((sum, value) => sum + Number(value || 0), 0)} rows`);
+              } catch (error) {
+                setNotedRefresh(humanError(error));
+              } finally {
+                setNotedRefreshing(false);
+              }
+            }}
+          >
+            {notedRefreshing ? "Refreshing…" : "Refresh New & noted"}
+          </button>
         </div>
+        {notedRefresh ? <p className="muted" role="status">{notedRefresh}</p> : null}
       </section>
 
       <section className="maintain-section" id="maintain-ingest" data-testid="maintain-ingest">
@@ -869,6 +925,73 @@ export default function MaintainPage() {
             Split mixed kinds running
           </p>
         ) : null}
+      </section>
+
+      <section className="maintain-section" id="maintain-cleanup" data-testid="maintain-cleanup">
+        <p className="kicker">Catalog</p>
+        <h2>Canonical cleanup</h2>
+        <p className="lede">
+          Preview hashes, author aliases, duplicate merges, editions, and quarantine first. Title-and-author matches stay on the Holds desk.
+        </p>
+        <div className="cta-row">
+          <button type="button" className="cta outline" disabled={cleanupBusy} onClick={() => runCleanup(false)}>
+            {cleanupBusy ? "Working…" : "Preview cleanup"}
+          </button>
+          <button
+            type="button"
+            className="cta"
+            disabled={cleanupBusy || !cleanupStatus?.awaiting_approval}
+            onClick={() => runCleanup(true)}
+          >
+            Approve cleanup
+          </button>
+          <button
+            type="button"
+            className="cta outline"
+            disabled={cleanupBusy || !cleanupStatus?.report?.quarantine}
+            onClick={async () => {
+              setCleanupBusy(true);
+              try {
+                const result = await api.maintainCleanupRestore();
+                setCleanupNote(`Restored ${Number(result?.restored || 0)} quarantined file${Number(result?.restored || 0) === 1 ? "" : "s"}.`);
+              } catch (err) {
+                setCleanupNote(humanError(err));
+              } finally {
+                setCleanupBusy(false);
+              }
+            }}
+          >
+            Restore quarantine
+          </button>
+          <button
+            type="button"
+            className="cta outline"
+            disabled={cleanupBusy || !cleanupStatus?.report?.quarantine}
+            onClick={async () => {
+              if (!window.confirm("Empty the cleanup quarantine permanently?")) return;
+              setCleanupBusy(true);
+              try {
+                await api.maintainCleanupEmpty();
+                setCleanupNote("Cleanup quarantine emptied.");
+              } catch (err) {
+                setCleanupNote(humanError(err));
+              } finally {
+                setCleanupBusy(false);
+              }
+            }}
+          >
+            Empty quarantine
+          </button>
+        </div>
+        {cleanupStatus?.report ? (
+          <p className="muted">
+            {Number(cleanupStatus.report.merge_groups || 0)} merge groups · {Number(cleanupStatus.report.possible_duplicates || 0)} possible duplicates ·{" "}
+            {Number(cleanupStatus.report.quarantine_bytes || 0).toLocaleString()} bytes eligible for quarantine ·{" "}
+            {Number(cleanupStatus.report.audiobooks_to_relayout || 0)} audiobook folder
+            {Number(cleanupStatus.report.audiobooks_to_relayout || 0) === 1 ? "" : "s"} to re-layout
+          </p>
+        ) : null}
+        {cleanupNote ? <p className="muted">{cleanupNote}</p> : null}
       </section>
 
       <section className="maintain-section" id="maintain-shelf-health" data-testid="maintain-shelf-health">

@@ -355,7 +355,11 @@ export default function SettingsPage() {
                         onChange={(e) => patch(key, e.target.value)}
                       >
                         <option value="plex">Plex Audiobooks</option>
-                        <option value="audiobookshelf">Audiobookshelf</option>
+                        <option value="audiobookshelf">
+                          {settings.audiobookshelf_url && settings.audiobookshelf_api_token_set
+                            ? "Audiobookshelf (recommended)"
+                            : "Audiobookshelf"}
+                        </option>
                         <option value="librarian_only">Librarian only</option>
                       </select>
                     ) : (

@@ -2,7 +2,7 @@
 
 Task-first notes for the **Automat** Unraid host that runs Librarian. Audience: developers and Cursor agents working on this repo’s live stack — not generic install docs (see [DOCKER.md](../DOCKER.md)).
 
-Jump to: [LAN hosts](#lan-hosts-source-of-truth) · [Kit](#kit--appdata) · [First boot](#first-boot-env) · [Deploy](#deploy-now-on-host-build) · [See also](#see-also)
+Jump to: [LAN hosts](#lan-hosts-source-of-truth) · [Kit](#kit--appdata) · [First boot](#first-boot-env) · [Deploy](#deploy-now-on-host-build) · [Audiobookshelf](#audiobookshelf) · [See also](#see-also)
 
 ---
 
@@ -11,6 +11,7 @@ Jump to: [LAN hosts](#lan-hosts-source-of-truth) · [Kit](#kit--appdata) · [Fir
 | Role | Base URL | Use for |
 |------|----------|---------|
 | **Librarian** | `http://10.10.1.202:8793` | Version, `/api/health`, UI, “is it up?” |
+| **Audiobookshelf** | `http://10.10.1.202:13378` | Audiobook player. Reads `audiobooks` read-only |
 | **Projectionist prod** | `http://10.10.1.202:8788` | Sibling app — **never** stop it for Librarian work |
 | **Smart Map** | `http://10.10.1.202:8790` | Sibling app — **never** stop it |
 | **Lobby / QA Lobby** | `:8791` / `:8792` | Projectionist theater — do not bind Librarian here |
@@ -26,7 +27,7 @@ curl -s http://10.10.1.202:8793/api/health
 
 **Never treat public DNS as version truth.** Agents (and humans) have concluded a household app was still on an older build by hitting a VIP or an SSH tunnel while LAN was already newer. `localhost:8793` on a maintainer laptop may be a tunnel — not a local `python -m librarian.web`.
 
-**Never bind Librarian to 8788, 8790, 8791, or 8792.**
+**Never bind Librarian or Audiobookshelf to 8788, 8790, 8791, 8792, 8793, or 8794.** Audiobookshelf uses **13378**.
 
 ---
 
@@ -110,6 +111,8 @@ AUDIOBOOKSHELF_URL=
 AUDIOBOOKSHELF_API_TOKEN=
 ```
 
+Leave the Audiobookshelf lines blank until the player is up. The house URL is `http://10.10.1.202:13378`. See [Audiobookshelf](#audiobookshelf).
+
 Leave `LIBRARIAN_TRUST_PROXY_HEADERS` **unset** until a trusted TLS proxy is in front.
 
 ---
@@ -124,7 +127,7 @@ cd /mnt/user/appdata/librarian
 curl -s http://127.0.0.1:8793/api/health
 ```
 
-`docker-run.sh` waits for `/api/health`, prints `/app/.build-info`, and does **not** wipe `./config`.
+`docker-run.sh` waits for `/api/health`, prints `/app/.build-info`, starts Audiobookshelf on **13378**, and does **not** wipe `./config` or `/mnt/user/appdata/audiobookshelf`.
 
 **Do not invent Hub publish as the current Automat path.** There is no active `docker-release.sh` /
 Hub pull-only ship for Librarian yet. `./rollout.sh` is a stub that fails until `romwil/librarian`
@@ -167,7 +170,54 @@ Do **not** blindly `chmod -R 777`. Covers still show via `cover_path` when cache
 
 Plex has no Audiobooks library type. Create a **Music** library named e.g. “Audiobooks” whose folder is `audiobooks_root`, enable track progress / long-form, and keep that folder out of the Plexamp music library (`music_root`).
 
-### Komga (comics federation)
+## Audiobookshelf
+
+The kit starts Audiobookshelf from the same host command as Librarian: `./docker-run.sh`. Compose service name is `audiobookshelf` in `docker-compose.yml` (same image, port, and mounts). Unraid does not use `docker compose up` for this kit.
+
+| | |
+|---|---|
+| Image | `ghcr.io/advplyr/audiobookshelf:latest` |
+| Container | `audiobookshelf` |
+| Host port | **13378** → container port 80 |
+| LAN | `http://10.10.1.202:13378` |
+| Audiobooks | `/mnt/user/data/media/library/audiobooks` → `/audiobooks` **read-only** |
+| Config | `/mnt/user/appdata/audiobookshelf/config` → `/config` |
+| ABS metadata cache | `/mnt/user/appdata/audiobookshelf/metadata` → `/metadata` |
+
+Config lives under appdata, **beside** the Librarian kit, not inside `/mnt/user/appdata/librarian`. The kit rsync does not touch it. Librarian remains the only writer of the audiobook folders.
+
+Do not bind 8788, 8790, 8791, 8792, 8793, or 8794.
+
+### First-time library setup
+
+After `./docker-run.sh` on the host (do this on Automat, not from a laptop agent):
+
+1. Open `http://10.10.1.202:13378` and create the Audiobookshelf admin account.
+2. Add a library. Folder inside the container: `/audiobooks`. Media type: **Book**.
+3. Create an API token for that admin user (Settings → Users → the account → API token).
+4. Put the LAN URL and token in `/mnt/user/appdata/librarian/.env` (or Librarian Settings):
+
+```
+AUDIOBOOKSHELF_URL=http://10.10.1.202:13378
+AUDIOBOOKSHELF_API_TOKEN=
+```
+
+Use the LAN URL, not `host.docker.internal`, so “Open in player” links work in a browser. Leave the token blank in git. Restart Librarian with `./docker-run.sh` so the container sees `.env`.
+
+When both the URL and the token are set and the household has not saved an audiobook target, Librarian uses `audiobook_target=audiobookshelf`. A saved `plex` or `librarian_only` is left alone. Titles that are not linked still play in Librarian.
+
+### What the scanner reads
+
+New audiobooks shelve as `Author/Series/Book N - Title/` or `Author/Title/`. Beside the audio, organize writes:
+
+- `metadata.json` — title, authors, series, year, description, ISBN, ASIN, narrator
+- `desc.txt` — description, when there is one
+- `reader.txt` — narrator, when there is one
+- `cover.jpg` — when a real cover already exists or a cover fetch succeeds
+
+After shelving, Librarian asks Audiobookshelf to scan. Match prefers ASIN, then ISBN, then title and author, and stores `abs_item_id` on the work. Existing folders are not moved until the cleanup job exists. Listening progress still syncs both ways for linked titles.
+
+## Komga (comics federation)
 
 Librarian is the **sole writer** of `comics_root`. Komga (and Panels via Komga OPDS-PSE) are read clients.
 

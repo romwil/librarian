@@ -24,6 +24,7 @@ class WebDeps:
     purge_duplicates_job: BackgroundJobSlot
     purge_shells_job: BackgroundJobSlot
     split_mixed_kinds_job: BackgroundJobSlot
+    cleanup_job: BackgroundJobSlot
 
     def current_user(self, request) -> Optional[Dict[str, Any]]:
         from librarian.auth import user_from_request

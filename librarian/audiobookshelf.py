@@ -231,20 +231,60 @@ def _item_authors(item: Dict[str, Any]) -> List[str]:
     return names
 
 
-def _item_isbns(item: Dict[str, Any]) -> List[str]:
+_ASIN_TOKEN = re.compile(r"^[A-Z0-9]{10}$")
+
+
+def asin_match_key(value: Any) -> str:
+    """10-character ASIN with a letter. ISBN-10 stays on the ISBN path."""
+    text = re.sub(r"[^A-Za-z0-9]", "", str(value or "")).upper()
+    if not _ASIN_TOKEN.fullmatch(text):
+        return ""
+    if text.isdigit() or (text.endswith("X") and text[:-1].isdigit()):
+        return ""
+    if isbn_match_keys(text):
+        return ""
+    return text
+
+
+def _item_meta(item: Mapping[str, Any]) -> Dict[str, Any]:
     media = item.get("media") if isinstance(item.get("media"), dict) else {}
     meta = media.get("metadata") if isinstance(media.get("metadata"), dict) else {}
+    return meta if isinstance(meta, dict) else {}
+
+
+def _item_isbns(item: Dict[str, Any]) -> List[str]:
+    meta = _item_meta(item)
     return isbn_match_keys(
         meta.get("isbn"),
         meta.get("isbn13"),
-        meta.get("asin"),
         item.get("isbn"),
     )
 
 
+def _item_asins(item: Dict[str, Any]) -> set[str]:
+    meta = _item_meta(item)
+    keys = {
+        asin_match_key(meta.get("asin")),
+        asin_match_key(item.get("asin")),
+        asin_match_key(meta.get("isbn")),
+        asin_match_key(item.get("isbn")),
+    }
+    return {key for key in keys if key}
+
+
+def _work_asins(work: Mapping[str, Any]) -> set[str]:
+    keys = {asin_match_key(work.get("asin")), asin_match_key(work.get("isbn"))}
+    return {key for key in keys if key}
+
+
 def match_item(work: Dict[str, Any], items: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-    """ISBN first, then exact author+title. Fail closed — no title-only guesses."""
-    work_keys = set(isbn_match_keys(str(work.get("isbn") or "")))
+    """ASIN, then ISBN, then exact author+title. Fail closed — no title-only guesses."""
+    work_asins = _work_asins(work)
+    if work_asins:
+        for item in items:
+            if work_asins.intersection(_item_asins(item)):
+                return item
+    work_keys = set(isbn_match_keys(work.get("isbn"), work.get("asin")))
     if work_keys:
         for item in items:
             if work_keys.intersection(_item_isbns(item)):

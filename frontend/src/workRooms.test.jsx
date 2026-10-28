@@ -66,7 +66,7 @@ describe("Work page listen shell", () => {
     renderWork("/works/ab-1");
     await userEvent.click(await screen.findByTestId("work-listen"));
     assert.ok(await screen.findByRole("dialog", { name: "Long Listen" }));
-    assert.equal(screen.getByTestId("where").textContent, "/works/ab-1?listen=1");
+    assert.equal(screen.getByTestId("where").textContent, "/works/ab-1?listen=1&file=p1");
 
     await userEvent.click(screen.getByRole("button", { name: "Close" }));
     await waitFor(() => assert.equal(screen.queryByRole("dialog"), null));

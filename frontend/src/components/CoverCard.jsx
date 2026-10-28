@@ -23,6 +23,7 @@ import { beyondHostName, findHref, gapFindFields } from "../find.js";
 import { isIncompleteOwnedPartSet, partSetFindFields } from "../findParts.js";
 import { canListenInApp, workListenPath } from "../listen.js";
 import { canOpenInlineMedia, canReadInApp, readerCtaLabel, workDownloadUrl, workReaderPath } from "../reader.js";
+import StacksCardFooter from "./StacksCardFooter.jsx";
 import WorkActionMenu from "./WorkActionMenu.jsx";
 import { useWorkPeek } from "./WorkPeekProvider.jsx";
 
@@ -58,7 +59,7 @@ function gapBeadModel(work = {}) {
   }));
 }
 
-export default function CoverCard({ work, onRequest, badge, beyond = false, role = "reader" }) {
+export default function CoverCard({ work, onRequest, badge, beyond = false, role = "reader", cardMode = "" }) {
   const peek = useWorkPeek();
   const navigate = useNavigate();
   const kind = work.kind || "book";
@@ -77,6 +78,8 @@ export default function CoverCard({ work, onRequest, badge, beyond = false, role
   const overlay = coverOverlay(item);
   const caption = coverCaption(item);
   const tip = coverTip(item);
+  // Stacks names the title and the author. Hall and Search keep their verbs.
+  const stacksCard = cardMode === "stacks";
   const host = beyond ? beyondHostName(work) : "";
   const beads = isGap ? gapBeadModel(work) : [];
   const [wantedRow, setWantedRow] = useState(null);
@@ -322,10 +325,14 @@ export default function CoverCard({ work, onRequest, badge, beyond = false, role
           </WorkActionMenu>
         ) : null}
       </div>
-      <p className="cover-caption" title={tip || undefined}>
-        {caption}
-        {host ? <span className="cover-host"> · {host}</span> : null}
-      </p>
+      {stacksCard ? (
+        <StacksCardFooter work={item} tip={tip} />
+      ) : (
+        <p className="cover-caption" title={tip || undefined}>
+          {caption}
+          {host ? <span className="cover-host"> · {host}</span> : null}
+        </p>
+      )}
       {beads.length ? (
         <div
           className="gap-beads"
@@ -347,7 +354,24 @@ export default function CoverCard({ work, onRequest, badge, beyond = false, role
           ))}
         </div>
       ) : null}
-      {availability.show ? (
+      {stacksCard ? (
+        availability.verb === "want" ? (
+          <>
+            <AvailabilityActions
+              view={availability}
+              shelfVerbs={false}
+              busy={availabilityBusy}
+              onAdd={addWanted}
+              onDismiss={dismissWanted}
+            />
+            {getError ? (
+              <p className="catalog-status-error" role="alert">
+                {getError}
+              </p>
+            ) : null}
+          </>
+        ) : null
+      ) : availability.show ? (
         <>
           <AvailabilityActions
             view={availability}

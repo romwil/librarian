@@ -12,7 +12,12 @@ import sqlite3
 from dataclasses import dataclass
 from typing import Callable, List, Tuple
 
-from librarian.migrations import m0001_baseline, m0002_rebuild_works_fts
+from librarian.migrations import (
+    m0001_baseline,
+    m0002_rebuild_works_fts,
+    m0003_canonical_works,
+    m0004_noted_cache,
+)
 
 logger = logging.getLogger("librarian.migrations")
 
@@ -31,6 +36,12 @@ MIGRATIONS: Tuple[Migration, ...] = (
         m0002_rebuild_works_fts.NAME,
         m0002_rebuild_works_fts.apply,
     ),
+    Migration(
+        m0003_canonical_works.VERSION,
+        m0003_canonical_works.NAME,
+        m0003_canonical_works.apply,
+    ),
+    Migration(m0004_noted_cache.VERSION, m0004_noted_cache.NAME, m0004_noted_cache.apply),
 )
 LATEST_VERSION = MIGRATIONS[-1].version
 

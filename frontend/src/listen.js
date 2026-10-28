@@ -14,6 +14,40 @@ export const SLEEP_TIMER_OPTIONS = [
 /** Persist at most about once every `minIntervalMs` unless forced. */
 export const LISTEN_PERSIST_MIN_MS = 900;
 
+const LISTEN_EXT_RANK = {
+  ".m4b": 0,
+  ".m4a": 1,
+  ".mp3": 2,
+  ".aac": 3,
+  ".flac": 4,
+  ".ogg": 5,
+  ".opus": 6,
+  ".wav": 7,
+  ".wma": 8,
+};
+
+function listenExtension(row) {
+  const text = String(row?.filename || row?.path || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\\/g, "/");
+  const base = text.slice(text.lastIndexOf("/") + 1);
+  const dot = base.lastIndexOf(".");
+  return dot >= 0 ? base.slice(dot) : "";
+}
+
+/** Best on-disk audio file. A single m4b beats a loose mp3; nothing is invented. */
+export function primaryListeningFile(files = []) {
+  const tracks = playableTracks(files);
+  if (!tracks.length) return null;
+  return [...tracks].sort((left, right) => {
+    const rank =
+      (LISTEN_EXT_RANK[listenExtension(left)] ?? 9) - (LISTEN_EXT_RANK[listenExtension(right)] ?? 9);
+    if (rank) return rank;
+    return String(left?.filename || left?.path || "").localeCompare(String(right?.filename || right?.path || ""));
+  })[0];
+}
+
 export function canListenInApp(work, files = [], canDownload = false) {
   if (work?.kind !== "audiobook") return false;
   if (!canDownload) return false;

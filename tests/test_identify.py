@@ -393,6 +393,66 @@ def test_magazine_low_confidence_llm_keeps_review_reason(tmp_path):
     assert result["identity"]["series_index"] == "2026-10"
 
 
+def test_dest_layout_audiobook_abs_folders(tmp_path):
+    """Audiobookshelf layout: Author/Series/Book N - Title/ or Author/Title/."""
+    from librarian.identify.paths import parse_audiobook_leaf
+    from librarian.scan import _layout_identity
+
+    settings = Settings()
+    series = dest_layout(
+        {
+            "kind": "audiobook",
+            "title": "The Left Hand of Darkness",
+            "author": "Ursula K. Le Guin",
+            "series_name": "Hainish Cycle",
+            "series_index": "4",
+            "year": 1969,
+            "asin": "B000TEST01",
+        },
+        settings,
+        filename="part01.mp3",
+    )
+    assert series == Path(
+        "/data/media/library/audiobooks/Ursula K Le Guin/Hainish Cycle/"
+        "Book 4 - The Left Hand of Darkness/The Left Hand of Darkness.m4b"
+    )
+    assert "1969" not in str(series)
+    already = dest_layout(
+        {
+            "kind": "audiobook",
+            "title": "The Dispossessed",
+            "author": "Ursula K. Le Guin",
+            "series_name": "Hainish Cycle",
+            "series_index": "Book 6",
+        },
+        settings,
+        filename="book.m4b",
+    )
+    assert already.parent.name == "Book 6 - The Dispossessed"
+    solo = dest_layout(
+        {
+            "kind": "audiobook",
+            "title": "Dune",
+            "author": "Frank Herbert",
+            "year": 1977,
+        },
+        settings,
+        filename="dune.m4b",
+    )
+    assert solo == Path("/data/media/library/audiobooks/Frank Herbert/Dune/Dune.m4b")
+    assert parse_audiobook_leaf(series.parent.name) == ("The Left Hand of Darkness", "4")
+    assert parse_audiobook_leaf("Dune") == ("Dune", "")
+
+    root = tmp_path / "audiobooks"
+    folder = root / "Ursula K. Le Guin" / "Hainish Cycle" / "Book 4 - The Left Hand of Darkness"
+    folder.mkdir(parents=True)
+    parsed = _layout_identity("audiobook", folder, root)
+    assert parsed["author"] == "Ursula K Le Guin"
+    assert parsed["series_name"] == "Hainish Cycle"
+    assert parsed["series_index"] == "4"
+    assert parsed["title"] == "The Left Hand of Darkness"
+
+
 def test_dest_layout_book_and_comic():
     settings = Settings()
     book = dest_layout(

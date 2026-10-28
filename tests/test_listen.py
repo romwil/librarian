@@ -47,6 +47,10 @@ def test_abs_item_href_and_player_link_honesty():
     unmatched = {"kind": "audiobook", "title": "Dune"}
     assert audiobook_player_link(unmatched, abs_settings) is None
     assert "Not matched" in player_empty_note(unmatched, abs_settings)
+    fallback = listen_payload(unmatched, can_download=True, settings=abs_settings)
+    assert fallback["can_listen"] is True
+    assert fallback["player"] is None
+    assert "Librarian" in fallback["player_note"]
     only = listen_payload(
         unmatched,
         can_download=True,

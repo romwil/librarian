@@ -135,6 +135,37 @@ def safe_path_part(value: str, fallback: str = "Unknown") -> str:
     return text or fallback
 
 
+_BOOK_LEAF = re.compile(
+    r"^(?:Book\s+)?(?P<index>\d+(?:\.\d+)?)\s*-\s*(?P<title>.+)$",
+    re.IGNORECASE,
+)
+
+
+def audiobook_leaf_name(title: str, series_index: str) -> str:
+    """Series book folder: ``Book N - Title``, or the title when there is no index."""
+    index = safe_path_part(str(series_index or "").strip(), fallback="")
+    if not index:
+        return title
+    if re.match(r"(?i)^book\s+\S", index):
+        label = index
+    else:
+        label = f"Book {index}"
+    return f"{label} - {title}"
+
+
+def parse_audiobook_leaf(name: str) -> tuple[str, str]:
+    """Split ``Book N - Title`` or ``N - Title``. A bare title has no index.
+
+    The `` - `` separator is kept until the split. ``tidy_title`` would turn that
+    hyphen into a space and hide the book number.
+    """
+    text = re.sub(r"\s+", " ", str(name or "").strip())
+    match = _BOOK_LEAF.match(text)
+    if not match:
+        return tidy_title(text), ""
+    return tidy_title(match.group("title").strip()), match.group("index")
+
+
 def dest_layout(identity: Dict[str, Any], settings: Any, *, filename: str, source: Optional[Path] = None) -> Path:
     kind = identity.get("kind")
     title = safe_path_part(str(identity.get("title") or "Untitled"))
@@ -175,20 +206,20 @@ def dest_layout(identity: Dict[str, Any], settings: Any, *, filename: str, sourc
             dest_name = Path(filename).name
         return Path(settings.comics_root) / publisher / series_folder / dest_name
     if kind == KIND_AUDIOBOOK:
-        year_val = identity.get("year")
-        year_bit = f" ({year_val})" if year_val not in (None, "") else ""
-        series = str(identity.get("series_name") or "").strip()
-        index = str(identity.get("series_index") or "").strip()
+        # Audiobookshelf: Author/Series/Book N - Title/ or Author/Title/. Year stays in metadata.
+        series_name = str(identity.get("series_name") or "").strip()
+        series_index = str(identity.get("series_index") or "").strip()
         # Prefer canonical Title.m4b when shelving a remuxed book; otherwise keep source name.
         if suffix == ".m4b" or str(identity.get("asin") or "").strip():
             dest_name = f"{title}.m4b"
         else:
             dest_name = Path(filename).name
         root = Path(settings.audiobooks_root)
-        if series:
-            index_label = f"{index} - {title}{year_bit}" if index else f"{title}{year_bit}"
-            return root / author / series / index_label / dest_name
-        return root / author / f"{title}{year_bit}" / dest_name
+        if series_name:
+            series_folder = safe_path_part(series_name, fallback="Series")
+            leaf = audiobook_leaf_name(title, series_index)
+            return root / author / series_folder / leaf / dest_name
+        return root / author / title / dest_name
     if kind == KIND_MUSIC:
         dest_name = _music_track_filename(identity, filename=filename, source=source)
         existing = existing_album_folder(identity, settings)

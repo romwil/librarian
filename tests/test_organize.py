@@ -55,6 +55,63 @@ def test_organize_epub_book_writes_opf(tmp_path):
     assert work["kind"] == "book"
 
 
+def test_organize_joins_isbn10_edition_to_existing_isbn13_work(tmp_path):
+    """resolve_work joins a second edition by identifier instead of a second work."""
+    settings = _settings(tmp_path)
+    db = Database(tmp_path / "librarian.db")
+
+    first = tmp_path / "complete" / "first"
+    first.mkdir(parents=True)
+    (first / "book.epub").write_bytes(b"first-bytes")
+    result1 = organize_identified(
+        db,
+        settings,
+        folder=first,
+        indexer_item={
+            "title": "The Left Hand of Darkness",
+            "author": "Le Guin",
+            "isbn": "9780441478125",
+            "category": 7020,
+            "name": first.name,
+        },
+    )
+    assert result1["organized"] is True
+    work_id = result1["work"]["id"]
+    # resolve_work's identifier step only fires once organize itself has registered one.
+    assert db.get_work_by_identifier(scheme="isbn13", value="9780441478125")["id"] == work_id
+
+    # A second, differently-titled printing carrying the ISBN-10 of the same book —
+    # a normalized title/author match would not catch this; only the identifier does.
+    second = tmp_path / "complete" / "second"
+    second.mkdir(parents=True)
+    (second / "reprint.epub").write_bytes(b"second-bytes")
+    result2 = organize_identified(
+        db,
+        settings,
+        folder=second,
+        move_source=True,
+        force=True,
+        identity_overrides={
+            "kind": "book",
+            "title": "The Left Hand of Darkness — Anniversary Edition",
+            "author": "Ursula K. Le Guin",
+            "isbn": "0441478123",
+        },
+    )
+    assert result2["organized"] is True
+    assert result2["work"]["id"] == work_id
+    assert db.count_works() == 1
+    # The canonical row keeps its original identity rather than being overwritten.
+    canonical = db.get_work(work_id)
+    assert canonical["title"] == "The Left Hand of Darkness"
+
+    editions = db.list_editions_for_work(work_id)
+    assert any(edition["isbn13"] == "9780441478125" for edition in editions)
+    files = db.files_for_work(work_id)
+    assert len(files) == 2
+    assert Path(result2["files"][0]).is_file()
+
+
 def test_collision_goes_to_review(tmp_path):
     settings = _settings(tmp_path)
     dest_dir = Path(settings.books_root) / "Le Guin" / "The Left Hand of Darkness"
@@ -464,6 +521,100 @@ def test_organize_title_only_stays_review_without_invented_isbn(tmp_path):
     assert result["identity"]["isbn"] in ("", None)
     assert result["work"]["review_state"] == "needs_review"
     assert result["work"]["isbn"] in ("", None)
+
+
+def test_organize_audiobook_writes_abs_sidecars(tmp_path, monkeypatch):
+    import httpx
+
+    from librarian.metadata import read_folder_metadata
+
+    folder = tmp_path / "complete" / "le-guin-left-hand"
+    folder.mkdir(parents=True)
+    (folder / "book.m4b").write_bytes(b"m4b-bytes")
+    jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 80
+    (folder / "cover.jpg").write_bytes(jpeg)
+    scanned = {}
+
+    def fake_scan(settings, **kwargs):
+        scanned["url"] = getattr(settings, "audiobookshelf_url", "")
+        return {"ok": True, "skipped": False, "libraries": ["lib-books"]}
+
+    monkeypatch.setattr("librarian.audiobookshelf.notify_abs_scan", fake_scan)
+    db = Database(tmp_path / "librarian.db")
+    settings = _settings(tmp_path)
+    settings.audiobookshelf_url = "http://10.10.1.202:13378"
+    settings.audiobookshelf_api_token = "tok"
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404)
+
+    result = organize_identified(
+        db,
+        settings,
+        folder=folder,
+        force=True,
+        cover_transport=httpx.MockTransport(handler),
+        identity_overrides={
+            "kind": "audiobook",
+            "title": "The Left Hand of Darkness",
+            "author": "Ursula K. Le Guin",
+            "series_name": "Hainish Cycle",
+            "series_index": "4",
+            "year": 1969,
+            "narrator": "Ruth Franklin",
+            "description": "A winter journey on Gethen.",
+            "isbn": "9780441478125",
+        },
+    )
+    assert result["organized"] is True
+    dest = Path(result["files"][0])
+    assert dest.parent.name == "Book 4 - The Left Hand of Darkness"
+    assert dest.parent.parent.name == "Hainish Cycle"
+    assert dest.parent.parent.parent.name == "Ursula K Le Guin"
+    book_dir = dest.parent
+    meta = (book_dir / "metadata.json").read_text(encoding="utf-8")
+    assert "The Left Hand of Darkness" in meta
+    assert "Ursula K. Le Guin" in meta
+    assert "Hainish Cycle" in meta
+    assert "9780441478125" in meta
+    assert "Ruth Franklin" in meta
+    assert (book_dir / "desc.txt").read_text(encoding="utf-8").strip() == "A winter journey on Gethen."
+    assert (book_dir / "reader.txt").read_text(encoding="utf-8").strip() == "Ruth Franklin"
+    assert (book_dir / "cover.jpg").read_bytes() == jpeg
+    assert result["abs_scan"]["libraries"] == ["lib-books"]
+    assert scanned["url"] == "http://10.10.1.202:13378"
+    stored = read_folder_metadata(book_dir)
+    assert stored["narrator"] == "Ruth Franklin"
+    assert stored["description"] == "A winter journey on Gethen."
+    assert stored["series_index"] == "4"
+
+
+def test_audiobook_sidecar_round_trip_keeps_asin(tmp_path):
+    from librarian.metadata import read_folder_metadata, write_audiobook_sidecars
+
+    folder = tmp_path / "Author" / "Title"
+    write_audiobook_sidecars(
+        folder,
+        {
+            "title": "Project Hail Mary",
+            "author": "Andy Weir",
+            "asin": "B08GB58KD5",
+            "isbn": "B08GB58KD5",
+            "narrator": "Ray Porter",
+            "description": "A science teacher wakes up alone.",
+            "year": 2021,
+        },
+    )
+    payload = (folder / "metadata.json").read_text(encoding="utf-8")
+    assert '"asin": "B08GB58KD5"' in payload
+    assert '"isbn"' not in payload
+    assert (folder / "reader.txt").read_text(encoding="utf-8").strip() == "Ray Porter"
+    assert (folder / "desc.txt").read_text(encoding="utf-8").startswith("A science teacher")
+    assert not (folder / "cover.jpg").exists()
+    read_back = read_folder_metadata(folder)
+    assert read_back["asin"] == "B08GB58KD5"
+    assert read_back.get("isbn") in ("", None)
+    assert read_back["year"] == 2021
 
 
 def test_organize_audiobook_tags_never_music_root(tmp_path):

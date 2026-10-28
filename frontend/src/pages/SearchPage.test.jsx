@@ -1,0 +1,121 @@
+// @vitest-environment jsdom
+import assert from "node:assert/strict";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { MemoryRouter, Outlet, Route, Routes } from "react-router-dom";
+import { afterEach, beforeEach, describe, it } from "vitest";
+import SearchPage from "./SearchPage.jsx";
+
+const realFetch = globalThis.fetch;
+let calls;
+
+function discoverCalls() {
+  return calls.filter((url) => url.includes("/api/discover"));
+}
+
+function discoverUrl(index = 0) {
+  return new URL(discoverCalls()[index], "http://localhost");
+}
+
+beforeEach(() => {
+  calls = [];
+  globalThis.fetch = async (url) => {
+    const path = String(url);
+    calls.push(path);
+    if (path.includes("/api/discover")) {
+      const query = new URL(path, "http://localhost").searchParams;
+      const offset = Number(query.get("offset") || 0);
+      const count = offset === 0 ? 12 : 4;
+      const items = Array.from({ length: count }, (_, i) => ({
+        guid: `g-${offset + i}`,
+        title: `Ebook ${offset + i}`,
+        kind: "book",
+        category: "7020",
+      }));
+      return new Response(JSON.stringify({ items, categories: [], limit: 12, offset }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return new Response(JSON.stringify({ local: [], beyond: [], public_domain: [] }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+});
+
+afterEach(() => {
+  globalThis.fetch = realFetch;
+});
+
+function renderSearch(path = "/search") {
+  return render(
+    <MemoryRouter initialEntries={[path]}>
+      <Routes>
+        <Route element={<Outlet context={{ user: { role: "owner" }, features: {} }} />}>
+          <Route path="/search" element={<SearchPage />} />
+        </Route>
+      </Routes>
+    </MemoryRouter>,
+  );
+}
+
+describe("Search Discover", () => {
+  it("stays collapsed and does not call discover until Discover is expanded", async () => {
+    renderSearch("/search?kind=audiobook");
+    const door = screen.getByRole("link", { name: "New & noted" });
+    assert.equal(door.getAttribute("href"), "/noted");
+    assert.equal(screen.queryByRole("link", { name: "Trending books" }), null);
+    assert.equal(screen.queryByTestId("discover-cats"), null);
+    assert.equal(screen.queryByRole("button", { name: "Magazines" }), null);
+    assert.equal(screen.queryByRole("button", { name: "MP3" }), null);
+    const toggle = screen.getByRole("button", { name: "Discover" });
+    assert.equal(toggle.getAttribute("aria-expanded"), "false");
+    assert.equal(toggle.parentElement?.className, "discover-launch");
+    assert.equal(discoverCalls().length, 0);
+
+    await userEvent.click(toggle);
+    await screen.findByRole("button", { name: "Ebook 0" });
+    assert.equal(discoverCalls().length, 1);
+    const first = discoverUrl(0);
+    assert.equal(first.pathname, "/api/discover");
+    assert.equal(first.searchParams.get("cat"), "7020");
+    assert.equal(first.searchParams.get("limit"), "12");
+    assert.equal(first.searchParams.get("kind"), null);
+    assert.equal(first.searchParams.get("offset"), null);
+    assert.equal(screen.getByRole("button", { name: "Discover" }).getAttribute("aria-expanded"), "true");
+    assert.equal(screen.getByRole("button", { name: "Previous" }).disabled, true);
+
+    await userEvent.click(screen.getByRole("button", { name: "Book" }));
+    assert.equal(discoverCalls().length, 1);
+
+    await userEvent.click(screen.getByRole("button", { name: "Next" }));
+    await screen.findByRole("button", { name: "Ebook 12" });
+    assert.equal(discoverCalls().length, 2);
+    const second = discoverUrl(1);
+    assert.equal(second.searchParams.get("cat"), "7020");
+    assert.equal(second.searchParams.get("limit"), "12");
+    assert.equal(second.searchParams.get("offset"), "12");
+    assert.equal(second.searchParams.get("kind"), null);
+    assert.equal(screen.getByRole("button", { name: "Next" }).disabled, true);
+
+    await userEvent.click(screen.getByRole("button", { name: "Previous" }));
+    await screen.findByRole("button", { name: "Ebook 0" });
+    assert.equal(discoverCalls().length, 3);
+    assert.equal(discoverUrl(2).searchParams.get("cat"), "7020");
+    assert.equal(discoverUrl(2).searchParams.get("limit"), "12");
+    assert.equal(discoverUrl(2).searchParams.get("offset"), null);
+  });
+
+  it("does not call discover for a search until the fold is opened", async () => {
+    renderSearch("/search?q=dune");
+    await waitFor(() => assert.ok(calls.some((url) => url.includes("/api/search"))));
+    assert.equal(discoverCalls().length, 0);
+    await userEvent.click(screen.getByText("Discover"));
+    await screen.findByRole("button", { name: "Ebook 0" });
+    assert.equal(discoverCalls().length, 1);
+    assert.equal(discoverUrl(0).searchParams.get("cat"), "7020");
+    assert.equal(discoverUrl(0).searchParams.get("limit"), "12");
+    assert.equal(discoverUrl(0).searchParams.get("kind"), null);
+  });
+});

@@ -257,7 +257,7 @@ def player_empty_note(work: Optional[Mapping[str, Any]], settings: Settings) -> 
     target = _text(getattr(settings, "audiobook_target", "librarian_only")).lower() or "librarian_only"
     abs_url = _text(getattr(settings, "audiobookshelf_url", ""))
     if target == "audiobookshelf" and abs_url and not _text(work.get("abs_item_id")):
-        return "Not matched to Audiobookshelf yet — run Match from Settings."
+        return "Not matched to Audiobookshelf yet. Listening stays in Librarian."
     if target == "librarian_only":
         return "Listening stays in Librarian for this household."
     return ""

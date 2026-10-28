@@ -66,7 +66,8 @@ export const FIELD_HELP = {
   incoming_music_root: "Unpromoted albums wait here until an op Promotes them.",
   music_root: "Plexamp library. Promote copies incoming albums here.",
   complete_root: "If SAB finishes at /downloads, map that path to files this process can read.",
-  audiobook_target: "Where listeners open titles. Set to Audiobookshelf to prefer ABS handoff after Match.",
+  audiobook_target:
+    "Where listeners open titles. Audiobookshelf is recommended once its URL and token are set. A saved choice stays. Unlinked titles still play in Librarian.",
   llm_provider: "OpenAI, Anthropic (Claude), or Google Gemini. Each uses its native API — not an OpenAI shim.",
   llm_base_url: "Optional. Provider default is fine. Override only for a reverse proxy.",
   llm_api_key: "Optional. Paste the provider key (or set GEMINI_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY in .env). Never invents an ISBN.",

@@ -16,7 +16,7 @@ import { useAlbumPlayer } from "../hooks/useAlbumPlayer.js";
 import { useWorkRooms, workCanListen, workCanRead } from "../hooks/useWorkRooms.js";
 import { finishRitualCopy, finishWhisperInvite, hallLampPeriod } from "../lib/lampRituals.js";
 import { catchUpCtaLabel, catchUpInvitation, missingRibbonBeads } from "../lib/seriesCatchUp.js";
-import { isAudioFile } from "../listen.js";
+import { isAudioFile, primaryListeningFile } from "../listen.js";
 import { canOpenInlineMedia, primaryReadingFile, readerCtaLabel, workDownloadUrl, workPrimaryVerb } from "../reader.js";
 import Rail from "../components/Rail.jsx";
 import WorkActionMenu from "../components/WorkActionMenu.jsx";
@@ -96,6 +96,8 @@ export default function WorkPage() {
   const canListen = workCanListen(data);
   const canInlineOpen = canOpenInlineMedia(work, Boolean(data.can_download), canRead);
   const playerLink = data.listen?.player || null;
+  const absListenHref =
+    playerLink?.provider === "audiobookshelf" && playerLink?.href ? String(playerLink.href) : "";
   const playerNote = data.listen?.player_note || "";
   const komgaLink = data.komga?.reader || null;
   const mediaNote = peekMediaNote(work, { canDownload: Boolean(data.can_download), ready: true });
@@ -124,8 +126,11 @@ export default function WorkPage() {
     canDownload: Boolean(data.can_download),
     canWant: Boolean(availability.canAdd) || Boolean(status.canAdd),
   });
+  const bestRead = primaryReadingFile(data.files || []);
+  const bestListen = primaryListeningFile(data.files || []);
   const primaryFile =
-    primaryReadingFile(data.files || []) ||
+    bestRead ||
+    bestListen ||
     (data.files || []).find((file) => file && file.on_disk !== false && (file.filename || file.path)) ||
     null;
   const primaryName = String(primaryFile?.filename || primaryFile?.path || "")
@@ -402,8 +407,24 @@ export default function WorkPage() {
             </p>
           ) : null}
           <div className="cta-row compact" data-testid="work-primary" data-verb={verb || undefined}>
-            {verb === "Listen" ? (
-              <button type="button" className="cta compact" onClick={() => openListen()} data-testid="work-listen">
+            {verb === "Listen" && absListenHref ? (
+              <a
+                className="cta compact"
+                href={absListenHref}
+                target="_blank"
+                rel="noreferrer"
+                data-testid="work-listen"
+              >
+                Listen
+              </a>
+            ) : null}
+            {verb === "Listen" && !absListenHref ? (
+              <button
+                type="button"
+                className="cta compact"
+                onClick={() => openListen(bestListen?.id || "")}
+                data-testid="work-listen"
+              >
                 Listen
               </button>
             ) : null}
@@ -413,7 +434,12 @@ export default function WorkPage() {
               </button>
             ) : null}
             {verb === "Read" && canRead ? (
-              <button type="button" className="cta compact" onClick={() => openReader()} data-testid="work-open">
+              <button
+                type="button"
+                className="cta compact"
+                onClick={() => openReader(bestRead?.id || "")}
+                data-testid="work-open"
+              >
                 Read
               </button>
             ) : null}
@@ -597,6 +623,22 @@ export default function WorkPage() {
         </div>
       </section>
       <div className="work-body">
+        {Array.isArray(data.editions) && data.editions.length ? (
+          <section aria-labelledby="work-editions-heading" data-testid="work-editions">
+            <h2 id="work-editions-heading" className="kicker">
+              Editions and formats
+            </h2>
+            <ul>
+              {data.editions.map((edition) => (
+                <li key={edition.id || `${edition.isbn13 || ""}-${edition.asin || ""}-${edition.format || ""}`}>
+                  <span>{edition.format || edition.kind || "Edition"}</span>
+                  {edition.isbn13 ? <span> ISBN {edition.isbn13}</span> : null}
+                  {edition.asin ? <span> ASIN {edition.asin}</span> : null}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
         {data.files?.length ? (
           <section data-testid="work-files">
             <h2 className="kicker">{work.kind === "music" ? "Tracks" : "Files"}</h2>

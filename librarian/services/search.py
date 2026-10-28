@@ -14,6 +14,7 @@ from librarian.delight import (
     finish_set_label,
     in_quiet_hours,
 )
+from librarian.indexers.discover import discover_beyond, resolve_discover_offset, resolve_feed_limit
 from librarian.indexers.rank import search_and_rank
 from librarian.indexers.scrub import public_indexer_hit, public_indexer_hits
 from librarian.kinds import ALL_KINDS
@@ -25,14 +26,32 @@ from librarian.services import NotFoundError, ServiceError
 from librarian.web.serializers import public_work, public_works
 
 # Visible stacks columns. ``series`` is the work's series_name. Omitted ``columns``
-# exports every name in this order.
+# exports every name in this order. Sort keys and canonical ids are reader-facing
+# catalog fields; filesystem paths and the raw ``works.isbn`` string are not.
 BROWSE_EXPORT_COLUMNS: tuple[str, ...] = (
     "title",
     "author",
+    "title_sort",
+    "author_sort",
     "year",
     "kind",
     "series",
     "genre",
+    "work_id",
+    "isbn13",
+    "asin",
+    "ol_work",
+    "hardcover",
+    "comicvine",
+    "calibre",
+)
+_CANONICAL_ID_SCHEMES: tuple[str, ...] = (
+    "isbn13",
+    "asin",
+    "ol_work",
+    "hardcover",
+    "comicvine",
+    "calibre",
 )
 _CSV_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
 
@@ -80,15 +99,52 @@ def _csv_cell(value: Any) -> str:
     return text
 
 
+def _canonical_id_cells(item: Any) -> Dict[str, str]:
+    """Identifier columns stamped by ``_stamp_canonical_export_fields``. Never the raw ISBN field."""
+    raw = item if isinstance(item, dict) else {}
+    stamped = raw.get("_canonical_ids")
+    cells = stamped if isinstance(stamped, dict) else {}
+    return {scheme: _csv_cell(cells.get(scheme) or "") for scheme in _CANONICAL_ID_SCHEMES}
+
+
+def _stamp_canonical_export_fields(db: Any, items: Sequence[Any]) -> None:
+    """Fill canonical identifier cells from ``work_identifiers``, then edition isbn13/asin."""
+    list_ids = getattr(db, "list_work_identifiers", None)
+    list_editions = getattr(db, "list_editions_for_work", None)
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        buckets = {scheme: [] for scheme in _CANONICAL_ID_SCHEMES}
+        work_id = str(item.get("id") or "").strip()
+        if work_id and callable(list_ids):
+            for row in list_ids(work_id) or []:
+                scheme = str(row.get("scheme") or "")
+                value = str(row.get("value") or "").strip()
+                if scheme in buckets and value and value not in buckets[scheme]:
+                    buckets[scheme].append(value)
+        if work_id and callable(list_editions):
+            for edition in list_editions(work_id) or []:
+                for scheme in ("isbn13", "asin"):
+                    value = str(edition.get(scheme) or "").strip()
+                    if value and value not in buckets[scheme]:
+                        buckets[scheme].append(value)
+        item["_canonical_ids"] = {scheme: "; ".join(values) for scheme, values in buckets.items()}
+
+
 def _browse_export_record(item: Any, columns: Sequence[str]) -> Dict[str, str]:
     public = public_work(item if isinstance(item, dict) else None) or {}
+    raw = item if isinstance(item, dict) else {}
     values = {
         "title": _csv_cell(public.get("title")),
         "author": _csv_cell(public.get("author")),
+        "title_sort": _csv_cell(raw.get("title_sort")),
+        "author_sort": _csv_cell(raw.get("author_sort")),
         "year": _csv_cell(_year_text(public.get("year"))),
         "kind": _csv_cell(public.get("kind")),
         "series": _csv_cell(public.get("series_name")),
         "genre": _csv_cell(public.get("genre")),
+        "work_id": _csv_cell(raw.get("id")),
+        **_canonical_id_cells(raw),
     }
     return {column: values.get(column, "") for column in columns}
 
@@ -206,6 +262,7 @@ def export_browse_csv(
     page, _applied = load_browse_page(
         db, user, offset=0, limit=cap, max_limit=cap, **filters
     )
+    _stamp_canonical_export_fields(db, page["items"])
     return BrowseExport(
         body=render_browse_csv(page["items"], selected),
         cap=cap,
@@ -329,6 +386,45 @@ def run_search(
         "rank_method": rank_method,
         "rank_reason": rank_reason,
         "search_trace": search_trace if owner_trace else None,
+        "can_request": user["role"] in REQUEST_ROLES,
+    }
+
+
+def discover_page(
+    cfg: Any,
+    *,
+    root: Path,
+    user: Mapping[str, Any],
+    kind: str = "",
+    cat: str = "",
+    limit: int = 0,
+    offset: int = 0,
+    page: int = 0,
+) -> Dict[str, Any]:
+    """One page of an indexer Discover feed.
+
+    ``page`` is 1-based. A positive ``offset`` wins. The first page is offset 0.
+    """
+    feed_limit = resolve_feed_limit(cat=cat, limit=limit if limit else None)
+    skip = resolve_discover_offset(offset=offset, page=page, limit=feed_limit)
+    items, categories, beyond_error = discover_beyond(
+        cfg,
+        kind=kind,
+        cat=cat,
+        limit=feed_limit,
+        offset=skip,
+        data_dir=root,
+    )
+    shown_page = (skip // feed_limit) + 1 if feed_limit else 1
+    return {
+        "kind": kind,
+        "cat": cat,
+        "limit": feed_limit,
+        "offset": skip,
+        "page": shown_page,
+        "items": public_indexer_hits(items),
+        "categories": categories,
+        "beyond_error": beyond_error,
         "can_request": user["role"] in REQUEST_ROLES,
     }
 

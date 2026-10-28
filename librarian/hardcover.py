@@ -9,6 +9,7 @@ import httpx
 
 from librarian.covers import DEFAULT_USER_AGENT
 from librarian.identify import extract_isbn, isbn10_to_isbn13, isbn13_to_isbn10
+from librarian.identity.isbn import canonical_isbn13
 
 HARDCOVER_GRAPHQL = "https://api.hardcover.app/v1/graphql"
 
@@ -20,6 +21,7 @@ query EditionByIsbn13($isbn: String!) {
     release_date
     cached_image
     book {
+      id
       title
       description
       release_year
@@ -39,6 +41,7 @@ query EditionByIsbn10($isbn: String!) {
     release_date
     cached_image
     book {
+      id
       title
       description
       release_year
@@ -171,6 +174,15 @@ def _strip_html(text: str) -> str:
     return re.sub(r"\s+", " ", cleaned).strip()
 
 
+def _isbn13s_from_edition(edition: Mapping[str, Any]) -> List[str]:
+    out: List[str] = []
+    for key in ("isbn_13", "isbn_10"):
+        canonical = canonical_isbn13(edition.get(key))
+        if canonical and canonical not in out:
+            out.append(canonical)
+    return out
+
+
 def enrichment_from_edition(edition: Mapping[str, Any]) -> Dict[str, Any]:
     book = edition.get("book") if isinstance(edition.get("book"), dict) else {}
     description = _strip_html(str(book.get("description") or edition.get("description") or ""))
@@ -189,6 +201,12 @@ def enrichment_from_edition(edition: Mapping[str, Any]) -> Dict[str, Any]:
     if genre:
         out["genre"] = genre
     out.update(series)
+    book_id = book.get("id")
+    if book_id not in (None, ""):
+        out["hardcover_id"] = str(book_id)
+    isbn13s = _isbn13s_from_edition(edition)
+    if isbn13s:
+        out["isbn13s"] = isbn13s
     return out
 
 
@@ -209,6 +227,18 @@ def enrichment_from_search_hit(hit: Mapping[str, Any]) -> Dict[str, Any]:
     if genre:
         out["genre"] = genre
     out.update(series)
+    hit_id = hit.get("id")
+    if hit_id not in (None, ""):
+        out["hardcover_id"] = str(hit_id)
+    raw_isbns = hit.get("isbns") or hit.get("isbn_13") or hit.get("isbn13")
+    isbn_values: List[Any] = raw_isbns if isinstance(raw_isbns, list) else [raw_isbns] if raw_isbns else []
+    isbn13s: List[str] = []
+    for value in isbn_values:
+        canonical = canonical_isbn13(value)
+        if canonical and canonical not in isbn13s:
+            isbn13s.append(canonical)
+    if isbn13s:
+        out["isbn13s"] = isbn13s
     return out
 
 

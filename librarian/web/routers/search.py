@@ -6,8 +6,6 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import Response
 
 from librarian.auth import require_role
-from librarian.indexers.discover import discover_beyond, resolve_feed_limit
-from librarian.indexers.scrub import public_indexer_hits
 from librarian.lists import chase_missing_items, file_missing_as_wanted
 from librarian.nyt_books import normalize_list_date
 from librarian.rate_limit import enforce_rate_limit
@@ -168,21 +166,24 @@ def register_search_routes(app: FastAPI, deps: WebDeps) -> None:
         return {"field": key, "kind": kind, "q": q, "items": items}
 
     @app.get("/api/discover")
-    def discover(request: Request, kind: str = "", cat: str = "", limit: int = 0):
-        cfg = settings()
-        feed_limit = resolve_feed_limit(cat=cat, limit=limit if limit else None)
-        items, categories, beyond_error = discover_beyond(
-            cfg, kind=kind, cat=cat, limit=feed_limit, data_dir=root
+    def discover(
+        request: Request,
+        kind: str = "",
+        cat: str = "",
+        limit: int = 0,
+        offset: int = 0,
+        page: int = 0,
+    ):
+        return search_service.discover_page(
+            settings(),
+            root=root,
+            user=request.state.user,
+            kind=kind,
+            cat=cat,
+            limit=limit,
+            offset=offset,
+            page=page,
         )
-        return {
-            "kind": kind,
-            "cat": cat,
-            "limit": feed_limit,
-            "items": public_indexer_hits(items),
-            "categories": categories,
-            "beyond_error": beyond_error,
-            "can_request": request.state.user["role"] in REQUEST_ROLES,
-        }
 
     @app.get("/api/lists/presets")
     def curated_list_presets(request: Request):

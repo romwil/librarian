@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 from librarian.covers import cover_file_ok
 from librarian.identify import isbn_match_keys
+from librarian.identity import resolve_work
 
 # Colon, em dash, en dash, or a spaced hyphen. Parenthetical tail counts too.
 _SUBTITLE = re.compile(r"\s*(?::|\u2014|\u2013)\s*|\s+-\s+|\s+\((?=[^)]+\))")
@@ -150,11 +151,19 @@ def match_catalog_work(
 def match_companion_audiobook(
     book: Mapping[str, Any],
     audiobooks: List[Mapping[str, Any]],
+    *,
+    db: Optional[Any] = None,
 ) -> Optional[Dict[str, Any]]:
     """Pick the best local audiobook for a book work. None when unsure."""
     if str(book.get("kind") or "") != "book":
         return None
     pool = [row for row in audiobooks if str(row.get("kind") or "") in ("", "audiobook")]
+    if db is not None:
+        resolved_id = resolve_work(db, dict(book))
+        if resolved_id:
+            for row in pool:
+                if str(row.get("id") or "") == resolved_id:
+                    return dict(row)
     return match_catalog_work(book, pool)
 
 
@@ -162,11 +171,12 @@ def companion_audiobook_payload(
     book: Mapping[str, Any],
     *,
     audiobooks: List[Mapping[str, Any]],
+    db: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """Work-page payload: shelved companion and Find prefill for misses."""
     if str(book.get("kind") or "") != "book":
         return {"applicable": False, "shelved": None, "find": {}}
-    hit = match_companion_audiobook(book, audiobooks)
+    hit = match_companion_audiobook(book, audiobooks, db=db)
     find = audiobook_find_fields(book)
     if hit is None:
         return {"applicable": True, "shelved": None, "find": find}

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Protocol
 
@@ -24,8 +24,17 @@ from librarian.covers import (
 from librarian.db import Database
 from librarian.hardcover import HardcoverClient, HardcoverError
 from librarian.identify import extract_isbn
-from librarian.kinds import ALL_KINDS, KIND_AUDIOBOOK, KIND_BOOK
+from librarian.identity import resolve_work
+from librarian.identity.authors import author_match_key, display_name, sort_name
+from librarian.identity.isbn import canonical_isbn13
+from librarian.identity.titles import title_match_key, title_sort
+from librarian.kinds import ALL_KINDS, KIND_AUDIOBOOK, KIND_BOOK, KIND_MAGAZINE
 from librarian.llm import LLMError, client_from_settings
+from librarian.naming.magazine import (
+    extract_magazine_cover,
+    magazine_identity_matches,
+    parse_magazine,
+)
 from librarian.openlibrary import OpenLibraryClient
 from librarian.wikipedia import fetch_book_page, resolve_wikimedia_art
 
@@ -195,9 +204,16 @@ class EnrichProgressSink(Protocol):
     def fail(self, error: str) -> None: ...
 
 
+# Rank order for Enrichment.identifier_strength when two results merge — the higher
+# survives. "strong" means a direct identifier lookup (ISBN/ASIN/explicit OL work key);
+# "weak" means a fuzzy title+author search hit.
+_STRENGTH_RANK = {"": 0, "weak": 1, "strong": 2}
+
+
 @dataclass
 class Enrichment:
     title: str = ""
+    subtitle: str = ""
     author: str = ""
     description: str = ""
     genre: str = ""
@@ -212,6 +228,16 @@ class Enrichment:
     source: str = ""
     match_key: str = ""
     match_confidence: Optional[float] = None
+    # Canonical identity written to work_identifiers — never invented, only copied
+    # from a real catalog hit.
+    ol_work_key: str = ""
+    hardcover_id: str = ""
+    isbn13s: List[str] = field(default_factory=list)
+    asin: str = ""
+    narrator: str = ""
+    # "" (none), "weak" (title search), or "strong" (direct identifier lookup). Only
+    # "strong" may correct an existing, non-blank catalog field.
+    identifier_strength: str = ""
 
     def as_dict(self) -> Dict[str, Any]:
         return {item.name: getattr(self, item.name) for item in fields(self)}
@@ -228,8 +254,17 @@ class Enrichment:
                 self.cover_url,
                 self.atmosphere_url,
                 self.llm_blurb,
+                self.subtitle,
+                self.ol_work_key,
+                self.hardcover_id,
+                self.isbn13s,
+                self.asin,
+                self.narrator,
             )
         )
+
+    def is_strong(self) -> bool:
+        return self.identifier_strength == "strong"
 
 
 def enrichment_from_mapping(data: Mapping[str, Any]) -> Enrichment:
@@ -252,8 +287,17 @@ def enrichment_from_mapping(data: Mapping[str, Any]) -> Enrichment:
             parsed_confidence = float(confidence)
         except ValueError:
             parsed_confidence = None
+    raw_isbn13s = data.get("isbn13s") or ()
+    if isinstance(raw_isbn13s, str):
+        raw_isbn13s = (raw_isbn13s,)
+    isbn13s: List[str] = []
+    for value in raw_isbn13s:
+        canonical = canonical_isbn13(value)
+        if canonical and canonical not in isbn13s:
+            isbn13s.append(canonical)
     return Enrichment(
         title=str(data.get("title") or "").strip(),
+        subtitle=str(data.get("subtitle") or "").strip(),
         author=str(data.get("author") or "").strip(),
         description=str(data.get("description") or "").strip(),
         genre=str(data.get("genre") or "").strip(),
@@ -268,6 +312,11 @@ def enrichment_from_mapping(data: Mapping[str, Any]) -> Enrichment:
         source=source,
         match_key=str(data.get("match_key") or "").strip(),
         match_confidence=parsed_confidence,
+        ol_work_key=str(data.get("ol_work") or data.get("ol_work_key") or "").strip(),
+        hardcover_id=str(data.get("hardcover_id") or "").strip(),
+        isbn13s=isbn13s,
+        asin=str(data.get("asin") or "").strip().upper(),
+        narrator=str(data.get("narrator") or "").strip(),
     )
 
 
@@ -301,14 +350,77 @@ def _http_client(*, transport: Optional[httpx.BaseTransport] = None) -> httpx.Cl
     return httpx.Client(timeout=20.0, transport=transport, follow_redirects=True)
 
 
+def _lookup_audnexus_identity(
+    work: Mapping[str, Any],
+    settings: Settings,
+    *,
+    title: str,
+    author: str,
+    transport: Optional[httpx.BaseTransport] = None,
+    data_dir: Path,
+) -> Optional[Enrichment]:
+    """ASIN + narrator from Audnexus for a confident match only. Never the isbn column."""
+    from librarian.audnexus import (
+        AudnexusCache,
+        AudnexusClient,
+        AudnexusError,
+        match_audiobook_tokens,
+    )
+
+    aud = None
+    try:
+        # Built from the caller's own data_dir — never the settings/env fallback to
+        # /config that client_from_settings() would otherwise use.
+        aud = AudnexusClient(
+            cache=AudnexusCache(Path(data_dir) / "audnexus_cache.sqlite"),
+            transport=transport,
+            region=str(getattr(settings, "audnexus_region", "us") or "us"),
+        )
+        matched = match_audiobook_tokens(
+            {
+                "title": title,
+                "author": author,
+                "asin": str(work.get("asin") or ""),
+                "narrator": str(work.get("narrator") or ""),
+                "series_name": str(work.get("series_name") or ""),
+                "series_index": str(work.get("series_index") or ""),
+                "year": work.get("year") if isinstance(work.get("year"), int) else None,
+            },
+            client=aud,
+            limit=3,
+        )
+    except AudnexusError:
+        return None
+    except Exception:
+        logger.debug("Audnexus auto-lookup skipped", exc_info=True)
+        return None
+    finally:
+        if aud is not None:
+            aud.close()
+    identity = matched.get("identity") if isinstance(matched, dict) else None
+    if not identity:
+        return None
+    asin = str(identity.get("asin") or "").strip().upper()
+    narrator = str(identity.get("narrator") or "").strip()
+    if not asin and not narrator:
+        return None
+    return Enrichment(asin=asin, narrator=narrator, source="audnexus", identifier_strength="strong")
+
+
 def lookup_enrichment(
     work: Mapping[str, Any],
     settings: Settings,
     *,
     transport: Optional[httpx.BaseTransport] = None,
     client: Optional[httpx.Client] = None,
+    data_dir: Optional[Path] = None,
 ) -> Enrichment:
-    """Hardcover first when a token is saved; Open Library then Wikipedia fill holes."""
+    """Hardcover first when a token is saved; Open Library then Wikipedia fill holes.
+
+    ``data_dir`` gates the Audnexus audiobook lookup (its cache is a real SQLite file
+    under DATA_DIR) — omit it and that lookup is skipped rather than defaulting to
+    ``/config``.
+    """
     isbn = extract_isbn(str(work.get("isbn") or ""))
     title = str(work.get("title") or "").strip()
     kind = str(work.get("kind") or "").strip()
@@ -323,27 +435,44 @@ def lookup_enrichment(
         if token:
             hardcover = HardcoverClient(token, transport=transport, client=http)
             try:
-                raw = hardcover.lookup_by_isbn(isbn) if isbn else hardcover.lookup_by_title(title, author)
+                if isbn:
+                    raw = hardcover.lookup_by_isbn(isbn)
+                    strength = "strong" if raw else ""
+                else:
+                    raw = hardcover.lookup_by_title(title, author)
+                    strength = "weak" if raw else ""
             except HardcoverError:
-                raw = {}
-            merged = _fill_empty(merged, enrichment_from_mapping(raw))
+                raw, strength = {}, ""
+            hc_found = enrichment_from_mapping(raw)
+            hc_found.identifier_strength = strength
+            merged = _fill_empty(merged, hc_found)
         if merged.empty() or _still_needs(merged, work):
             openlib = OpenLibraryClient(transport=transport, client=http)
             work_year = work.get("year") if isinstance(work.get("year"), int) else None
             # ISBN editions are often stubs (year/cover URL, no blurb). Title search
             # hits the work record — fall through when the ISBN payload still has holes.
             if isbn:
-                merged = _fill_empty(merged, enrichment_from_mapping(openlib.lookup_by_isbn(isbn)))
+                ol_isbn_raw = openlib.lookup_by_isbn(isbn)
+                ol_isbn_found = enrichment_from_mapping(ol_isbn_raw)
+                ol_isbn_found.identifier_strength = "strong" if ol_isbn_raw else ""
+                merged = _fill_empty(merged, ol_isbn_found)
             if title and (not isbn or _still_needs(merged, work)):
-                merged = _fill_empty(
-                    merged,
-                    enrichment_from_mapping(
-                        openlib.lookup_by_title(title, author, year=work_year)
-                    ),
-                )
+                ol_title_raw = openlib.lookup_by_title(title, author, year=work_year)
+                ol_title_found = enrichment_from_mapping(ol_title_raw)
+                ol_title_found.identifier_strength = "weak" if ol_title_raw else ""
+                merged = _fill_empty(merged, ol_title_found)
         if kind == KIND_AUDIOBOOK:
             # Print jackets from HC/OL must not beat square Audnexus art in fetch_cover.
             merged.cover_url = ""
+            have_asin = bool(str(work.get("asin") or "").strip())
+            have_narrator = bool(str(work.get("narrator") or "").strip())
+            if data_dir is not None and not (have_asin and have_narrator):
+                audnexus_found = _lookup_audnexus_identity(
+                    work, settings, title=title, author=author, transport=transport,
+                    data_dir=data_dir,
+                )
+                if audnexus_found is not None:
+                    merged = _fill_empty(merged, audnexus_found)
         if not str(work.get("description") or "").strip() and not merged.description:
             wiki = fetch_book_page(
                 title,
@@ -427,8 +556,18 @@ def _fill_empty(base: Enrichment, incoming: Enrichment) -> Enrichment:
     synopsis_source = base.synopsis_source or incoming.synopsis_source
     if not synopsis_source and (base.description or incoming.description):
         synopsis_source = (base.source or incoming.source or "").split("+", 1)[0]
+    merged_isbn13s = list(base.isbn13s)
+    for value in incoming.isbn13s:
+        if value not in merged_isbn13s:
+            merged_isbn13s.append(value)
+    identifier_strength = base.identifier_strength
+    if _STRENGTH_RANK.get(incoming.identifier_strength, 0) > _STRENGTH_RANK.get(
+        identifier_strength, 0
+    ):
+        identifier_strength = incoming.identifier_strength
     return Enrichment(
         title=base.title or incoming.title,
+        subtitle=base.subtitle or incoming.subtitle,
         author=base.author or incoming.author,
         description=base.description or incoming.description,
         genre=base.genre or incoming.genre,
@@ -447,7 +586,82 @@ def _fill_empty(base: Enrichment, incoming: Enrichment) -> Enrichment:
             if base.match_confidence is not None
             else incoming.match_confidence
         ),
+        ol_work_key=base.ol_work_key or incoming.ol_work_key,
+        hardcover_id=base.hardcover_id or incoming.hardcover_id,
+        isbn13s=merged_isbn13s,
+        asin=base.asin or incoming.asin,
+        narrator=base.narrator or incoming.narrator,
+        identifier_strength=identifier_strength,
     )
+
+
+def _resolve_audiobook_book_work(
+    db: Database, work_id: str, *, title: str, author: str, asin: str
+) -> Optional[str]:
+    """Canonical book work for an audiobook's ASIN, via the identity resolver.
+
+    ``resolve_work`` is built to run *before* a row is inserted; called here on an
+    already-shelved audiobook, its own row is one of the candidates it searches, so a
+    real book sibling makes the normalized step ambiguous (two matches, not one) and
+    it returns ``None``. The book-only fallback below applies the same normalized
+    title+author rule, just scoped so this row can never match itself.
+    """
+    candidate = {"kind": KIND_AUDIOBOOK, "title": title, "author": author, "asin": asin}
+    try:
+        resolved = resolve_work(db, candidate)
+    except Exception:
+        resolved = None
+    if resolved and resolved != work_id:
+        return resolved
+    title_key = title_match_key(title)
+    author_key = author_match_key(author, db)
+    if not title_key or not author_key:
+        return None
+    with db._connect() as conn:
+        rows = conn.execute("SELECT id, title, author FROM works WHERE kind = ?", (KIND_BOOK,)).fetchall()
+    matches = [
+        str(row["id"])
+        for row in rows
+        if title_match_key(row["title"]) == title_key
+        and author_match_key(row["author"], db) == author_key
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _write_identifiers(
+    db: Database,
+    work_id: str,
+    found: Enrichment,
+    *,
+    asin_work_id: Optional[str] = None,
+) -> None:
+    """Record every canonical identifier a lookup turned up. Never gated on a lock —
+    identifiers are reference data, not a hand-typed catalog field.
+    """
+    if found.ol_work_key:
+        try:
+            db.upsert_work_identifier(scheme="ol_work", value=found.ol_work_key, work_id=work_id)
+        except ValueError:
+            logger.debug("Skipped malformed ol_work identifier for %s", work_id)
+    if found.hardcover_id:
+        try:
+            db.upsert_work_identifier(
+                scheme="hardcover", value=str(found.hardcover_id), work_id=work_id
+            )
+        except ValueError:
+            logger.debug("Skipped malformed hardcover identifier for %s", work_id)
+    for isbn13 in found.isbn13s:
+        try:
+            db.upsert_work_identifier(scheme="isbn13", value=isbn13, work_id=work_id)
+        except ValueError:
+            logger.debug("Skipped malformed isbn13 identifier for %s", work_id)
+    if found.asin:
+        try:
+            db.upsert_work_identifier(
+                scheme="asin", value=found.asin.upper(), work_id=asin_work_id or work_id
+            )
+        except ValueError:
+            logger.debug("Skipped malformed asin identifier for %s", work_id)
 
 
 def apply_enrichment(
@@ -461,13 +675,55 @@ def apply_enrichment(
     client: Optional[httpx.Client] = None,
     replace: bool = False,
 ) -> Dict[str, Any]:
-    """Write catalog fields that are still empty. Never invents or replaces an ISBN.
+    """Write catalog fields that are still empty. Never invents an ISBN.
 
     When ``replace`` is True (Fix match), overwrite description / genre / year /
     synopsis fields from the chosen enrichment.
+
+    A strong identifier match (direct ISBN/ASIN/OL-work lookup, not a fuzzy title
+    search) may additionally *correct* title, subtitle, author display, series, and
+    year — even when they already hold a value — unless ``work['metadata_locked']``
+    is set, in which case those fields are left exactly as the owner typed them.
+    Canonical identifiers (Open Library work key, Hardcover id, edition ISBNs, ASIN)
+    are always written to ``work_identifiers``, locked or not.
     """
     updated = dict(work)
     changed = False
+    subtitle_write: Optional[str] = None
+    locked = bool(updated.get("metadata_locked"))
+    strong = found.is_strong() and not locked
+
+    if strong:
+        title_or_author_changed = False
+        new_title = found.title.strip()
+        if new_title and new_title != str(updated.get("title") or "").strip():
+            updated["title"] = new_title
+            changed = True
+            title_or_author_changed = True
+        new_subtitle = found.subtitle.strip()
+        if new_subtitle and new_subtitle != str(work.get("subtitle") or "").strip():
+            subtitle_write = new_subtitle
+            changed = True
+        new_author = display_name(found.author) if found.author else ""
+        if new_author and new_author != str(updated.get("author") or "").strip():
+            updated["author"] = new_author
+            changed = True
+            title_or_author_changed = True
+        new_series_name = found.series_name.strip()
+        if new_series_name and new_series_name != str(updated.get("series_name") or "").strip():
+            updated["series_name"] = new_series_name
+            changed = True
+        new_series_index = found.series_index.strip()
+        if new_series_index and new_series_index != str(updated.get("series_index") or "").strip():
+            updated["series_index"] = new_series_index
+            changed = True
+        if found.year is not None and found.year != updated.get("year"):
+            updated["year"] = found.year
+            changed = True
+        if title_or_author_changed:
+            updated["title_sort"] = title_sort(updated.get("title"))
+            updated["author_sort"] = sort_name(updated.get("author"))
+
     if found.author and (replace or author_missing(updated.get("author"))):
         updated["author"] = found.author
         changed = True
@@ -492,6 +748,38 @@ def apply_enrichment(
     if found.year is not None and (replace or updated.get("year") in (None, "")):
         updated["year"] = found.year
         changed = True
+    if found.asin and not str(updated.get("asin") or "").strip():
+        # ASIN lives in its own column (and as a work_identifiers row below) — never isbn.
+        updated["asin"] = found.asin.upper()
+        changed = True
+    if found.narrator and not str(updated.get("narrator") or "").strip():
+        updated["narrator"] = found.narrator
+        changed = True
+    if (
+        not extract_isbn(str(updated.get("isbn") or ""))
+        and found.isbn13s
+        and found.title
+        and found.author
+        and title_match_key(found.title) == title_match_key(updated.get("title"))
+        and author_match_key(found.author, db) == author_match_key(updated.get("author"), db)
+    ):
+        # Title+author search may only fill a missing ISBN when both agree with the
+        # catalog row — never when the hit could be a different edition or book.
+        updated["isbn"] = found.isbn13s[0]
+        changed = True
+
+    identifier_target = str(updated.get("id") or work.get("id") or "")
+    if identifier_target:
+        asin_target = identifier_target
+        if found.asin and str(updated.get("kind") or "") == KIND_AUDIOBOOK:
+            asin_target = _resolve_audiobook_book_work(
+                db,
+                identifier_target,
+                title=str(updated.get("title") or ""),
+                author=str(updated.get("author") or ""),
+                asin=found.asin,
+            ) or identifier_target
+        _write_identifiers(db, identifier_target, found, asin_work_id=asin_target)
 
     raw_folder = str(updated.get("folder_path") or "").strip()
     folder_path = Path(raw_folder) if raw_folder else None
@@ -587,6 +875,9 @@ def apply_enrichment(
     if not changed:
         return dict(work)
     row = db.upsert_work(updated)
+    if subtitle_write is not None:
+        db.set_work_subtitle(str(row["id"]), subtitle_write)
+        row = db.get_work(str(row["id"])) or row
     return row
 
 
@@ -605,7 +896,7 @@ def enrich_work(
         raise ValueError("Only books and audiobooks can be enriched")
     http = _http_client(transport=transport)
     try:
-        found = lookup_enrichment(work, settings, transport=transport, client=http)
+        found = lookup_enrichment(work, settings, transport=transport, client=http, data_dir=data_dir)
         updated = apply_enrichment(
             db,
             work,
@@ -694,7 +985,7 @@ def enrich_library(
                     log=f"Looking up {title}…",
                 )
             try:
-                found = lookup_enrichment(work, settings, transport=transport, client=http)
+                found = lookup_enrichment(work, settings, transport=transport, client=http, data_dir=data_dir)
                 row = apply_enrichment(
                     db,
                     work,
@@ -789,7 +1080,7 @@ def enrich_backlog_batch(
                     log=f"Trickle: {title}…",
                 )
             try:
-                found = lookup_enrichment(work, settings, transport=transport, client=http)
+                found = lookup_enrichment(work, settings, transport=transport, client=http, data_dir=data_dir)
                 row = apply_enrichment(
                     db,
                     work,
@@ -835,6 +1126,116 @@ def enrich_backlog_batch(
     return result
 
 
+MAGAZINE_BACKLOG_BATCH_DEFAULT = BACKLOG_BATCH_DEFAULT
+
+
+def correct_magazine_work(db: Database, work: Mapping[str, Any], *, data_dir: Path) -> Dict[str, Any]:
+    """Re-derive masthead/issue/year from the filename and ensure a first-page cover.
+
+    No external magazine API — a fresh ``parse_magazine`` re-parse of the folder name
+    is only trusted to correct a field when it names the same publication and issue
+    the work already has (``magazine_identity_matches``), the magazine stand-in for a
+    strong identifier match. Comics keep Comic Vine and are untouched here.
+    """
+    if str(work.get("kind") or "") != KIND_MAGAZINE:
+        return dict(work)
+    updated = dict(work)
+    changed = False
+    locked = bool(updated.get("metadata_locked"))
+
+    raw_folder = str(updated.get("folder_path") or "").strip()
+    folder = Path(raw_folder) if raw_folder else None
+    stem = folder.name if folder is not None else str(updated.get("title") or "")
+    parsed = parse_magazine(stem, hinted=KIND_MAGAZINE, isbn=str(updated.get("isbn") or ""))
+    if parsed is not None and not locked and magazine_identity_matches(updated, parsed):
+        if parsed.title and parsed.title != str(updated.get("title") or "").strip():
+            updated["title"] = parsed.title
+            changed = True
+        if parsed.series_name and parsed.series_name != str(updated.get("series_name") or "").strip():
+            updated["series_name"] = parsed.series_name
+            changed = True
+        if parsed.series_index and parsed.series_index != str(updated.get("series_index") or "").strip():
+            updated["series_index"] = parsed.series_index
+            changed = True
+        if parsed.year and parsed.year != updated.get("year"):
+            updated["year"] = parsed.year
+            changed = True
+
+    if folder is not None and folder.is_dir() and not cover_file_ok(updated):
+        written = extract_magazine_cover(folder)
+        if written is not None:
+            updated["cover_path"] = str(written)
+            changed = True
+
+    if not changed:
+        return dict(work)
+    return db.upsert_work(updated)
+
+
+def _magazines_needing_correction(db: Database, *, limit: int) -> List[Dict[str, Any]]:
+    """Magazines missing a cover file — cheap (no HTTP) and safe to batch every trickle."""
+    limit_n = max(1, int(limit))
+    offset = 0
+    found: List[Dict[str, Any]] = []
+    while len(found) < limit_n:
+        batch = db.list_works(kind=KIND_MAGAZINE, limit=200, offset=offset)
+        if not batch:
+            break
+        for work in batch:
+            if not cover_file_ok(work):
+                found.append(work)
+                if len(found) >= limit_n:
+                    break
+        if len(batch) < 200:
+            break
+        offset += len(batch)
+    return found[:limit_n]
+
+
+def enrich_corrections_backlog_batch(
+    db: Database,
+    settings: Settings,
+    *,
+    data_dir: Path,
+    limit: int = BACKLOG_BATCH_DEFAULT,
+    transport: Optional[httpx.BaseTransport] = None,
+    pause_seconds: float = BACKLOG_PAUSE_SECONDS,
+    progress: Optional[EnrichProgressSink] = None,
+) -> Dict[str, Any]:
+    """Poller trickle entry point: book/audiobook enrich+corrections, then magazine covers.
+
+    Books and audiobooks get the full ``enrich_backlog_batch`` pass (identifiers,
+    strong-match corrections, ISBN backfill, Audnexus ASIN/narrator). Magazines have no
+    external API, so their correction here is local-only: re-parse the filename and
+    make sure a first-page cover exists.
+    """
+    result = dict(
+        enrich_backlog_batch(
+            db,
+            settings,
+            data_dir=data_dir,
+            limit=limit,
+            transport=transport,
+            pause_seconds=pause_seconds,
+            progress=progress,
+        )
+    )
+    magazines = _magazines_needing_correction(db, limit=limit)
+    magazine_updated = 0
+    for work in magazines:
+        try:
+            row = correct_magazine_work(db, work, data_dir=data_dir)
+        except Exception:
+            logger.exception("Magazine correction failed for %s", work.get("id"))
+            continue
+        if _catalog_changed(work, row):
+            magazine_updated += 1
+    result["magazines_scanned"] = len(magazines)
+    result["magazines_updated"] = magazine_updated
+    result["enriched"] = int(result.get("enriched") or 0) + magazine_updated
+    return result
+
+
 def clear_enrichment(db: Database, work_id: str) -> Dict[str, Any]:
     """Undo enrich: clear blurb fields written by Open Library / Wikipedia / LLM."""
     work = db.get_work(work_id)
@@ -859,6 +1260,11 @@ _METADATA_FIELDS = (
     "synopsis_source",
     "llm_blurb",
 )
+
+# Hand-editing any of these is what a strong identifier match could otherwise correct
+# automatically. Touching one here locks the whole work (``works.metadata_locked`` is
+# one flag, not per-field) so a later trickle pass leaves them exactly as typed.
+_LOCK_TRIGGER_FIELDS = ("title", "author", "year", "series_name", "series_index")
 
 
 def update_work_metadata(
@@ -896,6 +1302,11 @@ def update_work_metadata(
             updated["kind"] = kind
             continue
         updated[key] = str(value or "").strip() if value is not None else ""
+
+    if any(
+        key in fields and updated.get(key) != work.get(key) for key in _LOCK_TRIGGER_FIELDS
+    ):
+        updated["metadata_locked"] = 1
 
     cover_url = str(fields.get("cover_url") or "").strip()
     if cover_url:

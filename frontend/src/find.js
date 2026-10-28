@@ -204,6 +204,28 @@ export function groupDiscoverCategories(categories = []) {
 export const DISCOVER_RAIL_LIMIT = 12;
 export const DISCOVER_BROWSE_LIMIT = 50;
 
+/** Search Discover is ebook trending only. It does not follow the kind chips. */
+export const DISCOVER_EBOOK_CAT = "7020";
+export const DISCOVER_PAGE_SIZE = 12;
+
+export function discoverPageIndex(page = 0) {
+  const n = Number(page);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.floor(n);
+}
+
+/** Query for one page of ebook trending. Page 0 omits offset. */
+export function discoverFeedRequest(page = 0) {
+  const index = discoverPageIndex(page);
+  const request = {
+    cat: DISCOVER_EBOOK_CAT,
+    limit: DISCOVER_PAGE_SIZE,
+  };
+  const offset = index * DISCOVER_PAGE_SIZE;
+  if (offset > 0) request.offset = offset;
+  return request;
+}
+
 export function findKindOptions(showExtra = false) {
   void showExtra;
   return KINDS;

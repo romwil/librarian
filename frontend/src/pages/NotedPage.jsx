@@ -5,19 +5,13 @@ import WarmLoad from "../components/WarmLoad.jsx";
 import { humanError } from "../copy.js";
 import { notedFindHref, notedFormatActions, notedSearchHref, notedWantedBody } from "../noted.js";
 
-const PERIODS = [
-  ["daily", "Daily"],
-  ["weekly", "Weekly"],
-];
-
 function itemKey(item, kind) {
   return `${item?.title || ""}|${item?.author || ""}|${item?.isbn || ""}|${kind}`;
 }
 
 export default function NotedPage() {
-  const [period, setPeriod] = useState("daily");
-  const [preset, setPreset] = useState("hardcover-fiction");
   const [payload, setPayload] = useState(null);
+  const [activeList, setActiveList] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState({});
@@ -27,10 +21,11 @@ export default function NotedPage() {
     let alive = true;
     setLoading(true);
     api
-      .noted({ period, preset })
+      .noted()
       .then((data) => {
         if (!alive) return;
         setPayload(data);
+        setActiveList((current) => current || data?.lists?.[0]?.id || "");
         setError("");
         setLoading(false);
       })
@@ -47,7 +42,7 @@ export default function NotedPage() {
     return () => {
       alive = false;
     };
-  }, [period, preset]);
+  }, []);
 
   async function add(item, kind) {
     const key = itemKey(item, kind);
@@ -64,8 +59,8 @@ export default function NotedPage() {
   }
 
   const lanes = payload?.lanes || [];
-  const presets =
-    lanes.find((lane) => lane.id === "bestsellers")?.presets || [];
+  const lists = payload?.lists || [];
+  const activeLane = lanes.find((lane) => lane.id === activeList) || lanes[0];
 
   return (
     <div className="admin-room page-settle" data-testid="noted-page">
@@ -74,51 +69,34 @@ export default function NotedPage() {
       <p className="lede">
         Trending books, bestseller lists, and what the indexers just posted. Search the shelves, find beyond, or add it to Wanted.
       </p>
-      <div className="chip-row" data-testid="noted-periods">
-        {PERIODS.map(([value, label]) => (
+      <div className="chip-row" data-testid="noted-lists">
+        {lists.map((list) => (
           <button
-            key={value}
+            key={list.id}
             type="button"
-            className={value === period ? "chip is-current" : "chip"}
-            onClick={() => setPeriod(value)}
-            aria-pressed={value === period}
+            className={list.id === activeList ? "chip is-current" : "chip"}
+            onClick={() => setActiveList(list.id)}
+            aria-pressed={list.id === activeList}
           >
-            {label}
+            {list.label}
           </button>
         ))}
-        {presets.length ? (
-          <label className="chip">
-            List
-            <select
-              value={preset}
-              onChange={(event) => setPreset(event.target.value)}
-              aria-label="Bestseller list"
-              data-testid="noted-preset"
-            >
-              {presets.map((row) => (
-                <option key={row.list_name_encoded} value={row.list_name_encoded}>
-                  {row.display_name}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
       </div>
       {error ? <p className="alert">{error}</p> : null}
       {loading ? <WarmLoad message="Warming New & noted…" testId="noted-loading" /> : null}
-      {!loading
-        ? lanes.map((lane) => (
-            <section key={lane.id} className="stack" data-testid={`noted-lane-${lane.id}`}>
-              <h2>{lane.label || lane.id}</h2>
-              {lane.empty_copy && !lane.items?.length ? (
-                <p className="empty-note" data-testid={`noted-empty-${lane.id}`}>
-                  {lane.empty_copy}
+      {!loading && activeLane
+        ? (
+            <section key={activeLane.id} className="stack" data-testid={`noted-lane-${activeLane.id}`}>
+              <h2>{activeLane.label || activeLane.id}</h2>
+              {activeLane.empty_copy && !activeLane.items?.length ? (
+                <p className="empty-note" data-testid={`noted-empty-${activeLane.id}`}>
+                  {activeLane.empty_copy}
                 </p>
               ) : null}
               <ul className="stack">
-                {(lane.items || []).map((item) => (
+                {(activeLane.items || []).map((item) => (
                   <li
-                    key={`${lane.id}|${item.open_library_key || ""}|${item.category || ""}|${item.kind}|${item.title}|${item.author}|${item.rank || ""}`}
+                    key={`${activeLane.id}|${item.open_library_key || ""}|${item.category || ""}|${item.kind}|${item.title}|${item.author}|${item.rank || ""}`}
                     className="card"
                     data-testid="noted-item"
                     data-kind={item.kind || ""}
@@ -199,7 +177,7 @@ export default function NotedPage() {
                 ))}
               </ul>
             </section>
-          ))
+          )
         : null}
     </div>
   );
