@@ -58,6 +58,9 @@ export function wantedSearchStatus(item = {}, { searching = false, attempt = nul
   if (attempt?.outcome === "miss") {
     return { label: "Wanted", detail: "Nothing found.", retry };
   }
+  if (attempt?.outcome === "rate_limited") {
+    return { label: "Wanted", detail: "The indexer asked us to wait. The next hourly pass tries again.", retry };
+  }
   if (attempt?.outcome === "hit") {
     return { label: "Asked", detail: "A hit is on a slip.", retry: "" };
   }

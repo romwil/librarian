@@ -73,6 +73,84 @@ export function hasFindQuery(fields = {}) {
   return Boolean(composeSearchQuery(fields));
 }
 
+export const MAX_LADDER_RUNGS = 3;
+
+function isbn13(value) {
+  const digits = trimmed(value).replace(/[-\s]/g, "");
+  if (!/^\d{13}$/.test(digits)) return "";
+  const total = digits
+    .slice(0, 12)
+    .split("")
+    .reduce((sum, digit, index) => sum + Number(digit) * (index % 2 === 0 ? 1 : 3), 0);
+  return String((10 - (total % 10)) % 10) === digits[12] ? digits : "";
+}
+
+function sameText(left, right) {
+  const norm = (value) => trimmed(value).toLowerCase().replace(/[^a-z0-9]+/g, "");
+  return norm(left) === norm(right);
+}
+
+/**
+ * One precise query at a time, most exact first (mirrors the backend ladder).
+ * Book / audiobook: ISBN-13 alone, title alone, then title and author.
+ * Comic: series and issue, then series. Magazine: title, then title and issue date.
+ * Music: album, then artist and album. Never every known field in one AND query.
+ */
+export function searchLadder(fields = {}) {
+  const base = pruneFieldsForKind(trimmed(fields.kind), { ...emptyFindFields(), ...fields });
+  const kind = base.kind;
+  const rungs = [];
+  const push = (rung, partial, q) => {
+    rungs.push({ rung, q, ...pruneFieldsForKind(kind, { ...partial, q, kind }) });
+  };
+  if (kind === "book" || kind === "audiobook") {
+    const isbn = isbn13(base.isbn);
+    const title = base.title || base.q;
+    const author = base.author;
+    if (isbn) push("isbn", { isbn }, isbn);
+    if (title) push("title", { title }, title);
+    if (title && author && !sameText(title, author)) push("title_author", { title, author }, `${title} ${author}`);
+    if (!rungs.length && author) push("author", { author }, author);
+  } else if (kind === "magazine") {
+    const title = base.title || base.q;
+    if (title) {
+      push("title", { title }, title);
+      if (base.year && !title.includes(base.year)) {
+        push("title_date", { title, year: base.year }, `${title} ${base.year}`);
+      }
+    }
+  } else if (kind === "comic") {
+    const series = base.series || base.q;
+    if (series && base.issue) push("series_issue", { series, issue: base.issue }, `${series} ${base.issue}`);
+    if (series) push("series", { series }, series);
+  } else if (kind === "music") {
+    const album = base.album || base.q;
+    const artist = base.artist;
+    if (album) push("album", { album }, album);
+    if (album && artist && !sameText(album, artist)) push("artist_album", { artist, album }, `${artist} ${album}`);
+    if (!rungs.length && artist) push("artist", { artist }, artist);
+  } else {
+    const q = base.q;
+    if (q) push("query", {}, q);
+  }
+  return rungs.slice(0, MAX_LADDER_RUNGS);
+}
+
+/**
+ * The single query string Find sends as ``q``: what the person typed, else the
+ * first title-like ladder rung. The fielded bag still rides along for the ladder.
+ */
+export function searchRequestQuery(fields = {}) {
+  const typed = trimmed(fields.q);
+  if (typed) return typed;
+  const ladder = searchLadder(fields);
+  const named = ladder.find((rung) => rung.rung !== "isbn");
+  const picked = (named || ladder[0])?.q;
+  if (picked) return picked;
+  const loose = ["title", "series", "album", "author", "artist", "isbn"].map((key) => trimmed(fields[key]));
+  return loose.find(Boolean) || "";
+}
+
 export function shouldShowDiscover(fields = {}) {
   return !hasFindQuery(fields);
 }
@@ -342,67 +420,11 @@ export function isCatalogGapQuery(fields = {}) {
 }
 
 /**
- * Kind-aware fan-out queries for Hall → Find catalog gaps.
- * Confirm / Request still required — never auto-queue.
+ * Kind-aware queries for Hall → Find catalog gaps: the search ladder, not the
+ * full prefill ANDed together. Confirm / Request still required — never auto-queue.
  */
-export function catalogGapFanoutQueries(fields = {}, { cap = 6 } = {}) {
-  const base = pruneFieldsForKind(trimmed(fields.kind), { ...emptyFindFields(), ...fields });
-  const kind = trimmed(base.kind);
-  const queries = [];
-  const seen = new Set();
-
-  function push(partial) {
-    const next = pruneFieldsForKind(kind || trimmed(partial.kind), {
-      ...emptyFindFields(),
-      ...base,
-      ...partial,
-      kind: kind || trimmed(partial.kind),
-    });
-    const key = composeSearchQuery(next).toLowerCase();
-    if (!key || seen.has(key) || queries.length >= cap) return;
-    seen.add(key);
-    queries.push(next);
-  }
-
-  push(base);
-  if (kind === "comic") {
-    const series = trimmed(base.series);
-    const issue = trimmed(base.issue);
-    if (series && issue) {
-      push({ q: `${series} ${issue}`, series, issue, title: "", author: "" });
-      push({ q: `${series} #${issue}`, series, issue });
-      push({ q: series, series, issue: "", title: "" });
-    }
-  } else if (kind === "magazine") {
-    const title = trimmed(base.title) || trimmed(base.q);
-    if (title) {
-      push({ q: title, title, year: trimmed(base.year) });
-      if (base.year) push({ q: `${title} ${base.year}`, title, year: trimmed(base.year) });
-    }
-  } else if (kind === "music") {
-    const artist = trimmed(base.artist);
-    const album = trimmed(base.album);
-    if (artist && album) {
-      push({ q: `${artist} ${album}`, artist, album });
-      push({ q: album, artist: "", album });
-    } else if (album) {
-      push({ q: album, album });
-    }
-  } else if (kind === "audiobook" || kind === "book") {
-    const title = trimmed(base.title) || trimmed(base.q);
-    const author = trimmed(base.author);
-    if (title && author) {
-      push({ q: `${author} ${title}`, title, author });
-      push({ q: title, title, author: "" });
-      push({ q: author, title: "", author });
-    } else if (title) {
-      push({ q: title, title });
-    }
-  } else {
-    const q = composeSearchQuery(base);
-    if (q) push({ q });
-  }
-  return queries.slice(0, cap);
+export function catalogGapFanoutQueries(fields = {}, { cap = MAX_LADDER_RUNGS } = {}) {
+  return searchLadder(fields).slice(0, cap);
 }
 
 /** Rank beyond hits: complete multipart sets first, then fuller sets, then singles. */

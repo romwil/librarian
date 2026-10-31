@@ -141,7 +141,7 @@ def test_search_local_kind_chip_filters_stacks(tmp_path, monkeypatch):
     assert [row["title"] for row in books.json()["local"]] == ["Guardians Novel"]
 
 
-def test_search_books_sends_fielded_title_author_isbn(tmp_path, monkeypatch):
+def test_search_books_isbn_rung_alone_stops_on_a_confident_hit(tmp_path, monkeypatch):
     monkeypatch.setenv("NZBFINDER_API_TOKEN", "tok")
     client = _client(tmp_path, monkeypatch)
     _login(client)
@@ -169,7 +169,7 @@ def test_search_books_sends_fielded_title_author_isbn(tmp_path, monkeypatch):
         },
     )
     assert resp.status_code == 200
-    assert calls == [("books", "Dune", "Herbert", "9780441172719", "7000")]
+    assert calls == [("books", "", "", "9780441172719", "7000")]
     assert resp.json()["beyond"][0]["isbn"] == "9780441172719"
     assert resp.json()["candidates"]
     assert resp.json()["rank_method"] in ("heuristic", "llm", "empty")
@@ -194,14 +194,14 @@ def test_search_comics_use_7030_and_music_ignores_isbn(tmp_path, monkeypatch):
     monkeypatch.setattr("librarian.nzbfinder.NZBFinderClient.books_traced", fake_books_traced)
     comic = client.get("/api/search", params={"beyond": 1, "kind": "comic", "series": "Saga", "issue": "54"})
     assert comic.status_code == 200
-    assert calls == [("search", "Saga 54", "7030")]
+    assert calls == [("search", "Saga 54", "7030"), ("search", "Saga", "7030")]
     calls.clear()
     music = client.get(
         "/api/search",
         params={"beyond": 1, "kind": "music", "artist": "Queen", "album": "Jazz", "isbn": "9780441172719"},
     )
     assert music.status_code == 200
-    assert calls == [("search", "Queen Jazz", "3000")]
+    assert calls == [("search", "Jazz", "3000"), ("search", "Queen Jazz", "3000")]
     assert music.json()["beyond"][0]["kind"] == "music"
 
 

@@ -1,26 +1,29 @@
 """Recurring Wanted search. Files one Asked slip. Never calls SABnzbd.
 
-Only ``wanted`` rows whose ``next_search_at`` has passed are searched. A confident
-hit compare-and-sets the row to ``asked`` and inserts one queue job. Overlapping
-polls lose that update and do not enqueue again. Dismissed rows are never read
-here. A miss or a multi-disc junk archive pushes the backoff clock.
+Only ``wanted`` rows whose ``next_search_at`` has passed are searched. A newly
+queued row is searched right away; after that the hourly pass walks every due
+row. Each row walks the search ladder (ISBN, then title, then title and author)
+and stops on a confident hit. A hit compare-and-sets the row to ``asked`` and
+inserts one queue job. Overlapping searches lose that update and do not enqueue
+again. Dismissed rows are never read here. A miss or a multi-disc junk archive
+pushes the backoff clock. A 429 stops the pass and is not a miss.
 """
 
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from typing import Any, Callable, Dict, List, Mapping, Optional
 
 from librarian.config import Settings
 from librarian.db import Database
-from librarian.indexers.query import build_job_payload
+from librarian.indexers.query import build_job_payload, search_ladder
 from librarian.indexers.rank import heuristic_rank
 from librarian.kinds import ALL_KINDS, search_category_for_kind
-from librarian.nzbfinder import NZBFinderClient, NZBFinderError
+from librarian.nzbfinder import NZBFinderClient, NZBFinderError, is_rate_limited
 from librarian.wanted import (
     BASE_BACKOFF_SECONDS,
-    SLOW_AFTER_MISSES,
     STATUS_ASKED,
     WantedError,
     is_confident_hit,
@@ -29,9 +32,15 @@ from librarian.wanted import (
 
 logger = logging.getLogger(__name__)
 
-MAX_SEARCHES_PER_TICK = 5
-
 SearchFn = Callable[[Mapping[str, Any]], List[Dict[str, Any]]]
+
+RATE_LIMITED_NOTE = "The indexer asked us to wait. The next hourly pass tries again."
+
+# One hourly pass at a time, and one search per row at a time across the pass,
+# a just-queued row, and Search selected.
+_PASS_LOCK = threading.Lock()
+_IN_FLIGHT: set[str] = set()
+_IN_FLIGHT_LOCK = threading.Lock()
 
 
 def _text(value: Any) -> str:
@@ -39,19 +48,36 @@ def _text(value: Any) -> str:
 
 
 def sought_for_row(row: Mapping[str, Any]) -> Dict[str, Any]:
+    """What the row seeks. ``q`` is the first ladder rung, not every field at once."""
     kind = _text(row.get("kind")) or "audiobook"
     title = _text(row.get("title"))
     author = _text(row.get("author"))
     isbn = _text(row.get("isbn"))
-    query = isbn or " ".join(part for part in (author, title) if part).strip()
+    ladder = ladder_for_row(row)
     return {
         "kind": kind,
         "title": title,
         "author": author,
         "isbn": isbn,
-        "q": query,
+        "q": ladder[0]["q"] if ladder else "",
         "cat": search_category_for_kind(kind) or "",
     }
+
+
+def ladder_for_row(row: Mapping[str, Any]) -> List[Dict[str, str]]:
+    """The row's search ladder as ``{rung, q}`` pairs, most exact first."""
+    kind = _text(row.get("kind")) or "audiobook"
+    plans = search_ladder(
+        kind=kind,
+        title=_text(row.get("title")),
+        author=_text(row.get("author")),
+        isbn=_text(row.get("isbn")),
+    )
+    return [
+        {"rung": str(plan.get("rung") or ""), "q": str(plan.get("query") or "")}
+        for plan in plans
+        if str(plan.get("query") or "").strip()
+    ]
 
 
 def nzbfinder_search(client: NZBFinderClient, sought: Mapping[str, Any]) -> List[Dict[str, Any]]:
@@ -105,20 +131,8 @@ def drop_bad_releases(db: Database, hits: List[Any]) -> List[Any]:
     return kept
 
 
-def _log_slow(row: Mapping[str, Any]) -> None:
-    if int(row.get("miss_streak") or 0) != SLOW_AFTER_MISSES:
-        return
-    logger.info(
-        "Wanted %s dropped to slow search after %s misses",
-        row.get("id"),
-        row.get("miss_streak"),
-    )
-
-
 def _note_miss(db: Database, wanted_id: str, *, now: float, from_status: str) -> None:
-    updated = db.backoff_wanted(wanted_id, now=now, from_status=from_status)
-    if updated is not None:
-        _log_slow(updated)
+    db.backoff_wanted(wanted_id, now=now, from_status=from_status)
 
 
 def release_failed_wanted(db: Database, job_id: str, *, now: Optional[float] = None) -> None:
@@ -179,7 +193,31 @@ def _consider_row(
     now: float,
     run_search: SearchFn,
 ) -> Dict[str, Any]:
-    """One Wanted row, same rules as the poller. Does not call SABnzbd."""
+    """One Wanted row, same rules as the poller. Does not call SABnzbd.
+
+    A row another search is already walking is left alone.
+    """
+    wanted_id = str(row.get("id") or "")
+    with _IN_FLIGHT_LOCK:
+        if wanted_id in _IN_FLIGHT:
+            return {"id": wanted_id, "outcome": "in_flight", "searched": False, "calls": 0}
+        _IN_FLIGHT.add(wanted_id)
+    try:
+        result = _walk_row(db, row, now=now, run_search=run_search)
+    finally:
+        with _IN_FLIGHT_LOCK:
+            _IN_FLIGHT.discard(wanted_id)
+    result.setdefault("calls", 0)
+    return result
+
+
+def _walk_row(
+    db: Database,
+    row: Mapping[str, Any],
+    *,
+    now: float,
+    run_search: SearchFn,
+) -> Dict[str, Any]:
     fresh = db.get_wanted(str(row.get("id") or ""))
     wanted_id = str((fresh or row).get("id") or "")
     if fresh is None or fresh.get("status") == "dismissed":
@@ -202,24 +240,40 @@ def _consider_row(
             "searched": False,
         }
     sought = sought_for_row(fresh)
-    if not sought["q"] or not sought["cat"]:
+    ladder = ladder_for_row(fresh)
+    if not ladder or not sought["cat"]:
         db.postpone_wanted(str(fresh["id"]), now=now, delay=BASE_BACKOFF_SECONDS)
         return {"id": wanted_id, "outcome": "skipped", "searched": False}
-    try:
-        hits = run_search(sought)
-    except NZBFinderError as error:
-        logger.info("Wanted search skipped for %s: %s", fresh.get("id"), error)
-        db.postpone_wanted(str(fresh["id"]), now=now, delay=BASE_BACKOFF_SECONDS)
-        note = str(error)
-        outcome = "downloader" if "sabnzbd" in note.lower() else "indexer_error"
-        return {
-            "id": wanted_id,
-            "outcome": outcome,
-            "note": note,
-            "searched": True,
-        }
-    outcome, hit = choose_hit(sought, drop_bad_releases(db, list(hits or [])))
-    if outcome == "hit" and hit is not None:
+    calls = 0
+    for rung in ladder:
+        asked = {**sought, "q": rung["q"], "rung": rung["rung"]}
+        calls += 1
+        try:
+            hits = run_search(asked)
+        except NZBFinderError as error:
+            note = str(error)
+            if is_rate_limited(error):
+                logger.info("Wanted search paused at %s: %s", fresh.get("id"), error)
+                return {
+                    "id": wanted_id,
+                    "outcome": "rate_limited",
+                    "note": RATE_LIMITED_NOTE,
+                    "searched": True,
+                    "calls": calls,
+                }
+            logger.info("Wanted search skipped for %s: %s", fresh.get("id"), error)
+            db.postpone_wanted(str(fresh["id"]), now=now, delay=BASE_BACKOFF_SECONDS)
+            outcome = "downloader" if "sabnzbd" in note.lower() else "indexer_error"
+            return {
+                "id": wanted_id,
+                "outcome": outcome,
+                "note": note,
+                "searched": True,
+                "calls": calls,
+            }
+        outcome, hit = choose_hit(sought, drop_bad_releases(db, list(hits or [])))
+        if outcome != "hit" or hit is None:
+            continue
         job = _file_asked(db, fresh, hit, sought, now=now)
         if job is None:
             current = db.get_wanted(wanted_id) or fresh
@@ -229,6 +283,7 @@ def _consider_row(
                 "job_id": current.get("job_id"),
                 "note": "Already on a slip",
                 "searched": True,
+                "calls": calls,
             }
         return {
             "id": wanted_id,
@@ -236,6 +291,7 @@ def _consider_row(
             "job_id": job.get("id"),
             "note": "A hit is on a slip",
             "searched": True,
+            "calls": calls,
         }
     _note_miss(db, str(fresh["id"]), now=now, from_status="wanted")
     return {
@@ -243,6 +299,7 @@ def _consider_row(
         "outcome": "miss",
         "note": "Nothing found",
         "searched": True,
+        "calls": calls,
     }
 
 
@@ -296,14 +353,45 @@ def search_wanted_selection(
         return []
     run_search, finder, own_client = _open_search(settings, search)
     results: List[Dict[str, Any]] = []
+    paused = False
     try:
         for row in rows:
+            if paused:
+                results.append(
+                    {"id": row.get("id"), "outcome": "rate_limited", "note": RATE_LIMITED_NOTE}
+                )
+                continue
             result = _consider_row(db, row, now=moment, run_search=run_search)
             result.pop("searched", None)
+            result.pop("calls", None)
             results.append(result)
+            paused = result.get("outcome") == "rate_limited"
     finally:
         if own_client and finder is not None:
             finder.close()
+    return results
+
+
+def search_queued_wanted(
+    db: Database,
+    settings: Settings,
+    ids: List[str],
+    *,
+    now: Optional[float] = None,
+    search: Optional[SearchFn] = None,
+) -> List[Dict[str, Any]]:
+    """Search rows that were just queued (add, reopen, audiobook sweep) right away.
+
+    Rows not yet due are left alone. A miss starts the 6-hour walkoff, so the
+    hourly pass does not search them again. Without an indexer token this is quiet.
+    """
+    chosen = [_text(item) for item in ids or [] if _text(item)]
+    if not chosen:
+        return []
+    try:
+        results = search_wanted_selection(db, settings, ids=chosen, now=now, search=search)
+    except WantedError:
+        return []
     return results
 
 
@@ -401,14 +489,35 @@ def poll_wanted(
     now: Optional[float] = None,
     client: Optional[NZBFinderClient] = None,
     search: Optional[SearchFn] = None,
+    should_stop: Optional[Callable[[], bool]] = None,
 ) -> int:
-    """Search due Wanted rows. Returns how many indexer calls this tick made.
+    """The hourly pass: walk every due Wanted row. Returns indexer calls made.
 
-    Does not confirm slips and does not call SABnzbd.
+    A pass already walking means this call does nothing. A 429 ends the pass and
+    leaves the rest for the next hour. Does not confirm slips or call SABnzbd.
     """
+    if not _PASS_LOCK.acquire(blocking=False):
+        return 0
+    try:
+        return _walk_due(
+            db, settings, now=now, client=client, search=search, should_stop=should_stop
+        )
+    finally:
+        _PASS_LOCK.release()
+
+
+def _walk_due(
+    db: Database,
+    settings: Settings,
+    *,
+    now: Optional[float],
+    client: Optional[NZBFinderClient],
+    search: Optional[SearchFn],
+    should_stop: Optional[Callable[[], bool]],
+) -> int:
     moment = time.time() if now is None else float(now)
     reconcile_asked(db, now=moment)
-    due = db.list_due_wanted(now=moment, limit=MAX_SEARCHES_PER_TICK)
+    due = db.list_due_wanted(now=moment)
     if not due:
         return 0
 
@@ -433,9 +542,13 @@ def poll_wanted(
     calls = 0
     try:
         for row in due:
+            if should_stop is not None and should_stop():
+                break
             result = _consider_row(db, row, now=moment, run_search=run_search)
-            if result.get("searched"):
-                calls += 1
+            calls += int(result.get("calls") or 0)
+            if result.get("outcome") == "rate_limited":
+                logger.info("Wanted pass stopped on a 429; the rest wait for the next hour")
+                break
     finally:
         if own_client and finder is not None:
             finder.close()

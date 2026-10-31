@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import xml.etree.ElementTree as ET
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlencode, urljoin, urlsplit
@@ -22,6 +23,20 @@ DEFAULT_USER_AGENT = f"Librarian/{_UA_VERSION} (Automat; +https://github.com/rom
 
 class NZBFinderError(RuntimeError):
     """Indexer HTTP or payload failure. Messages must never include tokens."""
+
+
+class NZBFinderRateLimited(NZBFinderError):
+    """The indexer answered 429. Wait for the next pass; this is not a miss."""
+
+
+_RATE_LIMIT_TEXT = re.compile(r"\b429\b|rate.?limit|request limit|too many requests", re.I)
+
+
+def is_rate_limited(error: BaseException) -> bool:
+    """A 429, or a Newznab body that says the request limit was reached."""
+    if isinstance(error, NZBFinderRateLimited):
+        return True
+    return bool(_RATE_LIMIT_TEXT.search(str(error or "")))
 
 
 def normalize_nzbfinder_url(base_url: str) -> str:
@@ -524,6 +539,8 @@ class NZBFinderClient:
         return params
 
     def _error_from_response(self, response: httpx.Response) -> NZBFinderError:
+        if response.status_code == 429:
+            return NZBFinderRateLimited(f"{self.label} HTTP 429: rate limited")
         body = response.text or ""
         try:
             payload = response.json()

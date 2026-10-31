@@ -29,6 +29,7 @@ def test_e2e_launcher_rebuilds_dist_unless_skipped():
     assert 'npm(["run", "build"]' in script
     assert 'npm(["install"]' not in script
     assert "Building frontend for E2E" in script
+    assert "delete env.LIBRARIAN_SKIP_APP_BOOT" in script
 
 
 def test_ci_workflow_runs_required_gates():

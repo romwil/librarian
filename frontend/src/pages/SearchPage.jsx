@@ -24,6 +24,7 @@ import {
   findFieldsFromSearchParams,
   findKindOptions,
   pruneFieldsForKind,
+  searchRequestQuery,
 } from "../find.js";
 import { didYouMeanList, didYouMeanPresence, searchForgave } from "../lib/searchForgive.js";
 import {
@@ -161,7 +162,7 @@ export default function SearchPage() {
       fields.year,
     );
     api
-      .search(composed, { beyond: true, kind: fields.kind, mode, ...bag })
+      .search(searchRequestQuery(bag), { beyond: true, kind: fields.kind, mode, ...bag })
       .then((data) => {
         if (!alive) return;
         setResult({
@@ -289,7 +290,7 @@ export default function SearchPage() {
   }
 
   const status = searchStatusLine({
-    q: composed,
+    q: searchRequestQuery(fields),
     kind: composed ? fields.kind : kind,
     localCount: result.local?.length || 0,
     phase,

@@ -119,17 +119,19 @@ class WantedRepository(RepositoryBase):
             ).fetchall()
         return [str(row["kind"]) for row in rows if row["kind"]]
 
-    def list_due_wanted(self, *, now: float, limit: int) -> List[Dict[str, Any]]:
+    def list_due_wanted(self, *, now: float, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+        """Every wanted row whose search time has come, oldest first. No cap unless asked."""
+        sql = """
+            SELECT * FROM wanted
+            WHERE status = 'wanted' AND next_search_at <= ?
+            ORDER BY next_search_at ASC, id ASC
+        """
+        args: List[Any] = [float(now)]
+        if limit is not None:
+            sql += " LIMIT ?"
+            args.append(max(0, int(limit)))
         with self._connect() as conn:
-            rows = conn.execute(
-                """
-                SELECT * FROM wanted
-                WHERE status = 'wanted' AND next_search_at <= ?
-                ORDER BY next_search_at ASC, id ASC
-                LIMIT ?
-                """,
-                (float(now), max(0, int(limit))),
-            ).fetchall()
+            rows = conn.execute(sql, args).fetchall()
         return [self._wanted_from_row(row) or {} for row in rows]
 
     def insert_wanted(self, row: Dict[str, Any]) -> Dict[str, Any]:

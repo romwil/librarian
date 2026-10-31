@@ -69,6 +69,8 @@ const env = {
   // Full Playwright suite logs in once per test; relax 10/60s so later specs are not 429'd.
   LIBRARIAN_E2E_RELAX_RATE_LIMITS: process.env.LIBRARIAN_E2E_RELAX_RATE_LIMITS || "1",
 };
+// Workflow pytest sets SKIP_APP_BOOT=1; a real e2e server needs /api/health.
+delete env.LIBRARIAN_SKIP_APP_BOOT;
 
 console.log(`Starting Librarian E2E server on :${PORT} (DATA_DIR=${DATA_DIR})`);
 

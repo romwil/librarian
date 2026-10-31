@@ -1,5 +1,20 @@
 # Changelog
 
+## [Unreleased]
+
+- Nightly backup: the poller snapshots the catalog into `config/backups` (7 daily + 4 weekly), runs `integrity_check` on each copy, writes files `0600`, and leaves `session_secret` and `settings.json` out. The database file is `0600` too. Maintain shows **Last backup**; the restore steps are in [AUTOMAT.md](docs/ops/AUTOMAT.md).
+- Cover art lands on the shelf more often: audiobooks keep square Audnexus jackets (Amazon CDN allowlisted, no HTML scrape), Comic Vine match downloads the issue image, and a scan without a sidecar extracts CBZ page 1 or embedded album art. Wikipedia stays atmosphere / last-resort, never a print jacket when a kind-specific provider can fill it. Cards only claim a cover when the file is still on disk.
+- Maintain **Indexer scorecard** keeps lantern weather and Mute, and now shows match rate by media type (books, audiobooks, comics, …) as compact chips after Find / Discover speak. Counts persist in SQLite.
+- Enrich the shelves skips volumes that already have author, blurb, year, cover, and genre, and looks up the emptiest titles first. Maintain reports how many were already full.
+- Settings can add **DrunkenSlug** as an extra Newznab host (URL preset, paste the API token). Find beyond merges those hits with NZBFinder. Classic Newznab XML/`o=json` is spoken on that host — not a second search stack.
+- Search Beyond Usenet cards say **Get**, then **Getting…**, then **Queued** (an Asked slip). Confirm on Downloads still sends SABnzbd. Failures restore Get with a short error.
+- Idle Search shows indexer **Discover** again — trending latest by category — with fielded search easy to reach. New & noted stays at `/noted`.
+
+### Fixed
+
+- **Maintain indexer lanterns.** Lights Down no longer paints pale paper cards with tan status copy. Lantern names, weather sentences, and Mute sit on raised leather; an idle host is a hollow ring so flicker vs silent is not hue-only. Safe undo uses the same dark wash. Lights Up stays ink on paper.
+- **Library card text size.** Clicking Text size or the slider no longer closes the Library card. Ambient room layering had flattened the topbar under Hall, so the panel was visible through empty Hall and the click counted as outside; range thumb retargets onto `document` are hit-tested too.
+
 ## [0.6.13] — 2026-10-31
 
 ### Highlights
@@ -12,6 +27,20 @@
 - Sessions and reset (1.2): `sessions` table, revoke on logout, sign-out-everywhere, self-service password change, owner-issued 24h single-use reset, ~60s session cache cleared on revoke, per-account login backoff, thin `security_events` rows.
 - Remove and roles (1.3): reader ↔ helper, pause a card, delete with cascade. **Invite gate.** Op API does not exceed the People UI.
 - Export and privacy (1.4): member export, Privacy + Account on `/card`, household notice from live config.
+- Also lands truth-and-theme (Lights Up contrast, honest Settings, Continue, Purge, keeper-only What’s New) for hosts that skipped 0.6.4.
+
+## [0.6.12] — 2026-10-31
+
+### Highlights
+
+- **Wanted ladder.** Wanted and Find walk ISBN, then title, then title and author — one precise query at a time — and stop on a confident hit. A newly queued want is searched right away; the rest wait for an hourly pass. A 429 ends that pass instead of chewing the next rows. Confirm on Downloads still sends SABnzbd; Wanted never does.
+
+### Changed
+
+- Wanted search interval is one hour (was two minutes, five rows per tick). The pass walks every due row on its own thread. Nightly backup is unchanged.
+- Miss backoff is 6 hours, then 12 hours (no weekly cap). Sprint 3.3 still owes the 500-call/day host budget.
+- Find beyond uses the same ladder and match rules. Extra indexers stay on Find; the hourly Wanted pass is still NZBFinder only.
+- `rapidfuzz` scores cleaned titles. Convert-fails-twice remains a Sorting slip.
 
 ## [0.6.4] — 2026-10-31
 
@@ -27,21 +56,6 @@
 - Continue rail requires ≥1% progress; finished broadcast is opt-in (`share` or a whisper).
 - Room wash control removed. Purge shells preview + typed count + `pre-purge-shells-*.db` snapshot.
 - What’s New owner/op only. `/` search hint hides on coarse pointers.
-
-## [Unreleased]
-
-- Nightly backup: the poller snapshots the catalog into `config/backups` (7 daily + 4 weekly), runs `integrity_check` on each copy, writes files `0600`, and leaves `session_secret` and `settings.json` out. The database file is `0600` too. Maintain shows **Last backup**; the restore steps are in [AUTOMAT.md](docs/ops/AUTOMAT.md).
-- Cover art lands on the shelf more often: audiobooks keep square Audnexus jackets (Amazon CDN allowlisted, no HTML scrape), Comic Vine match downloads the issue image, and a scan without a sidecar extracts CBZ page 1 or embedded album art. Wikipedia stays atmosphere / last-resort, never a print jacket when a kind-specific provider can fill it. Cards only claim a cover when the file is still on disk.
-- Maintain **Indexer scorecard** keeps lantern weather and Mute, and now shows match rate by media type (books, audiobooks, comics, …) as compact chips after Find / Discover speak. Counts persist in SQLite.
-- Enrich the shelves skips volumes that already have author, blurb, year, cover, and genre, and looks up the emptiest titles first. Maintain reports how many were already full.
-- Settings can add **DrunkenSlug** as an extra Newznab host (URL preset, paste the API token). Find beyond merges those hits with NZBFinder. Classic Newznab XML/`o=json` is spoken on that host — not a second search stack.
-- Search Beyond Usenet cards say **Get**, then **Getting…**, then **Queued** (an Asked slip). Confirm on Downloads still sends SABnzbd. Failures restore Get with a short error.
-- Idle Search shows indexer **Discover** again — trending latest by category — with fielded search easy to reach. New & noted stays at `/noted`.
-
-### Fixed
-
-- **Maintain indexer lanterns.** Lights Down no longer paints pale paper cards with tan status copy. Lantern names, weather sentences, and Mute sit on raised leather; an idle host is a hollow ring so flicker vs silent is not hue-only. Safe undo uses the same dark wash. Lights Up stays ink on paper.
-- **Library card text size.** Clicking Text size or the slider no longer closes the Library card. Ambient room layering had flattened the topbar under Hall, so the panel was visible through empty Hall and the click counted as outside; range thumb retargets onto `document` are hit-tested too.
 
 ## [0.6.3] — 2026-10-31
 

@@ -258,14 +258,14 @@ def test_chase_missing_searches_book_and_audiobook(monkeypatch):
 
 
 def test_art_of_war_chase_query_construction(monkeypatch):
-    from librarian.indexers.query import plan_beyond_search
+    from librarian.indexers.query import plan_beyond_search, search_ladder
 
-    plan = plan_beyond_search(kind="book", title="The Art of War", author="Sun Tzu", q="Sun Tzu The Art of War")
-    assert plan is not None
-    assert plan["endpoint"] == "books"
-    assert plan["params"]["title"] == "The Art of War"
-    assert plan["params"]["author"] == "Sun Tzu"
-    assert plan["params"]["cat"] == "7000"
+    ladder = search_ladder(kind="book", title="The Art of War", author="Sun Tzu", q="Sun Tzu The Art of War")
+    assert [plan["rung"] for plan in ladder] == ["title", "title_author"]
+    assert all(plan["endpoint"] == "books" for plan in ladder)
+    assert (ladder[0]["params"]["title"], ladder[0]["params"]["author"]) == ("The Art of War", "")
+    assert (ladder[1]["params"]["title"], ladder[1]["params"]["author"]) == ("The Art of War", "Sun Tzu")
+    assert all(plan["params"]["cat"] == "7000" for plan in ladder)
 
     captured = []
 

@@ -90,4 +90,5 @@ jobs:
         env:
           CI: "true"
           E2E_PORT: "8794"
+          LIBRARIAN_SKIP_APP_BOOT: "0"
         run: npm run test:e2e

@@ -125,7 +125,9 @@ def test_bad_guid_is_never_picked_again_by_wanted_or_regrab(db):
         seen.append(sought["q"])
         return [dict(HIT)]
 
-    assert poll_wanted(db, Settings(), now=row["next_search_at"] + 1, search=search) == 1
+    assert poll_wanted(db, Settings(), now=row["next_search_at"] + 1, search=search) == 2
+    assert seen == ["Dune", "Dune Frank Herbert"]
+    # Ladder: title then title+author. The bad guid is dropped on both rungs.
     after = db.get_wanted(wanted["id"])
     assert after["status"] == "wanted"
     assert after["miss_streak"] == 2
