@@ -89,3 +89,14 @@ test.describe("Maintain", () => {
     await expect(pulse).not.toContainText(/%|scoreboard|KPI/i);
   });
 });
+
+test.describe("Maintain backup", () => {
+  test("Maintain names the last backup for the owner", async ({ page }) => {
+    await loginAsOwner(page);
+    await page.goto("/maintain");
+    await expect(page.getByRole("heading", { name: "Nightly backup" })).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(page.getByText(/^(Last backup |No backup yet)/)).toBeVisible();
+  });
+});

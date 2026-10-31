@@ -22,6 +22,7 @@ import {
   extraFilesReprocessIsRunning,
   extraFilesReprocessProgressSummary,
 } from "../review.js";
+import { backupSummary } from "../lib/backupStatus.js";
 import { wakeMaintainJobs } from "../lib/maintainDock.js";
 
 function purgeShellsIsRunning(status) {
@@ -149,6 +150,7 @@ export default function MaintainPage() {
   const [calibreBusy, setCalibreBusy] = useState(false);
   const [calibreNote, setCalibreNote] = useState("");
   const [pollerSteps, setPollerSteps] = useState([]);
+  const [backup, setBackup] = useState(null);
   const [notedRefresh, setNotedRefresh] = useState("");
   const [notedRefreshing, setNotedRefreshing] = useState(false);
 
@@ -159,9 +161,15 @@ export default function MaintainPage() {
     async function loadPoller() {
       try {
         const body = await api.maintainJobsStatus();
-        if (!cancelled) setPollerSteps(pollerStepsFrom(body));
+        if (!cancelled) {
+          setPollerSteps(pollerStepsFrom(body));
+          setBackup(backupSummary(body));
+        }
       } catch {
-        if (!cancelled) setPollerSteps([]);
+        if (!cancelled) {
+          setPollerSteps([]);
+          setBackup(null);
+        }
       }
     }
 
@@ -759,6 +767,21 @@ export default function MaintainPage() {
 
       <MaintainStatusDock />
 
+      {backup ? (
+        <section className="maintain-section" id="maintain-backup" data-testid="maintain-backup">
+          <p className="kicker">Safekeeping</p>
+          <h2>Nightly backup</h2>
+          <p className="muted" data-testid="maintain-backup-last">
+            {backup.line}
+          </p>
+          {backup.error ? (
+            <p className="alert" role="status" data-testid="maintain-backup-error">
+              Backup: {backup.error}
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+
       {pollerSteps.length ? (
         <section className="maintain-section" id="maintain-poller" data-testid="maintain-poller">
           <p className="kicker">Cadence</p>
@@ -767,26 +790,28 @@ export default function MaintainPage() {
             Downloads poll on the short cadence. Enrich, RSS, the audiobook sweep, and wanted search
             each keep their own interval.
           </p>
-          {pollerSteps.map((step) => {
-            const error = typeof step.last_error === "string" ? step.last_error.trim() : "";
-            const interval = formatPollerInterval(step.interval_seconds);
-            const ran = step.last_run ? `Last run ${formatPollerTime(step.last_run)}` : "Not run yet";
-            return (
-              <div key={step.id}>
-                <p className="muted" data-testid={`maintain-poller-${step.id}`}>
-                  {step.label}
-                  {interval ? ` · ${interval}` : ""}
-                  {" · "}
-                  {ran}
-                </p>
-                {error ? (
-                  <p className="alert" role="status" data-testid={`maintain-poller-${step.id}-error`}>
-                    {step.label}: {error}
+          {pollerSteps
+            .filter((step) => step.id !== "backup")
+            .map((step) => {
+              const error = typeof step.last_error === "string" ? step.last_error.trim() : "";
+              const interval = formatPollerInterval(step.interval_seconds);
+              const ran = step.last_run ? `Last run ${formatPollerTime(step.last_run)}` : "Not run yet";
+              return (
+                <div key={step.id}>
+                  <p className="muted" data-testid={`maintain-poller-${step.id}`}>
+                    {step.label}
+                    {interval ? ` · ${interval}` : ""}
+                    {" · "}
+                    {ran}
                   </p>
-                ) : null}
-              </div>
-            );
-          })}
+                  {error ? (
+                    <p className="alert" role="status" data-testid={`maintain-poller-${step.id}-error`}>
+                      {step.label}: {error}
+                    </p>
+                  ) : null}
+                </div>
+              );
+            })}
         </section>
       ) : null}
 

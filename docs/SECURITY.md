@@ -87,7 +87,7 @@ SPA ──no session──► /login (foyer) or /join?token=
 
 ## Rotating secrets
 
-WAL-safe database backup steps live in [DOCKER.md](DOCKER.md).
+WAL-safe catalog restore steps live in [ops/AUTOMAT.md](ops/AUTOMAT.md#backups-and-restore). Nightly snapshots omit `session_secret` and `settings.json`.
 
 1. **Revoke/reissue at the provider first** (NZBFinder token, SAB API key, LLM key).
 2. **Update Librarian** — Settings UI (owner) or `.env` + restart.
@@ -110,5 +110,6 @@ WAL-safe database backup steps live in [DOCKER.md](DOCKER.md).
 ## Related docs
 
 - [ops/AUTOMAT.md](ops/AUTOMAT.md) — kit path, LAN truth, first-boot env
-- [DOCKER.md](DOCKER.md) — volumes, PUID/PGID, backups
+- [DOCKER.md](DOCKER.md) — volumes, PUID/PGID
+- [ops/AUTOMAT.md](ops/AUTOMAT.md#backups-and-restore) — nightly snapshots and restore
 - [TESTING.md](TESTING.md) — handshake + proxy fail-closed tests

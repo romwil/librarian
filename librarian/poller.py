@@ -37,6 +37,8 @@ DEFAULT_RSS_POLL_SECONDS = 300.0
 DEFAULT_SWEEP_POLL_SECONDS = 900.0
 DEFAULT_WANTED_POLL_SECONDS = 120.0
 DEFAULT_NOTED_POLL_SECONDS = 21600.0
+# Hourly look; a snapshot is only taken when today's is missing (nightly in effect).
+DEFAULT_BACKUP_POLL_SECONDS = 3600.0
 
 SAB_POLL_ENV = "LIBRARIAN_POLL_SECONDS"
 ENRICH_POLL_ENV = "LIBRARIAN_ENRICH_POLL_SECONDS"
@@ -44,10 +46,11 @@ RSS_POLL_ENV = "LIBRARIAN_RSS_POLL_SECONDS"
 SWEEP_POLL_ENV = "LIBRARIAN_SWEEP_POLL_SECONDS"
 WANTED_POLL_ENV = "LIBRARIAN_WANTED_POLL_SECONDS"
 NOTED_POLL_ENV = "LIBRARIAN_NOTED_POLL_SECONDS"
+BACKUP_POLL_ENV = "LIBRARIAN_BACKUP_POLL_SECONDS"
 
 # Housekeeping shares one thread. Enrich is last so a long trickle does not
 # delay RSS, the sweep, wanted search, or New & noted that were already due.
-_BACKGROUND_STEPS = ("rss", "repair", "abs", "sweep", "owned", "wanted", "noted", "enrich")
+_BACKGROUND_STEPS = ("rss", "repair", "abs", "sweep", "owned", "wanted", "noted", "backup", "enrich")
 _STATUS_ORDER = (
     "sab",
     "enrich",
@@ -55,6 +58,7 @@ _STATUS_ORDER = (
     "sweep",
     "wanted",
     "noted",
+    "backup",
     "watch",
     "repair",
     "abs",
@@ -70,6 +74,7 @@ _FAILURE_LOG = {
     "owned": "Owned slip sweep tick failed",
     "wanted": "Wanted search tick failed",
     "noted": "New & noted refresh failed",
+    "backup": "Nightly backup failed",
     "enrich": "Enrich backlog tick failed",
     "sab": "SAB poller tick failed",
 }
@@ -131,6 +136,12 @@ def _build_steps(short: float) -> tuple[_Step, ...]:
             False,
         ),
         _Step(
+            "backup",
+            "Nightly backup",
+            _env_seconds(BACKUP_POLL_ENV, DEFAULT_BACKUP_POLL_SECONDS),
+            False,
+        ),
+        _Step(
             "enrich",
             "Enrich",
             _env_seconds(ENRICH_POLL_ENV, DEFAULT_ENRICH_POLL_SECONDS),
@@ -175,6 +186,7 @@ class JobPoller:
             "owned": self._run_owned,
             "wanted": self._run_wanted,
             "noted": self._run_noted,
+            "backup": self._run_backup,
             "enrich": self._run_enrich,
             "sab": self._run_sab,
         }
@@ -303,6 +315,14 @@ class JobPoller:
 
         # Current lists only. Dated NYT lists already in the cache stay put.
         run_noted_refresh(self.db, settings, data_dir=self.data_dir)
+        return 0
+
+    def _run_backup(self, _settings: Settings) -> int:
+        from librarian.backup import backup_dir_for, backup_due, run_backup
+
+        target = backup_dir_for(self.data_dir)
+        if backup_due(target):
+            run_backup(self.db.path, target)
         return 0
 
     def _run_enrich(self, settings: Settings) -> int:

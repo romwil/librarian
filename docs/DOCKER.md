@@ -67,8 +67,11 @@ DATA_HOST=/mnt/user/data docker compose up --build -d
 | `/config/librarian.db` | Users, invites, works, files, jobs, shelves, progress, indexers |
 | `/config/conversions/` | On-demand format cache (`{work_id}/`) — not the library folder |
 | `/config/session_secret` | Auto-generated when env is unset (mode `0600`) |
+| `/config/backups/` | Nightly catalog snapshots (7 daily + 4 weekly). No `session_secret` or `settings.json`. |
 
-WAL-safe backup: `sqlite3 librarian.db ".backup 'librarian-YYYYMMDD.db'"` — do not copy only the `.db` file while the container is writing. Stop-then-copy the whole `config/` directory if you do not have `sqlite3` on the host.
+The poller writes WAL-safe snapshots under `/config/backups`. Restore steps live in
+[ops/AUTOMAT.md](ops/AUTOMAT.md#backups-and-restore). Keep Unraid appdata backup as a second belt
+(that copy **does** include secrets — do not share it):
 
 ```bash
 docker stop librarian

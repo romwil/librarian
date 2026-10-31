@@ -11,6 +11,7 @@ from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 
 from librarian.audiobookshelf import match_audiobooks
 from librarian.auth import require_role
+from librarian.backup import backup_dir_for, backup_status
 from librarian.calibre_renormalize import assemble_calibre_renormalize
 from librarian.cleanup import cleanup_library, restore_quarantine
 from librarian.cleanup import read_progress as read_cleanup_progress
@@ -80,6 +81,17 @@ def _background_poller_status(app: FastAPI) -> Dict[str, Any]:
     if not isinstance(steps, list):
         return {"steps": []}
     return {"steps": steps}
+
+
+def _backup_report(app: FastAPI, data_dir: Any) -> Dict[str, Any]:
+    """Newest snapshot on disk plus the backup step's last error, if any."""
+    report = backup_status(backup_dir_for(data_dir))
+    error = None
+    for step in _background_poller_status(app)["steps"]:
+        if isinstance(step, dict) and step.get("id") == "backup":
+            raw = step.get("last_error")
+            error = raw.strip() if isinstance(raw, str) and raw.strip() else None
+    return {**report, "last_error": error}
 
 
 def register_maintain_routes(app: FastAPI, deps: WebDeps) -> None:
@@ -220,6 +232,7 @@ def register_maintain_routes(app: FastAPI, deps: WebDeps) -> None:
             "extra_files": extra_files,
             "cleanup": read_cleanup_progress(root),
             "poller": _background_poller_status(app),
+            "backup": _backup_report(app, root),
         }
 
     @app.post("/api/maintain/cleanup")

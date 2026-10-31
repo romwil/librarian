@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Nightly backup: the poller snapshots the catalog into `config/backups` (7 daily + 4 weekly), runs `integrity_check` on each copy, writes files `0600`, and leaves `session_secret` and `settings.json` out. The database file is `0600` too. Maintain shows **Last backup**; the restore steps are in [AUTOMAT.md](docs/ops/AUTOMAT.md).
 - Cover art lands on the shelf more often: audiobooks keep square Audnexus jackets (Amazon CDN allowlisted, no HTML scrape), Comic Vine match downloads the issue image, and a scan without a sidecar extracts CBZ page 1 or embedded album art. Wikipedia stays atmosphere / last-resort, never a print jacket when a kind-specific provider can fill it. Cards only claim a cover when the file is still on disk.
 - Maintain **Indexer scorecard** keeps lantern weather and Mute, and now shows match rate by media type (books, audiobooks, comics, …) as compact chips after Find / Discover speak. Counts persist in SQLite.
 - Enrich the shelves skips volumes that already have author, blurb, year, cover, and genre, and looks up the emptiest titles first. Maintain reports how many were already full.

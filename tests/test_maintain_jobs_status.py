@@ -24,3 +24,7 @@ def test_maintain_jobs_status_owner_only(tmp_path):
         assert isinstance(body[key], dict)
         assert "status" in body[key]
     assert "extra_files_remaining" in body["extra_files"]
+    assert body["backup"]["last_backup"] is None
+    assert body["backup"]["daily_count"] == 0
+    assert body["backup"]["weekly_count"] == 0
+    assert body["backup"]["last_error"] is None

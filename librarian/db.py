@@ -15,6 +15,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, TypeVar
 
+from librarian.backup import tighten_database_permissions
 from librarian.db_write_serializer import WriteSerializer
 from librarian.migrations import LATEST_VERSION as SCHEMA_VERSION
 from librarian.migrations import apply_migrations
@@ -127,6 +128,7 @@ class Database(
         try:
             with self._connect() as conn:
                 self.schema_version = apply_migrations(conn)
+            tighten_database_permissions(self.path)
         except Exception:
             self._write_serializer.shutdown(timeout=5.0)
             raise
