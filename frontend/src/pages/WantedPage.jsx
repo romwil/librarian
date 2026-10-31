@@ -119,6 +119,8 @@ export default function WantedPage() {
           next[result.id] = { outcome: "already_asked", detail: "Already on a slip." };
         } else if (result.outcome === "miss") {
           next[result.id] = { outcome: "miss", detail: "Nothing found." };
+        } else if (result.outcome === "rate_limited") {
+          next[result.id] = { outcome: "rate_limited", detail: "The indexer asked us to wait." };
         } else if (result.outcome === "not_due") {
           delete next[result.id];
         }

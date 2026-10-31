@@ -58,11 +58,17 @@ def _clear_unsourced_nonfiction(
             _drop(db, known, key, row)
 
 
-def sweep_wanted_audiobooks(db: Database, *, now: Optional[float] = None) -> int:
+def sweep_wanted_audiobooks(
+    db: Database,
+    *,
+    now: Optional[float] = None,
+    created_ids: Optional[List[str]] = None,
+) -> int:
     """Mark every shelved fiction book with no audiobook match as Wanted.
 
-    Returns rows created. Untouched sweep rows whose book is no longer fiction
-    are deleted. Dismissed rows still block re-creation.
+    Returns rows created, and appends their ids to ``created_ids`` so the caller
+    can search them right away. Untouched sweep rows whose book is no longer
+    fiction are deleted. Dismissed rows still block re-creation.
     """
     moment = time.time() if now is None else float(now)
     books = db.list_shelved_works(KIND_BOOK)
@@ -107,4 +113,6 @@ def sweep_wanted_audiobooks(db: Database, *, now: Optional[float] = None) -> int
         )
         known[key] = inserted
         created += 1
+        if created_ids is not None and inserted.get("id"):
+            created_ids.append(str(inserted["id"]))
     return created

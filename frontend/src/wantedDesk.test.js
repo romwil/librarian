@@ -119,6 +119,9 @@ describe("Wanted desk", () => {
     assert.equal(searching.label, "Searching");
     const down = wantedSearchStatus({ status: "asked" }, { attempt: { downloader: true } });
     assert.match(down.detail, /downloader did not answer/);
+    const paused = wantedSearchStatus({ status: "wanted" }, { attempt: { outcome: "rate_limited" } });
+    assert.equal(paused.label, "Wanted");
+    assert.match(paused.detail, /asked us to wait/);
   });
 
   it("does not offer Search the shelves, and Find beyond asks for hits on the row", () => {

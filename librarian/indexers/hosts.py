@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from librarian.config import Settings
-from librarian.indexers.query import run_beyond_search_traced
+from librarian.indexers.query import run_plan_traced
 from librarian.indexers.scrub import public_indexer_hit
 from librarian.nzbfinder import (
     DIALECT_NEWZNAB,
@@ -19,6 +19,7 @@ from librarian.nzbfinder import (
     _hit_summary,
     infer_newznab_dialect,
     is_classic_newznab_host,
+    is_rate_limited,
 )
 
 NZBFINDER_ID = "nzbfinder"
@@ -251,10 +252,16 @@ def search_beyond_traced(
     data_dir: Optional[Path] = None,
     **fields: Any,
 ) -> Dict[str, Any]:
-    """Beyond search with a decision trail for Bestsellers chase diagnostics."""
-    from librarian.indexers.query import plan_beyond_search
+    """Beyond search with a decision trail for Bestsellers chase diagnostics.
 
-    plan = plan_beyond_search(**fields)
+    Walks the search ladder one precise query at a time and stops once a rung
+    returns a confident hit. A host that errors is not asked again this search.
+    """
+    from librarian.indexers.match import is_confident_match
+    from librarian.indexers.query import search_ladder
+
+    ladder = search_ladder(**fields)
+    plan = ladder[0] if ladder else None
     hosts = enabled_hosts(settings)
     steps: List[Dict[str, str]] = []
     if plan is None:
@@ -268,22 +275,14 @@ def search_beyond_traced(
             "raw_count": 0,
             "rejected_count": 0,
         }
-    endpoint = str(plan.get("endpoint") or "")
-    params = plan.get("params") or {}
-    steps.append(
-        {
-            "step": "plan",
-            "detail": f"{endpoint} " + ", ".join(
-                f"{key}={params.get(key)!r}" for key in params if params.get(key) not in (None, "")
-            ),
-        }
-    )
     if not hosts:
+        steps.append({"step": "plan", "detail": _plan_detail(plan)})
         steps.append({"step": "hosts", "detail": "NZBFinder api_token is not configured"})
         return {
             "hits": [],
             "error": "NZBFinder api_token is not configured",
             "plan": plan,
+            "plans": [plan],
             "steps": steps,
             "results": [],
             "raw_count": 0,
@@ -297,116 +296,140 @@ def search_beyond_traced(
     raw_count = 0
     rejected_count = 0
     probe_kind = _text(fields.get("kind"))
-    for host in hosts:
-        client = NZBFinderClient(
-            host["url"],
-            host["api_token"],
-            transport=transport,
-            label=host["name"],
-            dialect=host.get("dialect") or "",
-        )
-        started = time.perf_counter()
-        try:
-            traced = run_beyond_search_traced(client, **fields)
-        except NZBFinderError as error:
+    sought = plan.get("sought") or {}
+    walked: List[Dict[str, Any]] = []
+    failed_hosts: set[str] = set()
+    for rung in ladder:
+        live = [host for host in hosts if host["id"] not in failed_hosts]
+        if not live:
+            break
+        walked.append(rung)
+        steps.append({"step": "plan", "detail": _plan_detail(rung)})
+        rung_start = len(hits)
+        for host in live:
+            client = NZBFinderClient(
+                host["url"],
+                host["api_token"],
+                transport=transport,
+                label=host["name"],
+                dialect=host.get("dialect") or "",
+            )
+            started = time.perf_counter()
+            try:
+                traced = run_plan_traced(client, rung)
+            except NZBFinderError as error:
+                latency_ms = (time.perf_counter() - started) * 1000.0
+                err_text = str(error)
+                failed_hosts.add(host["id"])
+                errors.append(err_text)
+                steps.append({"step": "host", "detail": f"{host['name']}: {error}"})
+                _record_probe(
+                    data_dir,
+                    host=host,
+                    ok=False,
+                    latency_ms=latency_ms,
+                    error=err_text,
+                    rate_limited=is_rate_limited(error) or "rate" in err_text.lower(),
+                    kind=probe_kind,
+                )
+                continue
+            finally:
+                client.close()
             latency_ms = (time.perf_counter() - started) * 1000.0
-            err_text = str(error)
-            rate_limited = "429" in err_text or "rate" in err_text.lower()
-            errors.append(err_text)
-            steps.append({"step": "host", "detail": f"{host['name']}: {error}"})
+            host_raw = list(traced.get("raw") or [])
+            host_rejected = list(traced.get("rejected") or [])
+            host_accepted = list(traced.get("accepted") or [])
             _record_probe(
                 data_dir,
                 host=host,
-                ok=False,
+                ok=True,
                 latency_ms=latency_ms,
-                error=err_text,
-                rate_limited=rate_limited,
+                hit_count=len(host_accepted),
                 kind=probe_kind,
             )
-            continue
-        finally:
-            client.close()
-        latency_ms = (time.perf_counter() - started) * 1000.0
-        host_raw = list(traced.get("raw") or [])
-        host_rejected = list(traced.get("rejected") or [])
-        host_accepted = list(traced.get("accepted") or [])
-        _record_probe(
-            data_dir,
-            host=host,
-            ok=True,
-            latency_ms=latency_ms,
-            hit_count=len(host_accepted),
-            kind=probe_kind,
-        )
-        raw_count += len(host_raw)
-        rejected_count += len(host_rejected)
-        default_kind = str(traced.get("default_kind") or "")
-        if default_kind:
+            raw_count += len(host_raw)
+            rejected_count += len(host_rejected)
+            default_kind = str(traced.get("default_kind") or "")
+            if default_kind:
+                steps.append(
+                    {
+                        "step": "normalize",
+                        "detail": f"{host['name']}: default_kind={default_kind}",
+                    }
+                )
             steps.append(
                 {
-                    "step": "normalize",
-                    "detail": f"{host['name']}: default_kind={default_kind}",
+                    "step": "host",
+                    "detail": (
+                        f"{host['name']}: raw={len(host_raw)} accepted={len(host_accepted)} "
+                        f"rejected={len(host_rejected)}"
+                    ),
                 }
             )
-        steps.append(
-            {
-                "step": "host",
-                "detail": (
-                    f"{host['name']}: raw={len(host_raw)} accepted={len(host_accepted)} "
-                    f"rejected={len(host_rejected)}"
-                ),
-            }
-        )
-        for row in host_rejected:
-            tagged = dict(row)
-            tagged["host_id"] = host["id"]
-            tagged["host_name"] = host["name"]
-            results.append(tagged)
-        for row in host_accepted:
-            if not isinstance(row, dict):
-                continue
-            tagged = dict(row)
-            tagged["host_id"] = host["id"]
-            tagged["host_name"] = host["name"]
-            summary = _hit_summary(tagged)
-            key = _hit_key(tagged)
-            if key in seen:
-                results.append(
-                    {
-                        **summary,
-                        "decision": "rejected",
-                        "reason": "duplicate guid/title",
-                        "notes": [],
-                    }
-                )
-                rejected_count += 1
-                continue
-            seen.add(key)
-            # Public disclosure boundary: no api_token query params / raw Newznab blobs.
-            scrubbed = public_indexer_hit(tagged) or {}
-            hits.append(scrubbed)
-            guid = _text(scrubbed.get("guid") or tagged.get("guid"))
-            if not guid:
-                results.append(
-                    {
-                        **summary,
-                        "decision": "skipped",
-                        "reason": "missing guid (shown but not requestable)",
-                        "notes": [],
-                    }
-                )
-            else:
-                results.append({**summary, "decision": "accepted", "reason": "", "notes": []})
+            for row in host_rejected:
+                tagged = dict(row)
+                tagged["host_id"] = host["id"]
+                tagged["host_name"] = host["name"]
+                results.append(tagged)
+            for row in host_accepted:
+                if not isinstance(row, dict):
+                    continue
+                tagged = dict(row)
+                tagged["host_id"] = host["id"]
+                tagged["host_name"] = host["name"]
+                summary = _hit_summary(tagged)
+                key = _hit_key(tagged)
+                if key in seen:
+                    results.append(
+                        {
+                            **summary,
+                            "decision": "rejected",
+                            "reason": "duplicate guid/title",
+                            "notes": [],
+                        }
+                    )
+                    rejected_count += 1
+                    continue
+                seen.add(key)
+                # Public disclosure boundary: no api_token query params / raw Newznab blobs.
+                scrubbed = public_indexer_hit(tagged) or {}
+                hits.append(scrubbed)
+                guid = _text(scrubbed.get("guid") or tagged.get("guid"))
+                if not guid:
+                    results.append(
+                        {
+                            **summary,
+                            "decision": "skipped",
+                            "reason": "missing guid (shown but not requestable)",
+                            "notes": [],
+                        }
+                    )
+                else:
+                    results.append({**summary, "decision": "accepted", "reason": "", "notes": []})
+        if any(is_confident_match(sought, hit) for hit in hits[rung_start:]):
+            steps.append({"step": "ladder", "detail": f"confident hit on {rung.get('rung')}"})
+            break
 
-    beyond_error = "; ".join(errors) if errors else None
+    beyond_error = "; ".join(dict.fromkeys(errors)) if errors else None
     if beyond_error:
         steps.append({"step": "error", "detail": beyond_error})
     return {
         "hits": hits,
         "error": beyond_error,
         "plan": plan,
+        "plans": walked,
         "steps": steps,
         "results": results,
         "raw_count": raw_count,
         "rejected_count": rejected_count,
     }
+
+
+def _plan_detail(plan: Mapping[str, Any]) -> str:
+    params = plan.get("params") or {}
+    shown = ", ".join(
+        f"{key}={params.get(key)!r}" for key in params if params.get(key) not in (None, "")
+    )
+    rung = _text(plan.get("rung"))
+    prefix = f"{rung}: " if rung else ""
+    return f"{prefix}{_text(plan.get('endpoint'))} {shown}"

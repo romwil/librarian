@@ -60,6 +60,27 @@ function renderSearch(path = "/search") {
   );
 }
 
+describe("Search prefill", () => {
+  it("sends one precise query for a prefilled book, not every field ANDed together", async () => {
+    renderSearch("/search?kind=book&title=Dune&author=Frank+Herbert&isbn=9780441172719&year=1965");
+    await waitFor(() => assert.ok(calls.some((url) => url.includes("/api/search"))));
+    const url = new URL(calls.find((path) => path.includes("/api/search")), "http://localhost");
+    assert.equal(url.searchParams.get("q"), "Dune");
+    assert.equal(url.searchParams.get("title"), "Dune");
+    assert.equal(url.searchParams.get("author"), "Frank Herbert");
+    assert.equal(url.searchParams.get("isbn"), "9780441172719");
+    assert.ok(screen.getByDisplayValue("Frank Herbert"));
+    assert.ok(screen.getByDisplayValue("9780441172719"));
+  });
+
+  it("keeps what the person typed as the query", async () => {
+    renderSearch("/search?q=dune+herbert&kind=book&title=Dune&author=Frank+Herbert");
+    await waitFor(() => assert.ok(calls.some((url) => url.includes("/api/search"))));
+    const url = new URL(calls.find((path) => path.includes("/api/search")), "http://localhost");
+    assert.equal(url.searchParams.get("q"), "dune herbert");
+  });
+});
+
 describe("Search Discover", () => {
   it("stays collapsed and does not call discover until Discover is expanded", async () => {
     renderSearch("/search?kind=audiobook");
