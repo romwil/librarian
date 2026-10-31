@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Nightly backup: the poller snapshots the catalog into `config/backups` (7 daily + 4 weekly), runs `integrity_check` on each copy, writes files `0600`, and leaves `session_secret` and `settings.json` out. The database file is `0600` too. Maintain shows **Last backup**; the restore steps are in [AUTOMAT.md](docs/ops/AUTOMAT.md).
 - Cover art lands on the shelf more often: audiobooks keep square Audnexus jackets (Amazon CDN allowlisted, no HTML scrape), Comic Vine match downloads the issue image, and a scan without a sidecar extracts CBZ page 1 or embedded album art. Wikipedia stays atmosphere / last-resort, never a print jacket when a kind-specific provider can fill it. Cards only claim a cover when the file is still on disk.
 - Maintain **Indexer scorecard** keeps lantern weather and Mute, and now shows match rate by media type (books, audiobooks, comics, …) as compact chips after Find / Discover speak. Counts persist in SQLite.
 - Enrich the shelves skips volumes that already have author, blurb, year, cover, and genre, and looks up the emptiest titles first. Maintain reports how many were already full.
@@ -14,7 +15,7 @@
 - **Maintain indexer lanterns.** Lights Down no longer paints pale paper cards with tan status copy. Lantern names, weather sentences, and Mute sit on raised leather; an idle host is a hollow ring so flicker vs silent is not hue-only. Safe undo uses the same dark wash. Lights Up stays ink on paper.
 - **Library card text size.** Clicking Text size or the slider no longer closes the Library card. Ambient room layering had flattened the topbar under Hall, so the panel was visible through empty Hall and the click counted as outside; range thumb retargets onto `document` are hit-tested too.
 
-## [0.6.1] — 2026-10-31
+## [0.6.3] — 2026-10-31
 
 ### Highlights
 
@@ -26,6 +27,18 @@
 - `requirements.lock` / `requirements-dev.lock` (hashed); Dockerfile `pip install --require-hashes`.
 - Playwright launcher rebuilds the SPA unless `E2E_SKIP_BUILD=1`.
 - Invariant test: poller / Wanted search never call SABnzbd `addfile` (PRD-001).
+
+## [0.6.2] — 2026-10-31
+
+### Highlights
+
+- **Deploy check.** Public `/api/health` only says the process is up. Version, rev, and whether What’s New matches live on owner `/api/status`, and `docker exec librarian cat /app/.build-info` is the host source of truth. Release notes are read from the image, not `/config`.
+
+### Changed
+
+- Unauthenticated `GET /api/health` returns `{ "status": "ok" }` only (BD-5). Optional `GET /api/health/ready` is 200 or 503 with an empty body.
+- Owner `GET /api/status` carries version, rev, built_at, notes_match, last_backup, and poller_alive. Settings → About and What’s New no longer read version from public health.
+- INFO logs use the route template (no query string, user id, IP, or `apikey`); `httpx` stays at WARNING; Docker log rotation is 10m × 5 (PERF-008).
 
 ## [0.5.23] — 2026-10-20
 

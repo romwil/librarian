@@ -11,7 +11,8 @@ import {
 import WhatsNewModal from "./WhatsNewModal.jsx";
 
 /**
- * Compares runtime /api/health version to localStorage last-seen.
+ * Compares runtime /api/features version to localStorage last-seen.
+ * Public /api/health no longer carries version (BD-5).
  * Shows What’s New when last-seen is missing or older than runtime.
  * Notes only render when release-notes.json has an exact version match —
  * never a newer/older story that would lie about this deploy.
@@ -27,8 +28,8 @@ export default function WhatsNewGate() {
 
     async function evaluate() {
       try {
-        const health = await api.health();
-        const runtimeVersion = String(health?.version || "").trim();
+        const features = await api.features();
+        const runtimeVersion = String(features?.version || "").trim();
         if (!runtimeVersion || cancelled) return;
 
         const lastSeen = getLastSeenVersion();
@@ -48,7 +49,7 @@ export default function WhatsNewGate() {
         setRelease(matched);
         setOpen(true);
       } catch {
-        // Health unavailable — skip quietly.
+        // Features unavailable — skip quietly.
       }
     }
 

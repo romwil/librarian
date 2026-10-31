@@ -26,6 +26,7 @@ from librarian.sessions import (
 )
 from librarian.web.build_info import FRONTEND_DIST
 from librarian.web.deps import WebDeps
+from librarian.web.logging_config import configure_logging, log_http_request
 from librarian.web.routers import (
     register_auth_routes,
     register_hall_routes,
@@ -49,6 +50,7 @@ def _data_dir() -> Path:
 
 
 def create_app(data_dir: Optional[Path] = None) -> FastAPI:
+    configure_logging()
     root = Path(data_dir) if data_dir is not None else _data_dir()
     root.mkdir(parents=True, exist_ok=True)
     os.environ.setdefault("DATA_DIR", str(root))
@@ -132,6 +134,11 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
             return JSONResponse({"detail": "Authentication required"}, status_code=401)
         request.state.user = user
         return await call_next(request)
+
+    # Added after auth_gate so this wrapper is outermost and 401s still log.
+    @app.middleware("http")
+    async def access_log(request: Request, call_next):
+        return await log_http_request(request, call_next)
 
     register_auth_routes(app, deps)
     register_hall_routes(app, deps)

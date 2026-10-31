@@ -41,7 +41,8 @@ There is **no** `/api/auth/` prefix leak. Ingress matches **explicit method+path
 
 | Method | Path | Notes |
 |--------|------|--------|
-| `GET` | `/api/health` | Liveness |
+| `GET` | `/api/health` | Liveness — `{ "status": "ok" }` only; no version or rev |
+| `GET` | `/api/health/ready` | Readiness — **200 or 503** with an empty body |
 | `GET` | `/api/features` | Stripped flags (household name, owner ready, auth methods) |
 | `GET` | `/api/invites/validate` | HMAC-verified token; fail closed; **30 / IP / min** |
 | `POST` | `/api/invites/redeem/local` | Local join on a valid invite; **10 / IP / min** |
@@ -87,7 +88,7 @@ SPA ──no session──► /login (foyer) or /join?token=
 
 ## Rotating secrets
 
-WAL-safe database backup steps live in [DOCKER.md](DOCKER.md).
+WAL-safe catalog restore steps live in [ops/AUTOMAT.md](ops/AUTOMAT.md#backups-and-restore). Nightly snapshots omit `session_secret` and `settings.json`.
 
 1. **Revoke/reissue at the provider first** (NZBFinder token, SAB API key, LLM key).
 2. **Update Librarian** — Settings UI (owner) or `.env` + restart.
@@ -110,5 +111,6 @@ WAL-safe database backup steps live in [DOCKER.md](DOCKER.md).
 ## Related docs
 
 - [ops/AUTOMAT.md](ops/AUTOMAT.md) — kit path, LAN truth, first-boot env
-- [DOCKER.md](DOCKER.md) — volumes, PUID/PGID, backups
+- [DOCKER.md](DOCKER.md) — volumes, PUID/PGID
+- [ops/AUTOMAT.md](ops/AUTOMAT.md#backups-and-restore) — nightly snapshots and restore
 - [TESTING.md](TESTING.md) — handshake + proxy fail-closed tests

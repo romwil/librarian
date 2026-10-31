@@ -2,7 +2,7 @@
 
 Task-first notes for the **Automat** Unraid host that runs Librarian. Audience: developers and Cursor agents working on this repo’s live stack — not generic install docs (see [DOCKER.md](../DOCKER.md)).
 
-Jump to: [LAN hosts](#lan-hosts-source-of-truth) · [Kit](#kit--appdata) · [First boot](#first-boot-env) · [Deploy](#deploy-now-on-host-build) · [Audiobookshelf](#audiobookshelf) · [See also](#see-also)
+Jump to: [LAN hosts](#lan-hosts-source-of-truth) · [Kit](#kit--appdata) · [First boot](#first-boot-env) · [Deploy](#deploy-now-on-host-build) · [Backups](#backups-and-restore) · [Audiobookshelf](#audiobookshelf) · [See also](#see-also)
 
 ---
 
@@ -10,22 +10,24 @@ Jump to: [LAN hosts](#lan-hosts-source-of-truth) · [Kit](#kit--appdata) · [Fir
 
 | Role | Base URL | Use for |
 |------|----------|---------|
-| **Librarian** | `http://10.10.1.202:8793` | Version, `/api/health`, UI, “is it up?” |
+| **Librarian** | `http://10.10.1.202:8793` | SPA, liveness `GET /api/health` (`{"status":"ok"}` only), owner `GET /api/status` |
 | **Audiobookshelf** | `http://10.10.1.202:13378` | Audiobook player. Reads `audiobooks` read-only |
 | **Projectionist prod** | `http://10.10.1.202:8788` | Sibling app — **never** stop it for Librarian work |
 | **Smart Map** | `http://10.10.1.202:8790` | Sibling app — **never** stop it |
 | **Lobby / QA Lobby** | `:8791` / `:8792` | Projectionist theater — do not bind Librarian here |
 | **Public hostname** | any `*.automat.vip` | Member-facing access only — **not** version or admin truth |
 
-Prefer a direct LAN check:
+Prefer a direct LAN check. Public health is process-up only — version truth is the image stamp:
 
 ```bash
 curl -s http://10.10.1.202:8793/api/health
-# Optional: confirm image metadata inside the container (on Unraid SSH)
-# docker exec librarian cat /app/.build-info
+# {"status":"ok"}
+# On Unraid SSH — this is the always-applied version source of truth:
+docker exec librarian cat /app/.build-info
+# Owner session: GET /api/status → version, rev, built_at, notes_match (from the image, not /config)
 ```
 
-**Never treat public DNS as version truth.** Agents (and humans) have concluded a household app was still on an older build by hitting a VIP or an SSH tunnel while LAN was already newer. `localhost:8793` on a maintainer laptop may be a tunnel — not a local `python -m librarian.web`.
+**Never treat public DNS as version truth.** Agents (and humans) have concluded a household app was still on an older build by hitting a VIP or an SSH tunnel while LAN was already newer. `localhost:8793` on a maintainer laptop may be a tunnel — not a local `python -m librarian.web`. Do not parse version or rev from unauthenticated `/api/health`.
 
 **Never bind Librarian or Audiobookshelf to 8788, 8790, 8791, 8792, 8793, or 8794.** Audiobookshelf uses **13378**.
 
@@ -55,7 +57,7 @@ Members may later reach the library through a **user reverse proxy** (Caddy / NP
 
 ```
 /mnt/user/appdata/librarian/          # kit (Dockerfile, docker-run.sh, source)
-├── config/                           # settings.json, librarian.db, session_secret — KEEP; never wipe
+├── config/                           # settings.json, librarian.db, session_secret, backups/ — KEEP; never wipe
 ├── .env                              # owner + session secret + indexer keys — not in git
 ├── docker-run.sh                     # on-host build — **current Automat path**
 ├── rollout.sh                        # Hub pull stub only (fails until image exists; not current truth)
@@ -125,15 +127,47 @@ mkdir -p /mnt/user/appdata/librarian/config /mnt/user/data
 cd /mnt/user/appdata/librarian
 ./docker-run.sh
 curl -s http://127.0.0.1:8793/api/health
+# {"status":"ok"}
+docker exec librarian cat /app/.build-info
 ```
 
-`docker-run.sh` waits for `/api/health`, prints `/app/.build-info`, starts Audiobookshelf on **13378**, and does **not** wipe `./config` or `/mnt/user/appdata/audiobookshelf`.
+`docker-run.sh` waits for `/api/health` (liveness), prints `/app/.build-info` (version truth), starts Audiobookshelf on **13378**, and does **not** wipe `./config` or `/mnt/user/appdata/audiobookshelf`. Owner `GET /api/status` reports `notes_match` from the image’s release notes, not `/config`.
 
 **Do not invent Hub publish as the current Automat path.** There is no active `docker-release.sh` /
 Hub pull-only ship for Librarian yet. `./rollout.sh` is a stub that fails until `romwil/librarian`
 exists — use `./docker-run.sh` on the kit. Hub publish stays a later milestone.
 
 Do **not** stop Projectionist (`:8788`) or Smart Map (`:8790`) while deploying Librarian.
+
+---
+
+## Backups and restore
+
+The poller takes a SQLite snapshot of the catalog nightly (first poll after a new local day) into
+`/mnt/user/appdata/librarian/config/backups/` (`/config/backups` in the container): the newest
+**7 daily** (`librarian-YYYY-MM-DD.db`) and **4 weekly** (`librarian-weekly-YYYY-Www.db`). Each copy
+is taken with SQLite's online backup, passes `PRAGMA integrity_check` before it is kept, and is
+`0600` in a `0700` folder. A failed check keeps the older snapshots and shows on Maintain.
+Maintain → **Nightly backup** shows the last backup.
+
+`session_secret` and `settings.json` are **not** in a snapshot (they hold keys and API tokens).
+They stay in `/config`; copy them separately if you rebuild the host.
+
+Restore (the container must be stopped so nothing writes while you swap the file):
+
+```bash
+cd /mnt/user/appdata/librarian
+docker stop librarian
+mv config/librarian.db config/librarian.db.broken
+rm -f config/librarian.db-wal config/librarian.db-shm
+cp config/backups/librarian-YYYY-MM-DD.db config/librarian.db
+chmod 600 config/librarian.db
+./docker-run.sh
+curl -s http://10.10.1.202:8793/api/health
+```
+
+Use a weekly file the same way when no daily is old enough. Keep `librarian.db.broken` until the
+shelves look right.
 
 ---
 

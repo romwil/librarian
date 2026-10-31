@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-10-31T04:56:47Z",
+  "generated_at": "2026-10-31T05:08:46Z",
   "releases": [
     {
-      "version": "0.6.1",
+      "version": "0.6.3",
       "date": "2026-10-31",
       "summary": "",
       "highlights": [
@@ -16,6 +16,24 @@
             "`requirements.lock` / `requirements-dev.lock` (hashed); Dockerfile `pip install --require-hashes`.",
             "Playwright launcher rebuilds the SPA unless `E2E_SKIP_BUILD=1`.",
             "Invariant test: poller / Wanted search never call SABnzbd `addfile` (PRD-001)."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "0.6.2",
+      "date": "2026-10-31",
+      "summary": "",
+      "highlights": [
+        "**Deploy check.** Public `/api/health` only says the process is up. Version, rev, and whether What’s New matches live on owner `/api/status`, and `docker exec librarian cat /app/.build-info` is the host source of truth. Release notes are read from the image, not `/config`."
+      ],
+      "sections": [
+        {
+          "title": "Changed",
+          "bullets": [
+            "Unauthenticated `GET /api/health` returns `{ \"status\": \"ok\" }` only (BD-5). Optional `GET /api/health/ready` is 200 or 503 with an empty body.",
+            "Owner `GET /api/status` carries version, rev, built_at, notes_match, last_backup, and poller_alive. Settings → About and What’s New no longer read version from public health.",
+            "INFO logs use the route template (no query string, user id, IP, or `apikey`); `httpx` stays at WARNING; Docker log rotation is 10m × 5 (PERF-008)."
           ]
         }
       ]
