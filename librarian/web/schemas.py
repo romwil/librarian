@@ -290,3 +290,11 @@ class WantedAddPayload(BaseModel):
     hit: Optional[WantedAskPayload] = None
 
 
+class SearchAskPayload(BaseModel):
+    q: str = ""
+    kind: str = ""
+    title: str = ""
+    author: str = ""
+    isbn: str = ""
+
+

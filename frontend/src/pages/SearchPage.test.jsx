@@ -9,6 +9,14 @@ import SearchPage from "./SearchPage.jsx";
 const realFetch = globalThis.fetch;
 let calls;
 
+function searchCalls() {
+  return calls.filter((url) => url.includes("/api/search") && !url.includes("/api/search/beyond") && !url.includes("/api/search/ask"));
+}
+
+function beyondCalls() {
+  return calls.filter((url) => url.includes("/api/search/beyond"));
+}
+
 function discoverCalls() {
   return calls.filter((url) => url.includes("/api/discover"));
 }
@@ -63,8 +71,9 @@ function renderSearch(path = "/search") {
 describe("Search prefill", () => {
   it("sends one precise query for a prefilled book, not every field ANDed together", async () => {
     renderSearch("/search?kind=book&title=Dune&author=Frank+Herbert&isbn=9780441172719&year=1965");
-    await waitFor(() => assert.ok(calls.some((url) => url.includes("/api/search"))));
-    const url = new URL(calls.find((path) => path.includes("/api/search")), "http://localhost");
+    await waitFor(() => assert.ok(searchCalls().length));
+    const url = new URL(searchCalls()[0], "http://localhost");
+    assert.equal(url.searchParams.get("beyond"), null);
     assert.equal(url.searchParams.get("q"), "Dune");
     assert.equal(url.searchParams.get("title"), "Dune");
     assert.equal(url.searchParams.get("author"), "Frank Herbert");
@@ -75,8 +84,8 @@ describe("Search prefill", () => {
 
   it("keeps what the person typed as the query", async () => {
     renderSearch("/search?q=dune+herbert&kind=book&title=Dune&author=Frank+Herbert");
-    await waitFor(() => assert.ok(calls.some((url) => url.includes("/api/search"))));
-    const url = new URL(calls.find((path) => path.includes("/api/search")), "http://localhost");
+    await waitFor(() => assert.ok(searchCalls().length));
+    const url = new URL(searchCalls()[0], "http://localhost");
     assert.equal(url.searchParams.get("q"), "dune herbert");
   });
 });
@@ -130,7 +139,7 @@ describe("Search Discover", () => {
 
   it("does not call discover for a search until the fold is opened", async () => {
     renderSearch("/search?q=dune");
-    await waitFor(() => assert.ok(calls.some((url) => url.includes("/api/search"))));
+    await waitFor(() => assert.ok(searchCalls().length));
     assert.equal(discoverCalls().length, 0);
     await userEvent.click(screen.getByText("Discover"));
     await screen.findByRole("button", { name: "Ebook 0" });
@@ -138,5 +147,70 @@ describe("Search Discover", () => {
     assert.equal(discoverUrl(0).searchParams.get("cat"), "7020");
     assert.equal(discoverUrl(0).searchParams.get("limit"), "12");
     assert.equal(discoverUrl(0).searchParams.get("kind"), null);
+  });
+});
+
+function renderRole(role, path = "/search?q=dune") {
+  return render(
+    <MemoryRouter initialEntries={[path]}>
+      <Routes>
+        <Route element={<Outlet context={{ user: { role }, features: {} }} />}>
+          <Route path="/search" element={<SearchPage />} />
+        </Route>
+      </Routes>
+    </MemoryRouter>,
+  );
+}
+
+describe("Search lanes", () => {
+  it("owner auto-beyonds after local, without beyond=1 on the shelf call", async () => {
+    renderSearch("/search?q=dune");
+    await waitFor(() => assert.ok(searchCalls().length));
+    await waitFor(() => assert.ok(beyondCalls().length));
+    assert.equal(new URL(searchCalls()[0], "http://localhost").searchParams.get("beyond"), null);
+    assert.match(beyondCalls()[0], /\/api\/search\/beyond/);
+  });
+
+  it("reader submit never hits beyond and offers Ask the house", async () => {
+    renderRole("reader");
+    await waitFor(() => assert.ok(searchCalls().length));
+    assert.ok(await screen.findByRole("button", { name: "Ask the house" }));
+    assert.equal(beyondCalls().length, 0);
+    assert.equal(screen.queryByRole("heading", { name: "Beyond the shelves" }), null);
+    assert.equal(screen.queryByText(/NZBFinder/i), null);
+    assert.equal(screen.queryByRole("button", { name: "Discover" }), null);
+  });
+
+  it("keeps local covers visible while beyond is still looking", async () => {
+    let releaseBeyond;
+    const pending = new Promise((resolve) => {
+      releaseBeyond = resolve;
+    });
+    globalThis.fetch = async (url) => {
+      const path = String(url);
+      calls.push(path);
+      if (path.includes("/api/search/beyond")) {
+        await pending;
+        return new Response(JSON.stringify({ beyond: [{ title: "Dune NZB", guid: "g-dune", kind: "book" }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response(
+        JSON.stringify({
+          local: [{ id: "w1", title: "Dune on the shelf", kind: "book", author: "Herbert" }],
+          beyond: [],
+          public_domain: [],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    };
+    renderSearch("/search?q=dune");
+    const localCovers = await screen.findAllByRole("button", { name: /Dune on the shelf/ });
+    assert.ok(localCovers.length);
+    assert.equal(beyondCalls().length, 1);
+    assert.equal(screen.queryByText("Dune NZB"), null);
+    releaseBeyond();
+    assert.ok((await screen.findAllByRole("button", { name: /Dune NZB/ })).length);
   });
 });

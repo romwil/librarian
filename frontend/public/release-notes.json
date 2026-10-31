@@ -1,6 +1,26 @@
 {
-  "generated_at": "2026-10-31T06:25:10Z",
+  "generated_at": "2026-10-31T06:46:17Z",
   "releases": [
+    {
+      "version": "0.6.14",
+      "date": "2026-10-31",
+      "summary": "",
+      "highlights": [
+        "**Search lanes.** Local results come back first. Owner and op then look beyond the shelves in a second call; a reader search stays on the shelf until they Ask the house. That ask files a Wanted row and never talks to an indexer or SABnzbd. Confirm on Downloads is still the only way a download starts."
+      ],
+      "sections": [
+        {
+          "title": "Changed",
+          "bullets": [
+            "`GET /api/search` is local only. `GET /api/search/beyond` runs indexers in parallel with a 10-second deadline, keeps partial hits, and caches the answer in memory for ten minutes.",
+            "Readers see one Ask the house door and a one-time disclosure. They cannot fire Wanted Find beyond or Search beyond as if they were the owner.",
+            "The hourly Wanted pass searches extra indexers (DrunkenSlug) with the same ladder as NZBFinder.",
+            "Kind chips are the one kind control on Search; the duplicate Kind select and Format facet (when a kind is already chosen) are gone.",
+            "Discover is an owner/op indexer door. Readers stay on local search plus Ask the house."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.6.13",
       "date": "2026-10-31",

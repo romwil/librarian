@@ -20,6 +20,7 @@ from librarian.web.schemas import (
     LlmListChasePayload,
     LlmListPayload,
     PublicDomainShelvePayload,
+    SearchAskPayload,
 )
 from librarian.web.service_errors import http_errors
 
@@ -64,6 +65,55 @@ def register_search_routes(app: FastAPI, deps: WebDeps) -> None:
             year=year,
             mode=mode,
         )
+
+    @app.get("/api/search/beyond")
+    def search_beyond(
+        request: Request,
+        q: str = "",
+        kind: str = "",
+        title: str = "",
+        author: str = "",
+        isbn: str = "",
+        series: str = "",
+        issue: str = "",
+        artist: str = "",
+        album: str = "",
+        year: str = "",
+        mode: str = "",
+    ):
+        with http_errors():
+            return search_service.run_search_beyond(
+                db,
+                settings,
+                root=root,
+                user=request.state.user,
+                q=q,
+                kind=kind,
+                title=title,
+                author=author,
+                isbn=isbn,
+                series=series,
+                issue=issue,
+                artist=artist,
+                album=album,
+                year=year,
+                mode=mode,
+            )
+
+    @app.post("/api/search/ask")
+    def search_ask(payload: SearchAskPayload, request: Request):
+        """File a Wanted row from Search. Does not search indexers or call SABnzbd."""
+        require_role(request.state.user, "owner", "op", "reader")
+        with http_errors():
+            return search_service.ask_from_search(
+                db,
+                request.state.user,
+                q=payload.q,
+                kind=payload.kind,
+                title=payload.title,
+                author=payload.author,
+                isbn=payload.isbn,
+            )
 
     @app.get("/api/browse")
     def browse(
@@ -174,7 +224,9 @@ def register_search_routes(app: FastAPI, deps: WebDeps) -> None:
         offset: int = 0,
         page: int = 0,
     ):
-        return search_service.discover_page(
+        require_role(request.state.user, "owner", "op")
+        with http_errors():
+            return search_service.discover_page(
             settings(),
             root=root,
             user=request.state.user,

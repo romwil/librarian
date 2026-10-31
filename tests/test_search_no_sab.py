@@ -50,7 +50,9 @@ def test_search_and_discover_never_call_sab(client, monkeypatch):
 
     _login(client)
     search = client.get("/api/search", params={"q": "NFL", "beyond": 1, "kind": "book"})
+    beyond = client.get("/api/search/beyond", params={"q": "NFL", "kind": "book"})
     assert search.status_code == 200
+    assert beyond.status_code == 200
     suggest = client.get("/api/suggest", params={"field": "title", "q": "a"})
     assert suggest.status_code == 200
     discover = client.get("/api/discover", params={"kind": "book"})

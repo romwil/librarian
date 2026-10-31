@@ -69,11 +69,10 @@ def test_search_beyond_without_token_surfaces_error(tmp_path, monkeypatch):
     monkeypatch.setenv("NZBFINDER_API_TOKEN", "")
     client = _client(tmp_path, monkeypatch)
     _login(client)
-    resp = client.get("/api/search", params={"q": "stephen king", "beyond": 1})
+    resp = client.get("/api/search/beyond", params={"q": "stephen king"})
     assert resp.status_code == 200
     body = resp.json()
     assert body["q"] == "stephen king"
-    assert body["local"] == []
     assert body["beyond"] == []
     assert body["beyond_error"] == "NZBFinder api_token is not configured"
 
@@ -96,7 +95,7 @@ def test_search_music_uses_search_not_books(tmp_path, monkeypatch):
 
     monkeypatch.setattr("librarian.nzbfinder.NZBFinderClient.search_traced", fake_search_traced)
     monkeypatch.setattr("librarian.nzbfinder.NZBFinderClient.books_traced", fake_books_traced)
-    resp = client.get("/api/search", params={"q": "guardians mix", "beyond": 1, "kind": "music"})
+    resp = client.get("/api/search/beyond", params={"q": "guardians mix", "kind": "music"})
     assert resp.status_code == 200
     body = resp.json()
     assert calls == [("search", "guardians mix", "music", "3000")]
@@ -116,10 +115,14 @@ def test_search_beyond_indexer_error_keeps_local_and_surfaces_reason(tmp_path, m
         raise NZBFinderError("NZBFinder returned non-JSON")
 
     monkeypatch.setattr("librarian.nzbfinder.NZBFinderClient._get", fail_get)
-    resp = client.get("/api/search", params={"q": "king", "beyond": 1})
+    local = client.get("/api/search", params={"q": "king", "beyond": 1})
+    assert local.status_code == 200
+    assert [row["title"] for row in local.json()["local"]] == ["The Shining"]
+    assert local.json()["beyond"] == []
+    assert local.json()["beyond_error"] is None
+    resp = client.get("/api/search/beyond", params={"q": "king"})
     assert resp.status_code == 200
     body = resp.json()
-    assert [row["title"] for row in body["local"]] == ["The Shining"]
     assert body["beyond"] == []
     assert body["beyond_error"] == "NZBFinder returned non-JSON"
 
@@ -159,9 +162,8 @@ def test_search_books_isbn_rung_alone_stops_on_a_confident_hit(tmp_path, monkeyp
     monkeypatch.setattr("librarian.nzbfinder.NZBFinderClient.books_traced", fake_books_traced)
     monkeypatch.setattr("librarian.nzbfinder.NZBFinderClient.search_traced", fake_search_traced)
     resp = client.get(
-        "/api/search",
+        "/api/search/beyond",
         params={
-            "beyond": 1,
             "kind": "book",
             "title": "Dune",
             "author": "Herbert",
@@ -192,13 +194,13 @@ def test_search_comics_use_7030_and_music_ignores_isbn(tmp_path, monkeypatch):
 
     monkeypatch.setattr("librarian.nzbfinder.NZBFinderClient.search_traced", fake_search_traced)
     monkeypatch.setattr("librarian.nzbfinder.NZBFinderClient.books_traced", fake_books_traced)
-    comic = client.get("/api/search", params={"beyond": 1, "kind": "comic", "series": "Saga", "issue": "54"})
+    comic = client.get("/api/search/beyond", params={"kind": "comic", "series": "Saga", "issue": "54"})
     assert comic.status_code == 200
     assert calls == [("search", "Saga 54", "7030"), ("search", "Saga", "7030")]
     calls.clear()
     music = client.get(
-        "/api/search",
-        params={"beyond": 1, "kind": "music", "artist": "Queen", "album": "Jazz", "isbn": "9780441172719"},
+        "/api/search/beyond",
+        params={"kind": "music", "artist": "Queen", "album": "Jazz", "isbn": "9780441172719"},
     )
     assert music.status_code == 200
     assert calls == [("search", "Jazz", "3000"), ("search", "Queen Jazz", "3000")]
@@ -213,7 +215,7 @@ def test_search_movie_kind_does_not_query_the_indexer(tmp_path, monkeypatch):
         raise AssertionError("movie search must not call the indexer")
 
     monkeypatch.setattr("librarian.nzbfinder.NZBFinderClient.search_traced", fake_search_traced)
-    resp = client.get("/api/search", params={"beyond": 1, "kind": "movie", "q": "OTR"})
+    resp = client.get("/api/search/beyond", params={"kind": "movie", "q": "OTR"})
     assert resp.status_code == 200
     assert resp.json()["beyond"] == []
 
@@ -245,8 +247,8 @@ def test_search_beyond_scrubs_tokens_and_raw(tmp_path, monkeypatch):
         lambda *a, **k: {"raw": [], "accepted": [], "rejected": [], "default_kind": ""},
     )
     resp = client.get(
-        "/api/search",
-        params={"beyond": 1, "kind": "book", "title": "Dune", "author": "Herbert"},
+        "/api/search/beyond",
+        params={"kind": "book", "title": "Dune", "author": "Herbert"},
     )
     assert resp.status_code == 200
     body = resp.json()

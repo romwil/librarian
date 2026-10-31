@@ -78,10 +78,9 @@ export const api = {
     return request(`/browse/facets${qs ? `?${qs}` : ""}`);
   },
   search: (q, extras = {}) => {
-    const { beyond = false, kind = "", mode = "", title, author, isbn, series, issue, artist, album, year } = extras;
+    const { kind = "", mode = "", title, author, isbn, series, issue, artist, album, year } = extras;
     const params = new URLSearchParams();
     if (q) params.set("q", q);
-    if (beyond) params.set("beyond", "1");
     if (kind) params.set("kind", kind);
     if (mode) params.set("mode", mode);
     const fields = { title, author, isbn, series, issue, artist, album, year };
@@ -90,6 +89,19 @@ export const api = {
     }
     return request(`/search?${params.toString()}`);
   },
+  searchBeyond: (q, extras = {}) => {
+    const { kind = "", mode = "", title, author, isbn, series, issue, artist, album, year } = extras;
+    const params = new URLSearchParams();
+    if (q) params.set("q", q);
+    if (kind) params.set("kind", kind);
+    if (mode) params.set("mode", mode);
+    const fields = { title, author, isbn, series, issue, artist, album, year };
+    for (const [key, value] of Object.entries(fields)) {
+      if (value) params.set(key, value);
+    }
+    return request(`/search/beyond?${params.toString()}`);
+  },
+  askHouse: (body = {}) => request("/search/ask", { method: "POST", body: JSON.stringify(body || {}) }),
   suggest: ({ field, kind = "", q = "", limit = 12, signal } = {}) => {
     const params = new URLSearchParams();
     if (field) params.set("field", field);

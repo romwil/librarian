@@ -152,7 +152,8 @@ def enqueue_indexer_item(
         str((item.get("selected") or {}).get("host_id") or item.get("host_id") or ""),
     )
     guid = str((item.get("selected") or {}).get("guid") or item.get("guid") or "")
-    payload = _job_payload(item, details=_fetch_details(finder, guid))
+    details = {} if role == "reader" else _fetch_details(finder, guid)
+    payload = _job_payload(item, details=details)
     title = payload.get("title") or item.get("title")
     kind = payload.get("kind") or item.get("kind")
     if role == "reader":

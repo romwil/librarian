@@ -414,9 +414,10 @@ def test_request_persists_sought_selected_retrieved(tmp_path):
         ]
     }
 
+    details_calls = []
+
     def handler(request: httpx.Request) -> httpx.Response:
-        assert "/api/v2/details" in str(request.url)
-        assert "api_token=tok" in str(request.url)
+        details_calls.append(str(request.url))
         return httpx.Response(200, json=details)
 
     nzb = NZBFinderClient("https://nzbfinder.example", "tok", transport=httpx.MockTransport(handler))
@@ -441,14 +442,14 @@ def test_request_persists_sought_selected_retrieved(tmp_path):
         nzb=nzb,
     )
     payload = job["payload"]
+    assert job["status"] == "asked"
     assert job["title"] == "Dune"
     assert payload["sought"]["title"] == "Dune"
     assert payload["sought"]["isbn"] == "9780441172719"
     assert payload["selected"]["guid"] == "g-dune"
     assert payload["selected"]["title"] == "Herbert-Dune-ebook"
-    assert payload["retrieved"]["isbn"] == "9780441172719"
-    assert payload["retrieved"]["book_title"] == "Dune"
-    assert payload["retrieved"]["details"]["guid"] == "g-dune"
+    assert details_calls == []
+    assert "details" not in (payload.get("retrieved") or {})
     assert "api_token" not in str(payload)
     assert "tok" not in str(payload)
 

@@ -9,7 +9,7 @@ No music endpoint is advertised, so music/audiobook/comic use search + cat.
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from librarian.kinds import (
@@ -253,9 +253,19 @@ def search_ladder(
     ]
 
 
+_LADDER_KEYS = frozenset(
+    {"kind", "q", "title", "author", "isbn", "series", "issue", "artist", "album", "year", "limit", "offset"}
+)
+
+
+def search_ladder_from_fields(fields: Mapping[str, Any]) -> List[Dict[str, Any]]:
+    """Build the ladder, ignoring rank/host kwargs such as ``deadline``."""
+    return search_ladder(**{key: fields[key] for key in _LADDER_KEYS if key in fields})
+
+
 def plan_beyond_search(**fields: Any) -> Optional[Dict[str, Any]]:
     """The first rung of the search ladder, or None when there is nothing to seek."""
-    ladder = search_ladder(**fields)
+    ladder = search_ladder_from_fields(fields)
     return ladder[0] if ladder else None
 
 

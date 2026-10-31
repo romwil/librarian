@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor, wait
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
@@ -233,15 +234,78 @@ def _record_probe(
         return
 
 
+def _run_host_rung(
+    host: Mapping[str, str],
+    rung: Mapping[str, Any],
+    *,
+    transport: Optional[Any],
+    data_dir: Optional[Path],
+    probe_kind: str,
+) -> Dict[str, Any]:
+    """One host, one ladder rung. Fail closed so a sibling host can still answer."""
+    client = NZBFinderClient(
+        host["url"],
+        host["api_token"],
+        transport=transport,
+        label=host["name"],
+        dialect=host.get("dialect") or "",
+    )
+    started = time.perf_counter()
+    try:
+        traced = run_plan_traced(client, rung)
+    except NZBFinderError as error:
+        latency_ms = (time.perf_counter() - started) * 1000.0
+        err_text = str(error)
+        _record_probe(
+            data_dir,
+            host=host,
+            ok=False,
+            latency_ms=latency_ms,
+            error=err_text,
+            rate_limited=is_rate_limited(error) or "rate" in err_text.lower(),
+            kind=probe_kind,
+        )
+        return {
+            "host": host,
+            "ok": False,
+            "error": err_text,
+            "rate_limited": is_rate_limited(error),
+        }
+    finally:
+        client.close()
+    latency_ms = (time.perf_counter() - started) * 1000.0
+    accepted = list(traced.get("accepted") or [])
+    _record_probe(
+        data_dir,
+        host=host,
+        ok=True,
+        latency_ms=latency_ms,
+        hit_count=len(accepted),
+        kind=probe_kind,
+    )
+    return {
+        "host": host,
+        "ok": True,
+        "error": "",
+        "raw": list(traced.get("raw") or []),
+        "rejected": list(traced.get("rejected") or []),
+        "accepted": accepted,
+        "default_kind": str(traced.get("default_kind") or ""),
+    }
+
+
 def search_beyond(
     settings: Settings,
     *,
     transport: Optional[Any] = None,
     data_dir: Optional[Path] = None,
+    deadline: Optional[float] = None,
     **fields: Any,
 ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
     """Query every enabled host. One 502 must not blank the others."""
-    traced = search_beyond_traced(settings, transport=transport, data_dir=data_dir, **fields)
+    traced = search_beyond_traced(
+        settings, transport=transport, data_dir=data_dir, deadline=deadline, **fields
+    )
     return traced["hits"], traced.get("error")
 
 
@@ -250,17 +314,20 @@ def search_beyond_traced(
     *,
     transport: Optional[Any] = None,
     data_dir: Optional[Path] = None,
+    deadline: Optional[float] = None,
     **fields: Any,
 ) -> Dict[str, Any]:
     """Beyond search with a decision trail for Bestsellers chase diagnostics.
 
     Walks the search ladder one precise query at a time and stops once a rung
-    returns a confident hit. A host that errors is not asked again this search.
+    returns a confident hit. Hosts on a rung run in parallel. A host that errors
+    is not asked again this search. ``deadline`` is seconds from now; partial
+    hits are kept if it fires.
     """
     from librarian.indexers.match import is_confident_match
-    from librarian.indexers.query import search_ladder
+    from librarian.indexers.query import search_ladder_from_fields
 
-    ladder = search_ladder(**fields)
+    ladder = search_ladder_from_fields(fields)
     plan = ladder[0] if ladder else None
     hosts = enabled_hosts(settings)
     steps: List[Dict[str, str]] = []
@@ -299,57 +366,63 @@ def search_beyond_traced(
     sought = plan.get("sought") or {}
     walked: List[Dict[str, Any]] = []
     failed_hosts: set[str] = set()
+    started_at = time.perf_counter()
     for rung in ladder:
+        if deadline is not None and (time.perf_counter() - started_at) >= float(deadline):
+            errors.append("Beyond the shelves ran out of time")
+            steps.append({"step": "deadline", "detail": "partial results"})
+            break
         live = [host for host in hosts if host["id"] not in failed_hosts]
         if not live:
             break
         walked.append(rung)
         steps.append({"step": "plan", "detail": _plan_detail(rung)})
         rung_start = len(hits)
-        for host in live:
-            client = NZBFinderClient(
-                host["url"],
-                host["api_token"],
-                transport=transport,
-                label=host["name"],
-                dialect=host.get("dialect") or "",
-            )
-            started = time.perf_counter()
-            try:
-                traced = run_plan_traced(client, rung)
-            except NZBFinderError as error:
-                latency_ms = (time.perf_counter() - started) * 1000.0
-                err_text = str(error)
-                failed_hosts.add(host["id"])
-                errors.append(err_text)
-                steps.append({"step": "host", "detail": f"{host['name']}: {error}"})
-                _record_probe(
-                    data_dir,
-                    host=host,
-                    ok=False,
-                    latency_ms=latency_ms,
-                    error=err_text,
-                    rate_limited=is_rate_limited(error) or "rate" in err_text.lower(),
-                    kind=probe_kind,
+        remaining = None
+        if deadline is not None:
+            remaining = max(0.05, float(deadline) - (time.perf_counter() - started_at))
+        host_runs: List[Dict[str, Any]] = []
+        with ThreadPoolExecutor(max_workers=max(1, len(live))) as pool:
+            futures = [
+                pool.submit(
+                    _run_host_rung,
+                    host,
+                    rung,
+                    transport=transport,
+                    data_dir=data_dir,
+                    probe_kind=probe_kind,
                 )
+                for host in live
+            ]
+            done, pending = wait(futures, timeout=remaining)
+            for future in pending:
+                future.cancel()
+            for host, future in zip(live, futures):
+                if future not in done:
+                    errors.append(f"{host['name']}: deadline")
+                    steps.append({"step": "host", "detail": f"{host['name']}: deadline"})
+                    continue
+                try:
+                    host_runs.append(future.result())
+                except Exception as error:  # noqa: BLE001 — one host must not blank the rung
+                    failed_hosts.add(host["id"])
+                    errors.append(str(error))
+                    steps.append({"step": "host", "detail": f"{host['name']}: {error}"})
+        for run in host_runs:
+            host = run["host"]
+            if not run.get("ok"):
+                failed_hosts.add(str(host.get("id") or ""))
+                err_text = str(run.get("error") or "")
+                if err_text:
+                    errors.append(err_text)
+                    steps.append({"step": "host", "detail": f"{host['name']}: {err_text}"})
                 continue
-            finally:
-                client.close()
-            latency_ms = (time.perf_counter() - started) * 1000.0
-            host_raw = list(traced.get("raw") or [])
-            host_rejected = list(traced.get("rejected") or [])
-            host_accepted = list(traced.get("accepted") or [])
-            _record_probe(
-                data_dir,
-                host=host,
-                ok=True,
-                latency_ms=latency_ms,
-                hit_count=len(host_accepted),
-                kind=probe_kind,
-            )
+            host_raw = list(run.get("raw") or [])
+            host_rejected = list(run.get("rejected") or [])
+            host_accepted = list(run.get("accepted") or [])
             raw_count += len(host_raw)
             rejected_count += len(host_rejected)
-            default_kind = str(traced.get("default_kind") or "")
+            default_kind = str(run.get("default_kind") or "")
             if default_kind:
                 steps.append(
                     {
