@@ -317,6 +317,19 @@ class ShelvesRepository(RepositoryBase):
         assert row is not None
         return row
 
+    def latest_progress_by_work(self) -> Dict[str, float]:
+        """Most recent progress touch per work, for ranking sweep candidates."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT work_id, MAX(updated_at) AS last_read FROM progress GROUP BY work_id"
+            ).fetchall()
+        out: Dict[str, float] = {}
+        for row in rows:
+            work_id = str(row["work_id"] or "").strip()
+            if work_id:
+                out[work_id] = float(row["last_read"] or 0)
+        return out
+
     def get_progress(self, user_id: str, work_id: str) -> Optional[Dict[str, Any]]:
         with self._connect() as conn:
             row = conn.execute(

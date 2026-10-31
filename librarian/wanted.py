@@ -26,6 +26,10 @@ STATUS_WANTED = "wanted"
 STATUS_ASKED = "asked"
 STATUS_DISMISSED = "dismissed"
 
+SOURCE_SWEEP = "sweep"
+SOURCE_MANUAL = "manual"
+SWEEP_RESTORE_SECONDS = 30 * 24 * 60 * 60
+
 # First miss waits 6 hours, the second 12. Every later miss stays at 12.
 BASE_BACKOFF_SECONDS = 6 * 60 * 60
 MAX_BACKOFF_SECONDS = 12 * 60 * 60
@@ -81,7 +85,25 @@ def dedupe_key(
     return f"name:{_norm(title)}:{_norm(author)}:{shelf_kind}"
 
 
-def public_wanted(row: Mapping[str, Any]) -> Dict[str, Any]:
+def wanted_source(row: Mapping[str, Any]) -> str:
+    """Sweep vs owner-asked. Unsourced legacy rows were sweep-seeded."""
+    source = str(row.get("source") or "").strip().lower()
+    if source == SOURCE_MANUAL:
+        return SOURCE_MANUAL
+    return SOURCE_SWEEP
+
+
+def is_restorable_sweep(row: Mapping[str, Any], *, now: Optional[float] = None) -> bool:
+    if str(row.get("status") or "") != STATUS_DISMISSED:
+        return False
+    if wanted_source(row) != SOURCE_SWEEP:
+        return False
+    moment = time.time() if now is None else float(now)
+    dismissed_at = float(row.get("updated_at") or 0)
+    return dismissed_at > 0 and (moment - dismissed_at) <= SWEEP_RESTORE_SECONDS
+
+
+def public_wanted(row: Mapping[str, Any], *, now: Optional[float] = None) -> Dict[str, Any]:
     return {
         "id": row.get("id"),
         "work_id": row.get("work_id") or None,
@@ -93,6 +115,8 @@ def public_wanted(row: Mapping[str, Any]) -> Dict[str, Any]:
         "miss_streak": int(row.get("miss_streak") or 0),
         "next_search_at": row.get("next_search_at"),
         "job_id": row.get("job_id") or None,
+        "source": wanted_source(row),
+        "restorable": is_restorable_sweep(row, now=now),
     }
 
 
@@ -159,7 +183,7 @@ def add_wanted(db: Database, payload: Mapping[str, Any], *, now: Optional[float]
             "next_search_at": moment,
             "created_at": moment,
             "updated_at": moment,
-            "source": "manual",
+            "source": SOURCE_MANUAL,
         }
     )
 
@@ -170,6 +194,41 @@ def dismiss_wanted(db: Database, wanted_id: str, *, now: Optional[float] = None)
     if row is None:
         raise WantedError("Wanted row not found")
     return row
+
+
+def dismiss_sweep_wanted(db: Database, *, now: Optional[float] = None) -> int:
+    """Bulk-dismiss open sweep rows. Owner-added wants and asked slips stay."""
+    moment = time.time() if now is None else float(now)
+    return int(db.dismiss_open_sweep_wanted(now=moment) or 0)
+
+
+def restore_wanted(db: Database, wanted_id: str, *, now: Optional[float] = None) -> Dict[str, Any]:
+    moment = time.time() if now is None else float(now)
+    row = db.get_wanted(wanted_id)
+    if row is None:
+        raise WantedError("Wanted row not found")
+    if str(row.get("status") or "") != STATUS_DISMISSED:
+        return row
+    if not is_restorable_sweep(row, now=moment):
+        raise WantedError("That sweep want can no longer be restored")
+    reopened = db.reopen_wanted(
+        wanted_id,
+        now=moment,
+        fields={
+            "title": row.get("title") or "",
+            "author": row.get("author") or "",
+            "isbn": row.get("isbn") or "",
+        },
+    )
+    if reopened is None:
+        raise WantedError("Wanted row not found")
+    return reopened
+
+
+def restore_sweep_wanted(db: Database, *, now: Optional[float] = None) -> int:
+    moment = time.time() if now is None else float(now)
+    since = moment - SWEEP_RESTORE_SECONDS
+    return int(db.restore_recent_sweep_wanted(now=moment, since=since) or 0)
 
 
 DEFAULT_WANTED_PAGE_SIZE = 50
@@ -194,14 +253,18 @@ def page_wanted(
     *,
     status: str = "",
     kind: str = "",
+    source: str = "",
     page: int = 1,
     page_size: int = DEFAULT_WANTED_PAGE_SIZE,
 ) -> Dict[str, Any]:
     """One page of Wanted rows. Kind narrows the set before the page window."""
     key = _clean(status).lower()
     kind_key = _clean(kind).lower()
+    source_key = _clean(source).lower()
     if kind_key and kind_key not in ALL_KINDS:
         raise WantedError("Unknown Wanted kind")
+    if source_key and source_key not in {SOURCE_SWEEP, SOURCE_MANUAL}:
+        raise WantedError("Unknown Wanted source")
     include_dismissed = key == "all"
     status_arg: Optional[str] = None
     if key and not include_dismissed:
@@ -221,10 +284,14 @@ def page_wanted(
         size = DEFAULT_WANTED_PAGE_SIZE
     size = min(size, MAX_WANTED_PAGE_SIZE)
     total = db.count_wanted(
-        kind=kind_key or None, status=status_arg, include_dismissed=include_dismissed
+        kind=kind_key or None,
+        status=status_arg,
+        source=source_key or None,
+        include_dismissed=include_dismissed,
     )
     rows = db.list_wanted(
         kind=kind_key or None,
+        source=source_key or None,
         limit=size,
         offset=(page_no - 1) * size,
         status=status_arg,

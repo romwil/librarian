@@ -243,6 +243,10 @@ class WantedSearchPayload(BaseModel):
     kind: str = ""
 
 
+class WantedSweepTogglePayload(BaseModel):
+    enabled: bool
+
+
 class AddMissingItem(BaseModel):
     title: str = ""
     author: str = ""

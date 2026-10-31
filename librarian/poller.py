@@ -264,11 +264,17 @@ class JobPoller:
             return bool(enabled_hosts(settings))
         if name == "owned":
             return bool(self.db.has_fileless_slips())
+        if name == "sweep":
+            from librarian.config import auto_audiobook_wants_enabled
+
+            return auto_audiobook_wants_enabled(settings)
         return True
 
     def _off_reason(self, name: str) -> str:
         if name == "owned":
             return "Off: nothing to do"
+        if name == "sweep":
+            return "Off: automatic audiobook wants are off"
         return "Off: not configured"
 
     def _defer(self, name: str) -> None:

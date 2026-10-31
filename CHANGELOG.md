@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.6.16] — 2026-10-31
+
+### Highlights
+
+- **Sweep intent.** Every Wanted row says Sweep or Owner want. Sweep rows can be dismissed in bulk and restored for 30 days. Open sweep wants stay at 200. New installs leave the sweep off until the owner opts in; a house that already has settings.json keeps its current setting. Confirm on Downloads is still the only way a download starts.
+
+### Changed
+
+- Wanted list items include `source` so the desk can tell owner-asked rows from sweep-seeded ones.
+- Owner and op can bulk-dismiss open sweep wants and restore them for 30 days. Owner-added wants and asked slips stay put.
+- The audiobook sweep stops creating rows once 200 sweep wants are already open, and ranks new seeds by recency of reading.
+- New installs default `auto_audiobook_wants` off. An existing settings file without the key stays on. Wanted / Get still never send SABnzbd.
+
 ## [0.6.15] — 2026-10-31
 
 ### Highlights

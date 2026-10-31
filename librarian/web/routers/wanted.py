@@ -9,18 +9,32 @@ queue, is what talks to SABnzbd.
 from __future__ import annotations
 
 import logging
+import time
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 
 from librarian.auth import require_role
+from librarian.config import (
+    AUTO_AUDIOBOOK_WANTS_ALL,
+    AUTO_AUDIOBOOK_WANTS_OFF,
+    Settings,
+    auto_audiobook_wants_enabled,
+    merge_secret_fields,
+    save_settings,
+)
 from librarian.owned import ShelfIndex, annotate_wanted_row
 from librarian.wanted import (
+    SOURCE_SWEEP,
+    SWEEP_RESTORE_SECONDS,
     AlreadyShelved,
     WantedError,
     add_wanted,
+    dismiss_sweep_wanted,
     dismiss_wanted,
     page_wanted,
     public_wanted,
+    restore_sweep_wanted,
+    restore_wanted,
 )
 from librarian.wanted_search import (
     ask_wanted_hit,
@@ -28,8 +42,14 @@ from librarian.wanted_search import (
     search_queued_wanted,
     search_wanted_selection,
 )
+from librarian.wanted_sweep import OPEN_SWEEP_CAP
 from librarian.web.deps import WebDeps
-from librarian.web.schemas import WantedAddPayload, WantedAskPayload, WantedSearchPayload
+from librarian.web.schemas import (
+    WantedAddPayload,
+    WantedAskPayload,
+    WantedSearchPayload,
+    WantedSweepTogglePayload,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -51,11 +71,22 @@ def register_wanted_routes(app: FastAPI, deps: WebDeps) -> None:
             work = db.get_work(work_id)
         return annotate_wanted_row(public_wanted(row), shelves, work=work)
 
+    def _sweep_meta(now: float | None = None) -> dict:
+        moment = time.time() if now is None else float(now)
+        since = moment - SWEEP_RESTORE_SECONDS
+        return {
+            "enabled": auto_audiobook_wants_enabled(deps.settings()),
+            "open": db.count_wanted(source=SOURCE_SWEEP),
+            "cap": OPEN_SWEEP_CAP,
+            "restorable": db.count_restorable_sweep_wanted(since=since),
+        }
+
     @app.get("/api/wanted")
     def wanted_list(
         request: Request,
         status: str = "",
         kind: str = "",
+        source: str = "",
         page: int = 1,
         page_size: int = 50,
     ):
@@ -65,6 +96,7 @@ def register_wanted_routes(app: FastAPI, deps: WebDeps) -> None:
                 db,
                 status=status,
                 kind=kind,
+                source=source,
                 page=page,
                 page_size=page_size,
             )
@@ -78,6 +110,7 @@ def register_wanted_routes(app: FastAPI, deps: WebDeps) -> None:
             "page": window["page"],
             "page_size": window["page_size"],
             "kinds": window["kinds"],
+            "sweep": _sweep_meta(),
         }
 
     @app.post("/api/wanted/search")
@@ -94,6 +127,29 @@ def register_wanted_routes(app: FastAPI, deps: WebDeps) -> None:
         except WantedError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
         return {"results": results}
+
+    @app.post("/api/wanted/dismiss-sweep")
+    def wanted_dismiss_sweep(request: Request):
+        require_role(request.state.user, "owner", "op")
+        dismissed = dismiss_sweep_wanted(db)
+        return {"dismissed": dismissed, "sweep": _sweep_meta()}
+
+    @app.post("/api/wanted/restore-sweep")
+    def wanted_restore_sweep(request: Request):
+        require_role(request.state.user, "owner", "op")
+        restored = restore_sweep_wanted(db)
+        return {"restored": restored, "sweep": _sweep_meta()}
+
+    @app.post("/api/wanted/sweep")
+    def wanted_sweep_toggle(payload: WantedSweepTogglePayload, request: Request):
+        require_role(request.state.user, "owner")
+        incoming = {
+            "auto_audiobook_wants": AUTO_AUDIOBOOK_WANTS_ALL if payload.enabled else AUTO_AUDIOBOOK_WANTS_OFF
+        }
+        merged = merge_secret_fields(incoming, deps.settings())
+        saved = Settings.from_mapping(merged)
+        save_settings(deps.root, saved)
+        return {"sweep": _sweep_meta()}
 
     @app.post("/api/wanted")
     def wanted_add(payload: WantedAddPayload, request: Request, background: BackgroundTasks):
@@ -150,4 +206,14 @@ def register_wanted_routes(app: FastAPI, deps: WebDeps) -> None:
             row = dismiss_wanted(db, wanted_id)
         except WantedError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
+        return {"item": _public(row)}
+
+    @app.post("/api/wanted/{wanted_id}/restore")
+    def wanted_restore(wanted_id: str, request: Request):
+        require_role(request.state.user, "owner", "op")
+        try:
+            row = restore_wanted(db, wanted_id)
+        except WantedError as error:
+            status = 404 if str(error) == "Wanted row not found" else 400
+            raise HTTPException(status_code=status, detail=str(error)) from error
         return {"item": _public(row)}

@@ -159,7 +159,7 @@ def test_idle_sweep_does_not_reconnect_per_book(db, monkeypatch):
 
     monkeypatch.setattr(Database, "_connect", counting)
     assert sweep_wanted_audiobooks(db, now=NOW) == 0
-    assert calls["n"] <= 4
+    assert calls["n"] <= 5
 
 
 def test_sweep_does_not_call_the_indexer(db, monkeypatch):
@@ -610,7 +610,11 @@ def test_poller_tick_calls_sweep_and_search(db, monkeypatch):
     )
     JobPoller(
         db,
-        lambda: Settings(nzbfinder_api_token="tok", nzbfinder_url="https://nzbfinder.test"),
+        lambda: Settings(
+            nzbfinder_api_token="tok",
+            nzbfinder_url="https://nzbfinder.test",
+            auto_audiobook_wants="all_fiction",
+        ),
         interval=3600,
     ).tick()
     assert seen == ["sweep", "search"]

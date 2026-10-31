@@ -55,6 +55,7 @@ class WantedRepository(RepositoryBase):
         *,
         status: Optional[str] = None,
         kind: Optional[str] = None,
+        source: Optional[str] = None,
         include_dismissed: bool = False,
     ) -> tuple[str, List[Any]]:
         clauses: List[str] = []
@@ -67,6 +68,12 @@ class WantedRepository(RepositoryBase):
         if kind:
             clauses.append("kind = ?")
             args.append(kind)
+        source_key = str(source or "").strip().lower()
+        if source_key == "manual":
+            clauses.append("source = ?")
+            args.append("manual")
+        elif source_key == "sweep":
+            clauses.append("(source = 'sweep' OR source IS NULL OR source = '')")
         return " AND ".join(clauses) or "1 = 1", args
 
     def list_wanted(
@@ -74,12 +81,13 @@ class WantedRepository(RepositoryBase):
         *,
         status: Optional[str] = None,
         kind: Optional[str] = None,
+        source: Optional[str] = None,
         limit: Optional[int] = None,
         offset: int = 0,
         include_dismissed: bool = False,
     ) -> List[Dict[str, Any]]:
         where, args = self._wanted_where(
-            status=status, kind=kind, include_dismissed=include_dismissed
+            status=status, kind=kind, source=source, include_dismissed=include_dismissed
         )
         sql = f"SELECT * FROM wanted WHERE {where} ORDER BY updated_at DESC, id ASC"
         if limit is not None:
@@ -94,10 +102,11 @@ class WantedRepository(RepositoryBase):
         *,
         status: Optional[str] = None,
         kind: Optional[str] = None,
+        source: Optional[str] = None,
         include_dismissed: bool = False,
     ) -> int:
         where, args = self._wanted_where(
-            status=status, kind=kind, include_dismissed=include_dismissed
+            status=status, kind=kind, source=source, include_dismissed=include_dismissed
         )
         with self._connect() as conn:
             row = conn.execute(f"SELECT COUNT(*) AS n FROM wanted WHERE {where}", args).fetchone()
@@ -199,6 +208,61 @@ class WantedRepository(RepositoryBase):
 
         self.run_write(_write, label="dismiss_wanted")
         return self.get_wanted(wanted_id)
+
+    def dismiss_open_sweep_wanted(self, *, now: float) -> int:
+        """Dismiss untouched sweep-seeded rows. Owner-added and asked slips stay."""
+
+        def _write() -> Any:
+            with self._connect() as conn:
+                cur = conn.execute(
+                    """
+                    UPDATE wanted
+                    SET status = 'dismissed', updated_at = ?
+                    WHERE status = 'wanted'
+                      AND IFNULL(job_id, '') = ''
+                      AND (source = 'sweep' OR source IS NULL OR source = '')
+                    """,
+                    (float(now),),
+                )
+                return int(cur.rowcount or 0)
+
+        return int(self.run_write(_write, label="dismiss_open_sweep_wanted") or 0)
+
+    def restore_recent_sweep_wanted(self, *, now: float, since: float) -> int:
+        """Reopen sweep rows dismissed on or after ``since``. Older rows stay dismissed."""
+
+        def _write() -> Any:
+            with self._connect() as conn:
+                cur = conn.execute(
+                    """
+                    UPDATE wanted
+                    SET status = 'wanted',
+                        miss_streak = 0,
+                        next_search_at = ?,
+                        job_id = NULL,
+                        updated_at = ?
+                    WHERE status = 'dismissed'
+                      AND updated_at >= ?
+                      AND (source = 'sweep' OR source IS NULL OR source = '')
+                    """,
+                    (float(now), float(now), float(since)),
+                )
+                return int(cur.rowcount or 0)
+
+        return int(self.run_write(_write, label="restore_recent_sweep_wanted") or 0)
+
+    def count_restorable_sweep_wanted(self, *, since: float) -> int:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT COUNT(*) AS n FROM wanted
+                WHERE status = 'dismissed'
+                  AND updated_at >= ?
+                  AND (source = 'sweep' OR source IS NULL OR source = '')
+                """,
+                (float(since),),
+            ).fetchone()
+        return int(row["n"] if row is not None else 0)
 
     def reopen_wanted(self, wanted_id: str, *, now: float, fields: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         def _write() -> Any:

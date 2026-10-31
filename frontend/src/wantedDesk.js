@@ -3,6 +3,21 @@
 import { canManageWanted } from "./availability.js";
 import { workListenPath } from "./listen.js";
 
+/** Local Wanted strings so this sprint does not edit copy.js. */
+export const WANTED_COPY = {
+  sourceSweep: "Sweep",
+  sourceOwner: "Owner want",
+  dismissSweep: "Dismiss sweep wants",
+  restore: "Restore",
+  restoreSweep: "Restore recent sweep wants",
+  open: "Open",
+  recentlyDismissed: "Restorable",
+  sweepOn: "Automatic audiobook wants: on",
+  sweepOff: "Automatic audiobook wants: off",
+  turnSweepOn: "Turn automatic audiobook wants on",
+  turnSweepOff: "Turn automatic audiobook wants off",
+};
+
 function trimmed(value) {
   return String(value || "").trim();
 }
@@ -73,15 +88,32 @@ export function wantedSearchAllLabel(kind = "") {
   return `Search all ${KIND_PLURAL[key] || key}`;
 }
 
-export function wantedToolbarModel({ kind = "", selectedCount = 0, role = "reader", total = 0 } = {}) {
+export function wantedSourceLabel(source = "") {
+  return trimmed(source).toLowerCase() === "manual" ? WANTED_COPY.sourceOwner : WANTED_COPY.sourceSweep;
+}
+
+export function wantedToolbarModel({
+  kind = "",
+  selectedCount = 0,
+  role = "reader",
+  total = 0,
+  sweepOpen = 0,
+  restorable = 0,
+  viewingDismissed = false,
+} = {}) {
   const canSearch = canManageWanted(role);
+  const canManage = canManageWanted(role);
   return {
     canSearch,
     selectPageLabel: "Select page",
     searchSelectedLabel: "Search selected",
     searchAllLabel: wantedSearchAllLabel(kind),
-    searchSelectedDisabled: !canSearch || selectedCount < 1,
-    searchAllDisabled: !canSearch || total < 1,
+    searchSelectedDisabled: !canSearch || selectedCount < 1 || viewingDismissed,
+    searchAllDisabled: !canSearch || total < 1 || viewingDismissed,
+    dismissSweepLabel: WANTED_COPY.dismissSweep,
+    dismissSweepDisabled: !canManage || viewingDismissed || Number(sweepOpen) < 1,
+    restoreSweepLabel: WANTED_COPY.restoreSweep,
+    restoreSweepDisabled: !canManage || Number(restorable) < 1,
   };
 }
 
@@ -91,12 +123,14 @@ export function wantedRowModel(item = {}, role = "reader", extras = {}) {
   const author = trimmed(item.author);
   const isbn = trimmed(item.isbn);
   const status = trimmed(item.status) || "wanted";
+  const source = trimmed(item.source).toLowerCase() === "manual" ? "manual" : "sweep";
   const search = wantedSearchStatus(item, extras);
   const bookShelf = shelfLink(item.shelved_book, kind === "book" ? "On the shelf" : "Book on the shelf");
   const audioShelf = shelfLink(
     item.shelved_audiobook,
     kind === "audiobook" ? "On the shelf" : "Audiobook on the shelf",
   );
+  const canManage = canManageWanted(role);
   return {
     id: trimmed(item.id),
     title,
@@ -104,13 +138,16 @@ export function wantedRowModel(item = {}, role = "reader", extras = {}) {
     kind,
     isbn,
     status,
+    source,
+    sourceLabel: wantedSourceLabel(source),
     statusLabel: search.label,
     statusDetail: search.detail,
     retryLine: search.retry,
     workId: trimmed(item.work_id),
     jobId: trimmed(item.job_id),
     nextSearchAt: item.next_search_at,
-    canDismiss: canManageWanted(role) && Boolean(trimmed(item.id)) && status !== "dismissed",
+    canDismiss: canManage && Boolean(trimmed(item.id)) && status !== "dismissed",
+    canRestore: canManage && Boolean(trimmed(item.id)) && status === "dismissed" && Boolean(item.restorable),
     bookShelf,
     audioShelf,
   };
@@ -124,20 +161,37 @@ export function wantedDeskModel({
   kind = "",
   selectedCount = 0,
   total = 0,
+  includeDismissed = false,
+  sweep = {},
 } = {}) {
   const rows = (Array.isArray(items) ? items : [])
-    .filter((item) => item && item.status !== "dismissed")
+    .filter((item) => item && (includeDismissed || item.status !== "dismissed"))
     .map((item) =>
       wantedRowModel(item, role, {
         searching: Boolean(inflight[item.id]),
         attempt: attempts[item.id] || null,
       }),
     );
+  const sweepOpen = Number(sweep.open || 0);
+  const restorable = Number(sweep.restorable || 0);
   return {
     rows,
     canAdd: canManageWanted(role),
     canSearch: canManageWanted(role),
+    canToggleSweep: role === "owner",
     empty: rows.length === 0,
-    toolbar: wantedToolbarModel({ kind, selectedCount, role, total: total || rows.length }),
+    sweepEnabled: Boolean(sweep.enabled),
+    sweepOpen,
+    sweepCap: Number(sweep.cap || 0),
+    restorable,
+    toolbar: wantedToolbarModel({
+      kind,
+      selectedCount,
+      role,
+      total: total || rows.length,
+      sweepOpen,
+      restorable,
+      viewingDismissed: includeDismissed,
+    }),
   };
 }

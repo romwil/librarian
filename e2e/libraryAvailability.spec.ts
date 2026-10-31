@@ -103,6 +103,6 @@ test.describe("Library availability", () => {
     await expect(page.getByTestId("wanted-add")).toHaveCount(0);
     await expect(page.getByTestId("wanted-dismiss")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Add to Wanted" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Dismiss" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Dismiss", exact: true })).toHaveCount(0);
   });
 });
