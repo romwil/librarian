@@ -287,7 +287,7 @@ export default function AddToLibrary({ embedded = false } = {}) {
           spellCheck={false}
         />
       </div>
-      <ul className="fs-browser" aria-label="Folders under /data">
+      <ul className="fs-browser" aria-label="Configured shelves">
         {parent ? (
           <li>
             <button type="button" className="fs-row" onClick={() => load(parent)}>

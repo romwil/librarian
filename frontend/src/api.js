@@ -4,10 +4,11 @@ import { detailText } from "./copy.js";
 const API = "/api";
 
 async function request(path, options = {}) {
+  const { headers: extraHeaders = {}, ...rest } = options;
   const response = await fetch(`${API}${path}`, {
     credentials: "include",
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
-    ...options,
+    ...rest,
+    headers: { "Content-Type": "application/json", "X-Librarian": "1", ...extraHeaders },
   });
   if (response.status === 204) return null;
   const text = await response.text();
@@ -293,6 +294,7 @@ export const api = {
     return fetch(`${API}/settings/goodreads`, {
       method: "POST",
       credentials: "include",
+      headers: { "X-Librarian": "1" },
       body,
     }).then(async (response) => {
       const data = await response.json().catch(() => ({}));

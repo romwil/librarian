@@ -1,0 +1,7 @@
+Self-hosted WOFF2 (Latin + Latin-ext) for the household SPA.
+
+No Google Fonts CDN. Vite hashes these into /assets (immutable).
+
+- Literata (SIL OFL 1.1) — @fontsource-variable/literata 5.3.0 — OFL-Literata.txt
+- Source Sans 3 (SIL OFL 1.1) — @fontsource-variable/source-sans-3 — OFL-SourceSans3.txt
+- IBM Plex Mono (SIL OFL 1.1) — @fontsource/ibm-plex-mono — OFL-IBMPlexMono.txt

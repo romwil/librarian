@@ -216,6 +216,7 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
       }
       const response = await fetch(workDownloadUrl(work.id, { inline: true, fileId }), {
         credentials: "include",
+        headers: { "X-Librarian": "1" },
       });
       if (!response.ok) {
         const detail = await response.text().catch(() => "");
