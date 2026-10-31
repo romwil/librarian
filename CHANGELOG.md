@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.13] — 2026-10-31
+
+### Highlights
+
+- **Guest-ready accounts.** Invite a reader or a helper with an absolute link, Copy, a 7-day expiry, and revoke. Members can change a password, the owner can send a one-time 24-hour reset, and anyone can sign out everywhere. Roles, pause, delete, export, and a Privacy panel on the Library card are in the UI. What’s New stays keeper-only; readers get a welcome. **Do not mint Automat household invites yet** — search, CSP, and a local walk of this gate still sit ahead.
+
+### Changed
+
+- Invite hygiene (1.1): `public_base_url` (or this visit’s host) on join links, pending list + revoke, op invite UI, foyer paste-a-token, unique titles, announced login errors, autocomplete, show-password, reader welcome.
+- Sessions and reset (1.2): `sessions` table, revoke on logout, sign-out-everywhere, self-service password change, owner-issued 24h single-use reset, ~60s session cache cleared on revoke, per-account login backoff, thin `security_events` rows.
+- Remove and roles (1.3): reader ↔ helper, pause a card, delete with cascade. **Invite gate.** Op API does not exceed the People UI.
+- Export and privacy (1.4): member export, Privacy + Account on `/card`, household notice from live config.
+
 ## [0.6.4] — 2026-10-31
 
 ### Highlights

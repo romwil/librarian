@@ -17,7 +17,12 @@ import {
   beyondSearchCopy,
   findStatusLine,
   humanError,
+  inviteShareMessage,
   inviteTokenFromInput,
+  formatInviteExpiry,
+  PAGE_TITLE_SIGN_IN,
+  PAGE_TITLE_JOIN,
+  READER_WELCOME_TITLE,
   localSearchEmpty,
   settingsSavedCopy,
   peekMediaNote,
@@ -218,7 +223,7 @@ describe("reading room copy", () => {
   });
 
   it("says a forgotten password is not a join link", () => {
-    assert.match(FIELD_HELP.loginPassword, /Ask whoever runs the library to reset/);
+    assert.match(FIELD_HELP.loginPassword, /Ask whoever runs the library to send a reset/);
     assert.match(FIELD_HELP.loginPassword, /separate account/);
     assert.match(FOYER_LEDE, /household/);
   });
@@ -243,6 +248,23 @@ describe("reading room copy", () => {
   it("pulls an invite token from a pasted URL", () => {
     assert.equal(inviteTokenFromInput("https://example.local/join?token=abc_123"), "abc_123");
     assert.equal(inviteTokenFromInput("household_token"), "household_token");
+  });
+
+  it("writes an invite share message with an absolute URL and a 7-day TTL", () => {
+    const message = inviteShareMessage({
+      joinUrl: "http://10.10.1.202:8793/join?token=abc",
+      role: "reader",
+      expiresLabel: "in 7 days",
+      householdName: "The Hall",
+    });
+    assert.match(message, /http:\/\/10\.10\.1\.202:8793\/join\?token=abc/);
+    assert.match(message, /reader/);
+    assert.doesNotMatch(message, /join link makes a separate account/i);
+    assert.equal(formatInviteExpiry(Date.now() / 1000 + 7 * 24 * 3600), "in 7 days");
+    assert.match(PAGE_TITLE_SIGN_IN, /Sign in/);
+    assert.match(PAGE_TITLE_JOIN, /Join/);
+    assert.notEqual(PAGE_TITLE_SIGN_IN, PAGE_TITLE_JOIN);
+    assert.match(READER_WELCOME_TITLE, /Welcome/);
   });
 
   it("keeps Review Apply collision guidance instead of masking it", () => {

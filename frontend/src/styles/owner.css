@@ -176,6 +176,32 @@
   font-size: 13px;
 }
 
+.password-field {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.password-toggle {
+  white-space: nowrap;
+}
+
+.foyer-paste {
+  margin-top: var(--space-4);
+}
+
+.invite-once,
+.people-pending,
+.card-panel {
+  margin: var(--space-5) 0;
+  padding: 0 var(--gutter);
+}
+
+.people-actions {
+  flex-wrap: wrap;
+}
+
 /* ═══════════ Help, wizard, tickets, search status ═══════════ */
 
 .cta-help {

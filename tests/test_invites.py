@@ -81,6 +81,60 @@ def test_concurrent_redeem_one_winner(tmp_path):
     assert db.get_user_by_display_name(winners[0]) is not None
 
 
+def test_invite_ttl_is_capped_at_seven_days(tmp_path):
+    from librarian.invites import (
+        DEFAULT_INVITE_TTL_SECONDS,
+        cap_invite_ttl,
+        create_household_invite,
+    )
+
+    assert cap_invite_ttl(30 * 24 * 3600) == DEFAULT_INVITE_TTL_SECONDS
+    db = Database(tmp_path / "librarian.db")
+    minted = create_household_invite(
+        db,
+        created_by="owner-1",
+        actor_role="owner",
+        role="reader",
+        expires_in_seconds=30 * 24 * 3600,
+    )
+    remaining = minted["invite"]["expires_at"] - minted["invite"]["created_at"]
+    assert remaining <= DEFAULT_INVITE_TTL_SECONDS + 1
+
+
+def test_mint_http_join_url_is_absolute(tmp_path, monkeypatch):
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    clear_session_secret_cache()
+    client = TestClient(create_app(tmp_path))
+    login = client.post("/api/auth/local/login", json={"username": "owner", "password": "password123"})
+    assert login.status_code == 200
+    minted = client.post("/api/invites", json={"role": "reader"})
+    assert minted.status_code == 200
+    join_url = minted.json()["join_url"]
+    assert join_url.startswith("http://")
+    assert "/join?token=" in join_url
+    listed = client.get("/api/invites")
+    assert listed.status_code == 200
+    assert listed.json()["invites"][0]["id"] == minted.json()["invite"]["id"]
+    revoked = client.post(f"/api/invites/{minted.json()['invite']['id']}/revoke")
+    assert revoked.status_code == 200
+    assert revoked.json()["invite"]["status"] == "revoked"
+    client.post("/api/auth/logout")
+    client.cookies.clear()
+    assert client.get("/api/invites/validate", params={"token": minted.json()["token"]}).status_code == 404
+
+
+def test_public_base_url_wins_for_invite_links(tmp_path, monkeypatch):
+    from librarian.config import Settings, save_settings
+
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    clear_session_secret_cache()
+    save_settings(tmp_path, Settings(public_base_url="http://10.10.1.202:8793"))
+    client = TestClient(create_app(tmp_path))
+    client.post("/api/auth/local/login", json={"username": "owner", "password": "password123"})
+    minted = client.post("/api/invites", json={"role": "reader"})
+    assert minted.json()["join_url"].startswith("http://10.10.1.202:8793/join?token=")
+
+
 def test_validate_and_redeem_http(tmp_path, monkeypatch):
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
     clear_session_secret_cache()
