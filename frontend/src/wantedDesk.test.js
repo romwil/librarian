@@ -11,6 +11,7 @@ const items = [
     author: "Madeline Miller",
     kind: "audiobook",
     status: "wanted",
+    source: "sweep",
   },
   {
     id: "w-hand",
@@ -18,6 +19,7 @@ const items = [
     author: "Susanna Clarke",
     kind: "book",
     status: "asked",
+    source: "manual",
   },
   {
     id: "w-gone",
@@ -37,9 +39,38 @@ describe("Wanted desk", () => {
     assert.equal(desk.rows[0].workId, "book-1");
     assert.equal(desk.rows[0].statusLabel, "Wanted");
     assert.match(desk.rows[0].statusDetail, /Waiting for the next search/);
+    assert.equal(desk.rows[0].sourceLabel, "Sweep");
     assert.equal(desk.rows[1].statusLabel, "Asked");
     assert.match(desk.rows[1].statusDetail, /waiting for confirm/);
+    assert.equal(desk.rows[1].sourceLabel, "Owner want");
     assert.equal(desk.empty, false);
+  });
+
+  it("names owner-asked vs sweep-seeded rows and bulk dismisses sweep wants", () => {
+    const desk = wantedDeskModel({
+      role: "owner",
+      sweep: { enabled: true, open: 4, cap: 200, restorable: 2 },
+      items: [
+        { id: "w-sweep", title: "Circe", source: "sweep", status: "wanted" },
+        { id: "w-owner", title: "Kindred", source: "manual", status: "wanted" },
+      ],
+    });
+    assert.equal(desk.rows[0].sourceLabel, "Sweep");
+    assert.equal(desk.rows[1].sourceLabel, "Owner want");
+    assert.equal(desk.toolbar.dismissSweepLabel, "Dismiss sweep wants");
+    assert.equal(desk.toolbar.dismissSweepDisabled, false);
+    assert.equal(desk.toolbar.restoreSweepDisabled, false);
+    assert.equal(desk.canToggleSweep, true);
+    assert.equal(desk.sweepEnabled, true);
+
+    const dismissed = wantedDeskModel({
+      role: "owner",
+      includeDismissed: true,
+      sweep: { enabled: true, open: 0, cap: 200, restorable: 1 },
+      items: [{ id: "w-gone", title: "Circe", source: "sweep", status: "dismissed", restorable: true }],
+    });
+    assert.equal(dismissed.rows[0].canRestore, true);
+    assert.equal(dismissed.toolbar.dismissSweepDisabled, true);
   });
 
   it("keeps add and dismiss with the owner and op", () => {

@@ -132,10 +132,11 @@ export const api = {
     request("/lists/add-missing", { method: "POST", body: JSON.stringify({ items: items || [] }) }),
   shelvePublicDomain: (edition) =>
     request("/public-domain/shelve", { method: "POST", body: JSON.stringify(edition || {}) }),
-  wanted: ({ kind = "", page = 1, pageSize = 50, status = "" } = {}) => {
+  wanted: ({ kind = "", page = 1, pageSize = 50, status = "", source = "" } = {}) => {
     const params = new URLSearchParams();
     if (kind) params.set("kind", kind);
     if (status) params.set("status", status);
+    if (source) params.set("source", source);
     if (page) params.set("page", String(page));
     if (pageSize) params.set("page_size", String(pageSize));
     const qs = params.toString();
@@ -143,6 +144,11 @@ export const api = {
   },
   addWanted: (body) => request("/wanted", { method: "POST", body: JSON.stringify(body || {}) }),
   dismissWanted: (id) => request(`/wanted/${encodeURIComponent(id)}/dismiss`, { method: "POST" }),
+  restoreWanted: (id) => request(`/wanted/${encodeURIComponent(id)}/restore`, { method: "POST" }),
+  dismissSweepWanted: () => request("/wanted/dismiss-sweep", { method: "POST" }),
+  restoreSweepWanted: () => request("/wanted/restore-sweep", { method: "POST" }),
+  setWantedSweep: (enabled) =>
+    request("/wanted/sweep", { method: "POST", body: JSON.stringify({ enabled: Boolean(enabled) }) }),
   searchWanted: (body) => request("/wanted/search", { method: "POST", body: JSON.stringify(body || {}) }),
   wantedBeyond: (id) => request(`/wanted/${encodeURIComponent(id)}/beyond`, { method: "POST" }),
   askWanted: (id, hit) =>

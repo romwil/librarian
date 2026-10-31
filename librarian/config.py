@@ -41,6 +41,7 @@ ENV_TO_FIELD = {
     "WATCH_ENABLED": "watch_enabled",
     "AUDIOBOOKSHELF_URL": "audiobookshelf_url",
     "AUDIOBOOKSHELF_API_TOKEN": "audiobookshelf_api_token",
+    "AUTO_AUDIOBOOK_WANTS": "auto_audiobook_wants",
 }
 
 MEDIA_ROOT_FIELDS = (
@@ -87,6 +88,11 @@ MAIL_ENV_TO_FIELD = {
 
 AUDIOBOOK_TARGETS = ("plex", "audiobookshelf", "librarian_only")
 MAIL_PROVIDERS = ("off", "smtp", "resend")
+# New installs default off. An existing settings.json without the key stays on
+# (Automat is not frozen off). "favorites" / "authors" stay later scope work.
+AUTO_AUDIOBOOK_WANTS_OFF = "off"
+AUTO_AUDIOBOOK_WANTS_ALL = "all_fiction"
+AUTO_AUDIOBOOK_WANTS_VALUES = (AUTO_AUDIOBOOK_WANTS_OFF, AUTO_AUDIOBOOK_WANTS_ALL)
 
 
 def _as_bool(value: Any) -> bool:
@@ -94,6 +100,29 @@ def _as_bool(value: Any) -> bool:
         return value
     text = str(value or "").strip().lower()
     return text in {"1", "true", "yes", "on"}
+
+
+def normalize_auto_audiobook_wants(value: Any) -> str:
+    """off | all_fiction. Unknown values collapse to off (new-install default)."""
+    if isinstance(value, bool):
+        return AUTO_AUDIOBOOK_WANTS_ALL if value else AUTO_AUDIOBOOK_WANTS_OFF
+    text = str(value or "").strip().lower()
+    if text in {"1", "true", "yes", "on", "all", "all_fiction"}:
+        return AUTO_AUDIOBOOK_WANTS_ALL
+    if text in {"0", "false", "no", "off"}:
+        return AUTO_AUDIOBOOK_WANTS_OFF
+    if text in AUTO_AUDIOBOOK_WANTS_VALUES:
+        return text
+    return AUTO_AUDIOBOOK_WANTS_OFF
+
+
+def auto_audiobook_wants_enabled(settings: Any) -> bool:
+    return (
+        normalize_auto_audiobook_wants(
+            getattr(settings, "auto_audiobook_wants", AUTO_AUDIOBOOK_WANTS_OFF)
+        )
+        != AUTO_AUDIOBOOK_WANTS_OFF
+    )
 
 
 def load_dotenv(path: Optional[Path] = None) -> Optional[Path]:
@@ -201,6 +230,7 @@ class Settings:
     watch_enabled: bool = False
     extra_indexers: list = field(default_factory=list)
     indexer_daily_call_budget: int = 500
+    auto_audiobook_wants: str = AUTO_AUDIOBOOK_WANTS_OFF
     audiobookshelf_url: str = ""
     audiobookshelf_api_token: str = ""
     music_write_tags: bool = False
@@ -242,6 +272,10 @@ class Settings:
                 )
             except (TypeError, ValueError):
                 filtered["indexer_daily_call_budget"] = 500
+        if "auto_audiobook_wants" in filtered:
+            filtered["auto_audiobook_wants"] = normalize_auto_audiobook_wants(
+                filtered["auto_audiobook_wants"]
+            )
         if "llm_profiles" in filtered or "llm_provider" in filtered or any(
             key in filtered for key in ("llm_base_url", "llm_api_key", "llm_model")
         ):
@@ -347,6 +381,11 @@ def load_merged_settings(data_dir: Path) -> Settings:
     """Load settings.json, then fill missing fields from the environment."""
     load_dotenv()
     stored = _read_settings_json(data_dir)
+    # Existing installs without the key keep the sweep on. New installs (no
+    # settings.json) keep the dataclass default of off.
+    if settings_path(data_dir).exists() and "auto_audiobook_wants" not in stored:
+        stored = dict(stored)
+        stored["auto_audiobook_wants"] = AUTO_AUDIOBOOK_WANTS_ALL
     merged = asdict(Settings.from_mapping(stored))
     for env_name, field_name in ENV_TO_FIELD.items():
         if env_name not in os.environ:
@@ -360,6 +399,10 @@ def load_merged_settings(data_dir: Path) -> Settings:
         merged["music_write_tags"] = _as_bool(merged["music_write_tags"])
     if "quiet_hours_enabled" in merged:
         merged["quiet_hours_enabled"] = _as_bool(merged["quiet_hours_enabled"])
+    if "auto_audiobook_wants" in merged:
+        merged["auto_audiobook_wants"] = normalize_auto_audiobook_wants(
+            merged["auto_audiobook_wants"]
+        )
     mail_blob = merged.get("mail") if isinstance(merged.get("mail"), dict) else asdict(MailSettings())
     merged["mail"] = _seed_mail_from_env(dict(mail_blob), stored)
     from librarian.llm_providers import normalize_provider, seed_llm_profiles_from_env

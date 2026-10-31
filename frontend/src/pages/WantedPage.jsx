@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useOutletContext } from "react-router-dom";
 import { api } from "../api.js";
 import { humanError } from "../copy.js";
-import { wantedDeskModel } from "../wantedDesk.js";
+import { WANTED_COPY, wantedDeskModel } from "../wantedDesk.js";
 import { ThinkingButton } from "../components/Thinking.jsx";
 import WarmLoad from "../components/WarmLoad.jsx";
 
@@ -37,19 +37,25 @@ export default function WantedPage() {
   const [beyond, setBeyond] = useState({});
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkTarget, setBulkTarget] = useState("");
+  const [status, setStatus] = useState("");
+  const [sweep, setSweep] = useState({ enabled: false, open: 0, cap: 0, restorable: 0 });
+
+  const viewingDismissed = status === "dismissed";
 
   function applyList(data) {
     setItems(data.items || []);
     setTotal(Number(data.total || 0));
     setKinds(Array.isArray(data.kinds) ? data.kinds : []);
     if (data.page) setPage(Number(data.page));
+    if (data.sweep) setSweep(data.sweep);
   }
 
   function load(next = {}) {
     const pageNo = next.page ?? page;
     const kindKey = next.kind ?? kind;
+    const statusKey = next.status ?? status;
     return api
-      .wanted({ kind: kindKey, page: pageNo, pageSize: PAGE_SIZE })
+      .wanted({ kind: kindKey, page: pageNo, pageSize: PAGE_SIZE, status: statusKey })
       .then((data) => {
         applyList(data);
         return data;
@@ -61,7 +67,7 @@ export default function WantedPage() {
     let alive = true;
     setLoading(true);
     api
-      .wanted({ kind, page, pageSize: PAGE_SIZE })
+      .wanted({ kind, page, pageSize: PAGE_SIZE, status })
       .then((data) => {
         if (!alive) return;
         applyList(data);
@@ -75,10 +81,20 @@ export default function WantedPage() {
     return () => {
       alive = false;
     };
-  }, [kind, page]);
+  }, [kind, page, status]);
 
   const selectedCount = Object.keys(selected).length;
-  const desk = wantedDeskModel({ items, role, attempts, inflight, kind, selectedCount, total });
+  const desk = wantedDeskModel({
+    items,
+    role,
+    attempts,
+    inflight,
+    kind,
+    selectedCount,
+    total,
+    includeDismissed: viewingDismissed,
+    sweep,
+  });
   const visibleIds = desk.rows.map((row) => row.id).filter(Boolean);
   const pageChecked = visibleIds.length > 0 && visibleIds.every((id) => selected[id]);
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -86,6 +102,12 @@ export default function WantedPage() {
   function chooseKind(nextKind) {
     setSelected({});
     setKind(nextKind);
+    setPage(1);
+  }
+
+  function chooseStatus(nextStatus) {
+    setSelected({});
+    setStatus(nextStatus);
     setPage(1);
   }
 
@@ -273,6 +295,72 @@ export default function WantedPage() {
     }
   }
 
+  async function restore(id) {
+    if (!id || busyId) return;
+    setBusyId(id);
+    setBusyKind("restore");
+    setError("");
+    try {
+      await api.restoreWanted(id);
+      await load();
+    } catch (err) {
+      setError(humanError(err));
+    } finally {
+      setBusyId("");
+      setBusyKind("");
+    }
+  }
+
+  async function dismissSweep() {
+    if (bulkBusy || desk.toolbar.dismissSweepDisabled) return;
+    setBulkBusy(true);
+    setBulkTarget("dismiss-sweep");
+    setError("");
+    try {
+      await api.dismissSweepWanted();
+      setSelected({});
+      await load();
+    } catch (err) {
+      setError(humanError(err));
+    } finally {
+      setBulkBusy(false);
+      setBulkTarget("");
+    }
+  }
+
+  async function restoreSweep() {
+    if (bulkBusy || desk.toolbar.restoreSweepDisabled) return;
+    setBulkBusy(true);
+    setBulkTarget("restore-sweep");
+    setError("");
+    try {
+      await api.restoreSweepWanted();
+      setSelected({});
+      await load();
+    } catch (err) {
+      setError(humanError(err));
+    } finally {
+      setBulkBusy(false);
+      setBulkTarget("");
+    }
+  }
+
+  async function toggleSweep() {
+    if (!desk.canToggleSweep || bulkBusy) return;
+    setBulkBusy(true);
+    setBulkTarget("sweep");
+    setError("");
+    try {
+      const data = await api.setWantedSweep(!desk.sweepEnabled);
+      if (data?.sweep) setSweep(data.sweep);
+    } catch (err) {
+      setError(humanError(err));
+    } finally {
+      setBulkBusy(false);
+      setBulkTarget("");
+    }
+  }
+
   async function add(event) {
     event.preventDefault();
     if (adding) return;
@@ -307,7 +395,7 @@ export default function WantedPage() {
         <h1>Wanted</h1>
         <p className="lede">Titles the house does not have yet.</p>
         <p className="lede" data-testid="wanted-fiction-only">
-          Automatic audiobook wants: fiction only.
+          {desk.sweepEnabled ? WANTED_COPY.sweepOn : WANTED_COPY.sweepOff}
         </p>
       </section>
       {error ? <p className="alert hall-alert">{error}</p> : null}
@@ -337,34 +425,90 @@ export default function WantedPage() {
                 </button>
               ))}
             </div>
+            <div className="chip-row" role="group" aria-label="Wanted status">
+              <button
+                type="button"
+                className="chip"
+                aria-pressed={!viewingDismissed}
+                onClick={() => chooseStatus("")}
+              >
+                {WANTED_COPY.open}
+              </button>
+              <button
+                type="button"
+                className="chip"
+                aria-pressed={viewingDismissed}
+                onClick={() => chooseStatus("dismissed")}
+              >
+                {WANTED_COPY.recentlyDismissed}
+              </button>
+            </div>
             {desk.canSearch ? (
               <div className="cta-row compact">
-                <ThinkingButton
-                  type="button"
-                  className="cta compact"
-                  busy={bulkTarget === "selected"}
-                  disabled={desk.toolbar.searchSelectedDisabled || bulkBusy}
-                  onClick={searchSelected}
-                  data-testid="wanted-search-selected"
-                >
-                  {desk.toolbar.searchSelectedLabel}
-                </ThinkingButton>
-                <ThinkingButton
-                  type="button"
-                  className="cta outline compact"
-                  busy={bulkTarget === "all"}
-                  disabled={desk.toolbar.searchAllDisabled || bulkBusy}
-                  onClick={searchAll}
-                  data-testid="wanted-search-all"
-                >
-                  {desk.toolbar.searchAllLabel}
-                </ThinkingButton>
+                {viewingDismissed ? (
+                  <ThinkingButton
+                    type="button"
+                    className="cta compact"
+                    busy={bulkTarget === "restore-sweep"}
+                    disabled={desk.toolbar.restoreSweepDisabled || bulkBusy}
+                    onClick={restoreSweep}
+                  >
+                    {desk.toolbar.restoreSweepLabel}
+                  </ThinkingButton>
+                ) : (
+                  <>
+                    <ThinkingButton
+                      type="button"
+                      className="cta compact"
+                      busy={bulkTarget === "selected"}
+                      disabled={desk.toolbar.searchSelectedDisabled || bulkBusy}
+                      onClick={searchSelected}
+                      data-testid="wanted-search-selected"
+                    >
+                      {desk.toolbar.searchSelectedLabel}
+                    </ThinkingButton>
+                    <ThinkingButton
+                      type="button"
+                      className="cta outline compact"
+                      busy={bulkTarget === "all"}
+                      disabled={desk.toolbar.searchAllDisabled || bulkBusy}
+                      onClick={searchAll}
+                      data-testid="wanted-search-all"
+                    >
+                      {desk.toolbar.searchAllLabel}
+                    </ThinkingButton>
+                    <ThinkingButton
+                      type="button"
+                      className="cta outline compact"
+                      busy={bulkTarget === "dismiss-sweep"}
+                      disabled={desk.toolbar.dismissSweepDisabled || bulkBusy}
+                      onClick={dismissSweep}
+                    >
+                      {desk.toolbar.dismissSweepLabel}
+                    </ThinkingButton>
+                  </>
+                )}
+                {desk.canToggleSweep ? (
+                  <ThinkingButton
+                    type="button"
+                    className="cta outline compact"
+                    busy={bulkTarget === "sweep"}
+                    disabled={bulkBusy}
+                    onClick={toggleSweep}
+                  >
+                    {desk.sweepEnabled ? WANTED_COPY.turnSweepOff : WANTED_COPY.turnSweepOn}
+                  </ThinkingButton>
+                ) : null}
               </div>
             ) : null}
           </div>
           {desk.empty ? (
             <p className="lede" data-testid="wanted-empty">
-              {kind ? "Nothing of this kind is wanted right now." : "Nothing is wanted right now."}
+              {viewingDismissed
+                ? "Nothing restorable right now."
+                : kind
+                  ? "Nothing of this kind is wanted right now."
+                  : "Nothing is wanted right now."}
             </p>
           ) : (
             <ul className="wanted-list" data-testid="wanted-list">
@@ -401,7 +545,7 @@ export default function WantedPage() {
                           {row.workId ? <Link to={`/works/${row.workId}`}>{row.title}</Link> : row.title}
                         </p>
                         <p className="muted">
-                          {[row.author, row.kind].filter(Boolean).join(" · ")}
+                          {[row.author, row.kind, row.sourceLabel].filter(Boolean).join(" · ")}
                         </p>
                         <p className="muted" data-testid="wanted-status">
                           {row.statusLabel}
@@ -457,6 +601,17 @@ export default function WantedPage() {
                           data-testid="wanted-dismiss"
                         >
                           Dismiss
+                        </ThinkingButton>
+                      ) : null}
+                      {row.canRestore ? (
+                        <ThinkingButton
+                          type="button"
+                          className="cta compact"
+                          onClick={() => restore(row.id)}
+                          busy={busyId === row.id && busyKind === "restore"}
+                          disabled={busyId === row.id}
+                        >
+                          {WANTED_COPY.restore}
                         </ThinkingButton>
                       ) : null}
                     </div>
