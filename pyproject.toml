@@ -30,7 +30,7 @@ web = [
     "uvicorn[standard]>=0.32.0,<1",
     "pydantic>=2.0.0,<3",
     "python-multipart>=0.0.9,<1",
-    "mutagen>=1.47.0,<2",
+    "mutagen>=1.48.1,<2",
 ]
 dev = [
     "coverage>=7.0,<8",
