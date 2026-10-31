@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-31T06:07:22Z",
+  "generated_at": "2026-10-31T06:26:22Z",
   "releases": [
     {
       "version": "0.6.12",
@@ -16,6 +16,27 @@
             "Miss backoff is 6 hours, then 12 hours (no weekly cap). Sprint 3.3 still owes the 500-call/day host budget.",
             "Find beyond uses the same ladder and match rules. Extra indexers stay on Find; the hourly Wanted pass is still NZBFinder only.",
             "`rapidfuzz` scores cleaned titles. Convert-fails-twice remains a Sorting slip."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "0.6.4",
+      "date": "2026-10-31",
+      "summary": "",
+      "highlights": [
+        "**Truth and theme.** Lights Up body copy meets 4.5:1 on warm paper without dulling Lights Down; gilt is for words and controls, not decoration. Settings Subscribe and Save actually persist. Continue only appears after you Read or Listen, finishing a title is private unless you tell the house, Purge shells asks you to type the count after a snapshot, and What’s New greets keepers only."
+      ],
+      "sections": [
+        {
+          "title": "Changed",
+          "bullets": [
+            "Lights Up `--paper` / `--gilt-text` / `--control-border`; foyer stays `lights-down`; phantom token aliases; grip below cover art; slip wrap; rail `scroll-padding-inline`.",
+            "RSS and notification prefs are no longer nested `<form>`s inside Settings.",
+            "Honesty copy: forgotten-password is not a join link; Beyond empty is not “Nothing on Usenet”; dead notification kinds hidden; Settings save feedback clears.",
+            "Continue rail requires ≥1% progress; finished broadcast is opt-in (`share` or a whisper).",
+            "Room wash control removed. Purge shells preview + typed count + `pre-purge-shells-*.db` snapshot.",
+            "What’s New owner/op only. `/` search hint hides on coarse pointers."
           ]
         }
       ]

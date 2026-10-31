@@ -31,7 +31,7 @@
 .brand-mark {
   width: 28px;
   height: 28px;
-  color: var(--gilt);
+  color: var(--gilt-text);
 }
 
 .nav-links {
@@ -708,7 +708,7 @@
 }
 
 .profile-font-value {
-  color: var(--gilt);
+  color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
 

@@ -97,7 +97,7 @@ test.describe("Beautiful Finished", () => {
     await expect(page.getByTestId("family-whispers").getByText("Left it warm on the table.")).toBeAttached();
   });
 
-  test("Just finished completes without a whisper", async ({ page }) => {
+  test("Finished keep-private completes without a whisper", async ({ page }) => {
     await mockWorkPage(page);
     await page.goto("/works/work-kindred");
     await expect(page.getByRole("heading", { name: "Kindred" })).toBeVisible({ timeout: 30_000 });
@@ -106,7 +106,7 @@ test.describe("Beautiful Finished", () => {
     await page.getByRole("button", { name: "Finished" }).click();
     const ceremony = page.getByTestId("finish-ceremony");
     await expect(ceremony).toBeVisible();
-    await ceremony.getByRole("button", { name: "Just finished" }).click();
+    await ceremony.getByRole("button", { name: "Finished — keep it to myself" }).click();
     await expect(ceremony).toHaveCount(0);
     await expect(page.getByText(/lamp remembers/i)).toBeAttached();
   });

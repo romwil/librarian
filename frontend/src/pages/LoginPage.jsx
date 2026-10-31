@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api.js";
 import { FieldLabel } from "../components/FieldHelp.jsx";
 import GlassDoor from "../components/GlassDoor.jsx";
-import { FIELD_HELP, humanError } from "../copy.js";
+import { FIELD_HELP, FOYER_LEDE, humanError } from "../copy.js";
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -27,8 +27,8 @@ export default function LoginPage() {
     <GlassDoor
       eyebrow="Household library"
       title="The Reading Room"
-      lede="A quiet door. No covers of household titles on the glass — only lamp light and paper dust."
-      footer={<Link to="/join">Have a join link?</Link>}
+      lede={FOYER_LEDE}
+      footer={<Link to="/join">Got an invite link?</Link>}
     >
       {error ? <p className="alert">{error}</p> : null}
       <form className="login-form" onSubmit={onSubmit}>

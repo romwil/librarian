@@ -28,9 +28,10 @@ test("top nav is Hall, Stacks, Search, Favorites, and Wanted, with Downloads and
   assert.match(chromeSrc, /user\.role === "owner" \|\| user\.role === "op"/);
 });
 
-test("account menu holds theme, lamp, People, Maintain, and Settings", () => {
+test("account menu holds theme, People, Maintain, and Settings", () => {
   assert.match(menuSrc, /profile-theme-section/);
-  assert.match(menuSrc, /profile-ambient-section/);
+  assert.doesNotMatch(menuSrc, /profile-ambient-section/);
+  assert.doesNotMatch(menuSrc, /Room wash/);
   assert.match(menuSrc, />\s*People\s*</);
   assert.match(menuSrc, />\s*Maintain\s*</);
   assert.match(menuSrc, />\s*Settings\s*</);
@@ -80,6 +81,10 @@ test("phone tab bar is fixed to the viewport and the skip link is gone", () => {
   assert.match(stylesSrc, /scroll-padding-bottom:\s*var\(--mobile-tabbar-clearance\)/);
   assert.match(stylesSrc, /padding-bottom:\s*var\(--mobile-tabbar-clearance\)/);
   assert.match(stylesSrc, /min-height:\s*44px/);
+});
+
+test("search slash hint hides on coarse pointers", () => {
+  assert.match(stylesSrc, /@media \(pointer:\s*coarse\)[\s\S]*\.search-field kbd[\s\S]*display:\s*none/);
 });
 
 test("/browse is the stacks room and /find redirects to Search", () => {

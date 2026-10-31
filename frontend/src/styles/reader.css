@@ -253,7 +253,7 @@ body:has(.listen-room) .work-hero-scrim {
 
 .listen-progress input[type="range"] {
   width: 100%;
-  accent-color: var(--gilt);
+  accent-color: var(--gilt-text);
 }
 
 .listen-times {
@@ -384,6 +384,6 @@ body:has(.listen-room) .work-hero-scrim {
   color: var(--muted);
 }
 .mock-nav a.is-here {
-  color: var(--gilt);
+  color: var(--gilt-text);
   border-color: color-mix(in srgb, var(--gilt) 40%, transparent);
 }

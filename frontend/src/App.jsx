@@ -72,7 +72,7 @@ export default function App() {
       reviewCount={reviewCount}
       inboxUnread={inboxUnread}
     >
-      <WhatsNewGate />
+      <WhatsNewGate user={user} />
       <Outlet context={{ user, features, setUser, reviewCount, inboxUnread }} />
     </AppChrome>
   );

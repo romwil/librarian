@@ -5,10 +5,10 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 
 from librarian.notifications.kinds import (
-    KIND_CATALOG,
     NOTIFICATION_KINDS,
     normalize_kind,
     normalize_kind_pref,
+    public_kind_catalog,
 )
 
 
@@ -58,12 +58,21 @@ def get_kind_pref(user_prefs: Dict[str, Any], kind: str) -> Dict[str, Any]:
     return normalize_kind_pref(cleaned, raw_map.get(cleaned))
 
 
-def public_notification_prefs(user_prefs: Dict[str, Any]) -> Dict[str, Any]:
+def public_notification_prefs(
+    user_prefs: Dict[str, Any], *, role: str = "reader"
+) -> Dict[str, Any]:
     """Shape returned by GET /api/notifications/prefs."""
+    catalog = public_kind_catalog(role=role)
+    live_ids = {str(row["id"]) for row in catalog}
+    kinds = {
+        kind: pref
+        for kind, pref in kind_prefs_map(user_prefs).items()
+        if kind in live_ids
+    }
     return {
         "notification_email": resolve_notification_email(user_prefs) or "",
-        "kinds": kind_prefs_map(user_prefs),
-        "catalog": KIND_CATALOG,
+        "kinds": kinds,
+        "catalog": catalog,
     }
 
 

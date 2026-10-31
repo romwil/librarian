@@ -11,6 +11,8 @@ export default function ConfirmDialog({
   onConfirm,
   onCancel,
   busy = false,
+  confirmDisabled = false,
+  confirmTestId = "confirm-dialog-confirm",
   returnFocusRef = null,
   testId = "confirm-dialog",
 }) {
@@ -75,7 +77,14 @@ export default function ConfirmDialog({
             {cancelLabel}
           </button>
           {confirmLabel && onConfirm ? (
-            <ThinkingButton type="button" className="cta" onClick={() => onConfirm()} busy={busy}>
+            <ThinkingButton
+              type="button"
+              className="cta"
+              onClick={() => onConfirm()}
+              busy={busy}
+              disabled={confirmDisabled}
+              data-testid={confirmTestId}
+            >
               {confirmLabel}
             </ThinkingButton>
           ) : null}

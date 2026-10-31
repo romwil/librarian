@@ -36,44 +36,73 @@ KIND_CATALOG: List[Dict[str, Any]] = [
         "label": "Asked slip needs confirm",
         "help": "When a Request needs you to confirm before the house acts.",
         "default": {"enabled": True, "channels": ["inbox"], "timing": "realtime"},
+        "live": False,
+        "roles": ("owner", "op"),
     },
     {
         "id": "arrived",
         "label": "Arrived (your Request)",
         "help": "When something you asked for lands on the shelf.",
         "default": {"enabled": True, "channels": ["inbox"], "timing": "realtime"},
+        "live": False,
+        "roles": ("owner", "op", "reader"),
     },
     {
         "id": "needs_you",
         "label": "Needs you (Review)",
         "help": "When Review slips are waiting for a calm sort.",
         "default": {"enabled": True, "channels": ["inbox"], "timing": "realtime"},
+        "live": False,
+        "roles": ("owner", "op"),
     },
     {
         "id": "quiet_hours_wake",
         "label": "Quiet hours wake",
         "help": "A short warm digest when quiet hours end and parked slips stir.",
         "default": {"enabled": True, "channels": ["inbox"], "timing": "daily"},
+        "live": False,
+        "roles": ("owner", "op", "reader"),
     },
     {
         "id": "newsletter",
         "label": "Library newsletter",
         "help": "A personalized letter about recent arrivals, shaped by what you read, request, and keep close. Weekly or monthly; email only when you opt in and Mail is configured.",
         "default": {"enabled": False, "channels": ["inbox", "email"], "timing": "weekly"},
+        "live": False,
+        "roles": ("owner", "op", "reader"),
     },
     {
         "id": "someone_finished",
         "label": "Someone finished",
-        "help": "A quiet household whisper when someone finishes a title.",
+        "help": "A quiet household whisper when someone finishes a title. The house sees the name and the title.",
         "default": {"enabled": True, "channels": ["inbox"], "timing": "realtime"},
+        "live": True,
+        "roles": ("owner", "op", "reader"),
+        "email_offered": False,
     },
     {
         "id": "shelf_health",
         "label": "Shelf health",
         "help": "Shells, blends, and permission locks that need a tend.",
         "default": {"enabled": True, "channels": ["inbox"], "timing": "daily"},
+        "live": False,
+        "roles": ("owner", "op"),
     },
 ]
+
+
+def public_kind_catalog(*, role: str = "reader") -> List[Dict[str, Any]]:
+    """Kinds that actually fire, filtered for this member's role (GRO-019 hide-only)."""
+    cleaned = str(role or "reader").strip().lower() or "reader"
+    out: List[Dict[str, Any]] = []
+    for row in KIND_CATALOG:
+        if not row.get("live"):
+            continue
+        allowed = tuple(row.get("roles") or ("owner", "op", "reader"))
+        if cleaned not in allowed:
+            continue
+        out.append(dict(row))
+    return out
 
 KIND_DEFAULTS: Dict[str, Dict[str, Any]] = {
     str(row["id"]): dict(row["default"]) for row in KIND_CATALOG

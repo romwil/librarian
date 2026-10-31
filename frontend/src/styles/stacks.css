@@ -99,7 +99,7 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
   background: color-mix(in srgb, var(--accent-text) 62%, transparent);
-  color: var(--gilt);
+  color: var(--gilt-text);
   border: 1px solid color-mix(in srgb, var(--gilt) 35%, transparent);
 }
 .cover:hover,
@@ -505,7 +505,7 @@
   height: var(--hero-search-h);
   padding: 0 18px 0 20px;
   border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--gilt) 28%, var(--border));
+  border: 1px solid var(--control-border);
   background: color-mix(in srgb, var(--surface-raised) 70%, transparent);
   box-shadow:
     0 0 0 6px var(--accent-soft),
@@ -533,8 +533,13 @@
   letter-spacing: 0.06em;
   padding: 4px 8px;
   border-radius: 6px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--control-border);
   color: var(--muted);
+}
+@media (pointer: coarse) {
+  .search-field kbd {
+    display: none;
+  }
 }
 
 .rail {
@@ -586,6 +591,7 @@
   overflow-x: auto;
   padding: 6px var(--gutter) 18px;
   scroll-snap-type: x mandatory;
+  scroll-padding-inline: var(--gutter);
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
 }
@@ -817,7 +823,7 @@ a.chip {
   height: var(--tap-min);
   padding: 0 14px;
   border-radius: var(--radius);
-  border: 1px solid var(--border);
+  border: 1px solid var(--control-border);
   background: color-mix(in srgb, var(--bg) 55%, transparent);
   /* 16px floor — iOS Safari zooms the page on focus below this. */
   font-size: 16px;
@@ -843,7 +849,7 @@ a.chip {
   min-height: var(--tap-min);
   padding: 0 10px;
   border-radius: var(--radius);
-  border: 1px solid var(--border);
+  border: 1px solid var(--control-border);
   background: color-mix(in srgb, var(--bg) 55%, transparent);
   color: var(--text);
   font: inherit;
@@ -861,7 +867,7 @@ a.chip {
   padding: 4px 10px;
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--gilt) 35%, transparent);
-  color: var(--gilt);
+  color: var(--gilt-text);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.14em;
@@ -952,7 +958,7 @@ a.chip {
 .typeahead-option.is-active,
 .typeahead-option:hover {
   background: color-mix(in srgb, var(--accent-soft) 70%, transparent);
-  color: var(--gilt);
+  color: var(--gilt-text);
 }
 .typeahead-value {
   overflow: hidden;
@@ -1303,8 +1309,8 @@ body:has(.peek) .topbar {
   color: var(--accent-text);
 }
 .live-chip.is-failed {
-  background: color-mix(in srgb, var(--danger) 88%, var(--surface));
-  color: #fbf6eb;
+  background: var(--accent);
+  color: var(--accent-text);
 }
 .live-chip.is-review {
   background: color-mix(in srgb, var(--gilt) 55%, var(--danger));
@@ -1438,7 +1444,7 @@ button.cover {
   gap: 0.35rem;
   grid-row: 1 / span 2;
   cursor: pointer;
-  color: var(--gilt);
+  color: var(--gilt-text);
   font-family: var(--font-mono);
   font-size: 0.95rem;
   font-weight: 700;
@@ -1978,10 +1984,25 @@ button.cover {
   position: relative;
 }
 .work-action-menu {
-  position: absolute;
-  left: 8px;
-  bottom: 8px;
+  position: static;
   z-index: 5;
+}
+.cover-unit .work-action-menu {
+  align-self: flex-end;
+}
+@media (hover: hover) and (pointer: fine) {
+  .cover-unit .work-action-menu {
+    opacity: 0;
+  }
+  .cover-unit:hover .work-action-menu,
+  .cover-unit:focus-within .work-action-menu {
+    opacity: 1;
+  }
+}
+.work-hero .work-action-menu,
+.cta-row .work-action-menu {
+  position: static;
+  opacity: 1;
 }
 /* Peek sheet: the grip is a column row, not a cover overlay. On a phone
    it wraps under Read so it cannot cover the title, Read, or Open full page. */
