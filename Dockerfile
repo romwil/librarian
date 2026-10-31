@@ -36,14 +36,10 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates gosu unar par2 ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Python extras from pyproject only. Stub package + stub README so edits to
-# librarian/, frontend/src, README, or LICENSE do not re-download wheels.
-COPY pyproject.toml ./
-RUN mkdir -p librarian \
-    && printf 'Librarian\n' > README.md \
-    && printf '# build stub\n' > librarian/__init__.py
+# Hashed lockfile (ARCH-010). Edits to librarian/ or the SPA reuse this layer.
+COPY pyproject.toml requirements.lock ./
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install ".[web]"
+    pip install --require-hashes -r requirements.lock
 
 # Real sources; --no-deps keeps the extras layer when only Python/SPA changes.
 COPY README.md LICENSE ./

@@ -425,10 +425,10 @@ def _pre_slip_gate(
     identity: Dict[str, Any],
     folder: Path,
     files: List[Path],
-    indexer_item: Optional[Dict[str, Any]],
-    convert_failed_twice: bool,
 ) -> Dict[str, Any]:
-    """Checks before a new slip: purge cooldown, bad release, duplicate evidence.
+    """Checks before a new slip: purge cooldown, duplicate evidence.
+
+    Convert-fails-twice is a Sorting slip (BD-3), not a silent bad-release dismiss.
 
     Returns ``{"result": <organize result>}`` to stop here, else flags for the slip.
     """
@@ -445,42 +445,6 @@ def _pre_slip_gate(
                 "files": names,
                 "skipped_cooldown": True,
                 "reason": "cooldown",
-            }
-        }
-    item = indexer_item or {}
-    if convert_failed_twice and identity.get("review_reason") == REVIEW_CONVERT:
-        from librarian.bad_releases import release_bad_wanted
-
-        selected = item.get("selected") if isinstance(item.get("selected"), dict) else {}
-        released = release_bad_wanted(
-            db,
-            reason=REVIEW_CONVERT,
-            job_id=str(item.get("job_id") or "") or None,
-            guid=str(item.get("guid") or "") or None,
-            host_id=str(selected.get("host_id") or item.get("host_id") or "") or None,
-        )
-        if released["released"]:
-            return {
-                "result": {
-                    "organized": False,
-                    "work": None,
-                    "identity": identity,
-                    "files": names,
-                    "released_bad": True,
-                    "reason": "bad_release",
-                    "wanted_id": released.get("wanted_id"),
-                }
-            }
-        return {
-            "result": {
-                "organized": False,
-                "work": None,
-                "identity": identity,
-                "files": names,
-                "dismissed_bad": True,
-                "reason": "bad_release",
-                "problem": REVIEW_CONVERT,
-                "missing": released.get("missing") or "",
             }
         }
     reason = str(identity.get("review_reason") or "")
@@ -659,14 +623,13 @@ def organize_identified(
     preview = identify_completed(folder, **identify_kwargs)
     kind = str((identity_overrides or {}).get("kind") or preview["identity"].get("kind") or "")
     converted = maybe_convert_payload(folder, kind, **convert_kwargs)
-    # A convert that fails once is tried again. A second failure is a bad release.
-    convert_failed_twice = False
+    # A convert that fails once is tried again. A second failure stays a Sorting slip
+    # (identify already sets convert_failed for CBR/PDF without a CBZ). An already-CBZ
+    # comic is not a convert failure — maybe_convert_payload is a no-op there.
     if not converted.get("converted") and kind == KIND_COMIC:
         again = maybe_convert_payload(folder, kind, **convert_kwargs)
         if again.get("converted"):
             converted = again
-        else:
-            convert_failed_twice = True
     result = (
         identify_completed(folder, **identify_kwargs)
         if converted["converted"] or unpacked["unpacked"]
@@ -791,8 +754,6 @@ def organize_identified(
                 identity=identity,
                 folder=folder,
                 files=files,
-                indexer_item=indexer_item,
-                convert_failed_twice=convert_failed_twice,
             )
             if gated.get("result") is not None:
                 return gated["result"]

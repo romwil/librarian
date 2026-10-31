@@ -39,10 +39,20 @@ function npm(args, cwd) {
 }
 
 const distDir = path.join(ROOT, "frontend", "dist");
-if (!existsSync(distDir)) {
+const skipBuild = process.env.E2E_SKIP_BUILD === "1";
+if (skipBuild) {
+  if (!existsSync(distDir)) {
+    console.error("E2E_SKIP_BUILD=1 but frontend/dist is missing");
+    process.exit(1);
+  }
+} else {
+  // Always rebuild so Playwright tests this checkout, not a stale SPA (ARCH-012).
+  // CI never sets E2E_SKIP_BUILD.
   console.log("Building frontend for E2E...");
   const frontendDir = path.join(ROOT, "frontend");
-  npm(["install"], frontendDir);
+  if (process.env.CI || !existsSync(path.join(frontendDir, "node_modules"))) {
+    npm(["ci"], frontendDir);
+  }
   npm(["run", "build"], frontendDir);
 }
 

@@ -75,11 +75,10 @@ test.describe("Peek that teaches", () => {
       const peek = page.getByRole("dialog", { name: "Empty Shell" });
       await expect(peek).toBeVisible({ timeout: 15_000 });
       await expect(peek.getByText(note)).toBeVisible();
-      // A shell has no file, so Read stays off the page. Favorite is in the grip.
-      await expect(page.getByRole("button", { name: "Read", exact: true })).toHaveCount(0);
-      await expect(page.getByRole("link", { name: "Read", exact: true })).toHaveCount(0);
-      await expect(page.getByRole("link", { name: "Download", exact: true })).toHaveCount(0);
-      await expect(page.getByRole("button", { name: "Favorite", exact: true })).toHaveCount(0);
+      // A shell has no file, so the primary peek CTA is not Read/Download. Favorite is in the grip.
+      await expect(peek.getByTestId("peek-open")).toHaveCount(0);
+      await expect(peek.getByTestId("peek-listen")).toHaveCount(0);
+      await expect(peek.getByRole("button", { name: "Favorite", exact: true })).toHaveCount(0);
       const grip = peek.getByRole("button", { name: "Actions for Empty Shell", exact: true });
       await grip.focus();
       await expect(grip).toBeFocused();

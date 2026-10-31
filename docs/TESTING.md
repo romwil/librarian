@@ -31,11 +31,14 @@ Every user-facing change updates the relevant guide **and** adds a benefit-led `
 
 ```bash
 python3 -m venv .venv
-.venv/bin/pip install -e ".[web,dev]"
+.venv/bin/pip install --require-hashes -r requirements-dev.lock
+.venv/bin/pip install --no-deps -e .
 LIBRARIAN_PBKDF2_ITERATIONS=1000 LIBRARIAN_SKIP_APP_BOOT=1 \
   LIBRARIAN_SESSION_SECRET=unit-test-session-secret-value \
   .venv/bin/python -m pytest tests/ -v
 ```
+
+GitHub Actions (`.github/workflows/ci.yml`) runs pytest, frontend unit tests, and Playwright on **8794** on every push and pull request. Do not set `E2E_SKIP_BUILD` in CI — the e2e launcher rebuilds `frontend/dist` so the suite cannot pass against a stale SPA.
 
 Coverage is configured in `pyproject.toml` (`--cov=librarian --cov-fail-under=70`).
 **Every major-build sprint** must keep this floor and `cd frontend && npm test` green — new behavior

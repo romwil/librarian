@@ -286,7 +286,7 @@ test.describe("Canonical works", () => {
     expect(loaded.searchParams.get("end")).toBe("2026-04-30");
 
     await page.getByRole("button", { name: "Add missing", exact: true }).click();
-    await expect(page.getByRole("status")).toHaveText("Added 1 missing title to Wanted.");
+    await expect(page.getByText("Added 1 missing title to Wanted.", { exact: true })).toBeVisible();
     expect(posted).toHaveLength(1);
     const body = posted[0] as { items: { title: string }[] };
     expect(body.items.map((item) => item.title)).toEqual(["Missing Novel", "Already Here"]);

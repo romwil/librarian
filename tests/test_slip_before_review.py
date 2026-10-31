@@ -279,6 +279,7 @@ def test_unreadable_rar_is_a_skip_not_a_slip(tmp_path, monkeypatch):
 
 
 def test_convert_that_fails_twice_is_a_slip(tmp_path, monkeypatch):
+    """BD-3: a second failed conversion is a Sorting slip a person must sort."""
     monkeypatch.setenv("LIBRARIAN_FS_ROOT", str(tmp_path))
     folder = tmp_path / "Vampirella 006"
     folder.mkdir()
@@ -300,8 +301,13 @@ def test_convert_that_fails_twice_is_a_slip(tmp_path, monkeypatch):
     )
     assert calls["n"] == 2
     assert result["organized"] is False
-    assert result["work"]["review_reason"] == "convert_failed"
-    assert result["work"]["review_state"] == "needs_review"
+    assert result.get("dismissed_bad") is not True
+    assert result.get("released_bad") is not True
+    work = result["work"]
+    assert work is not None
+    assert work["review_reason"] == "convert_failed"
+    assert work["review_state"] == "needs_review"
+    assert db.count_works(review_state="needs_review") == 1
 
 
 def test_accept_the_clear_ones_shelves_path_clear_rows_only(tmp_path):

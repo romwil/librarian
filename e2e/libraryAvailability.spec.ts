@@ -66,10 +66,12 @@ test.describe("Library availability", () => {
     await mockBrowse(page);
     await page.goto("/browse");
     await dismissWhatsNewIfPresent(page);
-    await expect(page.getByText("Circe")).toBeVisible();
-    await expect(page.getByText("Madeline Miller")).toBeVisible();
-    await expect(page.getByText("Dune")).toBeVisible();
-    await expect(page.getByText("Frank Herbert")).toBeVisible();
+    const circe = page.getByRole("button", { name: "Circe", exact: true });
+    const dune = page.getByRole("button", { name: "Dune", exact: true });
+    await expect(circe).toBeVisible();
+    await expect(circe).toContainText("Madeline Miller");
+    await expect(dune).toBeVisible();
+    await expect(dune).toContainText("Frank Herbert");
     await expect(page.getByText("The audiobook is wanted")).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Listen" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Add to Wanted" })).toHaveCount(0);
