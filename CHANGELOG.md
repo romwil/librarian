@@ -15,6 +15,21 @@
 - **Maintain indexer lanterns.** Lights Down no longer paints pale paper cards with tan status copy. Lantern names, weather sentences, and Mute sit on raised leather; an idle host is a hollow ring so flicker vs silent is not hue-only. Safe undo uses the same dark wash. Lights Up stays ink on paper.
 - **Library card text size.** Clicking Text size or the slider no longer closes the Library card. Ambient room layering had flattened the topbar under Hall, so the panel was visible through empty Hall and the click counted as outside; range thumb retargets onto `document` are hit-tested too.
 
+## [0.6.18] — 2026-10-31
+
+### Highlights
+
+- **Fonts stay in the house.** The foyer and every room load Literata, Source Sans, and Plex Mono from the box. Google Fonts is gone. A Content-Security-Policy keeps a downloaded EPUB from running as you. Confirm on Downloads is still the only way a download starts.
+
+### Changed
+
+- Self-hosted WOFF2 (Latin + Latin-ext) hashed into `/assets`, preloaded for Literata and Source Sans, `font-display: swap`.
+- Every response sends CSP (`script-src 'self'`, `frame-ancestors 'none'`), `nosniff`, `Referrer-Policy: no-referrer`, and related headers. File downloads are `sandbox`. Uvicorn no longer advertises `server`.
+- Unsafe `/api` methods need a matching `Origin` (or `Referer`) and `X-Librarian: 1`, so a sibling app on the same LAN IP cannot press Librarian’s buttons.
+- Add a volume lists configured shelves, the watch drop folder, and SAB complete — not the rest of `/data`.
+- Gzip for responses over 1 KB; hashed `/assets` are `Cache-Control: immutable`. `index.html` stays `no-cache`.
+- Theme boot moved out of an inline script so CSP does not need `'unsafe-inline'` for JavaScript.
+
 ## [0.6.17] — 2026-10-31
 
 ### Highlights

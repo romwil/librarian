@@ -4,6 +4,7 @@
    Import order is the cascade. Chrome is last: `.room > *` and the topbar /
    tab-bar restores must win over same-specificity rules in every room. */
 
+@import "./styles/fonts.css";
 @import "./styles/motion.css";
 @import "./styles/tokens.css";
 @import "./styles/stacks.css";

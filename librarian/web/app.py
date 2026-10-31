@@ -10,6 +10,7 @@ from typing import Optional
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.gzip import GZipMiddleware
 
 from librarian import __version__
 from librarian.auth import has_real_owner, is_public_handshake, seed_env_owner, user_from_request
@@ -43,6 +44,7 @@ from librarian.web.routers import (
     register_wanted_routes,
     register_works_routes,
 )
+from librarian.web.security import perimeter_middleware
 
 
 def _data_dir() -> Path:
@@ -135,6 +137,10 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
         request.state.user = user
         return await call_next(request)
 
+    @app.middleware("http")
+    async def perimeter(request: Request, call_next):
+        return await perimeter_middleware(request, call_next)
+
     # Added after auth_gate so this wrapper is outermost and 401s still log.
     @app.middleware("http")
     async def access_log(request: Request, call_next):
@@ -194,6 +200,8 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
                 return FileResponse(index, headers={"Cache-Control": "no-cache"})
             return JSONResponse({"detail": "SPA is not built"}, status_code=404)
 
+    # Outermost: compress JSON and hashed assets. Proxy can skip already-gzipped.
+    app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
     return app
 
 

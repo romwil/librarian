@@ -27,6 +27,7 @@ def main() -> None:
         workers=1,
         log_config=None,
         access_log=False,
+        server_header=False,
     )
 
 

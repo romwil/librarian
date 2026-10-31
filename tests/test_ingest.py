@@ -215,7 +215,7 @@ def test_reader_forbidden_on_ingest_and_fs(tmp_path, monkeypatch):
 
 
 def test_op_can_add_to_library(tmp_path, monkeypatch):
-    settings = _settings(tmp_path)
+    settings = _settings(tmp_path, watch_root=str(tmp_path / "inbox"))
     save_settings(tmp_path, settings)
     source = tmp_path / "inbox" / "Le Guin - The Left Hand of Darkness 9780441478125.epub"
     source.parent.mkdir(parents=True)

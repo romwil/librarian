@@ -234,9 +234,61 @@ def expand_album_context(path: Path) -> Path:
     return path
 
 
-def list_dir(raw: str = "") -> Dict[str, Any]:
-    root = data_fs_root()
-    path = confined_path(raw, must_exist=True) if str(raw or "").strip() else root
+BROWSE_ROOT_FIELDS = MEDIA_ROOT_FIELDS + ("complete_root", "watch_root")
+
+
+def fs_browse_roots(settings: Settings) -> List[Path]:
+    """Configured shelves, SAB complete, and the watch drop folder. Not all of /data."""
+    found: List[Path] = []
+    seen = set()
+    for field in BROWSE_ROOT_FIELDS:
+        raw = str(getattr(settings, field, "") or "").strip()
+        if not raw:
+            continue
+        try:
+            resolved = confined_path(raw, must_exist=False)
+        except PathDenied:
+            continue
+        key = str(resolved)
+        if key in seen:
+            continue
+        seen.add(key)
+        found.append(resolved)
+    return found
+
+
+def _parent_within_roots(path: Path, roots: Sequence[Path]) -> Optional[str]:
+    for root in roots:
+        try:
+            path.relative_to(root)
+        except ValueError:
+            continue
+        if path == root:
+            return None
+        return str(path.parent)
+    return None
+
+
+def list_dir(raw: str = "", settings: Optional[Settings] = None) -> Dict[str, Any]:
+    """List a configured shelf folder. Empty path lists the roots, not all of /data."""
+    if settings is None:
+        from librarian.config import load_merged_settings
+
+        data_dir = Path(os.environ.get("DATA_DIR") or "/config")
+        settings = load_merged_settings(data_dir)
+    roots = fs_browse_roots(settings)
+    text = str(raw or "").strip()
+    if not text:
+        entries = [
+            {"name": root.name or str(root), "path": str(root), "kind": "dir"}
+            for root in roots
+            if root.is_dir() and not skipped_name(root.name)
+        ]
+        entries.sort(key=lambda row: str(row["name"]).lower())
+        return {"root": "", "path": "", "parent": None, "entries": entries}
+    if not roots:
+        raise PathDenied("Path is outside the configured shelves")
+    path = _resolve_under_roots(text, roots, must_exist=True, rewrite_host_data=True)
     if not path.is_dir():
         raise PathDenied("Not a folder")
     entries: List[Dict[str, Any]] = []
@@ -248,20 +300,22 @@ def list_dir(raw: str = "") -> Dict[str, Any]:
         if skipped_name(child.name):
             continue
         try:
-            confined_path(str(child), must_exist=False)
+            _resolve_under_roots(str(child), roots, must_exist=False, rewrite_host_data=True)
         except PathDenied:
             continue
         kind = "dir" if child.is_dir() else "file"
         if child.is_symlink():
             try:
-                confined_path(str(child.resolve()), must_exist=False)
+                _resolve_under_roots(str(child.resolve()), roots, must_exist=False, rewrite_host_data=False)
             except (PathDenied, OSError):
                 continue
         entries.append({"name": child.name, "path": str(child), "kind": kind})
-    parent: Optional[str] = None
-    if path != root:
-        parent = str(path.parent)
-    return {"root": str(root), "path": str(path), "parent": parent, "entries": entries}
+    return {
+        "root": "",
+        "path": str(path),
+        "parent": _parent_within_roots(path, roots),
+        "entries": entries,
+    }
 
 
 def _title_for_path(path: Path) -> str:

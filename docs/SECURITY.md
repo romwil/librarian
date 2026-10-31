@@ -75,6 +75,8 @@ SPA ──no session──► /login (foyer) or /join?token=
 | **S14** | High | Rate limiter trusted `X-Forwarded-For` on a direct LAN bind. | Rotate spoofed IPs to bypass login / invite throttles. | **Mitigated** | Ignore forwarded headers unless `LIBRARIAN_TRUST_PROXY_HEADERS=1`. |
 | **S15** | Medium | FastAPI `/docs` / OpenAPI without auth. | Map mutate endpoints from the LAN. | **Mitigated** | Docs disabled (`docs_url=None`). |
 | **S18** | High | Invite redeem created the user then burned the token in a second write. | Crash window: unburned token or orphan user; replay. | **Mitigated** | HMAC on the URL token; hash at rest; insert + redeem in one transaction. |
+| **S19** | High | No CSP; EPUB iframes could run script as the signed-in member. | Hostile Usenet EPUB acts as the reader (or owner). | **Mitigated** | App CSP `script-src 'self'` (no Google Fonts). File download/stream uses `sandbox`. Self-hosted WOFF2. |
+| **S20** | Medium | Body-less mutating routes trusted SameSite alone. | Sibling app on the same IP presses confirm / purge. | **Mitigated** | Origin/Referer must match this origin; `X-Librarian: 1` on POST/PUT/PATCH/DELETE `/api`. |
 
 ## Operator checklist
 

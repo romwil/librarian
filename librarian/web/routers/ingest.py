@@ -50,7 +50,7 @@ def register_ingest_routes(app: FastAPI, deps: WebDeps) -> None:
     def fs_list(request: Request, path: str = ""):
         require_role(request.state.user, "owner", "op")
         try:
-            return list_dir(path)
+            return list_dir(path, settings=settings())
         except PathDenied as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
 
