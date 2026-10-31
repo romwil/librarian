@@ -120,7 +120,6 @@ class ReviewRepository(RepositoryBase):
         conn.execute("DELETE FROM shelf_items WHERE work_id = ?", (work_id,))
         conn.execute("DELETE FROM progress WHERE work_id = ?", (work_id,))
         conn.execute("DELETE FROM whispers WHERE work_id = ?", (work_id,))
-        conn.execute("DELETE FROM works_fts WHERE work_id = ?", (work_id,))
         conn.execute("DELETE FROM jobs WHERE work_id = ?", (work_id,))
         conn.execute("DELETE FROM review_suggestions WHERE work_id = ?", (work_id,))
         conn.execute("DELETE FROM review_diagnosis WHERE work_id = ?", (work_id,))

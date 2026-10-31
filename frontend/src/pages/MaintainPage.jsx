@@ -145,6 +145,12 @@ export default function MaintainPage() {
   const [cleanupBusy, setCleanupBusy] = useState(false);
   const [cleanupAction, setCleanupAction] = useState("");
   const [cleanupNote, setCleanupNote] = useState("");
+  const [mergePreview, setMergePreview] = useState(null);
+  const [mergeBusy, setMergeBusy] = useState(false);
+  const [mergeNote, setMergeNote] = useState("");
+  const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
+  const [mergeTyped, setMergeTyped] = useState("");
+  const mergeButtonRef = useRef(null);
   const [morningBrief, setMorningBrief] = useState(null);
   // Progressive load: start quiet so Maintain chrome paints before desk cards.
   const [morningBriefLoading, setMorningBriefLoading] = useState(false);
@@ -997,6 +1003,13 @@ export default function MaintainPage() {
           {Array.isArray(purgePreview?.sample) && purgePreview.sample.length ? (
             <p className="muted">Examples: {purgePreview.sample.slice(0, 5).join(" · ")}</p>
           ) : null}
+          {purgePreview?.kept_reasons ? (
+            <p className="muted">
+              Kept: {Number(purgePreview.kept_reasons.wishlist_stub || 0)} wishlist stubs ·{" "}
+              {Number(purgePreview.kept_reasons.has_payload || 0)} still have files on disk ·{" "}
+              {Number(purgePreview.kept_reasons.needs_review || 0)} Sorting slips
+            </p>
+          ) : null}
           <div className="field">
             <label htmlFor="purge-shells-count">
               Type {Number(purgePreview?.would_purge ?? 0)} to confirm
@@ -1043,7 +1056,9 @@ export default function MaintainPage() {
         <p className="kicker">Catalog</p>
         <h2>Canonical cleanup</h2>
         <p className="lede">
-          Preview hashes, author aliases, duplicate merges, editions, and quarantine first. Title-and-author matches stay on Sorting.
+          Preview hashes, author aliases, duplicate merges, editions, and quarantine first.
+          Approve takes a named snapshot; that file is the rollback, not Safe undo.
+          Title-and-author matches stay on Sorting.
         </p>
         <div className="cta-row">
           <ThinkingButton
@@ -1114,9 +1129,107 @@ export default function MaintainPage() {
             {Number(cleanupStatus.report.quarantine_bytes || 0).toLocaleString()} bytes eligible for quarantine ·{" "}
             {Number(cleanupStatus.report.audiobooks_to_relayout || 0)} audiobook folder
             {Number(cleanupStatus.report.audiobooks_to_relayout || 0) === 1 ? "" : "s"} to re-layout
+            {cleanupStatus.report.snapshot ? ` · snapshot ${cleanupStatus.report.snapshot}` : ""}
           </p>
         ) : null}
         {cleanupNote ? <p className="muted">{cleanupNote}</p> : null}
+      </section>
+
+      <section className="maintain-section" id="maintain-duplicate-merge" data-testid="maintain-duplicate-merge">
+        <p className="kicker">Catalog</p>
+        <h2>Duplicate merge</h2>
+        <p className="lede">
+          One card per title on the finished canonical model. Preview is safe. Apply writes a
+          named snapshot first; restore that file if a merge looks wrong. Do not run this on
+          live Automat until that walk is done on a clone.
+        </p>
+        <div className="cta-row" ref={mergeButtonRef}>
+          <ThinkingButton
+            type="button"
+            className="cta outline"
+            busy={mergeBusy && !mergeDialogOpen}
+            onClick={async () => {
+              setMergeBusy(true);
+              setMergeNote("");
+              try {
+                const preview = await api.maintainDuplicateMergePreview();
+                setMergePreview(preview);
+                setMergeNote(
+                  `${Number(preview?.merge_groups || 0)} merge groups · ${Number(preview?.calibre_suffixes || 0)} Calibre suffixes`,
+                );
+              } catch (err) {
+                setMergeNote(humanError(err));
+              } finally {
+                setMergeBusy(false);
+              }
+            }}
+            data-testid="maintain-duplicate-merge-preview"
+          >
+            Preview duplicate merge
+          </ThinkingButton>
+          <ThinkingButton
+            type="button"
+            className="cta"
+            busy={mergeBusy && mergeDialogOpen}
+            disabled={!mergePreview || Number(mergePreview.works_to_merge || 0) === 0}
+            onClick={() => {
+              setMergeTyped("");
+              setMergeDialogOpen(true);
+            }}
+            data-testid="maintain-duplicate-merge-open"
+          >
+            Merge after snapshot
+          </ThinkingButton>
+        </div>
+        {mergeNote ? <p className="muted">{mergeNote}</p> : null}
+        <ConfirmDialog
+          open={mergeDialogOpen}
+          title="Merge duplicate titles"
+          confirmLabel="Merge after snapshot"
+          cancelLabel="Cancel"
+          onConfirm={async () => {
+            setMergeBusy(true);
+            try {
+              const result = await api.maintainDuplicateMerge();
+              setMergePreview(result);
+              setMergeNote(
+                `Merged ${Number(result?.merged || 0)}. Snapshot ${result?.snapshot || "saved"}.`,
+              );
+              setMergeDialogOpen(false);
+            } catch (err) {
+              setMergeNote(humanError(err));
+            } finally {
+              setMergeBusy(false);
+            }
+          }}
+          onCancel={() => setMergeDialogOpen(false)}
+          busy={mergeBusy}
+          confirmDisabled={
+            mergeTyped.trim() !== String(Number(mergePreview?.works_to_merge || 0))
+          }
+          confirmTestId="maintain-duplicate-merge-confirm"
+          returnFocusRef={mergeButtonRef}
+          testId="maintain-duplicate-merge-dialog"
+        >
+          <p className="lede">
+            This folds {Number(mergePreview?.works_to_merge || 0)} extra catalog{" "}
+            {Number(mergePreview?.works_to_merge || 0) === 1 ? "row" : "rows"} into one card per
+            title. A snapshot is taken first; that file is the rollback.
+          </p>
+          <div className="field">
+            <label htmlFor="duplicate-merge-count">
+              Type {Number(mergePreview?.works_to_merge || 0)} to confirm
+            </label>
+            <input
+              id="duplicate-merge-count"
+              value={mergeTyped}
+              onChange={(event) => setMergeTyped(event.target.value)}
+              inputMode="numeric"
+              autoComplete="off"
+              data-testid="maintain-duplicate-merge-count"
+            />
+          </div>
+        </ConfirmDialog>
       </section>
 
       <section className="maintain-section" id="maintain-shelf-health" data-testid="maintain-shelf-health">

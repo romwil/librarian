@@ -15,6 +15,19 @@
 - **Maintain indexer lanterns.** Lights Down no longer paints pale paper cards with tan status copy. Lantern names, weather sentences, and Mute sit on raised leather; an idle host is a hollow ring so flicker vs silent is not hue-only. Safe undo uses the same dark wash. Lights Up stays ink on paper.
 - **Library card text size.** Clicking Text size or the slider no longer closes the Library card. Ambient room layering had flattened the topbar under Hall, so the panel was visible through empty Hall and the click counted as outside; range thumb retargets onto `document` are hit-tested too.
 
+## [0.6.19] — 2026-10-31
+
+### Highlights
+
+- **Canonical catalog.** Each title is one work with editions and authors. Duplicate merge runs only after a named snapshot; Calibre `(11630)` suffixes come off the spine. Purge shells still asks you to type the count. Confirm on Downloads is still the only way a download starts.
+
+### Changed
+
+- Schema integrity: foreign keys and cascades on catalog children (including Sorting's `review_diagnosis`), indexes on `files.path` / `works.isbn` / `jobs.indexer_guid`, FTS kept in sync by triggers, SQLite connections close. `m0008` + `m0009` (Sorting already took `m0007`). Wanted / review audit keep historical ids without FKs.
+- Browse, More by, the work page, and ISBN search read `work_authors` / `editions` / `work_identifiers`. `works.author` stays a display cache.
+- Duplicate merge and canonical cleanup write a named snapshot first. Rollback is that file, not Safe undo. Live Automat is not merged by this release.
+- Shell preview names wishlist stubs versus junk. `delete_work` leaves no edition or author orphans. Wanted / Get still never send SABnzbd.
+
 ## [0.6.18] — 2026-10-31
 
 ### Highlights

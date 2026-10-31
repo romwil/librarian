@@ -29,6 +29,7 @@ const BOOK = {
   file_count: 2,
   favorite: false,
   listen: { can_listen: false },
+  authors: [{ id: "a-nhj", display_name: "Nikole Hannah-Jones", sort_name: "Hannah-Jones, Nikole" }],
   editions: [
     { id: "ed-hard", kind: "book", isbn13: "9780593230572", asin: null, format: "Hardcover" },
     { id: "ed-audio", kind: "audiobook", isbn13: null, asin: "B09LISTEN", format: "Audiobook" },
@@ -131,6 +132,7 @@ describe("Work page editions and listen", () => {
     assert.match(items[0], /9780593230572/);
     assert.match(items[1], /Audiobook/);
     assert.match(items[1], /B09LISTEN/);
+    assert.equal(screen.getByTestId("work-authors").textContent.trim(), "Nikole Hannah-Jones");
   });
 
   it("keeps a missing audiobook on the work page", async () => {

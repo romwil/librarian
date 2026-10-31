@@ -49,7 +49,13 @@ from librarian.web.schemas import (
     WhisperPayload,
     WorkMetadataPayload,
 )
-from librarian.web.serializers import public_editions, public_work, public_work_admin, public_works
+from librarian.web.serializers import (
+    public_authors,
+    public_editions,
+    public_work,
+    public_work_admin,
+    public_works,
+)
 
 logger = logging.getLogger("librarian.web")
 
@@ -72,6 +78,7 @@ def register_works_routes(app: FastAPI, deps: WebDeps) -> None:
             work["part_set"] = part_set
         related = [row for row in public_works(db.more_by_works(work_id, limit=8)) if row]
         editions = public_editions(db.list_editions_for_work(work_id))
+        authors = public_authors(db.list_work_authors(work_id))
         progress = db.get_progress(request.state.user["id"], work_id)
         ribbon = []
         series_name = str(work.get("series_name") or "").strip()
@@ -134,6 +141,7 @@ def register_works_routes(app: FastAPI, deps: WebDeps) -> None:
             "wanted": wanted_for_book(db, work),
             "favorite": db.is_favorite(request.state.user["id"], work_id),
             "editions": editions,
+            "authors": authors,
             "related": related,
             "progress": progress,
             "ebook_convert": bool(which_ebook_convert()),

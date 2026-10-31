@@ -63,6 +63,7 @@ __all__ = [
     "FAVORITES_SHELF",
     "SCHEMA",
     "SCHEMA_VERSION",
+    "ClosingConnection",
     "Database",
     "InviteConflict",
     "browse_order_sql",
@@ -76,6 +77,37 @@ __all__ = [
     "_row_dict",
     "_wanted_source",
 ]
+
+
+class ClosingConnection:
+    """``sqlite3`` commits on ``with`` but does not close (ARCH-016).
+
+    ``with db._connect() as conn`` yields the live connection and always closes
+    it. Callers that do ``conn = db._connect()`` still get ``execute`` /
+    ``commit`` / ``close`` on the wrapper.
+    """
+
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self._conn = conn
+
+    def __enter__(self) -> sqlite3.Connection:
+        return self._conn
+
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        try:
+            if exc_type is None:
+                self._conn.commit()
+            else:
+                self._conn.rollback()
+        finally:
+            self._conn.close()
+        return False
+
+    def close(self) -> None:
+        self._conn.close()
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._conn, name)
 
 
 def _is_db_locked(exc: BaseException) -> bool:
@@ -155,14 +187,14 @@ class Database(
         if serializer is not None:
             serializer.shutdown()
 
-    def _connect(self) -> sqlite3.Connection:
+    def _connect(self) -> ClosingConnection:
         conn = sqlite3.connect(self.path, timeout=SQLITE_BUSY_TIMEOUT_MS / 1000)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute(f"PRAGMA busy_timeout={SQLITE_BUSY_TIMEOUT_MS}")
         conn.execute("PRAGMA synchronous=NORMAL")
         conn.execute("PRAGMA foreign_keys=ON")
-        return conn
+        return ClosingConnection(conn)
 
     def pragmas(self) -> Dict[str, Any]:
         with self._connect() as conn:

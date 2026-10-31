@@ -76,6 +76,60 @@ def classify_shell_purge(
     return to_purge
 
 
+def inventory_shell_works(
+    db: Database,
+    settings: Settings,
+    *,
+    limit: int = PURGE_SHELL_LIMIT_DEFAULT,
+) -> Dict[str, Any]:
+    """Owner pass: name every file-less row before anyone clicks Purge.
+
+    ``would_purge`` are true shells (no files, no payload, not a wishlist stub).
+    Wishlist stubs stay until the owner says they are junk. Review slips stay
+    on Sorting. Engineering never auto-names the Automat pile.
+    """
+    kept_reasons = {
+        "has_files": 0,
+        "has_payload": 0,
+        "wishlist_stub": 0,
+        "needs_review": 0,
+    }
+    would_purge: List[Dict[str, str]] = []
+    wishlist: List[Dict[str, str]] = []
+    fetch_limit = max(1, int(limit) or PURGE_SHELL_LIMIT_DEFAULT)
+    shells = db.list_shell_works(limit=fetch_limit)
+    # Review slips are excluded from list_shell_works; count them separately.
+    kept_reasons["needs_review"] = len(db.list_works(review_state="needs_review", limit=fetch_limit))
+    for work in shells:
+        work_id = str(work.get("id") or "")
+        title = str(work.get("title") or work_id).strip()
+        row = {"id": work_id, "title": title, "author": str(work.get("author") or "")}
+        if is_wishlist_stub(work):
+            kept_reasons["wishlist_stub"] += 1
+            wishlist.append(row)
+            continue
+        if _folder_has_payload(work, settings):
+            kept_reasons["has_payload"] += 1
+            continue
+        if db.files_for_work(work_id):
+            kept_reasons["has_files"] += 1
+            continue
+        would_purge.append(row)
+    return {
+        "candidates": len(shells),
+        "would_purge": len(would_purge),
+        "kept_reasons": kept_reasons,
+        "wishlist_sample": [row["title"] for row in wishlist[:10] if row["title"]],
+        "purge_sample": [row["title"] for row in would_purge[:10] if row["title"]],
+        "named": False,
+        "owner_pass": (
+            "Name wishlist stubs versus junk on a clone, then purge behind the "
+            "typed count and the pre-purge snapshot. Do not run this against "
+            "live Automat until that walk is done."
+        ),
+    }
+
+
 def preview_shell_purge(
     db: Database,
     settings: Settings,
@@ -83,25 +137,19 @@ def preview_shell_purge(
     limit: int = PURGE_SHELL_LIMIT_DEFAULT,
 ) -> Dict[str, Any]:
     """Dry-run counts for the Purge shells confirm (OPS-009)."""
+    inventory = inventory_shell_works(db, settings, limit=limit)
     classified = classify_shell_purge(db, settings, limit=limit)
     ids = list(classified.keys())
     links = db.count_work_household_links(ids)
-    sample: List[str] = []
-    for work in db.list_shell_works(limit=max(1, int(limit) or PURGE_SHELL_LIMIT_DEFAULT)):
-        work_id = str(work.get("id") or "")
-        if work_id not in classified:
-            continue
-        title = str(work.get("title") or work_id).strip()
-        if title:
-            sample.append(title)
-        if len(sample) >= 10:
-            break
     return {
-        "candidates": len(ids),
+        "candidates": inventory["candidates"],
         "would_purge": len(ids),
+        "kept_reasons": inventory["kept_reasons"],
         "on_shelves": int(links.get("on_shelves") or 0),
         "with_progress": int(links.get("with_progress") or 0),
-        "sample": sample,
+        "sample": inventory["purge_sample"],
+        "wishlist_sample": inventory["wishlist_sample"],
+        "owner_pass": inventory["owner_pass"],
     }
 
 

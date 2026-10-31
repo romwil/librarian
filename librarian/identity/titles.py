@@ -9,11 +9,23 @@ from typing import Any
 _SUBTITLE = re.compile(r"\s*(?::|\s+-\s+)\s*")
 _ARTICLE = re.compile(r"^(?:the|an|a)\s+", re.IGNORECASE)
 _TOKENS = re.compile(r"\d+|[a-z]+")
+# Calibre library ids: "Death and What Comes Next (11630)". 3+ digits so
+# "(2)" volume numbers stay.
+_CALIBRE_SUFFIX = re.compile(r"\s*\((\d{3,})\)\s*$")
+
+
+def strip_calibre_suffix(value: Any) -> str:
+    """Drop a trailing parenthesized Calibre numeric id from a title."""
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    stripped = _CALIBRE_SUFFIX.sub("", text).strip()
+    return stripped or text
 
 
 def base_title(value: Any) -> str:
     """Return the title before a conventional subtitle separator."""
-    text = str(value or "").strip()
+    text = strip_calibre_suffix(value)
     if not text:
         return ""
     match = _SUBTITLE.search(text)
@@ -41,4 +53,4 @@ def title_match_key(value: Any) -> str:
     return "".join(_TOKENS.findall(_fold(base_title(value))))
 
 
-__all__ = ["base_title", "title_match_key", "title_sort"]
+__all__ = ["base_title", "strip_calibre_suffix", "title_match_key", "title_sort"]

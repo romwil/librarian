@@ -169,6 +169,12 @@ curl -s http://10.10.1.202:8793/api/health
 Use a weekly file the same way when no daily is old enough. Keep `librarian.db.broken` until the
 shelves look right.
 
+Duplicate merge and Purge shells take their own named snapshots (`pre-duplicate-merge-*`,
+`pre-purge-shells-*`, `pre-canonical-cleanup-*`). Those files are the
+rollback for catalog mutations — not the 200-row Safe undo. Owner pass:
+[CATALOG.md](CATALOG.md). **Do not merge or purge the live Automat catalog** until that walk
+happens on a clone.
+
 ---
 
 ## Media roots (`library/*`)
@@ -275,4 +281,5 @@ In Librarian Settings set `komga_url`, `komga_api_key`, and `komga_library_id` (
 - [SECURITY.md](../SECURITY.md) — handshake, proxy trust, cookies
 - [automat-media-contract.md](../automat-media-contract.md) — shared `/data/media` roots with Smart Map
 - [LIBRARY_MIGRATE.md](LIBRARY_MIGRATE.md) — library/* cutover + Calibre blend
+- [CATALOG.md](CATALOG.md) — canonical works, duplicate merge after snapshot, shell owner pass
 - [AGENTS.md](../../AGENTS.md) — boot / test / LAN table
