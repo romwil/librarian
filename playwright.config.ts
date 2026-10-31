@@ -15,6 +15,11 @@ export default defineConfig({
   timeout: 60_000,
   use: {
     baseURL,
+    extraHTTPHeaders: {
+      // APIRequestContext is not a browser; send the same household headers the SPA does.
+      Origin: baseURL,
+      "X-Librarian": "1",
+    },
     trace: "on-first-retry",
     screenshot: "only-on-failure",
   },
