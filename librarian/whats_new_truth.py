@@ -55,6 +55,20 @@ def release_notes_tip(payload: Any) -> str:
     return _text(first.get("version"))
 
 
+def read_notes_tip_from_path(path: Optional[Path]) -> str:
+    """Tip version from one release-notes.json file, or empty if unreadable."""
+    if path is None:
+        return ""
+    candidate = Path(path)
+    if not candidate.is_file():
+        return ""
+    try:
+        payload = json.loads(candidate.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    return release_notes_tip(payload)
+
+
 def read_notes_tip_version(repo_or_public: Path) -> str:
     """Resolve tip version from dist or public release-notes.json (newer wins)."""
     root = Path(repo_or_public)
@@ -67,11 +81,7 @@ def read_notes_tip_version(repo_or_public: Path) -> str:
     if not existing:
         return ""
     newest = max(existing, key=lambda item: item.stat().st_mtime)
-    try:
-        payload = json.loads(newest.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return ""
-    return release_notes_tip(payload)
+    return read_notes_tip_from_path(newest)
 
 
 def notes_match_runtime(*, runtime: str = "", notes_version: str = "") -> bool:

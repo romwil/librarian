@@ -27,6 +27,7 @@ MIN_PASSWORD_LENGTH = 8
 PUBLIC_HANDSHAKE_EXACT: FrozenSet[Tuple[str, str]] = frozenset(
     {
         ("GET", "/api/health"),
+        ("GET", "/api/health/ready"),
         ("GET", "/api/features"),
         ("GET", "/api/invites/validate"),
         ("POST", "/api/invites/redeem/local"),

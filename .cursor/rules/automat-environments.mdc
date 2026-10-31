@@ -14,15 +14,24 @@ Authoritative hosts for the Automat Unraid deployment. Full runbook:
 
 | Role | URL | Notes |
 |------|-----|-------|
-| **Librarian** | `http://10.10.1.202:8793` | Version, `/api/health`, SPA — **product port** |
+| **Librarian** | `http://10.10.1.202:8793` | SPA + liveness `GET /api/health` → `{"status":"ok"}` only — **product port** |
 | Projectionist prod | `:8788` | Sibling — **never** stop or bind Librarian here |
 | Smart Map | `:8790` | Sibling — **never** stop or bind here |
 | Lobby / QA Lobby | `:8791` / `:8792` | Projectionist theater — **never** bind Librarian |
 | **Not truth** | any `*.automat.vip` / ad-hoc tunnels | CDN/proxy lag; agents read stale versions here |
 
+**Version truth is the image stamp, not public health:**
+
+```bash
+docker exec librarian cat /app/.build-info
+# Owner session (notes_match is true because notes are read from the image, not /config):
+# GET http://10.10.1.202:8793/api/status
+```
+
 - Product / Automat = **8793**. Mocked Playwright e2e = **8794** (see [e2e-ports.mdc](e2e-ports.mdc)).
 - `localhost:8793` on a laptop may be an **SSH tunnel to Automat** — not local `python -m librarian.web`.
 - Kit: `/mnt/user/appdata/librarian` (`config/` → `/config`, `/mnt/user/data` → `/data`).
+- Public `/api/health` is process-up only. Do not parse version, rev, or `notes_match` from it.
 
 ## Deploy (current truth)
 
@@ -32,6 +41,8 @@ Authoritative hosts for the Automat Unraid deployment. Full runbook:
 # After kit sync on Unraid:
 cd /mnt/user/appdata/librarian && ./docker-run.sh
 curl -s http://10.10.1.202:8793/api/health
+# {"status":"ok"}
+docker exec librarian cat /app/.build-info
 ```
 
 ## Secrets

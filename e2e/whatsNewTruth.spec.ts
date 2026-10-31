@@ -6,13 +6,16 @@ test.describe("What’s New truth", () => {
     await loginAsOwner(page);
   });
 
-  test("health reports notes tip lockstep fields", async ({ page }) => {
+  test("owner status reports notes tip lockstep from the image", async ({ page }) => {
     const health = await page.request.get("/api/health");
     expect(health.ok()).toBeTruthy();
-    const body = await health.json();
+    expect(await health.json()).toEqual({ status: "ok" });
+
+    const status = await page.request.get("/api/status");
+    expect(status.ok()).toBeTruthy();
+    const body = await status.json();
     expect(body.version).toBeTruthy();
-    expect(body).toHaveProperty("notes_version");
-    expect(body).toHaveProperty("notes_match");
+    expect(body.notes_match).toBe(true);
   });
 
   test("Hall still loads after What’s New dismiss", async ({ page }) => {

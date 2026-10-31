@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
+from typing import Dict
 
 FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 _REPO_ROOT = Path(__file__).resolve().parents[2]
+
+# "0.5.23 built 2026-10-28T18:10:20Z rev 1c30c37"
+_BUILD_STAMP = re.compile(
+    r"^(?P<version>\S+)\s+built\s+(?P<built_at>\S+)\s+rev\s+(?P<rev>\S+)\s*$"
+)
 
 
 def read_build_info() -> str:
@@ -17,6 +24,20 @@ def read_build_info() -> str:
         except OSError:
             continue
     return ""
+
+
+def parse_build_info(text: str) -> Dict[str, str]:
+    """Split a `.build-info` line into version / built_at / rev. Missing fields are empty."""
+    raw = (text or "").strip()
+    match = _BUILD_STAMP.match(raw)
+    if not match:
+        return {"version": "", "built_at": "", "rev": "", "raw": raw}
+    return {
+        "version": match.group("version"),
+        "built_at": match.group("built_at"),
+        "rev": match.group("rev"),
+        "raw": raw,
+    }
 
 
 def frontend_public_file(*parts: str) -> Path | None:

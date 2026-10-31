@@ -166,6 +166,8 @@ echo "Starting ${CONTAINER_NAME} on port ${HOST_PORT}..."
 docker run -d \
   --name "$CONTAINER_NAME" \
   --restart unless-stopped \
+  --log-opt max-size=10m \
+  --log-opt max-file=5 \
   $ADD_HOSTS \
   -p "${HOST_PORT}:8793" \
   -e DATA_DIR=/config \

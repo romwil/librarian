@@ -25,7 +25,7 @@ cd frontend && npm install && npm run build && cd ..
 DATA_DIR=./config PORT=8793 LIBRARIAN_SKIP_DOTENV=1 .venv/bin/python -m librarian.web
 ```
 
-`GET /api/health` → `{"status":"ok","ok":true,...}` on [http://127.0.0.1:8793](http://127.0.0.1:8793).
+`GET /api/health` → `{"status":"ok"}` on [http://127.0.0.1:8793](http://127.0.0.1:8793). Version truth is owner `GET /api/status` or `docker exec librarian cat /app/.build-info`.
 
 Frontend hot reload: `cd frontend && npm run dev` (proxies `/api` to `:8793`).
 
