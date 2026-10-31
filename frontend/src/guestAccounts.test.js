@@ -34,4 +34,5 @@ test("Library card hosts Privacy and Account, and ops can open People", () => {
   assert.match(cardSrc, /SIGN_OUT_EVERYWHERE/);
   assert.match(menuSrc, /\{op \? \(/);
   assert.match(menuSrc, />\s*People\s*</);
+  assert.match(menuSrc, /to="\/help"/);
 });

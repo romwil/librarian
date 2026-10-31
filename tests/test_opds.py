@@ -261,6 +261,35 @@ def test_acquisition_token_cannot_read_outside_the_data_dir(tmp_path, monkeypatc
     assert served.content == b"jailed-epub"
 
 
+def test_catalog_link_is_per_user_and_stops_after_delete(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    _login(client)
+    minted = client.get("/api/opds")
+    assert minted.status_code == 200
+    assert minted.json()["ttl_days"] == 180
+    owner_url = minted.json()["catalog_url"]
+    invite = client.post("/api/invites", json={"role": "reader"})
+    token = invite.json()["token"]
+    client.post("/api/auth/logout")
+    client.cookies.clear()
+    redeemed = client.post(
+        "/api/invites/redeem/local",
+        json={"token": token, "username": "reader1", "password": "password123"},
+    )
+    assert redeemed.status_code == 200
+    reader_id = redeemed.json()["user"]["id"]
+    reader_url = client.get("/api/opds").json()["catalog_url"]
+    assert "token=" in reader_url
+    assert client.get(reader_url).status_code == 200
+    client.post("/api/auth/logout")
+    client.cookies.clear()
+    _login(client)
+    assert client.delete(f"/api/people/{reader_id}").status_code == 200
+    client.cookies.clear()
+    assert client.get(reader_url).status_code == 401
+    assert client.get(owner_url).status_code == 200
+
+
 def test_cookie_download_still_works_without_a_token(tmp_path, monkeypatch):
     client = _client(tmp_path, monkeypatch)
     _login(client)

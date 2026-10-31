@@ -5,7 +5,8 @@ import { browseHref } from "../browse.js";
 import QueryForm from "../components/QueryForm.jsx";
 import Rail from "../components/Rail.jsx";
 import WarmLoad from "../components/WarmLoad.jsx";
-import { emptyHallCopy, humanError, setupComplete } from "../copy.js";
+import { PAGE_TITLE_HALL, emptyHallCopy, humanError, setupComplete } from "../copy.js";
+import useDocumentTitle from "../hooks/useDocumentTitle.js";
 import { hallChipRow } from "../hallChips.js";
 import { continueRailItems, notedRailItems } from "../hallRails.js";
 
@@ -124,6 +125,7 @@ function HallRails({ owner, configured }) {
 export default function HallPage() {
   const { user } = useOutletContext();
   const navigate = useNavigate();
+  useDocumentTitle(PAGE_TITLE_HALL);
   const [configured, setConfigured] = useState(false);
   const [draft, setDraft] = useState("");
   const owner = user?.role === "owner";

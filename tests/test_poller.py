@@ -264,6 +264,7 @@ def test_step_intervals_are_independent(tmp_path, monkeypatch):
         "noted",
         "backup",
         "notices",
+        "retention",
         "sab",
     ]
     assert _status(poller)["enrich"]["last_run"] is None

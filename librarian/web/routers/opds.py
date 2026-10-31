@@ -26,7 +26,7 @@ from librarian.opds_feed import (
     shelved_page,
     with_query,
 )
-from librarian.opds_tokens import create_catalog_token, parse_catalog_token
+from librarian.opds_tokens import OPDS_TTL_DAYS, create_catalog_token, parse_catalog_token
 from librarian.web.deps import WebDeps
 
 
@@ -34,14 +34,20 @@ def _base(request: Request) -> str:
     return str(request.base_url).rstrip("/")
 
 
-def _catalog_token(request: Request, data_dir) -> str:
+def _catalog_token(request: Request, data_dir, db=None) -> str:
     raw = str(request.query_params.get("token") or "").strip()
     if not raw:
         header = str(request.headers.get("authorization") or "").strip()
         if header.lower().startswith("bearer "):
             raw = header[7:].strip()
-    if parse_catalog_token(raw, data_dir=data_dir) is None:
+    payload = parse_catalog_token(raw, data_dir=data_dir)
+    if payload is None:
         raise HTTPException(status_code=401, detail="Authentication required")
+    uid = str(payload.get("uid") or "").strip()
+    if uid and db is not None:
+        user = db.get_user(uid)
+        if user is None or int(user.get("disabled") or 0):
+            raise HTTPException(status_code=401, detail="Authentication required")
     return raw
 
 
@@ -58,12 +64,16 @@ def register_opds_routes(app: FastAPI, deps: WebDeps) -> None:
     def opds_catalog_link(request: Request):
         """SPA session may mint a catalog URL. Reader apps then use the token, not the cookie."""
         require_role(request.state.user, "owner", "op", "reader")
-        token = create_catalog_token(data_dir=root)
-        return {"catalog_url": f"{_base(request)}/opds?token={quote(token, safe='')}"}
+        user = request.state.user or {}
+        token = create_catalog_token(user_id=str(user.get("id") or ""), data_dir=root)
+        return {
+            "catalog_url": f"{_base(request)}/opds?token={quote(token, safe='')}",
+            "ttl_days": OPDS_TTL_DAYS,
+        }
 
     @app.get("/opds")
     def opds_root(request: Request):
-        token = _catalog_token(request, root)
+        token = _catalog_token(request, root, db)
         base = _base(request)
         start = with_query(f"{base}/opds", token=token)
         updated = atom_time(None)
@@ -104,14 +114,14 @@ def register_opds_routes(app: FastAPI, deps: WebDeps) -> None:
 
     @app.get("/opds/search.xml")
     def opds_search_description(request: Request):
-        token = _catalog_token(request, root)
+        token = _catalog_token(request, root, db)
         base = _base(request)
         template = f"{base}/opds/search?q={{searchTerms}}&token={quote(token, safe='')}"
         return _xml(search_description(short_name="Librarian", template=template), SEARCH_TYPE)
 
     @app.get("/opds/kind/{kind}")
     def opds_kind(kind: str, request: Request, offset: int = 0):
-        token = _catalog_token(request, root)
+        token = _catalog_token(request, root, db)
         if kind not in OPDS_KINDS:
             raise HTTPException(status_code=404, detail="Kind not found")
         return _acquisition_response(
@@ -126,7 +136,7 @@ def register_opds_routes(app: FastAPI, deps: WebDeps) -> None:
 
     @app.get("/opds/authors")
     def opds_authors(request: Request, offset: int = 0):
-        token = _catalog_token(request, root)
+        token = _catalog_token(request, root, db)
         base = _base(request)
         start = with_query(f"{base}/opds", token=token)
         names = reading_authors(db)
@@ -168,7 +178,7 @@ def register_opds_routes(app: FastAPI, deps: WebDeps) -> None:
 
     @app.get("/opds/author")
     def opds_author(request: Request, author: str = "", offset: int = 0):
-        token = _catalog_token(request, root)
+        token = _catalog_token(request, root, db)
         name = str(author or "").strip()
         if not name:
             raise HTTPException(status_code=404, detail="Author not found")
@@ -184,7 +194,7 @@ def register_opds_routes(app: FastAPI, deps: WebDeps) -> None:
 
     @app.get("/opds/search")
     def opds_search(request: Request, q: str = ""):
-        token = _catalog_token(request, root)
+        token = _catalog_token(request, root, db)
         base = _base(request)
         start = with_query(f"{base}/opds", token=token)
         query = str(q or "").strip()

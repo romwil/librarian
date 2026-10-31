@@ -36,6 +36,23 @@ export const INVITE_READER_LABEL = "Invite a reader";
 export const INVITE_OP_LABEL = "Invite a helper";
 export const PAGE_TITLE_SORTING = "Sorting · Librarian";
 export const PAGE_TITLE_DOWNLOADS = "Downloads · Librarian";
+export const PAGE_TITLE_HALL = "Hall · Librarian";
+export const PAGE_TITLE_SEARCH = "Search · Librarian";
+export const PAGE_TITLE_WANTED = "Wanted · Librarian";
+export const PAGE_TITLE_MAINTAIN = "Maintain · Librarian";
+export const PAGE_TITLE_SETTINGS = "Settings · Librarian";
+export const PAGE_TITLE_INBOX = "Inbox · Librarian";
+export const PAGE_TITLE_HELP = "Help · Librarian";
+export const PAGE_TITLE_NOTED = "New & noted · Librarian";
+export const HELP_NAV = "Help";
+export const OPDS_HEADING = "Read in another app";
+export const OPDS_LEDE =
+  "Paste this into an e-reader app that supports OPDS (KOReader, Moon+ Reader, Panels). Keep it private — anyone with this link can browse the library.";
+export const OPDS_COPY = "Copy catalog link";
+export const OPDS_COPIED = "Copied. The link lasts 180 days.";
+export const HOUSE_PULSE_HEADING = "House pulse";
+export const HOUSE_PULSE_LEDE =
+  "Household totals on this box. Nothing leaves the house. Member reading figures hide until three people have a card.";
 export const SORTING_NAV = "Sorting";
 export const DOWNLOADS_NAV = "Downloads";
 export const DESK_TAB = "Desk";
@@ -323,7 +340,7 @@ export function settingsSavedCopy(sectionLabel = "") {
 export function peekMediaNote(work, { canDownload = false, ready = true } = {}) {
   if (!ready || canDownload || !work?.id) return "";
   if (work.review_reason === "no_payload" || work.review_state === "needs_review") {
-    return "Still at Sorting — there isn’t a file to open yet. The lamp is honest about what’s missing.";
+    return "Still at Sorting — there isn’t a file to open yet. The house is honest about what’s missing.";
   }
   return "This volume isn’t on the shelf as a file yet — the house hasn’t shelved it.";
 }
@@ -365,7 +382,7 @@ export function canPromoteIncomingMusic(work, role) {
 }
 
 export function emptyReviewCopy() {
-  return "Sorting is empty. The lamp is quiet — slips only appear when organize needs you.";
+  return "Sorting is empty. Slips only appear when organize needs you.";
 }
 
 export function discoverLoadingCopy() {
@@ -495,17 +512,17 @@ export function humanError(error, context = "", extras = {}) {
   if (/work not found/i.test(raw)) return "That volume is not on these shelves.";
   // Apply / shelf write failures — keep guidance; don't reuse cover-only copy.
   if (/couldn't write into the library shelf|PUID ownership/i.test(raw)) {
-    return raw;
+    return raw.replace(/ for the lamp/gi, "");
   }
   if (/\[Errno 13\]|Permission denied/i.test(raw)) {
     if (/cover\.jpg|cover art/i.test(raw)) {
       return (
-        "Couldn't write cover art — a shelf folder is locked for the lamp. " +
+        "Couldn't write cover art — a shelf folder is locked. " +
         "Enrich can keep going; covers may land under the cover cache."
       );
     }
     return (
-      "Couldn't write into the library shelf — a folder is locked for the lamp " +
+      "Couldn't write into the library shelf — a folder is locked " +
       "(PUID ownership under the books root). Fix permissions, then try again."
     );
   }

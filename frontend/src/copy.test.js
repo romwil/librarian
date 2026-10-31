@@ -24,6 +24,8 @@ import {
   PAGE_TITLE_JOIN,
   PAGE_TITLE_SORTING,
   PAGE_TITLE_DOWNLOADS,
+  PAGE_TITLE_HALL,
+  PAGE_TITLE_HELP,
   SORTING_NAV,
   DOWNLOADS_NAV,
   READER_WELCOME_TITLE,
@@ -44,6 +46,8 @@ describe("reading room copy", () => {
     assert.match(queueNeedsYouHelp(), /Open Sorting/);
     assert.equal(PAGE_TITLE_SORTING, "Sorting · Librarian");
     assert.equal(PAGE_TITLE_DOWNLOADS, "Downloads · Librarian");
+    assert.equal(PAGE_TITLE_HALL, "Hall · Librarian");
+    assert.equal(PAGE_TITLE_HELP, "Help · Librarian");
     assert.equal(SORTING_NAV, "Sorting");
     assert.equal(DOWNLOADS_NAV, "Downloads");
     assert.doesNotMatch(queueNeedsYouHelp(), /Place a hold/);
@@ -218,16 +222,31 @@ describe("reading room copy", () => {
     );
     assert.match(humanError({ status: 500, message: "Internal Server Error" }, "slip"), /filing this slip/i);
     assert.doesNotMatch(humanError({ status: 500, message: "Internal Server Error" }), /Internal Server Error/);
+    assert.doesNotMatch(humanError({ status: 500, message: "Internal Server Error" }), /lamp/i);
   });
 
   it("keeps Apply shelf PermissionError guidance", () => {
     const locked =
-      "Couldn't write into the library shelf — a folder is locked for the lamp " +
+      "Couldn't write into the library shelf — a folder is locked " +
       "(PUID ownership under the books root). Fix permissions, then Apply again.";
-    assert.equal(humanError({ status: 400, message: locked }), locked);
+    assert.equal(
+      humanError({
+        status: 400,
+        message:
+          "Couldn't write into the library shelf — a folder is locked for the lamp " +
+          "(PUID ownership under the books root). Fix permissions, then Apply again.",
+      }),
+      locked,
+    );
     assert.match(
       humanError({ status: 500, message: `[Errno 13] Permission denied: "/data/media/library/books/Author/Title"` }),
       /library shelf|PUID/i,
+    );
+    assert.doesNotMatch(emptyReviewCopy(), /lamp/i);
+    assert.doesNotMatch(peekMediaNote({ id: 1, review_reason: "no_payload" }), /lamp/i);
+    assert.doesNotMatch(
+      humanError({ status: 500, message: `[Errno 13] Permission denied: "/data/media/library/books/Author/Title"` }),
+      /lamp/i,
     );
   });
 

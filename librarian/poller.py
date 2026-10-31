@@ -46,6 +46,7 @@ DEFAULT_NOTED_POLL_SECONDS = 21600.0
 # Hourly look; a snapshot is only taken when today's is missing (nightly in effect).
 DEFAULT_BACKUP_POLL_SECONDS = 3600.0
 DEFAULT_NOTICES_POLL_SECONDS = 3600.0
+DEFAULT_RETENTION_POLL_SECONDS = 3600.0
 
 SAB_POLL_ENV = "LIBRARIAN_POLL_SECONDS"
 ENRICH_POLL_ENV = "LIBRARIAN_ENRICH_POLL_SECONDS"
@@ -56,6 +57,7 @@ OWNED_POLL_ENV = "LIBRARIAN_OWNED_POLL_SECONDS"
 NOTED_POLL_ENV = "LIBRARIAN_NOTED_POLL_SECONDS"
 BACKUP_POLL_ENV = "LIBRARIAN_BACKUP_POLL_SECONDS"
 NOTICES_POLL_ENV = "LIBRARIAN_NOTICES_POLL_SECONDS"
+RETENTION_POLL_ENV = "LIBRARIAN_RETENTION_POLL_SECONDS"
 
 # Housekeeping shares one thread. Enrich is last so a long trickle does not
 # delay RSS, the sweep, wanted search, or New & noted that were already due.
@@ -69,6 +71,7 @@ _BACKGROUND_STEPS = (
     "noted",
     "backup",
     "notices",
+    "retention",
     "enrich",
 )
 _STATUS_ORDER = (
@@ -80,6 +83,7 @@ _STATUS_ORDER = (
     "noted",
     "backup",
     "notices",
+    "retention",
     "watch",
     "repair",
     "abs",
@@ -97,6 +101,7 @@ _FAILURE_LOG = {
     "noted": "New & noted refresh failed",
     "backup": "Nightly backup failed",
     "notices": "Notice scheduler tick failed",
+    "retention": "Retention tick failed",
     "enrich": "Enrich backlog tick failed",
     "sab": "SAB poller tick failed",
 }
@@ -175,6 +180,12 @@ def _build_steps(short: float) -> tuple[_Step, ...]:
             False,
         ),
         _Step(
+            "retention",
+            "Retention",
+            _env_seconds(RETENTION_POLL_ENV, DEFAULT_RETENTION_POLL_SECONDS),
+            False,
+        ),
+        _Step(
             "enrich",
             "Enrich",
             _env_seconds(ENRICH_POLL_ENV, DEFAULT_ENRICH_POLL_SECONDS),
@@ -223,6 +234,7 @@ class JobPoller:
             "noted": self._run_noted,
             "backup": self._run_backup,
             "notices": self._run_notices,
+            "retention": self._run_retention,
             "enrich": self._run_enrich,
             "sab": self._run_sab,
         }
@@ -460,6 +472,12 @@ class JobPoller:
         from librarian.notifications.loop import flush_notice_scheduler
 
         flush_notice_scheduler(self.db, settings)
+        return 0
+
+    def _run_retention(self, _settings: Settings) -> int:
+        from librarian.retention import run_retention
+
+        run_retention(self.db, data_dir=self.data_dir)
         return 0
 
     def _run_enrich(self, settings: Settings) -> int:

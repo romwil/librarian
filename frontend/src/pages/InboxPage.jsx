@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
-import { emptyInboxCopy, humanError } from "../copy.js";
+import { PAGE_TITLE_INBOX, emptyInboxCopy, humanError } from "../copy.js";
+import useDocumentTitle from "../hooks/useDocumentTitle.js";
 import WarmLoad from "../components/WarmLoad.jsx";
 import {
   INBOX_LIST_PARAMS,
@@ -13,6 +14,7 @@ import {
  * Household inbox — calm stack of notices (Projectionist peer, Librarian voice).
  */
 export default function InboxPage() {
+  useDocumentTitle(PAGE_TITLE_INBOX);
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState([]);
   const [unread, setUnread] = useState(0);

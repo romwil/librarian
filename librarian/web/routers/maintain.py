@@ -35,6 +35,7 @@ from librarian.grooming_undo import assemble_grooming_undo, restore_grooming_bat
 from librarian.indexer_scorecard import assemble_indexer_scorecard, mute_host
 from librarian.ingest_progress import finish_ingest_run, read_ingest_progress
 from librarian.morning_brief import assemble_morning_brief
+from librarian.pulse import assemble_pulse
 from librarian.purge_shells import preview_shell_purge, purge_shell_works
 from librarian.purge_shells_progress import (
     PurgeShellsProgressReporter,
@@ -127,6 +128,12 @@ def register_maintain_routes(app: FastAPI, deps: WebDeps) -> None:
             comic_book_blends=blends,
         )
         return {**report, "score": score}
+
+    @app.get("/api/pulse")
+    def house_pulse(request: Request):
+        """Owner House pulse: household totals, no member ids (GRO-040)."""
+        require_role(current_user(request), "owner")
+        return assemble_pulse(db, data_dir=root)
 
     @app.get("/api/maintain/morning-brief")
     def maintain_morning_brief(request: Request):

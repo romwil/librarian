@@ -65,6 +65,8 @@ export const api = {
   deletePerson: (userId) => request(`/people/${encodeURIComponent(userId)}`, { method: "DELETE" }),
   hall: () => request("/hall"),
   libraryCard: () => request("/library-card"),
+  opds: () => request("/opds"),
+  pulse: () => request("/pulse"),
   gapsLocal: () => request("/gaps/local"),
   browse: (filters = {}) => {
     const { offset, limit, ...rest } = filters;

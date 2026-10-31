@@ -7,12 +7,14 @@ import AboutPanel from "../components/AboutPanel.jsx";
 import RssPanel from "../components/RssPanel.jsx";
 import {
   FIELD_HELP,
+  PAGE_TITLE_SETTINGS,
   WATCH_FOLDER_LEDE,
   humanError,
   settingsSavedCopy,
   setupComplete,
   setupStepComplete,
 } from "../copy.js";
+import useDocumentTitle from "../hooks/useDocumentTitle.js";
 import { SETTINGS_NAV, settingsNavFromHash, settingsNavHref } from "../lib/settingsNav.js";
 import { DRUNKENSLUG_PRESET, addIndexerPreset, extraIndexersHavePreset } from "../lib/indexerPresets.js";
 import LlmSettingsPanel from "../components/LlmSettingsPanel.jsx";
@@ -36,6 +38,7 @@ const MORE_FIELDS = [
 
 export default function SettingsPage() {
   const { user } = useOutletContext() || {};
+  useDocumentTitle(PAGE_TITLE_SETTINGS);
   const [settings, setSettings] = useState(null);
   const [saved, setSaved] = useState("");
   const [error, setError] = useState("");
