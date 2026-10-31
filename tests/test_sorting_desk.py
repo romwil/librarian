@@ -154,10 +154,24 @@ def test_review_list_pages_with_cursor(tmp_path, monkeypatch):
     second = client.get(f"/api/review?limit=25&cursor={body['next_cursor']}")
     assert second.status_code == 200
     page = second.json()
-    assert len(page["works"]) == 5
+    first_ids = [row["id"] for row in body["works"]]
+    rest_ids = [row["id"] for row in page["works"]]
+    assert len(rest_ids) == 5
+    assert not set(first_ids) & set(rest_ids)
     assert page["next_cursor"] in (None, "")
-    ids = {row["id"] for row in body["works"]} | {row["id"] for row in page["works"]}
+    ids = set(first_ids) | set(rest_ids)
     assert len(ids) == 30
+
+
+def test_review_cursor_roundtrips_submicrosecond_stamps():
+    from librarian.review_diagnosis import decode_cursor, encode_cursor
+
+    stamp = 1761894000.1234567
+    encoded = encode_cursor(stamp, "work-tail")
+    decoded = decode_cursor(encoded)
+    assert decoded is not None
+    assert decoded[0] == stamp
+    assert decoded[1] == "work-tail"
 
 
 def test_review_reason_filter_and_counts(tmp_path, monkeypatch):

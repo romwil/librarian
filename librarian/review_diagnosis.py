@@ -130,7 +130,9 @@ def counts_by_effective_reason(db: Database) -> Dict[str, int]:
 def encode_cursor(updated_at: Any, work_id: str) -> str:
     import base64
 
-    raw = f"{float(updated_at or 0):.6f}\t{work_id}"
+    # repr() round-trips IEEE floats. Six-decimal formatting rounded the tail
+    # stamp on Linux CI and replayed the last page-1 slip on page 2.
+    raw = f"{float(updated_at or 0)!r}\t{work_id}"
     return base64.urlsafe_b64encode(raw.encode("utf-8")).decode("ascii").rstrip("=")
 
 
