@@ -312,8 +312,8 @@ def test_notifications_api_inbox_and_prefs(tmp_path, monkeypatch):
     prefs = client.get("/api/notifications/prefs")
     assert prefs.status_code == 200
     body = prefs.json()
-    assert set(body["kinds"]) == {"someone_finished"}
-    assert [row["id"] for row in body["catalog"]] == ["someone_finished"]
+    assert set(body["kinds"]) == {"asked_confirm", "arrived", "someone_finished"}
+    assert [row["id"] for row in body["catalog"]] == ["asked_confirm", "arrived", "someone_finished"]
     assert all(row.get("live") for row in body["catalog"])
     assert body["mail_configured"] is True
 
@@ -329,7 +329,8 @@ def test_notifications_api_inbox_and_prefs(tmp_path, monkeypatch):
     assert put.status_code == 200, put.text
     assert put.json()["notification_email"] == "owner@example.com"
     assert "someone_finished" in put.json()["kinds"]
-    assert "arrived" not in put.json()["kinds"]
+    assert "arrived" in put.json()["kinds"]
+    assert put.json()["kinds"]["arrived"]["enabled"] is True
 
     test = client.post(
         "/api/notifications/test",

@@ -12,6 +12,12 @@ from librarian.notifications.kinds import (
     normalize_newsletter_timing,
     public_kind_catalog,
 )
+from librarian.notifications.loop import (
+    complete_asked_loop,
+    flush_notice_scheduler,
+    notify_asked_confirm,
+    notify_job_arrived,
+)
 from librarian.notifications.newsletters import (
     build_member_edition,
     deliver_editions,
@@ -54,6 +60,10 @@ __all__ = [
     "flush_email_digests",
     "notification_channel_offerings",
     "user_wants_channel",
+    "complete_asked_loop",
+    "flush_notice_scheduler",
+    "notify_asked_confirm",
+    "notify_job_arrived",
     "build_member_edition",
     "deliver_editions",
     "edition_due",

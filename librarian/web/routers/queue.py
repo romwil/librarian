@@ -56,7 +56,18 @@ def register_queue_routes(app: FastAPI, deps: WebDeps) -> None:
     def queue(request: Request):
         """List jobs only — no watch/RSS/SAB side effects (P2-CRIT-01)."""
         require_role(request.state.user, "owner", "op")
-        jobs = db.list_jobs()
+        jobs = [
+            job
+            for job in db.list_jobs()
+            if str(
+                (
+                    job.get("payload") if isinstance(job.get("payload"), dict) else {}
+                ).get("source")
+                or ""
+            )
+            != "ask"
+            or str(job.get("indexer_guid") or "").strip()
+        ]
         for job in jobs:
             if job.get("status") != "review":
                 continue

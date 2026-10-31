@@ -79,8 +79,10 @@ const TONIGHT_HALL = {
     incoming_music: [],
   },
   gaps: [],
-  kind_counts: {},
-  celebrations: [],
+  kind_counts: { book: 2, audiobook: 1, magazine: 1 },
+  named_shelves: [
+    { id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", name: "Bedside", work_count: 3 },
+  ],
   owner_ready: true,
 };
 
@@ -136,6 +138,9 @@ test.describe("Hall", () => {
     await expect(page.getByRole("heading", { name: "Continue reading" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Recently added" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Favorites" })).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Shelves" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Books · 2" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Bedside · 3" })).toBeVisible();
     await expect(page.getByRole("button", { name: "The Lamp Novel", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Night Radio", exact: true })).toBeVisible();
     await expect(page.getByRole("region", { name: "Tonight’s shelf" })).toHaveCount(0);

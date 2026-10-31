@@ -143,6 +143,23 @@ export default function LlmSettingsPanel({ settings, onChange }) {
           data-testid="llm-base-url"
         />
       </div>
+
+      <div className="field">
+        <label htmlFor="setting-show_model_suggested_lists">
+          <input
+            id="setting-show_model_suggested_lists"
+            type="checkbox"
+            checked={Boolean(settings.show_model_suggested_lists)}
+            onChange={(e) => patch({ show_model_suggested_lists: e.target.checked })}
+            data-testid="show-model-suggested-lists"
+          />{" "}
+          Show model picks on New & noted
+        </label>
+        <p className="muted">
+          Off by default. Without a New York Times key, bestseller names stay hidden unless you
+          turn this on. They then read as Model picks — never as NYT lists.
+        </p>
+      </div>
     </section>
   );
 }

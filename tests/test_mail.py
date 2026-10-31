@@ -136,6 +136,9 @@ def test_send_mail_smtp_uses_starttls(monkeypatch):
     smtp.starttls.assert_called_once()
     smtp.login.assert_called_once_with("user", "pass")
     smtp.send_message.assert_called_once()
+    msg = smtp.send_message.call_args.args[0]
+    body = msg.get_body(preferencelist=("plain",)).get_content()
+    assert "Turn these notices off:" in body
     assert result.ok is True
     assert result.provider == "smtp"
 
@@ -171,6 +174,7 @@ def test_send_mail_resend_posts_api(monkeypatch):
             assert headers["Authorization"] == "Bearer re_test_key"
             assert json["to"] == ["reader@example.com"]
             assert "[Librarian]" in json["subject"]
+            assert "Turn these notices off:" in json["text"]
             return FakeResponse()
 
     with patch("librarian.mail.transport.httpx.Client", FakeClient):

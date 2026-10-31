@@ -237,6 +237,7 @@ class Settings:
     quiet_hours_enabled: bool = False
     quiet_hours_start: str = "22:00"
     quiet_hours_end: str = "07:00"
+    show_model_suggested_lists: bool = False
     mail: MailSettings = field(default_factory=MailSettings)
 
     @classmethod
@@ -259,6 +260,10 @@ class Settings:
             filtered["music_write_tags"] = _as_bool(filtered["music_write_tags"])
         if "quiet_hours_enabled" in filtered:
             filtered["quiet_hours_enabled"] = _as_bool(filtered["quiet_hours_enabled"])
+        if "show_model_suggested_lists" in filtered:
+            filtered["show_model_suggested_lists"] = _as_bool(
+                filtered["show_model_suggested_lists"]
+            )
         if "nzbfinder_muted" in filtered:
             filtered["nzbfinder_muted"] = _as_bool(filtered["nzbfinder_muted"])
         if "extra_indexers" in filtered:
@@ -399,6 +404,8 @@ def load_merged_settings(data_dir: Path) -> Settings:
         merged["music_write_tags"] = _as_bool(merged["music_write_tags"])
     if "quiet_hours_enabled" in merged:
         merged["quiet_hours_enabled"] = _as_bool(merged["quiet_hours_enabled"])
+    if "show_model_suggested_lists" in merged:
+        merged["show_model_suggested_lists"] = _as_bool(merged["show_model_suggested_lists"])
     if "auto_audiobook_wants" in merged:
         merged["auto_audiobook_wants"] = normalize_auto_audiobook_wants(
             merged["auto_audiobook_wants"]

@@ -397,6 +397,24 @@ class Database(
         assert row is not None
         return self._row_to_notification(row)
 
+    def has_notification(self, user_id: str, *, kind: str, related_id: str) -> bool:
+        """True when this member already has this kind for the related job or want."""
+        uid = str(user_id or "").strip()
+        cleaned_kind = str(kind or "").strip().lower()
+        related = str(related_id or "").strip()
+        if not uid or not cleaned_kind or not related:
+            return False
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT 1 FROM user_notifications
+                WHERE user_id = ? AND kind = ? AND related_id = ?
+                LIMIT 1
+                """,
+                (uid, cleaned_kind, related),
+            ).fetchone()
+        return row is not None
+
     def list_notifications_for_user(
         self,
         user_id: str,

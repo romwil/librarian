@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import io
+import logging
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -27,6 +28,8 @@ from librarian.search_forgive import search_with_forgiveness
 from librarian.search_modes import apply_search_mode, normalize_search_mode
 from librarian.services import NotFoundError, ServiceError
 from librarian.web.serializers import public_work, public_works
+
+logger = logging.getLogger(__name__)
 
 # Visible stacks columns. ``series`` is the work's series_name. Omitted ``columns``
 # exports every name in this order. Sort keys and canonical ids are reader-facing
@@ -590,6 +593,7 @@ def ask_from_search(
     title: str = "",
     author: str = "",
     isbn: str = "",
+    settings: Any = None,
 ) -> Dict[str, Any]:
     """File a Wanted row from a search. Never searches indexers. Never calls SABnzbd."""
     from librarian.wanted import AlreadyShelved, WantedError, add_wanted, public_wanted
@@ -612,8 +616,34 @@ def ask_from_search(
         raise ServiceError("Already on the shelf", status_code=409) from error
     except WantedError as error:
         raise ServiceError(str(error)) from error
+    _ = settings  # household settings; this path never searches or queues SAB
+    uid = str(user.get("id") or "")
+    job = None
+    for existing in db.list_jobs_for_user(uid, limit=20):
+        payload = existing.get("payload") if isinstance(existing.get("payload"), dict) else {}
+        if str(payload.get("wanted_id") or "") == str(row.get("id") or ""):
+            job = existing
+            break
+    if job is None:
+        job = db.create_job(
+            {
+                "status": "asked",
+                "title": wanted_title,
+                "kind": wanted_kind,
+                "requested_by": uid,
+                "payload": {
+                    "source": "ask",
+                    "wanted_id": row.get("id"),
+                    "title": wanted_title,
+                    "author": _text(author),
+                    "isbn": _text(isbn),
+                    "kind": wanted_kind,
+                },
+            }
+        )
     return {
         "item": public_wanted(row),
+        "job": {"id": job.get("id"), "status": job.get("status")},
         "searched": False,
         "can_confirm": user["role"] in CONFIRM_ROLES,
     }

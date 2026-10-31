@@ -212,8 +212,9 @@ def test_browse_excludes_resolved_shells_without_files(tmp_path, monkeypatch):
     hall = client.get("/api/hall")
     assert hall.status_code == 200
     assert hall.json()["kind_counts"]["audiobook"] == 1
-    audio_titles = [row["title"] for row in hall.json()["areas"]["audiobooks"]]
-    assert audio_titles == ["Backstage at the Lincoln Assassination"]
+    assert "areas" not in hall.json()
+    titles = [row["title"] for row in hall.json()["whats_new"]]
+    assert "Backstage at the Lincoln Assassination" in titles
 
 
 def test_browse_annotates_listen_and_wanted(tmp_path, monkeypatch):

@@ -6,6 +6,7 @@ import QueryForm from "../components/QueryForm.jsx";
 import Rail from "../components/Rail.jsx";
 import WarmLoad from "../components/WarmLoad.jsx";
 import { emptyHallCopy, humanError, setupComplete } from "../copy.js";
+import { hallChipRow } from "../hallChips.js";
 import { continueRailItems, notedRailItems } from "../hallRails.js";
 
 function NotedRail({ items }) {
@@ -50,7 +51,7 @@ function HallRails({ owner, configured }) {
       })
       .catch((err) => {
         if (cancelled) return;
-        setHall({ empty: true, areas: {}, kind_counts: {} });
+        setHall({ empty: true, kind_counts: {}, named_shelves: [] });
         setLoadError(humanError(err));
         setPhase("error");
       });
@@ -79,6 +80,7 @@ function HallRails({ owner, configured }) {
   const listening = continueRailItems(hall?.continue_listening);
   const recent = continueRailItems(hall?.whats_new);
   const favorites = continueRailItems(hall?.favorites);
+  const chips = hallChipRow(hall || {});
 
   if (phase === "loading") {
     return <WarmLoad message="Warming the lamp on the Hall…" testId="hall-loading" />;
@@ -87,6 +89,16 @@ function HallRails({ owner, configured }) {
   return (
     <div className="hall-shelves" data-testid="hall-shelves">
       {loadError ? <p className="alert hall-alert">{loadError}</p> : null}
+      {chips.length ? (
+        <nav className="chip-row hall-chips" aria-label="Shelves" data-testid="hall-chips">
+          {chips.map((chip) => (
+            <Link key={chip.key} className="chip" to={chip.href}>
+              {chip.label}
+              {chip.count ? ` · ${chip.count}` : ""}
+            </Link>
+          ))}
+        </nav>
+      ) : null}
       {hall?.empty ? (
         <section className="empty-cta hall-empty" data-testid="hall-empty">
           <h2>{empty.title}</h2>

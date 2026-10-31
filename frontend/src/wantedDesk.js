@@ -66,6 +66,9 @@ export function wantedSearchStatus(item = {}, { searching = false, attempt = nul
       retry,
     };
   }
+  if (status === "arrived") {
+    return { label: "On the shelf", detail: "Filed on the shelves.", retry: "" };
+  }
   if (attempt?.outcome === "already_asked" || status === "asked") {
     const detail = attempt?.outcome === "already_asked" ? "Already on a slip." : "On a slip, waiting for confirm.";
     return { label: "Asked", detail: attempt?.detail || detail, retry: "" };
@@ -146,7 +149,9 @@ export function wantedRowModel(item = {}, role = "reader", extras = {}) {
     workId: trimmed(item.work_id),
     jobId: trimmed(item.job_id),
     nextSearchAt: item.next_search_at,
-    canDismiss: canManage && Boolean(trimmed(item.id)) && status !== "dismissed",
+    canSearchRow: canManage && status === "wanted",
+    canFindBeyond: canManage && status !== "arrived" && status !== "dismissed",
+    canDismiss: canManage && Boolean(trimmed(item.id)) && status !== "dismissed" && status !== "arrived",
     canRestore: canManage && Boolean(trimmed(item.id)) && status === "dismissed" && Boolean(item.restorable),
     bookShelf,
     audioShelf,

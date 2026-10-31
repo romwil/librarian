@@ -13,6 +13,7 @@ import {
   PAGE_TITLE_CARD,
   PRIVACY_HEADING,
   SIGN_OUT_EVERYWHERE,
+  YOUR_ASKS,
   emptyLibraryCardCopy,
   humanError,
 } from "../copy.js";
@@ -57,8 +58,9 @@ export default function CardPage() {
   const finished = continueRailItems(card?.finished);
   const favorites = continueRailItems(card?.favorites);
   const wantedCount = Number(card?.wanted_count || 0);
+  const asks = Array.isArray(card?.asks) ? card.asks : [];
   const empty = emptyLibraryCardCopy();
-  const hasRails = Boolean(listening || reading || finished || favorites);
+  const hasRails = Boolean(listening || reading || finished || favorites || asks.length);
 
   async function onChangePassword(event) {
     event.preventDefault();
@@ -130,6 +132,20 @@ export default function CardPage() {
         <Link to="/wanted">Wanted</Link>
         {wantedCount ? ` · ${wantedCount}` : ""}
       </p>
+      {asks.length ? (
+        <section className="card-panel" data-testid="your-asks">
+          <p className="kicker">{YOUR_ASKS}</p>
+          <h2>Looking and waiting</h2>
+          <ul className="noted-books">
+            {asks.map((ask) => (
+              <li key={ask.id || ask.title}>
+                {ask.href ? <Link to={ask.href}>{ask.title}</Link> : ask.title}
+                {ask.label ? <span className="muted"> · {ask.label}</span> : null}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <section className="card-panel" id="comfort">
         <p className="kicker">Comfort</p>

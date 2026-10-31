@@ -24,6 +24,7 @@ def _assert_baseline(response):
     assert "fonts.googleapis.com" not in csp
     assert "fonts.gstatic.com" not in csp
     assert "frame-ancestors 'none'" in csp
+    assert response.headers.get("x-robots-tag") == "noindex, nofollow"
 
 
 def test_health_carries_security_headers(tmp_path):

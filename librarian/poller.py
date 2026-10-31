@@ -45,6 +45,7 @@ DEFAULT_OWNED_POLL_SECONDS = 300.0
 DEFAULT_NOTED_POLL_SECONDS = 21600.0
 # Hourly look; a snapshot is only taken when today's is missing (nightly in effect).
 DEFAULT_BACKUP_POLL_SECONDS = 3600.0
+DEFAULT_NOTICES_POLL_SECONDS = 3600.0
 
 SAB_POLL_ENV = "LIBRARIAN_POLL_SECONDS"
 ENRICH_POLL_ENV = "LIBRARIAN_ENRICH_POLL_SECONDS"
@@ -54,10 +55,22 @@ WANTED_POLL_ENV = "LIBRARIAN_WANTED_POLL_SECONDS"
 OWNED_POLL_ENV = "LIBRARIAN_OWNED_POLL_SECONDS"
 NOTED_POLL_ENV = "LIBRARIAN_NOTED_POLL_SECONDS"
 BACKUP_POLL_ENV = "LIBRARIAN_BACKUP_POLL_SECONDS"
+NOTICES_POLL_ENV = "LIBRARIAN_NOTICES_POLL_SECONDS"
 
 # Housekeeping shares one thread. Enrich is last so a long trickle does not
 # delay RSS, the sweep, wanted search, or New & noted that were already due.
-_BACKGROUND_STEPS = ("rss", "repair", "abs", "sweep", "owned", "wanted", "noted", "backup", "enrich")
+_BACKGROUND_STEPS = (
+    "rss",
+    "repair",
+    "abs",
+    "sweep",
+    "owned",
+    "wanted",
+    "noted",
+    "backup",
+    "notices",
+    "enrich",
+)
 _STATUS_ORDER = (
     "sab",
     "enrich",
@@ -66,6 +79,7 @@ _STATUS_ORDER = (
     "wanted",
     "noted",
     "backup",
+    "notices",
     "watch",
     "repair",
     "abs",
@@ -82,6 +96,7 @@ _FAILURE_LOG = {
     "wanted": "Wanted search tick failed",
     "noted": "New & noted refresh failed",
     "backup": "Nightly backup failed",
+    "notices": "Notice scheduler tick failed",
     "enrich": "Enrich backlog tick failed",
     "sab": "SAB poller tick failed",
 }
@@ -154,6 +169,12 @@ def _build_steps(short: float) -> tuple[_Step, ...]:
             False,
         ),
         _Step(
+            "notices",
+            "Notices",
+            _env_seconds(NOTICES_POLL_ENV, DEFAULT_NOTICES_POLL_SECONDS),
+            False,
+        ),
+        _Step(
             "enrich",
             "Enrich",
             _env_seconds(ENRICH_POLL_ENV, DEFAULT_ENRICH_POLL_SECONDS),
@@ -201,6 +222,7 @@ class JobPoller:
             "wanted": self._run_wanted,
             "noted": self._run_noted,
             "backup": self._run_backup,
+            "notices": self._run_notices,
             "enrich": self._run_enrich,
             "sab": self._run_sab,
         }
@@ -432,6 +454,12 @@ class JobPoller:
         target = backup_dir_for(self.data_dir)
         if backup_due(target):
             run_backup(self.db.path, target)
+        return 0
+
+    def _run_notices(self, settings: Settings) -> int:
+        from librarian.notifications.loop import flush_notice_scheduler
+
+        flush_notice_scheduler(self.db, settings)
         return 0
 
     def _run_enrich(self, settings: Settings) -> int:

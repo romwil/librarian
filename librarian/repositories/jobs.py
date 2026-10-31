@@ -37,6 +37,28 @@ class JobsRepository(RepositoryBase):
             ).fetchall()
         return [_row_dict(row) or {} for row in rows]
 
+    def list_jobs_for_user(self, user_id: str, *, limit: int = 20) -> List[Dict[str, Any]]:
+        """Recent jobs this member asked for — Your asks on the Library card."""
+        uid = str(user_id or "").strip()
+        if not uid:
+            return []
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM jobs
+                WHERE requested_by = ?
+                ORDER BY updated_at DESC
+                LIMIT ?
+                """,
+                (uid, max(1, int(limit))),
+            ).fetchall()
+        out = []
+        for row in rows:
+            data = _row_dict(row) or {}
+            data["payload"] = _loads(data.pop("payload_json", None), {})
+            out.append(data)
+        return out
+
     def create_job(self, job: Dict[str, Any]) -> Dict[str, Any]:
         now = time.time()
         job_id = str(job.get("id") or uuid.uuid4().hex)

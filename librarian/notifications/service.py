@@ -112,9 +112,19 @@ def deliver_notification(
         result["skipped"] = True
         return result
 
+    related = str(related_id or "").strip()
+    if related and not force_inbox and db.has_notification(user_id, kind=cleaned_kind, related_id=related):
+        result["skipped"] = True
+        return result
+
     wants_inbox = force_inbox or user_wants_channel(user_prefs, kind=cleaned_kind, channel="inbox")
     wants_email = force_email or user_wants_channel(user_prefs, kind=cleaned_kind, channel="email")
     timing = str(pref.get("timing") or "realtime")
+    if timing == "realtime" and not force_email:
+        from librarian.delight import in_quiet_hours
+
+        if in_quiet_hours(settings):
+            timing = "daily"
 
     if wants_inbox:
         result["notification"] = db.create_notification(

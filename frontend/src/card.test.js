@@ -19,6 +19,8 @@ test("Library card gathers continue, finished, favorites, and Wanted", () => {
   assert.match(cardSrc, /title="Favorites"/);
   assert.match(cardSrc, /to="\/wanted"/);
   assert.match(cardSrc, /wanted_count/);
+  assert.match(cardSrc, /YOUR_ASKS/);
+  assert.match(cardSrc, /your-asks/);
   assert.equal(cardSrc.includes("due date"), false);
   assert.equal(cardSrc.includes("Borrow"), false);
   assert.match(mainSrc, /path="card"/);

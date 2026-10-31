@@ -106,7 +106,27 @@ def _html_body(mail: Any, *, body_text: str, body_html: Optional[str] = None) ->
     return "".join(parts)
 
 
-def _send_smtp(mail: Any, *, to_email: str, subject: str, text: str, html: str) -> MailSendResult:
+def household_mail_footer(settings: Any) -> tuple[str, dict[str, str]]:
+    """Unsubscribe footer and List-Unsubscribe header (GRO-024)."""
+    base = str(getattr(settings, "public_base_url", "") or "").rstrip("/")
+    prefs = f"{base}/notifications" if base else "/notifications"
+    text = f"\n\n—\nTurn these notices off: {prefs}"
+    headers: dict[str, str] = {}
+    if base:
+        headers["List-Unsubscribe"] = f"<{prefs}>"
+        headers["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
+    return text, headers
+
+
+def _send_smtp(
+    mail: Any,
+    *,
+    to_email: str,
+    subject: str,
+    text: str,
+    html: str,
+    extra_headers: Optional[dict[str, str]] = None,
+) -> MailSendResult:
     host = str(mail.smtp_host or "").strip()
     port = int(mail.smtp_port or 587)
     username = str(mail.smtp_username or "").strip()
@@ -119,6 +139,8 @@ def _send_smtp(mail: Any, *, to_email: str, subject: str, text: str, html: str) 
     msg["To"] = to_email
     msg.set_content(text)
     msg.add_alternative(html, subtype="html")
+    for key, value in (extra_headers or {}).items():
+        msg[key] = value
 
     try:
         if use_tls:
@@ -140,7 +162,15 @@ def _send_smtp(mail: Any, *, to_email: str, subject: str, text: str, html: str) 
     return MailSendResult(ok=True, provider="smtp", detail="sent")
 
 
-def _send_resend(mail: Any, *, to_email: str, subject: str, text: str, html: str) -> MailSendResult:
+def _send_resend(
+    mail: Any,
+    *,
+    to_email: str,
+    subject: str,
+    text: str,
+    html: str,
+    extra_headers: Optional[dict[str, str]] = None,
+) -> MailSendResult:
     api_key = str(mail.resend_api_key or "").strip()
     payload: dict[str, Any] = {
         "from": _from_header(mail),
@@ -149,6 +179,8 @@ def _send_resend(mail: Any, *, to_email: str, subject: str, text: str, html: str
         "text": text,
         "html": html,
     }
+    if extra_headers:
+        payload["headers"] = dict(extra_headers)
     try:
         with httpx.Client(timeout=30.0) as client:
             response = client.post(
@@ -196,10 +228,27 @@ def send_mail(
     provider = str(mail.provider or "off").strip().lower()
     final_subject = _apply_subject_prefix(mail, subject)
     text = str(body_text or "").strip() or final_subject
+    footer, extra_headers = household_mail_footer(settings)
+    if "Turn these notices off:" not in text:
+        text = f"{text}{footer}"
     html = _html_body(mail, body_text=text, body_html=body_html)
 
     if provider == "smtp":
-        return _send_smtp(mail, to_email=recipient, subject=final_subject, text=text, html=html)
+        return _send_smtp(
+            mail,
+            to_email=recipient,
+            subject=final_subject,
+            text=text,
+            html=html,
+            extra_headers=extra_headers,
+        )
     if provider == "resend":
-        return _send_resend(mail, to_email=recipient, subject=final_subject, text=text, html=html)
+        return _send_resend(
+            mail,
+            to_email=recipient,
+            subject=final_subject,
+            text=text,
+            html=html,
+            extra_headers=extra_headers,
+        )
     raise MailSendError(f"Unsupported mail provider: {provider}")

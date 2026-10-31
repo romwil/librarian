@@ -1,7 +1,8 @@
 """Wanted rows: a title the house does not have yet.
 
 Status is ``wanted`` (still looking), ``asked`` (one slip is in the queue),
-or ``dismissed`` (never searched). The backoff clock lives on ``next_search_at``.
+``arrived`` (filed on the shelf), or ``dismissed`` (never searched).
+The backoff clock lives on ``next_search_at``. ``asked`` locks further searches.
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ from librarian.owned import ShelfIndex
 
 STATUS_WANTED = "wanted"
 STATUS_ASKED = "asked"
+STATUS_ARRIVED = "arrived"
 STATUS_DISMISSED = "dismissed"
 
 SOURCE_SWEEP = "sweep"
@@ -234,7 +236,22 @@ def restore_sweep_wanted(db: Database, *, now: Optional[float] = None) -> int:
 DEFAULT_WANTED_PAGE_SIZE = 50
 MAX_WANTED_PAGE_SIZE = 200
 
-_KNOWN_STATUSES = {STATUS_WANTED, STATUS_ASKED, STATUS_DISMISSED}
+_KNOWN_STATUSES = {STATUS_WANTED, STATUS_ASKED, STATUS_ARRIVED, STATUS_DISMISSED}
+
+
+def mark_wanted_arrived(db: Database, job: Mapping[str, Any], *, now: Optional[float] = None) -> Optional[Dict[str, Any]]:
+    """The volume is on the shelf — stop locking searches as Asked."""
+    moment = time.time() if now is None else float(now)
+    job_id = str(job.get("id") or "").strip()
+    payload = job.get("payload") if isinstance(job.get("payload"), dict) else {}
+    wanted_id = str(payload.get("wanted_id") or "").strip()
+    row = db.get_wanted_by_job(job_id) if job_id else None
+    if row is None and wanted_id:
+        row = db.get_wanted(wanted_id)
+    if row is None:
+        return None
+    work_id = str(job.get("work_id") or row.get("work_id") or "").strip() or None
+    return db.mark_wanted_arrived(str(row["id"]), now=moment, work_id=work_id)
 
 
 def list_wanted(db: Database, *, status: str = "") -> list[Dict[str, Any]]:

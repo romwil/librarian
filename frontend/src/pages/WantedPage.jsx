@@ -188,7 +188,8 @@ export default function WantedPage() {
   }
 
   function searchSelected() {
-    const ids = visibleIds.filter((id) => selected[id]);
+    const searchable = new Set(desk.rows.filter((row) => row.canSearchRow).map((row) => row.id));
+    const ids = visibleIds.filter((id) => selected[id] && searchable.has(id));
     if (!ids.length) return;
     runSearch({ ids }, ids, "selected");
   }
@@ -198,7 +199,7 @@ export default function WantedPage() {
   }
 
   async function findBeyond(row) {
-    if (!row.id || inflight[row.id]) return;
+    if (!row.id || inflight[row.id] || !row.canFindBeyond) return;
     setInflight((current) => ({ ...current, [row.id]: true }));
     setError("");
     try {
@@ -530,7 +531,7 @@ export default function WantedPage() {
                 return (
                   <li key={row.id || row.title} className="wanted-row" data-testid="wanted-row">
                     <div className="wanted-copy">
-                      {desk.canSearch ? (
+                      {desk.canSearch && row.canSearchRow ? (
                         <label className="wanted-check">
                           <input
                             type="checkbox"
@@ -575,7 +576,7 @@ export default function WantedPage() {
                         className="cta outline compact"
                         onClick={() => findBeyond(row)}
                         busy={Boolean(inflight[row.id]) && !bulkBusy}
-                        disabled={Boolean(inflight[row.id])}
+                        disabled={Boolean(inflight[row.id]) || !row.canFindBeyond}
                         data-testid="wanted-find-beyond"
                       >
                         Find beyond

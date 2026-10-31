@@ -51,6 +51,10 @@ export const EXPORT_MY_CARD = "Export my card";
 export const PRIVACY_HEADING = "Privacy";
 export const ACCOUNT_HEADING = "Account";
 export const CARD_PAUSED = "This library card is paused. Ask whoever runs the library.";
+export const YOUR_ASKS = "Your asks";
+export const ASK_LOOKING = "Looking";
+export const ASK_WAITING = "Waiting for the owner";
+export const ASK_ON_THE_SHELF = "On the shelf";
 
 const UNREACHABLE_COPY = "Can't reach Librarian — is it running?";
 

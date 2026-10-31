@@ -6,7 +6,7 @@ Librarian is a private **reading room** for the books, magazines, comics, audiob
 
 **Library** is the product: The Hall, work pages, Favorites, Continue, and the area rails. It is what is already on the shelves.
 
-**Search** looks at the local shelves first, then Beyond on Usenet. Idle Search (`/search` with no query) shows **Discover**: trending indexer category feeds for the kind you picked. Fielded search (kind, title, author, ISBN, year, …) stays on the same page. Extra kinds (Movies, TV, XXX) follow **Show categories**.
+**Search** looks at the local shelves first, then Beyond on Usenet. Idle Search (`/search` with no query) shows **Discover**: trending indexer category feeds for the kind you picked. Fielded search (kind, title, author, ISBN, year, …) stays on the same page. Extra kinds stay off the Hall.
 
 **Find** redirects to Search. Owners and ops **Get** a Usenet hit to save an Asked slip — confirm on Downloads before SABnzbd. Readers see **Ask the house**. Extra Newznab hosts join NZBFinder on Beyond / Discover.
 
@@ -22,23 +22,17 @@ Find can query more than NZBFinder. Extra Newznab v2 hosts live in Settings; res
 
 **Find beyond / re-grab** also rank the full indexer result set the same way (one LLM call per search, not per hit), surface a collapsed search-details trail, and store candidates on the job for dud-primary fallback. Confirm-before-SAB is unchanged.
 
-Owners can turn on **Show categories** in Settings. Then Discover and fielded Find also offer Movies, TV, and XXX if the indexer lists those feeds — Discover chips group under Newznab parents (Movies, Audio, TV, XXX, Books, …). Those extra kinds never become Hall works.
+Discover and Find stay on household reading kinds: books, magazines, comics, audiobooks, and incoming music. Extra Newznab families never become Hall works.
 
-- **Movies:** Request queues SABnzbd in the Radarr-watched category (default `movies`), then tells Radarr to expect the title (`POST /api/v3/movie` with search off). When SAB finishes, Radarr gets `DownloadedMoviesScan`.
-- **TV:** same with Sonarr (`series` add, then `DownloadedEpisodesScan`). SAB category default `tv`.
-- **XXX:** SABnzbd default folder only. No *arr, no Hall card.
-
-Without a Radarr/Sonarr key, a movie/TV Request still queues SAB and shows **Needs you** — Librarian does not pretend *arr was told.
-
-Owners and ops can subscribe to a Newznab RSS (Find or Settings) for one Librarian kind. New items wait as **Asked** slips on Queue — confirm before SABnzbd. Librarian does not silently download a whole feed.
+Owners and ops can subscribe to a Newznab RSS (Find or Settings) for one Librarian kind. New items wait as **Asked** slips on Downloads — confirm before SABnzbd. Librarian does not silently download a whole feed.
 
 Optional Audiobookshelf URL and token (`AUDIOBOOKSHELF_URL` / `AUDIOBOOKSHELF_API_TOKEN`) in Settings match catalog audiobooks by ISBN, then author and title. Set **Audiobook target** to Audiobookshelf to prefer that handoff. After an audiobook shelves, Librarian asks ABS to scan (fail-soft). Matched titles sync listen progress both ways when you open Listen or pause/persist — without wiping a better local bookmark. That is a quiet **On the player** link, not a new admin skin, and it does not send audiobooks to the Plexamp music library. Plex remains the default audiobook target until you change it.
 
 ## The Hall
 
-After sign-in you land on **The Hall**, not Settings. The hero is search (the stacks, not “then the world”). Rails below: **Continue** (volumes you opened), What’s New, Favorites, **Named shelves** (shareable household collections), Books, Magazines, Comics, Audiobooks, Incoming Music. Everyone sees **Gaps as gifts** (holes as the next chapter of a run); owners and ops also get catalog fan-out. Opening a work leaves a bookmark on Continue; **Finished** means you have read it and clears that bookmark. Finished is not a download status. Audiobook Listen writes the same Continue progress (file + seconds), so in-progress listens sit on the Continue rail beside books. The lamp keeps the page across remounts and Audiobookshelf sync.
+After sign-in you land on **The Hall**, not Settings. The hero is search (the stacks, not “then the world”). Rails below: **Continue** (volumes you opened), Recently added, Favorites, and New & noted. A chip row of kinds and named shelves (counts of one or more) opens Browse. Opening a work leaves a bookmark on Continue; **Finished** means you have read it and clears that bookmark. Finished is not a download status. Audiobook Listen writes the same Continue progress (file + seconds), so in-progress listens sit on the Continue rail beside books. The lamp keeps the page across remounts and Audiobookshelf sync.
 
-Chrome stays Hall / Search / Favorites / You. Queue and Review are op links, not extra tabs.
+Chrome stays Hall / Search / Favorites / You. Downloads and Sorting are op links, not extra tabs. There is no Holds desk.
 
 ## Search
 
@@ -52,8 +46,8 @@ From Search, **Find beyond the shelves** is the next step after a local query. E
 
 When indexer hits look like parts of one release (`01of32`, `Part 2 of 10`, `CD1`, `[01/44]`), Find **groups** them into a multipart card with a part grid, completeness (`3/32 · incomplete`), and multiselect. **Request** on the set still creates one job per NZB — select all available, clear, or ask for a single part. Incomplete sets say so; the indexer may simply not list every part.
 
-- Owner / op: **Request** queues SABnzbd (Librarian kinds are identified as before). Movies/TV also tell Radarr/Sonarr to expect the grab. XXX stays in SAB’s default folder.
-- Reader: **Request** files an “asked the house” slip. Nothing downloads until an owner or op confirms.
+- Owner / op: **Get** files an Asked slip. Confirm on Downloads is the only way SABnzbd starts.
+- Reader: **Ask the house** files a slip. Nothing downloads until an owner or op confirms.
 
 Librarian downloads the NZB with the indexer API key, then pushes the file to SABnzbd (`addfile`). It does **not** ask SAB to fetch a `getnzb` / `download` URL — those links drop their token before they leave Find, so SAB would only see **Unauthorized** or **URL Fetching failed**. If Queue shows that kind of failure, delete the bad rows in SAB history and Request again after this build. Discover browse and typeahead never queue SAB; only an explicit Request (or Queue confirm of an Asked slip) does.
 

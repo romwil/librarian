@@ -127,6 +127,35 @@ class ShelvesRepository(RepositoryBase):
                 ).fetchall()
         return [_row_dict(row) or {} for row in rows]
 
+    def list_named_shelves_with_counts(
+        self, user_id: str, *, include_shared: bool = True
+    ) -> List[Dict[str, Any]]:
+        """Named shelves plus file-backed work counts in one grouped query."""
+        uid = str(user_id or "").strip()
+        if not uid:
+            return []
+        has_files = self._HAS_FILES_SQL.format(alias="w")
+        if include_shared:
+            where = "s.name != ? AND (s.owner_user_id = ? OR s.shared = 1)"
+            args: List[Any] = [FAVORITES_SHELF, uid]
+        else:
+            where = "s.name != ? AND s.owner_user_id = ?"
+            args = [FAVORITES_SHELF, uid]
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT s.*, COUNT(w.id) AS work_count
+                FROM shelves s
+                LEFT JOIN shelf_items si ON si.shelf_id = s.id
+                LEFT JOIN works w ON w.id = si.work_id AND {has_files}
+                WHERE {where}
+                GROUP BY s.id
+                ORDER BY s.shared DESC, lower(s.name) ASC, s.created_at ASC
+                """,
+                args,
+            ).fetchall()
+        return [_row_dict(row) or {} for row in rows]
+
     def create_named_shelf(
         self,
         user_id: str,
