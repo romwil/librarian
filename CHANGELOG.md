@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.6.15] — 2026-10-31
+
+### Highlights
+
+- **Wanted pacing.** Each indexer host may be called 500 times a day. Wanted uses at most half of that, so a due list of thousands of rows cannot melt NZBFinder. A 429 still ends the hourly pass. Confirm on Downloads is still the only way a download starts.
+
+### Changed
+
+- Per-host daily budget of 500 indexer calls; Wanted is capped at 250 (half). Interactive Find can use the rest. A 429 halves the remaining Wanted allowance until midnight UTC.
+- The hourly Wanted pass searches owner-added rows before sweep-added ones, then newest.
+- Poller steps declare `enabled(settings)`: unconfigured Audiobookshelf, watch, SAB, and Wanted stay Off on Maintain, and the owned-slip sweep only runs when a file-less slip exists.
+- Maintain shows household indexer totals for the day, never per-reader counts. Wanted / Get still never send SABnzbd.
+
 ## [0.6.14] — 2026-10-31
 
 ### Highlights

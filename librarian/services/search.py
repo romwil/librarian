@@ -526,6 +526,7 @@ def run_search_beyond(
             data_dir=root,
             deadline=BEYOND_DEADLINE_SECONDS,
             heuristic_only=heuristic_only,
+            db=db,
             **sought,
         )
 

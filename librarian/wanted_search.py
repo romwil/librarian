@@ -18,6 +18,17 @@ from typing import Any, Callable, Dict, List, Mapping, Optional
 
 from librarian.config import Settings
 from librarian.db import Database
+from librarian.indexer_budget import (
+    PURPOSE_INTERACTIVE,
+    PURPOSE_WANTED,
+    WantedBudgetExhausted,
+    allow_call,
+    any_wanted_open,
+    halt_wanted_on_429,
+    record_call,
+    wanted_calls,
+    wanted_tick_allowance,
+)
 from librarian.indexers.query import build_job_payload, search_ladder
 from librarian.indexers.rank import heuristic_rank
 from librarian.kinds import ALL_KINDS, search_category_for_kind
@@ -35,6 +46,7 @@ logger = logging.getLogger(__name__)
 SearchFn = Callable[[Mapping[str, Any]], List[Dict[str, Any]]]
 
 RATE_LIMITED_NOTE = "The indexer asked us to wait. The next hourly pass tries again."
+_WANTED_TICK_SECONDS = 3600.0
 
 # One hourly pass at a time, and one search per row at a time across the pass,
 # a just-queued row, and Search selected.
@@ -90,11 +102,23 @@ def nzbfinder_search(client: NZBFinderClient, sought: Mapping[str, Any]) -> List
     return client.search(query, cat=cat, kind=kind or None, limit=25)
 
 
+def _budget_hosts(settings: Settings) -> List[Dict[str, str]]:
+    from librarian.indexers.hosts import NZBFINDER_ID, enabled_hosts
+
+    hosts = enabled_hosts(settings)
+    if hosts:
+        return hosts
+    return [{"id": NZBFINDER_ID, "name": "NZBFinder", "url": "", "api_token": "", "dialect": ""}]
+
+
 def search_wanted_hosts(
     settings: Settings,
     sought: Mapping[str, Any],
     *,
     transport: Any = None,
+    db: Optional[Database] = None,
+    now: Optional[float] = None,
+    purpose: str = PURPOSE_WANTED,
 ) -> List[Dict[str, Any]]:
     """One ladder rung against every enabled indexer. A 429 is raised; other host errors skip."""
     from librarian.indexers.hosts import enabled_hosts
@@ -106,7 +130,12 @@ def search_wanted_hosts(
     hits: List[Dict[str, Any]] = []
     seen: set[str] = set()
     last_error: Optional[NZBFinderError] = None
-    for host in enabled_hosts(settings):
+    called = False
+    hosts = enabled_hosts(settings)
+    for host in hosts:
+        if db is not None and not allow_call(db, host["id"], purpose, now=now, settings=settings):
+            continue
+        called = True
         client = NZBFinderClient(
             host["url"],
             host["api_token"],
@@ -117,12 +146,27 @@ def search_wanted_hosts(
         try:
             batch = nzbfinder_search(client, sought)
         except NZBFinderError as error:
-            if is_rate_limited(error):
+            if db is not None:
+                record_call(
+                    db,
+                    host["id"],
+                    purpose,
+                    now=now,
+                    calls=1,
+                    errors=1,
+                    rate_limited=1 if is_rate_limited(error) else 0,
+                )
+                if is_rate_limited(error):
+                    halt_wanted_on_429(db, host["id"], now=now, settings=settings)
+                    raise
+            elif is_rate_limited(error):
                 raise
             last_error = error
             continue
         finally:
             client.close()
+        if db is not None:
+            record_call(db, host["id"], purpose, now=now, calls=1)
         for hit in batch or []:
             if not isinstance(hit, Mapping):
                 continue
@@ -136,6 +180,8 @@ def search_wanted_hosts(
                 continue
             seen.add(key)
             hits.append(tagged)
+    if db is not None and hosts and not called:
+        raise WantedBudgetExhausted()
     if last_error is not None and not hits:
         raise last_error
     return hits
@@ -301,6 +347,14 @@ def _walk_row(
         calls += 1
         try:
             hits = run_search(asked)
+        except WantedBudgetExhausted:
+            return {
+                "id": wanted_id,
+                "outcome": "budget",
+                "note": "Wanted used today's indexer budget",
+                "searched": calls > 0,
+                "calls": calls,
+            }
         except NZBFinderError as error:
             note = str(error)
             if is_rate_limited(error):
@@ -354,19 +408,65 @@ def _walk_row(
     }
 
 
+def _budgeted_injected_search(
+    db: Database,
+    search: SearchFn,
+    settings: Settings,
+    *,
+    now: Optional[float],
+    purpose: str,
+) -> SearchFn:
+    hosts = _budget_hosts(settings)
+
+    def _run(sought: Mapping[str, Any]) -> List[Dict[str, Any]]:
+        live = [
+            host
+            for host in hosts
+            if allow_call(db, host["id"], purpose, now=now, settings=settings)
+        ]
+        if not live:
+            raise WantedBudgetExhausted()
+        host = live[0]
+        try:
+            hits = search(sought)
+        except NZBFinderError as error:
+            record_call(
+                db,
+                host["id"],
+                purpose,
+                now=now,
+                calls=1,
+                errors=1,
+                rate_limited=1 if is_rate_limited(error) else 0,
+            )
+            if is_rate_limited(error) and purpose == PURPOSE_WANTED:
+                halt_wanted_on_429(db, host["id"], now=now, settings=settings)
+            raise
+        record_call(db, host["id"], purpose, now=now, calls=1)
+        return hits
+
+    return _run
+
+
 def _open_search(
     settings: Settings,
     search: Optional[SearchFn],
+    *,
+    db: Optional[Database] = None,
+    now: Optional[float] = None,
+    purpose: str = PURPOSE_WANTED,
 ) -> tuple[SearchFn, Optional[NZBFinderClient], bool]:
     if search is not None:
-        return search, None, False
+        if db is None:
+            return search, None, False
+        return _budgeted_injected_search(db, search, settings, now=now, purpose=purpose), None, False
     from librarian.indexers.hosts import enabled_hosts
 
     if not enabled_hosts(settings):
         raise WantedError("Beyond the shelves needs an NZBFinder token in Settings.")
 
     def _default_search(sought: Mapping[str, Any]) -> List[Dict[str, Any]]:
-        return search_wanted_hosts(settings, sought)
+        return search_wanted_hosts(settings, sought, db=db, now=now, purpose=purpose)
 
     return _default_search, None, False
 
@@ -380,6 +480,7 @@ def search_wanted_selection(
     kind: str = "",
     now: Optional[float] = None,
     search: Optional[SearchFn] = None,
+    purpose: str = PURPOSE_INTERACTIVE,
 ) -> List[Dict[str, Any]]:
     """Search the chosen rows, or every open row of one kind. Same work as the poller."""
     moment = time.time() if now is None else float(now)
@@ -398,7 +499,9 @@ def search_wanted_selection(
         raise WantedError("Choose rows or search all")
     if not rows:
         return []
-    run_search, finder, own_client = _open_search(settings, search)
+    run_search, finder, own_client = _open_search(
+        settings, search, db=db, now=moment, purpose=purpose
+    )
     results: List[Dict[str, Any]] = []
     paused = False
     try:
@@ -408,11 +511,23 @@ def search_wanted_selection(
                     {"id": row.get("id"), "outcome": "rate_limited", "note": RATE_LIMITED_NOTE}
                 )
                 continue
+            if purpose == PURPOSE_WANTED and not any_wanted_open(
+                db, _budget_hosts(settings), now=moment, settings=settings
+            ):
+                results.append(
+                    {
+                        "id": row.get("id"),
+                        "outcome": "budget",
+                        "note": "Wanted used today's indexer budget",
+                    }
+                )
+                paused = True
+                continue
             result = _consider_row(db, row, now=moment, run_search=run_search)
             result.pop("searched", None)
             result.pop("calls", None)
             results.append(result)
-            paused = result.get("outcome") == "rate_limited"
+            paused = result.get("outcome") in {"rate_limited", "budget"}
     finally:
         if own_client and finder is not None:
             finder.close()
@@ -436,7 +551,9 @@ def search_queued_wanted(
     if not chosen:
         return []
     try:
-        results = search_wanted_selection(db, settings, ids=chosen, now=now, search=search)
+        results = search_wanted_selection(
+            db, settings, ids=chosen, now=now, search=search, purpose=PURPOSE_WANTED
+        )
     except WantedError:
         return []
     return results
@@ -461,6 +578,7 @@ def beyond_wanted(
     ranked = search_and_rank(
         settings,
         data_dir=data_dir,
+        db=db,
         kind=sought["kind"],
         q=sought["q"],
         title=sought["title"],
@@ -568,8 +686,19 @@ def _walk_due(
     if not due:
         return 0
 
+    hosts = _budget_hosts(settings)
+    interval = _WANTED_TICK_SECONDS
+    started = {str(host.get("id") or "nzbfinder"): wanted_calls(db, host["id"], now=moment) for host in hosts}
+    allowance = {
+        str(host.get("id") or "nzbfinder"): wanted_tick_allowance(
+            db, host["id"], now=moment, interval_seconds=interval, settings=settings
+        )
+        for host in hosts
+    }
+
     own_client = False
     finder = client
+    run_search: SearchFn
     if search is None and finder is None:
         from librarian.indexers.hosts import enabled_hosts
 
@@ -577,27 +706,42 @@ def _walk_due(
             return 0
 
         def _hosts_search(sought: Mapping[str, Any]) -> List[Dict[str, Any]]:
-            return search_wanted_hosts(settings, sought)
+            return search_wanted_hosts(
+                settings, sought, db=db, now=moment, purpose=PURPOSE_WANTED
+            )
 
         run_search = _hosts_search
     elif search is None:
         assert finder is not None
-
-        def _client_search(sought: Mapping[str, Any]) -> List[Dict[str, Any]]:
-            return nzbfinder_search(finder, sought)
-
-        run_search = _client_search
+        run_search = _budgeted_injected_search(
+            db, lambda sought: nzbfinder_search(finder, sought), settings, now=moment, purpose=PURPOSE_WANTED
+        )
     else:
-        run_search = search
+        run_search = _budgeted_injected_search(
+            db, search, settings, now=moment, purpose=PURPOSE_WANTED
+        )
     calls = 0
     try:
         for row in due:
             if should_stop is not None and should_stop():
                 break
+            if not any_wanted_open(
+                db,
+                hosts,
+                now=moment,
+                settings=settings,
+                started=started,
+                allowance=allowance,
+            ):
+                logger.info("Wanted pass stopped: host budget used for today")
+                break
             result = _consider_row(db, row, now=moment, run_search=run_search)
             calls += int(result.get("calls") or 0)
             if result.get("outcome") == "rate_limited":
                 logger.info("Wanted pass stopped on a 429; the rest wait for the next hour")
+                break
+            if result.get("outcome") == "budget":
+                logger.info("Wanted pass stopped: host budget used for today")
                 break
     finally:
         if own_client and finder is not None:

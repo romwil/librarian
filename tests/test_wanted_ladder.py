@@ -216,7 +216,7 @@ def test_sweep_rows_are_searched_right_away(db, monkeypatch):
     assert [row["query"] for row in seen] == ["Dune", "Dune Frank Herbert"]
 
 
-def test_hourly_pass_walks_every_due_row_with_no_cap(db):
+def test_hourly_pass_walks_due_rows_within_the_tick_budget(db):
     rows = [_want(db, f"Title {n}") for n in range(8)]
     later = _want(db, "Later", next_search_at=NOW + HOUR)
     searched: list = []
@@ -232,28 +232,28 @@ def test_hourly_pass_walks_every_due_row_with_no_cap(db):
 
 
 def test_remeasured_call_rate_vs_head_360():
-    """Sprint 3.1 vs 360 HEAD (PERF-018): 5 due rows / 120 s, NZBFinder only, 3,600/day cap.
+    """3.1 hourly pass was uncapped (6,483 due rows → 6k–19k NZBFinder calls).
 
-    This tree: hourly pass, every due row, up to three ladder rungs, NZBFinder only.
-    6,483 due rows are 6,483–19,449 calls in the first hour, then 6 h / 12 h backoff
-    with no weekly cap. A 429 ends the pass. Extra indexers are still Find-only.
+    3.3: 500 calls/day/host, Wanted ≤ half (250). Extra indexers share that per-host
+    budget. A 429 still ends the pass.
     """
-    from librarian import wanted_search
+    from librarian.indexer_budget import INDEXER_DAILY_CALL_BUDGET, daily_wanted_budget
     from librarian.poller import _BACKGROUND_STEPS, DEFAULT_WANTED_POLL_SECONDS
     from librarian.wanted import BASE_BACKOFF_SECONDS, MAX_BACKOFF_SECONDS, backoff_seconds
 
     assert DEFAULT_WANTED_POLL_SECONDS == 3600.0
+    assert INDEXER_DAILY_CALL_BUDGET == 500
+    assert daily_wanted_budget() == 250
     assert "backup" in _BACKGROUND_STEPS
-    assert not hasattr(wanted_search, "MAX_SEARCHES_PER_TICK")
     assert backoff_seconds(1) == BASE_BACKOFF_SECONDS == 6 * HOUR
     assert backoff_seconds(2) == MAX_BACKOFF_SECONDS == 12 * HOUR
     assert backoff_seconds(9) == 12 * HOUR
 
 
 def test_a_429_stops_the_pass_and_is_not_a_strike(db, monkeypatch):
-    first = _want(db, "Alpha", next_search_at=NOW - 3)
-    second = _want(db, "Beta", next_search_at=NOW - 2)
-    third = _want(db, "Gamma", next_search_at=NOW - 1)
+    older = _want(db, "Alpha", next_search_at=NOW - 3)
+    middle = _want(db, "Beta", next_search_at=NOW - 2)
+    newest = _want(db, "Gamma", next_search_at=NOW - 1)
     seen: list = []
     finder = NZBFinderClient(
         INDEXER,
@@ -261,17 +261,24 @@ def test_a_429_stops_the_pass_and_is_not_a_strike(db, monkeypatch):
         transport=_indexer(lambda entry: (429, []) if entry["query"] == "Beta" else (200, []), seen),
     )
     try:
-        assert poll_wanted(db, Settings(), now=NOW, client=finder) == 3
+        calls = poll_wanted(db, Settings(), now=NOW, client=finder)
     finally:
         finder.close()
-    assert [row["query"] for row in seen] == ["Alpha", "Alpha Frank Herbert", "Beta"]
-    assert db.get_wanted(first["id"])["miss_streak"] == 1
-    paused = db.get_wanted(second["id"])
+    assert calls >= 1
+    assert "Beta" in [row["query"] for row in seen]
+    after_beta = False
+    for row in seen:
+        if row["query"] == "Beta":
+            after_beta = True
+            continue
+        if after_beta:
+            raise AssertionError("Wanted kept calling after a 429")
+    paused = db.get_wanted(middle["id"])
     assert paused["miss_streak"] == 0
     assert paused["next_search_at"] == pytest.approx(NOW - 2)
-    untouched = db.get_wanted(third["id"])
-    assert untouched["miss_streak"] == 0
-    assert untouched["next_search_at"] == pytest.approx(NOW - 1)
+    # Newest-first: Gamma is searched before Beta. Alpha must not be touched after the 429.
+    assert db.get_wanted(older["id"])["miss_streak"] == 0
+    assert db.get_wanted(newest["id"])["miss_streak"] == 1
 
 
 def test_search_selected_stops_on_a_429_and_reports_the_rest(db):
@@ -307,7 +314,7 @@ def test_a_second_pass_does_not_start_while_one_is_walking(db):
 
 
 def test_poller_never_starts_a_second_wanted_thread(db):
-    poller = JobPoller(db, Settings, interval=3600)
+    poller = JobPoller(db, _settings, interval=3600)
     entered = threading.Event()
     release = threading.Event()
     runs: list = []

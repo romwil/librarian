@@ -661,20 +661,35 @@ class CatalogRepository(RepositoryBase):
             rows = conn.execute(sql, args).fetchall()
         return [_row_dict(row) or {} for row in rows]
 
+    def has_fileless_slips(self) -> bool:
+        """Cheap EXISTS: is there even one Sorting slip without a file?"""
+        sql = f"""
+            SELECT EXISTS (
+                SELECT 1 FROM works
+                WHERE review_state = 'needs_review'
+                  AND NOT {self._HAS_FILES_SQL.format(alias="works")}
+                LIMIT 1
+            )
+        """
+        with self._connect() as conn:
+            row = conn.execute(sql).fetchone()
+        return bool(row[0] if row is not None else 0)
+
     def load_owned_slip_sweep(
         self,
         *,
         kinds: Sequence[str],
         limit: int,
     ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
-        """Shelved media and fileless Review slips, one connection for the whole read."""
+        """Fileless slips first. No slips → no catalog load."""
         kind_list = [str(kind) for kind in kinds if str(kind)]
         if not kind_list:
             return [], []
         placeholders = ", ".join("?" for _ in kind_list)
         order_case = " ".join(f"WHEN ? THEN {index}" for index in range(len(kind_list)))
         owned_sql = f"""
-            SELECT * FROM works
+            SELECT id, kind, title, author, series_name, series_index, isbn
+            FROM works
             WHERE kind IN ({placeholders})
               AND review_state != 'needs_review'
               AND {self._HAS_FILES_SQL.format(alias="works")}
@@ -689,8 +704,10 @@ class CatalogRepository(RepositoryBase):
             LIMIT ?
         """
         with self._connect() as conn:
-            owned_rows = conn.execute(owned_sql, [*kind_list, *kind_list]).fetchall()
             slip_rows = conn.execute(slip_sql, (max(1, int(limit)),)).fetchall()
+            if not slip_rows:
+                return [], []
+            owned_rows = conn.execute(owned_sql, [*kind_list, *kind_list]).fetchall()
         return (
             [_row_dict(row) or {} for row in owned_rows],
             [_row_dict(row) or {} for row in slip_rows],

@@ -241,8 +241,22 @@ def _run_host_rung(
     transport: Optional[Any],
     data_dir: Optional[Path],
     probe_kind: str,
+    db: Optional[Any] = None,
+    now: Optional[float] = None,
 ) -> Dict[str, Any]:
     """One host, one ladder rung. Fail closed so a sibling host can still answer."""
+    from librarian.indexer_budget import PURPOSE_INTERACTIVE, allow_call, record_call
+
+    if db is not None and not allow_call(
+        db, str(host.get("id") or NZBFINDER_ID), PURPOSE_INTERACTIVE, now=now
+    ):
+        return {
+            "host": host,
+            "ok": False,
+            "error": "Indexer daily budget used",
+            "rate_limited": False,
+            "budgeted": True,
+        }
     client = NZBFinderClient(
         host["url"],
         host["api_token"],
@@ -265,6 +279,16 @@ def _run_host_rung(
             rate_limited=is_rate_limited(error) or "rate" in err_text.lower(),
             kind=probe_kind,
         )
+        if db is not None:
+            record_call(
+                db,
+                str(host.get("id") or NZBFINDER_ID),
+                PURPOSE_INTERACTIVE,
+                now=now,
+                calls=1,
+                errors=1,
+                rate_limited=1 if is_rate_limited(error) else 0,
+            )
         return {
             "host": host,
             "ok": False,
@@ -283,6 +307,14 @@ def _run_host_rung(
         hit_count=len(accepted),
         kind=probe_kind,
     )
+    if db is not None:
+        record_call(
+            db,
+            str(host.get("id") or NZBFINDER_ID),
+            PURPOSE_INTERACTIVE,
+            now=now,
+            calls=1,
+        )
     return {
         "host": host,
         "ok": True,
@@ -300,11 +332,19 @@ def search_beyond(
     transport: Optional[Any] = None,
     data_dir: Optional[Path] = None,
     deadline: Optional[float] = None,
+    db: Optional[Any] = None,
+    now: Optional[float] = None,
     **fields: Any,
 ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
     """Query every enabled host. One 502 must not blank the others."""
     traced = search_beyond_traced(
-        settings, transport=transport, data_dir=data_dir, deadline=deadline, **fields
+        settings,
+        transport=transport,
+        data_dir=data_dir,
+        deadline=deadline,
+        db=db,
+        now=now,
+        **fields,
     )
     return traced["hits"], traced.get("error")
 
@@ -315,6 +355,8 @@ def search_beyond_traced(
     transport: Optional[Any] = None,
     data_dir: Optional[Path] = None,
     deadline: Optional[float] = None,
+    db: Optional[Any] = None,
+    now: Optional[float] = None,
     **fields: Any,
 ) -> Dict[str, Any]:
     """Beyond search with a decision trail for Bestsellers chase diagnostics.
@@ -391,6 +433,8 @@ def search_beyond_traced(
                     transport=transport,
                     data_dir=data_dir,
                     probe_kind=probe_kind,
+                    db=db,
+                    now=now,
                 )
                 for host in live
             ]
@@ -413,6 +457,9 @@ def search_beyond_traced(
             if not run.get("ok"):
                 failed_hosts.add(str(host.get("id") or ""))
                 err_text = str(run.get("error") or "")
+                if run.get("budgeted"):
+                    steps.append({"step": "host", "detail": f"{host['name']}: daily budget used"})
+                    continue
                 if err_text:
                     errors.append(err_text)
                     steps.append({"step": "host", "detail": f"{host['name']}: {err_text}"})

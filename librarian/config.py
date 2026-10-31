@@ -200,6 +200,7 @@ class Settings:
     watch_root: str = ""
     watch_enabled: bool = False
     extra_indexers: list = field(default_factory=list)
+    indexer_daily_call_budget: int = 500
     audiobookshelf_url: str = ""
     audiobookshelf_api_token: str = ""
     music_write_tags: bool = False
@@ -234,6 +235,13 @@ class Settings:
             from librarian.indexers.hosts import normalize_extra_indexers
 
             filtered["extra_indexers"] = normalize_extra_indexers(filtered["extra_indexers"])
+        if "indexer_daily_call_budget" in filtered:
+            try:
+                filtered["indexer_daily_call_budget"] = max(
+                    1, int(filtered["indexer_daily_call_budget"])
+                )
+            except (TypeError, ValueError):
+                filtered["indexer_daily_call_budget"] = 500
         if "llm_profiles" in filtered or "llm_provider" in filtered or any(
             key in filtered for key in ("llm_base_url", "llm_api_key", "llm_model")
         ):
