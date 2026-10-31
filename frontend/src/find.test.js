@@ -23,6 +23,8 @@ import {
   pruneFieldsForKind,
   requestBodyFromHit,
   searchHref,
+  searchLadder,
+  searchRequestQuery,
   shouldShowDiscover,
   findKindOptions,
   visibleFindFields,
@@ -119,10 +121,72 @@ describe("Find query builder", () => {
     assert.equal(groups[1].name, "Books");
   });
 
-  it("composes a beyond query from split fields", () => {
+  it("only uses the joined prefill to tell whether Find has a query", () => {
     assert.equal(composeSearchQuery({ q: "dune", author: "Herbert" }), "dune Herbert");
-    assert.equal(composeSearchQuery({ author: "King", isbn: "9781501142970" }), "King 9781501142970");
-    assert.equal(composeSearchQuery({ artist: "Queen", album: "News of the World", year: "1977" }), "Queen News of the World 1977");
+    assert.equal(composeSearchQuery({}), "");
+  });
+
+  it("sends one precise query, not every known field ANDed together", () => {
+    const prefill = { kind: "book", title: "Dune", author: "Frank Herbert", isbn: "9780441172719", year: "1965" };
+    assert.equal(searchRequestQuery(prefill), "Dune");
+    assert.equal(searchRequestQuery({ ...prefill, q: "dune herbert" }), "dune herbert");
+    assert.equal(searchRequestQuery({ kind: "comic", series: "Saga", issue: "54" }), "Saga 54");
+    assert.equal(searchRequestQuery({ kind: "music", artist: "Queen", album: "Jazz", year: "1978" }), "Jazz");
+    assert.equal(searchRequestQuery({ kind: "", title: "Dune" }), "Dune");
+    assert.notEqual(searchRequestQuery(prefill), composeSearchQuery(prefill));
+  });
+
+  it("walks the book ladder: ISBN alone, title alone, then title and author", () => {
+    const ladder = searchLadder({
+      kind: "book",
+      title: "Dune",
+      author: "Frank Herbert",
+      isbn: "978-0-441-17271-9",
+      year: "1965",
+    });
+    assert.deepEqual(
+      ladder.map((rung) => [rung.rung, rung.q, rung.isbn, rung.title, rung.author, rung.year]),
+      [
+        ["isbn", "9780441172719", "9780441172719", "", "", ""],
+        ["title", "Dune", "", "Dune", "", ""],
+        ["title_author", "Dune Frank Herbert", "", "Dune", "Frank Herbert", ""],
+      ],
+    );
+  });
+
+  it("skips a fake ISBN and never exceeds three rungs", () => {
+    const ladder = searchLadder({ kind: "audiobook", title: "Dune", author: "Herbert", isbn: "9780441172710" });
+    assert.deepEqual(ladder.map((rung) => rung.rung), ["title", "title_author"]);
+    for (const kind of ["book", "audiobook", "magazine", "comic", "music", ""]) {
+      const rungs = searchLadder({
+        kind,
+        q: "x",
+        title: "T",
+        author: "A",
+        isbn: "9780441172719",
+        series: "S",
+        issue: "1",
+        artist: "R",
+        album: "L",
+        year: "2020",
+      });
+      assert.ok(rungs.length <= 3, kind);
+    }
+  });
+
+  it("walks comic, magazine, and music ladders one field at a time", () => {
+    assert.deepEqual(
+      searchLadder({ kind: "comic", series: "Saga", issue: "54", year: "2018" }).map((rung) => rung.q),
+      ["Saga 54", "Saga"],
+    );
+    assert.deepEqual(
+      searchLadder({ kind: "magazine", title: "Linux Magazin", year: "2026" }).map((rung) => rung.q),
+      ["Linux Magazin", "Linux Magazin 2026"],
+    );
+    assert.deepEqual(
+      searchLadder({ kind: "music", artist: "Queen", album: "Jazz", year: "1978" }).map((rung) => rung.q),
+      ["Jazz", "Queen Jazz"],
+    );
   });
 
   it("round-trips search params in stable order", () => {
@@ -306,12 +370,28 @@ describe("Find query builder", () => {
 
 
 describe("catalog gap fan-out", () => {
-  it("detects Hall gap queries and builds kind-aware alternates", () => {
+  it("detects Hall gap queries and follows the ladder instead of the full prefill", () => {
     const comic = { kind: "comic", series: "Saga", issue: "54", q: "Saga 54" };
     assert.equal(isCatalogGapQuery(comic), true);
-    const queries = catalogGapFanoutQueries(comic, { cap: 5 });
-    assert.ok(queries.length >= 2);
-    assert.ok(queries.some((row) => /#54/.test(row.q || "")));
+    assert.deepEqual(
+      catalogGapFanoutQueries(comic, { cap: 5 }).map((row) => [row.q, row.series, row.issue]),
+      [
+        ["Saga 54", "Saga", "54"],
+        ["Saga", "Saga", ""],
+      ],
+    );
+    const book = gapFindFields({
+      kind: "book",
+      series_name: "Dune",
+      missing_index: "2",
+      title: "Dune Messiah",
+      author: "Frank Herbert",
+      year: 1969,
+    });
+    const queries = catalogGapFanoutQueries(book);
+    assert.deepEqual(queries.map((row) => row.q), ["Dune Messiah", "Dune Messiah Frank Herbert"]);
+    assert.ok(queries.every((row) => row.year === ""));
+    assert.equal(queries[0].author, "");
   });
 
   it("ranks complete sets ahead of thin singles", () => {

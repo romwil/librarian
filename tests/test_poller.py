@@ -270,7 +270,8 @@ def test_step_intervals_are_independent(tmp_path, monkeypatch):
     assert "rss" in calls
     assert _status(poller)["enrich"]["last_error"] is None
     assert DEFAULT_RSS_POLL_SECONDS == DEFAULT_ENRICH_POLL_SECONDS
-    assert DEFAULT_SWEEP_POLL_SECONDS > DEFAULT_WANTED_POLL_SECONDS > DEFAULT_SAB_POLL_SECONDS
+    assert DEFAULT_WANTED_POLL_SECONDS == 3600.0
+    assert DEFAULT_WANTED_POLL_SECONDS > DEFAULT_SWEEP_POLL_SECONDS > DEFAULT_SAB_POLL_SECONDS
 
 
 def test_noted_refresh_is_due_after_its_interval(tmp_path, monkeypatch):

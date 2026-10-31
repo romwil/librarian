@@ -9,7 +9,7 @@ No music endpoint is advertised, so music/audiobook/comic use search + cat.
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from librarian.kinds import (
@@ -21,8 +21,10 @@ from librarian.kinds import (
     REQUEST_KINDS,
     search_category_for_kind,
 )
+from librarian.naming.isbn import validated_isbn
 
 _REMOVED_KINDS = frozenset({"movie", "tv", "xxx"})
+MAX_LADDER_RUNGS = 3
 
 SOUGHT_KEYS = (
     "kind",
@@ -96,7 +98,118 @@ def clean_sought(fields: Optional[Dict[str, Any]] = None, **extra: Any) -> Dict[
     return {key: value for key, value in cleaned.items() if value or key == "kind"}
 
 
-def plan_beyond_search(
+def _isbn13(value: Any) -> str:
+    isbn = validated_isbn(_text(value))
+    return isbn if len(isbn) == 13 else ""
+
+
+def _same(left: str, right: str) -> bool:
+    return re.sub(r"[^a-z0-9]+", "", left.lower()) == re.sub(r"[^a-z0-9]+", "", right.lower())
+
+
+def _ladder_rungs(sought: Dict[str, str]) -> List[Tuple[str, Dict[str, str]]]:
+    """Ordered (rung, fields) pairs. Each rung sends only its own fields."""
+    kind = sought.get("kind") or ""
+    rungs: List[Tuple[str, Dict[str, str]]] = []
+    if kind in {KIND_BOOK, KIND_AUDIOBOOK}:
+        isbn = _isbn13(sought.get("isbn"))
+        title = sought.get("title") or ""
+        author = sought.get("author") or ""
+        if isbn:
+            rungs.append(("isbn", {"isbn": isbn}))
+        if title:
+            rungs.append(("title", {"title": title}))
+        if title and author and not _same(title, author):
+            rungs.append(("title_author", {"title": title, "author": author}))
+        if not rungs and author:
+            rungs.append(("author", {"author": author}))
+    elif kind == KIND_MAGAZINE:
+        title = sought.get("title") or ""
+        year = sought.get("year") or ""
+        if title:
+            rungs.append(("title", {"title": title}))
+            if year and year not in title:
+                rungs.append(("title_date", {"title": title, "year": year}))
+        else:
+            isbn = _isbn13(sought.get("isbn"))
+            if isbn:
+                rungs.append(("isbn", {"isbn": isbn}))
+    elif kind == KIND_COMIC:
+        series = sought.get("series") or ""
+        issue = sought.get("issue") or ""
+        if series and issue:
+            rungs.append(("series_issue", {"series": series, "issue": issue}))
+        if series:
+            rungs.append(("series", {"series": series}))
+    elif kind == KIND_MUSIC:
+        album = sought.get("album") or ""
+        artist = sought.get("artist") or ""
+        if album:
+            rungs.append(("album", {"album": album}))
+        if album and artist and not _same(album, artist):
+            rungs.append(("artist_album", {"artist": artist, "album": album}))
+        if not rungs and artist:
+            rungs.append(("artist", {"artist": artist}))
+    else:
+        query = _join(
+            sought.get("q"),
+            sought.get("title"),
+            sought.get("author"),
+            sought.get("isbn"),
+            sought.get("series"),
+            sought.get("issue"),
+            sought.get("artist"),
+            sought.get("album"),
+            sought.get("year"),
+        )
+        if query:
+            rungs.append(("query", {"q": query}))
+    return rungs[:MAX_LADDER_RUNGS]
+
+
+def _rung_query(kind: str, fields: Dict[str, str]) -> str:
+    if kind == KIND_MUSIC:
+        return _join(fields.get("artist"), fields.get("album"))
+    if kind == KIND_COMIC:
+        return _join(fields.get("series"), fields.get("issue"))
+    return _join(
+        fields.get("q"),
+        fields.get("title"),
+        fields.get("author"),
+        fields.get("isbn"),
+        fields.get("year"),
+    )
+
+
+def _rung_plan(
+    sought: Dict[str, str],
+    rung: str,
+    fields: Dict[str, str],
+    *,
+    limit: int,
+    offset: int,
+) -> Dict[str, Any]:
+    kind = sought.get("kind") or ""
+    query = _rung_query(kind, fields)
+    base = {"sought": sought, "rung": rung, "query": query}
+    if kind in {KIND_BOOK, KIND_MAGAZINE}:
+        params = {
+            "title": _join(fields.get("title"), fields.get("year")),
+            "author": fields.get("author") or "",
+            "isbn": fields.get("isbn") or "",
+            "cat": search_category_for_kind(kind),
+            "limit": limit,
+        }
+        return {"endpoint": "books", "params": params, **base}
+    cat = search_category_for_kind(kind) if kind else None
+    return {
+        "endpoint": "search",
+        "params": {"query": query, "cat": cat, "limit": limit, "offset": offset},
+        **base,
+    }
+
+
+def search_ladder(
     *,
     kind: str = "",
     q: str = "",
@@ -110,10 +223,16 @@ def plan_beyond_search(
     year: str = "",
     limit: int = 25,
     offset: int = 0,
-) -> Optional[Dict[str, Any]]:
-    """Return an endpoint + params plan, or None when there is nothing to seek."""
+) -> List[Dict[str, Any]]:
+    """One precise query at a time, most exact first. At most three indexer calls.
+
+    Book and audiobook: ISBN-13 alone, title alone, then title and author (never the
+    ISBN or year together). Comic: series and issue, then series. Magazine: title,
+    then title and issue date. Music: album, then artist and album. Callers stop on
+    a confident hit.
+    """
     if _text(kind).lower() in _REMOVED_KINDS:
-        return None
+        return []
     sought = clean_sought(
         {
             "kind": kind,
@@ -128,73 +247,16 @@ def plan_beyond_search(
             "year": year,
         }
     )
-    kind = sought.get("kind") or ""
-    year_bit = sought.get("year") or ""
-    if kind in {KIND_BOOK, KIND_MAGAZINE}:
-        book_title = sought.get("title") or ""
-        if year_bit and not sought.get("isbn") and year_bit not in book_title:
-            book_title = _join(book_title, year_bit)
-        params = {
-            "title": book_title,
-            "author": sought.get("author") or "",
-            "isbn": sought.get("isbn") or "",
-            "cat": search_category_for_kind(kind),
-            "limit": limit,
-        }
-        if not any(params[key] for key in ("title", "author", "isbn")):
-            return None
-        return {"endpoint": "books", "params": params, "sought": sought}
-    if kind == KIND_COMIC:
-        query = _join(sought.get("series"), sought.get("issue"), year_bit)
-        if not query:
-            query = sought.get("q") or ""
-        if not query:
-            return None
-        return {
-            "endpoint": "search",
-            "params": {"query": query, "cat": "7030", "limit": limit, "offset": offset},
-            "sought": sought,
-        }
-    if kind == KIND_MUSIC:
-        query = _join(sought.get("artist"), sought.get("album"), year_bit)
-        if not query:
-            query = sought.get("q") or ""
-        if not query:
-            return None
-        return {
-            "endpoint": "search",
-            "params": {"query": query, "cat": "3000", "limit": limit, "offset": offset},
-            "sought": sought,
-        }
-    if kind == KIND_AUDIOBOOK:
-        query = _join(sought.get("author"), sought.get("title"), sought.get("isbn"), year_bit)
-        if not query:
-            query = sought.get("q") or ""
-        if not query:
-            return None
-        return {
-            "endpoint": "search",
-            "params": {"query": query, "cat": "3030", "limit": limit, "offset": offset},
-            "sought": sought,
-        }
-    query = _join(
-        sought.get("q"),
-        sought.get("title"),
-        sought.get("author"),
-        sought.get("isbn"),
-        sought.get("series"),
-        sought.get("issue"),
-        sought.get("artist"),
-        sought.get("album"),
-        year_bit,
-    )
-    if not query:
-        return None
-    return {
-        "endpoint": "search",
-        "params": {"query": query, "cat": None, "limit": limit, "offset": offset},
-        "sought": sought,
-    }
+    return [
+        _rung_plan(sought, rung, fields, limit=limit, offset=offset)
+        for rung, fields in _ladder_rungs(sought)
+    ]
+
+
+def plan_beyond_search(**fields: Any) -> Optional[Dict[str, Any]]:
+    """The first rung of the search ladder, or None when there is nothing to seek."""
+    ladder = search_ladder(**fields)
+    return ladder[0] if ladder else None
 
 
 def default_kind_for_plan(plan: Optional[Dict[str, Any]]) -> str:
@@ -217,19 +279,22 @@ def run_beyond_search(client: Any, **fields: Any) -> List[Dict[str, Any]]:
 
 
 def run_beyond_search_traced(client: Any, **fields: Any) -> Dict[str, Any]:
-    """Run a beyond plan and return accepted hits plus rejected/raw diagnostics."""
+    """Run the first ladder rung and return accepted hits plus rejected/raw diagnostics."""
     plan = plan_beyond_search(**fields)
-    empty: Dict[str, Any] = {
-        "plan": plan,
-        "accepted": [],
-        "rejected": [],
-        "raw": [],
-        "default_kind": "",
-        "notes": [],
-    }
     if plan is None:
-        empty["notes"] = ["nothing to seek"]
-        return empty
+        return {
+            "plan": None,
+            "accepted": [],
+            "rejected": [],
+            "raw": [],
+            "default_kind": "",
+            "notes": ["nothing to seek"],
+        }
+    return run_plan_traced(client, plan)
+
+
+def run_plan_traced(client: Any, plan: Dict[str, Any]) -> Dict[str, Any]:
+    """Run one ladder rung against one host."""
     default_kind = default_kind_for_plan(plan)
     if plan["endpoint"] == "books":
         params = plan["params"]

@@ -15,6 +15,19 @@
 - **Maintain indexer lanterns.** Lights Down no longer paints pale paper cards with tan status copy. Lantern names, weather sentences, and Mute sit on raised leather; an idle host is a hollow ring so flicker vs silent is not hue-only. Safe undo uses the same dark wash. Lights Up stays ink on paper.
 - **Library card text size.** Clicking Text size or the slider no longer closes the Library card. Ambient room layering had flattened the topbar under Hall, so the panel was visible through empty Hall and the click counted as outside; range thumb retargets onto `document` are hit-tested too.
 
+## [0.6.12] — 2026-10-31
+
+### Highlights
+
+- **Wanted ladder.** Wanted and Find walk ISBN, then title, then title and author — one precise query at a time — and stop on a confident hit. A newly queued want is searched right away; the rest wait for an hourly pass. A 429 ends that pass instead of chewing the next rows. Confirm on Downloads still sends SABnzbd; Wanted never does.
+
+### Changed
+
+- Wanted search interval is one hour (was two minutes, five rows per tick). The pass walks every due row on its own thread. Nightly backup is unchanged.
+- Miss backoff is 6 hours, then 12 hours (no weekly cap). Sprint 3.3 still owes the 500-call/day host budget.
+- Find beyond uses the same ladder and match rules. Extra indexers stay on Find; the hourly Wanted pass is still NZBFinder only.
+- `rapidfuzz` scores cleaned titles. Convert-fails-twice remains a Sorting slip.
+
 ## [0.6.3] — 2026-10-31
 
 ### Highlights

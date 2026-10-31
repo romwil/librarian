@@ -411,30 +411,49 @@ def test_overlapping_claims_enqueue_one_job(db):
     assert db.get_wanted(row["id"])["status"] == "asked"
 
 
-def test_three_misses_then_silence(db, caplog):
-    row = _audiobook_want(db)
-    calls = []
+def test_backoff_walks_off_six_then_twelve_and_stays_at_twelve():
+    hour = 60 * 60
+    assert backoff_seconds(1) == 6 * hour
+    assert backoff_seconds(2) == 12 * hour
+    assert backoff_seconds(3) == 12 * hour
+    assert backoff_seconds(9) == 12 * hour
 
-    def search(_sought):
-        calls.append(1)
+
+def test_misses_wait_six_then_twelve_hours_and_never_a_week(db):
+    row = _audiobook_want(db)
+    rungs = []
+
+    def search(sought):
+        rungs.append(sought["rung"])
         return []
 
+    hour = 60 * 60
     moment = NOW
-    caplog.set_level(logging.INFO, logger="librarian.wanted_search")
-    for streak in (1, 2, 3):
-        assert poll_wanted(db, Settings(), now=moment, search=search) == 1
+    for streak, wait in ((1, 6 * hour), (2, 12 * hour), (3, 12 * hour), (4, 12 * hour)):
+        assert poll_wanted(db, Settings(), now=moment, search=search) == 3
         fresh = db.get_wanted(row["id"])
         assert fresh["status"] == "wanted"
         assert fresh["miss_streak"] == streak
-        assert fresh["next_search_at"] == pytest.approx(moment + backoff_seconds(streak))
-        assert poll_wanted(db, Settings(), now=moment + 1, search=search) == 0
-        assert db.get_wanted(row["id"])["miss_streak"] == streak
+        assert fresh["next_search_at"] == pytest.approx(moment + wait)
+        assert poll_wanted(db, Settings(), now=fresh["next_search_at"] - 1, search=search) == 0
         moment = fresh["next_search_at"]
-    assert caplog.text.count("dropped to slow search") == 1
-    assert poll_wanted(db, Settings(), now=moment, search=search) == 1
-    assert db.get_wanted(row["id"])["miss_streak"] == 4
-    assert caplog.text.count("dropped to slow search") == 1
-    assert len(calls) == 4
+    assert rungs == ["isbn", "title", "title_author"] * 4
+
+
+def test_reopen_resets_the_miss_streak(db):
+    from librarian.wanted import add_wanted, dismiss_wanted
+
+    row = add_wanted(db, {"title": "Kindred", "author": "Octavia Butler", "kind": "audiobook"}, now=NOW)
+    poll_wanted(db, Settings(), now=NOW, search=lambda _s: [])
+    poll_wanted(db, Settings(), now=NOW + 7 * 60 * 60, search=lambda _s: [])
+    assert db.get_wanted(row["id"])["miss_streak"] == 2
+    dismiss_wanted(db, row["id"], now=NOW + 8 * 60 * 60)
+    again = add_wanted(
+        db, {"title": "Kindred", "author": "Octavia Butler", "kind": "audiobook"}, now=NOW + 9 * 60 * 60
+    )
+    assert again["id"] == row["id"]
+    assert again["miss_streak"] == 0
+    assert again["next_search_at"] == pytest.approx(NOW + 9 * 60 * 60)
 
 
 def test_junk_multidisc_pushes_next_search_at(db):
@@ -444,7 +463,7 @@ def test_junk_multidisc_pushes_next_search_at(db):
         assert sought["cat"] == "3030"
         return [JUNK]
 
-    assert poll_wanted(db, Settings(), now=NOW, search=search) == 1
+    assert poll_wanted(db, Settings(), now=NOW, search=search) == 3
     fresh = db.get_wanted(row["id"])
     assert fresh["status"] == "wanted"
     assert fresh["miss_streak"] == 1
@@ -576,7 +595,7 @@ def test_unconfigured_indexer_does_not_search(db):
 def test_sought_audiobook_uses_nzbfinder_category():
     sought = sought_for_row({"kind": "audiobook", "title": "Dune", "author": "Frank Herbert"})
     assert sought["cat"] == "3030"
-    assert sought["q"] == "Frank Herbert Dune"
+    assert sought["q"] == "Dune"
 
 
 def test_poller_tick_calls_sweep_and_search(db, monkeypatch):
@@ -906,7 +925,7 @@ def test_wanted_search_respects_kind_ids_and_asked_lock(tmp_path, monkeypatch):
         by_kind = search_wanted_selection(
             database, settings, all_rows=True, kind="book", now=NOW, search=search
         )
-        assert [item["title"] for item in calls] == ["Paper"]
+        assert [item["q"] for item in calls] == ["Paper", "Paper Ada"]
         outcomes = {row["id"]: row["outcome"] for row in by_kind}
         assert outcomes[asked["id"]] == "already_asked"
         assert outcomes[book["id"]] == "miss"
@@ -915,7 +934,7 @@ def test_wanted_search_respects_kind_ids_and_asked_lock(tmp_path, monkeypatch):
         by_ids = search_wanted_selection(
             database, settings, ids=[other["id"]], now=NOW, search=search
         )
-        assert [item["title"] for item in calls] == ["Voice"]
+        assert [item["q"] for item in calls] == ["Voice", "Voice Ada"]
         assert [row["id"] for row in by_ids] == [other["id"]]
         calls.clear()
         again = search_wanted_selection(
@@ -925,7 +944,7 @@ def test_wanted_search_respects_kind_ids_and_asked_lock(tmp_path, monkeypatch):
             now=NOW + 10**9,
             search=search,
         )
-        assert [item["title"] for item in calls] == ["Paper"]
+        assert [item["q"] for item in calls] == ["Paper", "Paper Ada"]
         assert any(row["id"] == asked["id"] and row["outcome"] == "already_asked" for row in again)
 
         http_calls = []
@@ -944,7 +963,7 @@ def test_wanted_search_respects_kind_ids_and_asked_lock(tmp_path, monkeypatch):
         monkeypatch.setattr("librarian.wanted_search.NZBFinderClient", Finder)
         found = client.post("/api/wanted/search", json={"all": True, "kind": "audiobook"})
         assert found.status_code == 200, found.text
-        assert http_calls == ["audiobook"]
+        assert http_calls == ["audiobook", "audiobook"]
         assert all(row["id"] != book["id"] for row in found.json()["results"])
     finally:
         database.close()

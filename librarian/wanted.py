@@ -12,7 +12,13 @@ from typing import Any, Dict, Mapping, Optional
 
 from librarian.db import Database
 from librarian.identify import isbn_match_keys
-from librarian.indexers.rank import heuristic_score
+from librarian.indexers.match import (  # noqa: F401 — Wanted callers import these here
+    CONFIDENT_SCORE,
+    RELEASE_NAME_MIN_CHARS,
+    is_junk_multidisc,
+    is_release_name_match,
+)
+from librarian.indexers.match import is_confident_match as is_confident_hit  # noqa: F401
 from librarian.kinds import ALL_KINDS
 from librarian.owned import ShelfIndex
 
@@ -20,23 +26,9 @@ STATUS_WANTED = "wanted"
 STATUS_ASKED = "asked"
 STATUS_DISMISSED = "dismissed"
 
-# First miss waits 2× base, second 4× base. Three misses lock the slow cadence.
+# First miss waits 6 hours, the second 12. Every later miss stays at 12.
 BASE_BACKOFF_SECONDS = 6 * 60 * 60
-SLOW_CADENCE_SECONDS = 7 * 24 * 60 * 60
-SLOW_AFTER_MISSES = 3
-# Title overlap is worth 3 and author overlap 2. 4.5 needs both, not a title-only glance.
-CONFIDENT_SCORE = 4.5
-# A posting name this long that matches exactly is the release itself, not a glance.
-RELEASE_NAME_MIN_CHARS = 16
-
-_JUNK_MULTIDISC = re.compile(
-    r"(?ix)"
-    r"(?:\b(?:cd|disc|disk)[\s._-]*0*\d+\b)"
-    r"|(?:\bmulti[\s-]?disc\b)"
-    r"|(?:\b\d+\s*cds?\b)"
-    r"|(?:\.part\d+\.rar\b)"
-    r"|(?:\brars?\s*set\b)"
-)
+MAX_BACKOFF_SECONDS = 12 * 60 * 60
 
 
 class WantedError(ValueError):
@@ -53,11 +45,9 @@ class AlreadyShelved(WantedError):
 
 
 def backoff_seconds(streak: int) -> float:
-    """How long to wait after this miss streak. Three or more stays on the slow clock."""
-    count = max(0, int(streak))
-    if count >= SLOW_AFTER_MISSES:
-        return float(SLOW_CADENCE_SECONDS)
-    return float(BASE_BACKOFF_SECONDS) * (2 ** count)
+    """How long to wait after this miss streak: 6 hours, then 12, then 12 again."""
+    count = max(1, int(streak))
+    return float(min(BASE_BACKOFF_SECONDS * (2 ** (count - 1)), MAX_BACKOFF_SECONDS))
 
 
 def _norm(value: Any) -> str:
@@ -89,38 +79,6 @@ def dedupe_key(
     if identity:
         return f"isbn:{identity}:{shelf_kind}"
     return f"name:{_norm(title)}:{_norm(author)}:{shelf_kind}"
-
-
-def is_junk_multidisc(hit: Mapping[str, Any]) -> bool:
-    """A split disc or leftover archive is not a complete audiobook."""
-    blob = " ".join(
-        str(hit.get(key) or "")
-        for key in ("title", "book_title", "category_name")
-    )
-    return _JUNK_MULTIDISC.search(blob) is not None
-
-
-def is_release_name_match(sought: Mapping[str, Any], hit: Mapping[str, Any]) -> bool:
-    """The Wanted title is this posting's own name (a pick saved from Discover or RSS)."""
-    want = _norm(sought.get("title"))
-    if len(want) < RELEASE_NAME_MIN_CHARS:
-        return False
-    return want == _norm(hit.get("title"))
-
-
-def is_confident_hit(sought: Mapping[str, Any], hit: Mapping[str, Any]) -> bool:
-    """ISBN agreement, the exact posting name, or a strong title and author overlap. Fail closed."""
-    if not str(hit.get("guid") or hit.get("indexer_guid") or "").strip():
-        return False
-    if is_junk_multidisc(hit):
-        return False
-    want = set(isbn_match_keys(str(sought.get("isbn") or "")))
-    got = set(isbn_match_keys(str(hit.get("isbn") or "")))
-    if want and got and want.intersection(got):
-        return True
-    if is_release_name_match(sought, hit):
-        return True
-    return heuristic_score(sought, hit) >= CONFIDENT_SCORE
 
 
 def public_wanted(row: Mapping[str, Any]) -> Dict[str, Any]:

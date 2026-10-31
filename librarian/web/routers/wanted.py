@@ -1,13 +1,16 @@
 """Wanted desk API. Readers may list. Owner and op may add, dismiss, or search.
 
-Adding a row does not search and does not call SABnzbd. Search files an Asked
-slip, and so does an add that carries the clicked posting's guid. Confirm, on
-the queue, is what talks to SABnzbd.
+A newly added or reopened row is searched once right after the response, then
+waits for the hourly pass. Search files an Asked slip, and so does an add that
+carries the clicked posting's guid. Nothing here calls SABnzbd. Confirm, on the
+queue, is what talks to SABnzbd.
 """
 
 from __future__ import annotations
 
-from fastapi import FastAPI, HTTPException, Request
+import logging
+
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 
 from librarian.auth import require_role
 from librarian.owned import ShelfIndex, annotate_wanted_row
@@ -19,13 +22,26 @@ from librarian.wanted import (
     page_wanted,
     public_wanted,
 )
-from librarian.wanted_search import ask_wanted_hit, beyond_wanted, search_wanted_selection
+from librarian.wanted_search import (
+    ask_wanted_hit,
+    beyond_wanted,
+    search_queued_wanted,
+    search_wanted_selection,
+)
 from librarian.web.deps import WebDeps
 from librarian.web.schemas import WantedAddPayload, WantedAskPayload, WantedSearchPayload
+
+logger = logging.getLogger(__name__)
 
 
 def register_wanted_routes(app: FastAPI, deps: WebDeps) -> None:
     db = deps.db
+
+    def _search_new_row(wanted_id: str) -> None:
+        try:
+            search_queued_wanted(db, deps.settings(), [wanted_id])
+        except Exception:
+            logger.exception("Wanted search for a new row failed")
 
     def _public(row: dict, index: ShelfIndex | None = None) -> dict:
         shelves = index or ShelfIndex(db)
@@ -80,7 +96,7 @@ def register_wanted_routes(app: FastAPI, deps: WebDeps) -> None:
         return {"results": results}
 
     @app.post("/api/wanted")
-    def wanted_add(payload: WantedAddPayload, request: Request):
+    def wanted_add(payload: WantedAddPayload, request: Request, background: BackgroundTasks):
         require_role(request.state.user, "owner", "op")
         fields = payload.model_dump(exclude={"hit"})
         hit = payload.hit.model_dump() if payload.hit is not None else {}
@@ -106,6 +122,8 @@ def register_wanted_routes(app: FastAPI, deps: WebDeps) -> None:
         except WantedError as error:
             status_code = 404 if str(error) == "Work not found" else 400
             raise HTTPException(status_code=status_code, detail=str(error)) from error
+        if row.get("status") == "wanted":
+            background.add_task(_search_new_row, str(row["id"]))
         return {"item": _public(row)}
 
     @app.post("/api/wanted/{wanted_id}/beyond")

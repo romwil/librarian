@@ -6,6 +6,11 @@ sweep, wanted search, and New & noted each wait on a longer interval so a
 slow enrich cannot hold the next download poll. Watch-folder ingest stays on
 the short thread, after the download poll. One step's failure is recorded on
 that step and the others still run.
+
+Wanted search is one hourly pass over every due row. It walks on its own thread
+so a long pass does not hold the other steps, and a second pass never starts
+while one is still walking. Rows the audiobook sweep just created are searched
+right away. Nightly backup stays on this housekeeping thread.
 """
 
 from __future__ import annotations
@@ -35,7 +40,7 @@ DEFAULT_SAB_POLL_SECONDS = 30.0
 DEFAULT_ENRICH_POLL_SECONDS = 300.0
 DEFAULT_RSS_POLL_SECONDS = 300.0
 DEFAULT_SWEEP_POLL_SECONDS = 900.0
-DEFAULT_WANTED_POLL_SECONDS = 120.0
+DEFAULT_WANTED_POLL_SECONDS = 3600.0
 DEFAULT_NOTED_POLL_SECONDS = 21600.0
 # Hourly look; a snapshot is only taken when today's is missing (nightly in effect).
 DEFAULT_BACKUP_POLL_SECONDS = 3600.0
@@ -174,6 +179,8 @@ class JobPoller:
         self._lock = threading.Lock()
         self._sab_thread: Optional[threading.Thread] = None
         self._steps_thread: Optional[threading.Thread] = None
+        self._wanted_thread: Optional[threading.Thread] = None
+        self._queued_thread: Optional[threading.Thread] = None
         self._started = False
         self._steps = _build_steps(self.interval)
         self._by_id = {step.id: step for step in self._steps}
@@ -293,11 +300,47 @@ class JobPoller:
         match_audiobooks(self.db, settings)
         return 0
 
-    def _run_sweep(self, _settings: Settings) -> int:
+    def _run_sweep(self, settings: Settings) -> int:
         from librarian.wanted_sweep import sweep_wanted_audiobooks
 
-        sweep_wanted_audiobooks(self.db)
+        created: list[str] = []
+        sweep_wanted_audiobooks(self.db, created_ids=created)
+        if created:
+            self._search_queued(settings, created)
         return 0
+
+    def _search_queued(self, settings: Settings, ids: list[str]) -> None:
+        """Search just-created rows now. Off the steps thread once the poller runs."""
+        from librarian.wanted_search import search_queued_wanted
+
+        def _search() -> None:
+            try:
+                search_queued_wanted(self.db, settings, ids)
+            except Exception:
+                logger.exception("Wanted search for new rows failed")
+
+        if not self._started:
+            _search()
+            return
+        thread = threading.Thread(target=_search, name="librarian-wanted-new", daemon=True)
+        self._queued_thread = thread
+        thread.start()
+
+    def _start_wanted_pass(self) -> None:
+        """Start the hourly pass on its own thread unless one is still walking."""
+        with self._lock:
+            running = self._wanted_thread
+            if running is not None and running.is_alive():
+                return
+            self._next_due["wanted"] = self._clock() + self._by_id["wanted"].interval
+            thread = threading.Thread(
+                target=self._run_step,
+                args=("wanted",),
+                name="librarian-wanted-pass",
+                daemon=True,
+            )
+            self._wanted_thread = thread
+        thread.start()
 
     def _run_owned(self, _settings: Settings) -> int:
         from librarian.owned_slip import sweep_owned_slips
@@ -308,7 +351,7 @@ class JobPoller:
     def _run_wanted(self, settings: Settings) -> int:
         from librarian.wanted_search import poll_wanted
 
-        return int(poll_wanted(self.db, settings) or 0)
+        return int(poll_wanted(self.db, settings, should_stop=self._stop.is_set) or 0)
 
     def _run_noted(self, settings: Settings) -> int:
         from librarian.noted import run_noted_refresh
@@ -367,7 +410,11 @@ class JobPoller:
                 for name in _BACKGROUND_STEPS:
                     if self._stop.is_set():
                         return
-                    if self._due(name):
+                    if not self._due(name):
+                        continue
+                    if name == "wanted":
+                        self._start_wanted_pass()
+                    else:
                         self._run_step(name)
             except Exception:
                 logger.exception("Poller housekeeping tick failed")
@@ -398,10 +445,17 @@ class JobPoller:
 
     def stop(self) -> None:
         self._stop.set()
-        for thread in (self._sab_thread, self._steps_thread):
+        for thread in (
+            self._sab_thread,
+            self._steps_thread,
+            self._wanted_thread,
+            self._queued_thread,
+        ):
             if thread is not None:
                 thread.join(timeout=2)
         self._sab_thread = None
         self._steps_thread = None
+        self._wanted_thread = None
+        self._queued_thread = None
         with self._lock:
             self._started = False

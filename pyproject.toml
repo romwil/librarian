@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "librarian"
-version = "0.6.3"
+version = "0.6.12"
 description = "Household reading-room library for books, magazines, comics, audiobooks, and music on Automat."
 readme = "README.md"
 license = { text = "MIT" }
@@ -22,6 +22,7 @@ classifiers = [
 ]
 dependencies = [
     "httpx>=0.27.0,<1",
+    "rapidfuzz>=3.0,<4",
 ]
 
 [project.optional-dependencies]
