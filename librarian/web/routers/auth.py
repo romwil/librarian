@@ -24,9 +24,9 @@ from librarian.invites import (
 )
 from librarian.rate_limit import auth_local_login_limit, enforce_rate_limit
 from librarian.sessions import has_usable_session_secret
-from librarian.web.build_info import read_build_info as _read_build_info
 from librarian.web.deps import WebDeps
 from librarian.web.schemas import InvitePayload, LoginPayload, RedeemPayload
+from librarian.web.status import is_ready, owner_status
 
 
 def register_auth_routes(app: FastAPI, deps: WebDeps) -> None:
@@ -47,17 +47,24 @@ def register_auth_routes(app: FastAPI, deps: WebDeps) -> None:
 
     @app.get("/api/health")
     def health() -> Dict[str, Any]:
-        from librarian.whats_new_truth import notes_match_runtime, read_notes_tip_version
+        """Public liveness — process is up. No version, rev, notes, or build."""
+        return {"status": "ok"}
 
-        notes_version = read_notes_tip_version(root)
-        return {
-            "status": "ok",
-            "ok": True,
-            "version": __version__,
-            "build": _read_build_info(),
-            "notes_version": notes_version,
-            "notes_match": notes_match_runtime(runtime=__version__, notes_version=notes_version),
-        }
+    @app.get("/api/health/ready")
+    def health_ready(request: Request):
+        """Public readiness: 200 or 503 only. No booleans or ages in the body."""
+        poller = getattr(request.app.state, "poller", None)
+        if not is_ready(db=db, poller=poller):
+            return JSONResponse({}, status_code=503)
+        return JSONResponse({}, status_code=200)
+
+    @app.get("/api/status")
+    def status(request: Request) -> Dict[str, Any]:
+        """Owner deploy truth: version, rev, notes lockstep, poller, last backup."""
+        user = getattr(request.state, "user", None) or current_user(request)
+        require_role(user, "owner")
+        poller = getattr(request.app.state, "poller", None)
+        return owner_status(db=db, poller=poller, data_dir=root)
 
     @app.get("/api/features")
     def features() -> Dict[str, Any]:

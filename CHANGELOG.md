@@ -15,6 +15,18 @@
 - **Maintain indexer lanterns.** Lights Down no longer paints pale paper cards with tan status copy. Lantern names, weather sentences, and Mute sit on raised leather; an idle host is a hollow ring so flicker vs silent is not hue-only. Safe undo uses the same dark wash. Lights Up stays ink on paper.
 - **Library card text size.** Clicking Text size or the slider no longer closes the Library card. Ambient room layering had flattened the topbar under Hall, so the panel was visible through empty Hall and the click counted as outside; range thumb retargets onto `document` are hit-tested too.
 
+## [0.6.2] — 2026-10-31
+
+### Highlights
+
+- **Deploy check.** Public `/api/health` only says the process is up. Version, rev, and whether What’s New matches live on owner `/api/status`, and `docker exec librarian cat /app/.build-info` is the host source of truth. Release notes are read from the image, not `/config`.
+
+### Changed
+
+- Unauthenticated `GET /api/health` returns `{ "status": "ok" }` only (BD-5). Optional `GET /api/health/ready` is 200 or 503 with an empty body.
+- Owner `GET /api/status` carries version, rev, built_at, notes_match, last_backup, and poller_alive. Settings → About and What’s New no longer read version from public health.
+- INFO logs use the route template (no query string, user id, IP, or `apikey`); `httpx` stays at WARNING; Docker log rotation is 10m × 5 (PERF-008).
+
 ## [0.5.23] — 2026-10-20
 
 ### Highlights

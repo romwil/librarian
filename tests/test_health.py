@@ -1,42 +1,47 @@
 from fastapi.testclient import TestClient
 
-from librarian import __version__
 from librarian.web.app import create_app
+from librarian.web.build_info import parse_build_info
 
 
-def test_health_status_ok(tmp_path):
+def test_health_status_ok_only(tmp_path):
     client = TestClient(create_app(tmp_path))
     resp = client.get("/api/health")
     assert resp.status_code == 200
     body = resp.json()
-    assert body["status"] == "ok"
-    assert body["ok"] is True
-    assert body["version"] == __version__
-    assert "build" in body
-    assert body["build"] == "" or isinstance(body["build"], str)
+    assert body == {"status": "ok"}
+    assert "version" not in body
+    assert "build" not in body
+    assert "rev" not in body
+    assert "notes_match" not in body
+    assert "notes_version" not in body
+    assert "ok" not in body
 
 
-def test_health_build_from_file(tmp_path, monkeypatch):
-    stamp = tmp_path / ".build-info"
-    stamp.write_text("0.4.4 built test rev abc\n", encoding="utf-8")
-    monkeypatch.setattr("librarian.web.build_info._REPO_ROOT", tmp_path)
+def test_health_ready_200_or_503_empty_body(tmp_path):
     client = TestClient(create_app(tmp_path))
-    body = client.get("/api/health").json()
-    assert body["build"] == "0.4.4 built test rev abc"
-
-
-def test_features_public_and_owner_ready(tmp_path):
-    client = TestClient(create_app(tmp_path))
-    resp = client.get("/api/features")
-    assert resp.status_code == 200
+    resp = client.get("/api/health/ready")
+    assert resp.status_code in (200, 503)
     body = resp.json()
-    assert body["owner_ready"] is True
-    assert body["auth_methods"] == ["local"]
-    assert "session_secret_ok" not in body
-    assert "notifications" not in body
+    assert body == {}
+    assert "db_ok" not in body
+    assert "poller_alive" not in body
+    assert "last_backup" not in body
 
 
-def test_me_is_not_public(tmp_path):
+def test_health_ready_503_when_poller_dead(tmp_path, monkeypatch):
     client = TestClient(create_app(tmp_path))
-    resp = client.get("/api/auth/me")
-    assert resp.status_code == 401
+    monkeypatch.setattr("librarian.web.routers.auth.is_ready", lambda **_kwargs: False)
+    resp = client.get("/api/health/ready")
+    assert resp.status_code == 503
+    assert resp.json() == {}
+
+
+def test_parse_build_info_splits_stamp():
+    parsed = parse_build_info("0.6.2 built 2026-10-31T04:00:00Z rev abcdef1")
+    assert parsed["version"] == "0.6.2"
+    assert parsed["built_at"] == "2026-10-31T04:00:00Z"
+    assert parsed["rev"] == "abcdef1"
+    empty = parse_build_info("")
+    assert empty["rev"] == ""
+    assert empty["built_at"] == ""

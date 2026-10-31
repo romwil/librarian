@@ -41,7 +41,8 @@ There is **no** `/api/auth/` prefix leak. Ingress matches **explicit method+path
 
 | Method | Path | Notes |
 |--------|------|--------|
-| `GET` | `/api/health` | Liveness |
+| `GET` | `/api/health` | Liveness — `{ "status": "ok" }` only; no version or rev |
+| `GET` | `/api/health/ready` | Readiness — **200 or 503** with an empty body |
 | `GET` | `/api/features` | Stripped flags (household name, owner ready, auth methods) |
 | `GET` | `/api/invites/validate` | HMAC-verified token; fail closed; **30 / IP / min** |
 | `POST` | `/api/invites/redeem/local` | Local join on a valid invite; **10 / IP / min** |

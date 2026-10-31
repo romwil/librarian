@@ -18,6 +18,7 @@ def _client(tmp_path, monkeypatch):
 def test_public_handshake_exact_is_exhaustive():
     assert PUBLIC_HANDSHAKE_EXACT == {
         ("GET", "/api/health"),
+        ("GET", "/api/health/ready"),
         ("GET", "/api/features"),
         ("GET", "/api/invites/validate"),
         ("POST", "/api/invites/redeem/local"),
@@ -25,6 +26,8 @@ def test_public_handshake_exact_is_exhaustive():
         ("POST", "/api/auth/logout"),
     }
     assert is_public_handshake("GET", "/api/health?x=1") is True
+    assert is_public_handshake("GET", "/api/health/ready") is True
+    assert is_public_handshake("GET", "/api/status") is False
     assert is_public_handshake("GET", "/api/auth/me") is False
     assert is_public_handshake("POST", "/api/auth/local/register") is False
     assert is_public_handshake("GET", "/api/auth/") is False
@@ -79,6 +82,8 @@ def test_unauthenticated_handshake_only(tmp_path, monkeypatch):
     client = _client(tmp_path, monkeypatch)
     client.cookies.clear()
     assert client.get("/api/health").status_code == 200
+    assert client.get("/api/health/ready").status_code in (200, 503)
+    assert client.get("/api/status").status_code == 401
     assert client.get("/api/features").status_code == 200
     assert client.get("/api/features/ops").status_code == 401
     assert client.get("/api/invites/validate").status_code == 404

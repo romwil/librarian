@@ -16,11 +16,14 @@ export default function AboutPanel() {
   useEffect(() => {
     let cancelled = false;
     api
-      .health()
+      .status()
       .then((data) => {
         if (cancelled) return;
         setVersion(String(data?.version || "").trim());
-        setBuild(String(data?.build || "").trim());
+        const rev = String(data?.rev || "").trim();
+        const builtAt = String(data?.built_at || "").trim();
+        const stamp = [builtAt && `built ${builtAt}`, rev && `rev ${rev}`].filter(Boolean).join(" ");
+        setBuild(stamp);
       })
       .catch(() => {
         if (cancelled) return;
