@@ -15,6 +15,20 @@
 - **Maintain indexer lanterns.** Lights Down no longer paints pale paper cards with tan status copy. Lantern names, weather sentences, and Mute sit on raised leather; an idle host is a hollow ring so flicker vs silent is not hue-only. Safe undo uses the same dark wash. Lights Up stays ink on paper.
 - **Library card text size.** Clicking Text size or the slider no longer closes the Library card. Ambient room layering had flattened the topbar under Hall, so the panel was visible through empty Hall and the click counted as outside; range thumb retargets onto `document` are hit-tested too.
 
+## [0.6.20] — 2026-10-31
+
+### Highlights
+
+- **Asked, then arrived.** A reader who asks sees Your asks on the Library card. Keepers get a confirm notice. When the volume is filed, Wanted says On the shelf — not Asked. Confirm on Downloads is still the only way a download starts.
+- **The Hall tells the truth.** Chip row of kinds and named shelves. Dead `areas` and celebration rails are gone. Model picks stay off until you turn them on.
+
+### Changed
+
+- Wanted `arrived` is free-text status (no migration). `asked` still locks searches. Get / Ask never silent-SAB.
+- Mail bodies end with a notices-off footer and `List-Unsubscribe` when `public_base_url` is set. The poller flushes parked quiet-hours email hourly.
+- New & noted NYT-named lanes are **Model picks** behind a Settings toggle (default off). `robots.txt` Disallow and `X-Robots-Tag: noindex`.
+- HELP drops Radarr/Sonarr/XXX. North-star spec is Hall-first; Sorting stays.
+
 ## [0.6.19] — 2026-10-31
 
 ### Highlights

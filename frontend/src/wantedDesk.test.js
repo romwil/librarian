@@ -153,6 +153,8 @@ describe("Wanted desk", () => {
     const paused = wantedSearchStatus({ status: "wanted" }, { attempt: { outcome: "rate_limited" } });
     assert.equal(paused.label, "Wanted");
     assert.match(paused.detail, /asked us to wait/);
+    const arrived = wantedSearchStatus({ status: "arrived" });
+    assert.equal(arrived.label, "On the shelf");
   });
 
   it("does not offer Search the shelves, and Find beyond asks for hits on the row", () => {

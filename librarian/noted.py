@@ -66,6 +66,7 @@ WEEK_MARKER_KEY = "__week__"
 HOUSEHOLD_ORIGIN_LABEL = (
     "These titles came from the household model, not the New York Times API."
 )
+MODEL_PICKS_ORIGIN_LABEL = "Suggested by your language model"
 MISSING_NYT_AND_MODEL = (
     "No New York Times list can show titles yet. "
     "The NYT API key and the household model are both missing."
@@ -911,6 +912,10 @@ def _household_llm_ready(settings: Any) -> bool:
     return bool(resolve_llm_connection(settings).get("api_key"))
 
 
+def _show_model_suggested(settings: Any) -> bool:
+    return bool(getattr(settings, "show_model_suggested_lists", False))
+
+
 def _nyt_cache_source(settings: Any) -> str:
     return NYT_CACHE_SOURCE if _nyt_api_key(settings) else HOUSEHOLD_CACHE_SOURCE
 
@@ -930,6 +935,8 @@ def _store_household_nyt_list(
     A dated week already in the cache is not asked again. No model key returns
     immediately. Failures are logged without the prompt or any key.
     """
+    if not _show_model_suggested(settings):
+        return 0
     if when != "current" and _week_cached(
         db, source=HOUSEHOLD_CACHE_SOURCE, list_name=slug, published_date=when
     ):
@@ -1008,6 +1015,8 @@ def _fill_missing_household_lists(
     Maintain, or the six-hour refresh.
     """
     if _nyt_api_key(settings) or not _household_llm_ready(settings):
+        return
+    if not _show_model_suggested(settings):
         return
     if seconds_until_llm_ready() > 1:
         return
@@ -1123,13 +1132,15 @@ def run_noted_refresh(
             result["open_library"] += _store_open_library(db, period, transport=ol_transport)
         except (httpx.HTTPError, ValueError) as error:
             logger.info("Open Library %s refresh failed: %s", period, error)
-    for row in default_list_names():
-        try:
-            result["nyt"] += refresh_nyt_list(
-                db, settings, list_name=row["id"], data_dir=data_dir, transport=nyt_transport
-            )
-        except Exception as error:  # one unavailable category should not stop the desk
-            logger.info("NYT %s refresh failed: %s", row["id"], error)
+    has_nyt_key = bool(_nyt_api_key(settings))
+    if has_nyt_key or _show_model_suggested(settings):
+        for row in default_list_names():
+            try:
+                result["nyt"] += refresh_nyt_list(
+                    db, settings, list_name=row["id"], data_dir=data_dir, transport=nyt_transport
+                )
+            except Exception as error:  # one unavailable category should not stop the desk
+                logger.info("NYT %s refresh failed: %s", row["id"], error)
     try:
         result["discover"] = _store_discover(db, settings, data_dir=data_dir)
     except Exception as error:  # noqa: BLE001
@@ -1175,8 +1186,11 @@ def cached_noted_desk(
             }
         )
     has_nyt_key = bool(_nyt_api_key(settings))
+    show_model = _show_model_suggested(settings)
     list_source = _nyt_cache_source(settings)
     for item in default_list_names():
+        if not has_nyt_key and not show_model:
+            continue
         rows = _cache_rows(db, source=list_source, list_name=item["id"])
         latest_date = max((_text(row.get("published_date")) for row in rows), default="")
         current_rows = [row for row in rows if _text(row.get("published_date")) == latest_date] if latest_date else []
@@ -1188,13 +1202,19 @@ def cached_noted_desk(
             empty_copy = HOUSEHOLD_NOT_FILLED
         else:
             empty_copy = "No cached New York Times titles yet. Refresh New & noted from Maintain."
+        label = item["display_name"]
+        origin_label = ""
+        if not has_nyt_key:
+            label = f"Model picks · {item['display_name']}"
+            if current_rows:
+                origin_label = MODEL_PICKS_ORIGIN_LABEL
         lanes.append(
             {
                 "id": f"nyt-{item['id']}",
-                "label": item["display_name"],
+                "label": label,
                 "source": list_source,
                 "origin": "household" if not has_nyt_key else "nyt",
-                "origin_label": HOUSEHOLD_ORIGIN_LABEL if not has_nyt_key and current_rows else "",
+                "origin_label": origin_label,
                 "items": _cached_cards(db, current_rows),
                 "empty_copy": empty_copy,
             }

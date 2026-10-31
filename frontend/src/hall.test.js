@@ -30,6 +30,9 @@ test("Hall keeps the hunt box and living rails, and leaves the catalog grid off 
   assert.match(hallSrc, /continueRailItems/);
   assert.match(hallSrc, /New & noted/);
   assert.match(hallSrc, /browseHref\(\{ shelf: "favorites" \}\)/);
+  assert.match(hallSrc, /hallChipRow/);
+  assert.match(hallSrc, /hall-chips/);
+  assert.equal(hallSrc.includes("areas"), false);
 });
 
 test("Maintain is owner-only and houses grooming entry points", () => {

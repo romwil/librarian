@@ -135,10 +135,14 @@ def test_reader_ask_files_wanted_without_searching_or_sab(tmp_path, monkeypatch)
     assert body["searched"] is False
     assert body["item"]["status"] == "wanted"
     assert body["item"]["title"] == "Kindred"
-    assert body["item"]["job_id"] is None
+    assert body["job"]["status"] == "asked"
     db = Database(tmp_path / "librarian.db")
     try:
-        assert db.list_jobs(limit=10) == []
+        jobs = db.list_jobs(limit=10)
+        assert len(jobs) == 1
+        payload = jobs[0].get("payload") if isinstance(jobs[0].get("payload"), dict) else {}
+        assert payload.get("source") == "ask"
+        assert not jobs[0].get("indexer_guid")
         row = db.get_wanted(body["item"]["id"])
         assert row["status"] == "wanted"
         assert row["miss_streak"] == 0

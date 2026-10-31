@@ -157,7 +157,7 @@ def enqueue_indexer_item(
     title = payload.get("title") or item.get("title")
     kind = payload.get("kind") or item.get("kind")
     if role == "reader":
-        return db.create_job(
+        job = db.create_job(
             {
                 "status": "asked",
                 "indexer_guid": payload.get("guid") or guid,
@@ -167,6 +167,19 @@ def enqueue_indexer_item(
                 "payload": payload,
             }
         )
+        try:
+            from librarian.notifications.loop import notify_asked_confirm
+
+            notify_asked_confirm(
+                db,
+                settings,
+                title=str(title or ""),
+                from_user_id=str(requested_by or ""),
+                related_id=str(job.get("id") or ""),
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("asked_confirm notice failed for job %s", job.get("id"))
+        return job
     return _queue_download(
         db,
         settings,
@@ -390,6 +403,10 @@ def poll_job(
             error=None,
             **sab_fields,
         )
+        if work_id and final in {"organized", "skipped"}:
+            from librarian.notifications.loop import complete_asked_loop
+
+            complete_asked_loop(db, settings, updated or job)
         return updated or job
     return job
 

@@ -113,6 +113,7 @@ def register_search_routes(app: FastAPI, deps: WebDeps) -> None:
                 title=payload.title,
                 author=payload.author,
                 isbn=payload.isbn,
+                settings=settings(),
             )
 
     @app.get("/api/browse")

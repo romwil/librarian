@@ -36,7 +36,7 @@ KIND_CATALOG: List[Dict[str, Any]] = [
         "label": "Asked slip needs confirm",
         "help": "When a Request needs you to confirm before the house acts.",
         "default": {"enabled": True, "channels": ["inbox"], "timing": "realtime"},
-        "live": False,
+        "live": True,
         "roles": ("owner", "op"),
     },
     {
@@ -44,7 +44,7 @@ KIND_CATALOG: List[Dict[str, Any]] = [
         "label": "Arrived (your Request)",
         "help": "When something you asked for lands on the shelf.",
         "default": {"enabled": True, "channels": ["inbox"], "timing": "realtime"},
-        "live": False,
+        "live": True,
         "roles": ("owner", "op", "reader"),
     },
     {

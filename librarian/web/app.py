@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware
 
@@ -160,6 +160,13 @@ def create_app(data_dir: Optional[Path] = None) -> FastAPI:
     register_noted_routes(app, deps)
     register_notification_routes(app, deps)
     register_opds_routes(app, deps)
+
+    @app.get("/robots.txt")
+    def robots_txt():
+        return Response(
+            "User-agent: *\nDisallow: /\n",
+            media_type="text/plain; charset=utf-8",
+        )
 
     @app.get("/release-notes.json")
     def release_notes():

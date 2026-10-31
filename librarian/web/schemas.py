@@ -152,6 +152,7 @@ class SettingsPayload(BaseModel):
     quiet_hours_enabled: Optional[bool] = None
     quiet_hours_start: Optional[str] = None
     quiet_hours_end: Optional[str] = None
+    show_model_suggested_lists: Optional[bool] = None
     mail: Optional[MailPayload] = None
 
 

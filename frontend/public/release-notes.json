@@ -1,6 +1,26 @@
 {
-  "generated_at": "2026-10-31T08:32:25Z",
+  "generated_at": "2026-10-31T08:53:20Z",
   "releases": [
+    {
+      "version": "0.6.20",
+      "date": "2026-10-31",
+      "summary": "",
+      "highlights": [
+        "**Asked, then arrived.** A reader who asks sees Your asks on the Library card. Keepers get a confirm notice. When the volume is filed, Wanted says On the shelf — not Asked. Confirm on Downloads is still the only way a download starts.",
+        "**The Hall tells the truth.** Chip row of kinds and named shelves. Dead `areas` and celebration rails are gone. Model picks stay off until you turn them on."
+      ],
+      "sections": [
+        {
+          "title": "Changed",
+          "bullets": [
+            "Wanted `arrived` is free-text status (no migration). `asked` still locks searches. Get / Ask never silent-SAB.",
+            "Mail bodies end with a notices-off footer and `List-Unsubscribe` when `public_base_url` is set. The poller flushes parked quiet-hours email hourly.",
+            "New & noted NYT-named lanes are **Model picks** behind a Settings toggle (default off). `robots.txt` Disallow and `X-Robots-Tag: noindex`.",
+            "HELP drops Radarr/Sonarr/XXX. North-star spec is Hall-first; Sorting stays."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.6.19",
       "date": "2026-10-31",

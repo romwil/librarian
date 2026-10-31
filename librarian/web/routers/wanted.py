@@ -159,7 +159,7 @@ def register_wanted_routes(app: FastAPI, deps: WebDeps) -> None:
         try:
             row = add_wanted(db, fields)
             if hit.get("guid", "").strip() and row.get("status") == "wanted":
-                asked = ask_wanted_hit(db, str(row["id"]), hit)
+                asked = ask_wanted_hit(db, str(row["id"]), hit, settings=deps.settings())
                 row = db.get_wanted(str(row["id"])) or row
                 return {
                     "item": _public(row),
@@ -194,7 +194,9 @@ def register_wanted_routes(app: FastAPI, deps: WebDeps) -> None:
     def wanted_ask(wanted_id: str, payload: WantedAskPayload, request: Request):
         require_role(request.state.user, "owner", "op")
         try:
-            return ask_wanted_hit(db, wanted_id, payload.model_dump())
+            return ask_wanted_hit(
+                db, wanted_id, payload.model_dump(), settings=deps.settings()
+            )
         except WantedError as error:
             status_code = 404 if str(error) == "Wanted row not found" else 400
             raise HTTPException(status_code=status_code, detail=str(error)) from error

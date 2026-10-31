@@ -248,7 +248,8 @@ def test_prefs_whispers_quiet_hours_api(tmp_path, monkeypatch):
     body = hall.json()
     assert "continue" in body
     assert "whats_new" in body
-    assert "celebrations" in body
+    assert "celebrations" not in body
+    assert "kind_counts" in body
     assert "tonight" not in body
     assert "series_catch_up" not in body
     assert "gaps" not in body

@@ -284,8 +284,10 @@ def test_scan_api_owner_without_indexer(tmp_path, monkeypatch):
     assert int(result.get("review") or status.get("review") or 0) == 0
     hall = client.get("/api/hall")
     assert hall.status_code == 200
-    titles = [row["title"] for row in hall.json()["areas"]["books"]]
+    assert "areas" not in hall.json()
+    titles = [row["title"] for row in hall.json()["whats_new"]]
     assert "The Left Hand of Darkness" in titles
+    assert hall.json()["kind_counts"]["book"] >= 1
 
 
 def test_scan_api_op_and_reader_forbidden(tmp_path, monkeypatch):

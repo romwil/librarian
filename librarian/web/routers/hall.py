@@ -1,15 +1,14 @@
-"""Hall shelves, named shelves, prefs, celebrations, and gap desks."""
+"""Hall shelves, named shelves, prefs, and gap desks."""
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any, Dict
 
 from fastapi import FastAPI, HTTPException, Request
 
+from librarian.asks import public_asks
 from librarian.auth import require_role
 from librarian.delight import (
-    celebration_candidates,
     normalize_ambient,
     normalize_ui_font_step,
     normalize_ui_theme,
@@ -24,7 +23,6 @@ from librarian.gaps import (
 from librarian.gaps_gifts import gift_cards, gift_presence
 from librarian.listen import split_continue_rails
 from librarian.named_shelves import (
-    MAX_SHELF_WORKS_RAIL,
     public_shelf,
     shelf_presence,
 )
@@ -49,56 +47,24 @@ def register_hall_routes(app: FastAPI, deps: WebDeps) -> None:
         user = request.state.user
         recent = db.list_works(limit=18, require_files=True)
         favorites = db.favorite_works(user["id"], limit=18)
-        areas = {
-            "books": db.list_works(kind="book", limit=12, require_files=True),
-            "magazines": db.list_works(kind="magazine", limit=12, require_files=True),
-            "comics": db.list_works(kind="comic", limit=12, require_files=True),
-            "audiobooks": db.list_works(kind="audiobook", limit=12, require_files=True),
-            "incoming_music": db.list_works(
-                kind="music", music_state="incoming", limit=12, require_files=True
-            ),
-        }
         continue_rows = db.continue_works(user["id"], limit=18)
         continue_split = split_continue_rails(continue_rows)
         counts = db.kind_counts()
-        celebrations = db.unseen_celebrations(
-            user["id"],
-            celebration_candidates(
-                kind_counts=counts,
-                author_year_counts=db.author_year_counts(year=datetime.now().year),
-            ),
-        )
-        named_rows = db.list_named_shelves(user["id"], include_shared=True)
         named_shelves = []
-        for row in named_rows:
-            rail = db.shelf_works(row["id"], limit=MAX_SHELF_WORKS_RAIL)
-            # Prefer count from the rail query when under the cap; one connect less per shelf.
-            work_count = (
-                len(rail)
-                if len(rail) < MAX_SHELF_WORKS_RAIL
-                else db.shelf_work_count(row["id"])
-            )
-            meta = public_shelf(row, work_count=work_count)
-            if not meta:
-                continue
-            named_shelves.append(
-                {
-                    **meta,
-                    "works": public_works(rail),
-                }
-            )
+        for row in db.list_named_shelves_with_counts(user["id"], include_shared=True):
+            meta = public_shelf(row, work_count=int(row.get("work_count") or 0))
+            if meta:
+                named_shelves.append(meta)
         return {
             "whats_new": public_works(recent),
             "favorites": public_works(favorites),
             "named_shelves": named_shelves,
             "named_shelves_presence": shelf_presence(named_shelves),
-            "areas": {key: public_works(value) for key, value in areas.items()},
             "continue": continue_split["reading"],
             "continue_listening": continue_split["listening"],
-            "celebrations": celebrations,
             "kind_counts": counts,
             "owner_ready": True,
-            "empty": not recent and not any(areas.values()),
+            "empty": not recent,
         }
 
     @app.get("/api/library-card")
@@ -114,6 +80,7 @@ def register_hall_routes(app: FastAPI, deps: WebDeps) -> None:
             "finished": public_works(finished),
             "favorites": public_works(favorites),
             "wanted_count": db.count_wanted(),
+            "asks": public_asks(db.list_jobs_for_user(user["id"], limit=20)),
         }
 
     @app.get("/api/shelves")

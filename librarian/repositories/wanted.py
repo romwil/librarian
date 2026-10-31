@@ -303,6 +303,38 @@ class WantedRepository(RepositoryBase):
 
         self.run_write(_write, label="postpone_wanted")
 
+    def mark_wanted_arrived(
+        self,
+        wanted_id: str,
+        *,
+        now: float,
+        work_id: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Compare-and-set asked/wanted → arrived. Live searches stay locked until then."""
+
+        def _write() -> Any:
+            with self._connect() as conn:
+                row = conn.execute("SELECT * FROM wanted WHERE id = ?", (wanted_id,)).fetchone()
+                if row is None or row["status"] not in ("wanted", "asked"):
+                    return None
+                next_work = str(work_id or row["work_id"] or "").strip() or row["work_id"]
+                conn.execute(
+                    """
+                    UPDATE wanted
+                    SET status = 'arrived',
+                        work_id = ?,
+                        updated_at = ?
+                    WHERE id = ? AND status IN ('wanted', 'asked')
+                    """,
+                    (next_work, float(now), wanted_id),
+                )
+                return wanted_id
+
+        updated = self.run_write(_write, label="mark_wanted_arrived")
+        if not updated:
+            return None
+        return self.get_wanted(wanted_id)
+
     def backoff_wanted(self, wanted_id: str, *, now: float, from_status: str) -> Optional[Dict[str, Any]]:
         """Compare-and-set a miss or a failed slip back onto the backoff clock."""
         from librarian.wanted import backoff_seconds

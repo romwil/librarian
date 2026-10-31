@@ -263,6 +263,7 @@ def _file_asked(
     sought: Mapping[str, Any],
     *,
     now: float,
+    settings: Any = None,
 ) -> Optional[Dict[str, Any]]:
     payload = build_job_payload(
         sought=dict(sought),
@@ -272,15 +273,32 @@ def _file_asked(
     )
     payload["source"] = "wanted"
     payload["wanted_id"] = row.get("id")
+    from librarian.notifications.loop import asker_for_wanted
+
+    asker = asker_for_wanted(db, str(row.get("id") or ""))
     job = {
         "status": "asked",
         "indexer_guid": payload.get("guid") or hit.get("guid"),
         "title": payload.get("title") or row.get("title") or hit.get("title"),
         "kind": sought.get("kind") or row.get("kind"),
-        "requested_by": "wanted",
+        "requested_by": asker or "wanted",
         "payload": payload,
     }
-    return db.claim_and_create_wanted_job(str(row["id"]), job, now=now)
+    created = db.claim_and_create_wanted_job(str(row["id"]), job, now=now)
+    if created and asker:
+        try:
+            from librarian.notifications.loop import notify_asked_confirm
+
+            notify_asked_confirm(
+                db,
+                settings,
+                title=str(job.get("title") or row.get("title") or ""),
+                from_user_id=asker,
+                related_id=str(row.get("id") or created.get("id") or ""),
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("asked_confirm notice failed for wanted %s", row.get("id"))
+    return created
 
 
 def _consider_row(
@@ -289,6 +307,7 @@ def _consider_row(
     *,
     now: float,
     run_search: SearchFn,
+    settings: Any = None,
 ) -> Dict[str, Any]:
     """One Wanted row, same rules as the poller. Does not call SABnzbd.
 
@@ -300,7 +319,7 @@ def _consider_row(
             return {"id": wanted_id, "outcome": "in_flight", "searched": False, "calls": 0}
         _IN_FLIGHT.add(wanted_id)
     try:
-        result = _walk_row(db, row, now=now, run_search=run_search)
+        result = _walk_row(db, row, now=now, run_search=run_search, settings=settings)
     finally:
         with _IN_FLIGHT_LOCK:
             _IN_FLIGHT.discard(wanted_id)
@@ -314,6 +333,7 @@ def _walk_row(
     *,
     now: float,
     run_search: SearchFn,
+    settings: Any = None,
 ) -> Dict[str, Any]:
     fresh = db.get_wanted(str(row.get("id") or ""))
     wanted_id = str((fresh or row).get("id") or "")
@@ -379,7 +399,7 @@ def _walk_row(
         outcome, hit = choose_hit(sought, drop_bad_releases(db, list(hits or [])))
         if outcome != "hit" or hit is None:
             continue
-        job = _file_asked(db, fresh, hit, sought, now=now)
+        job = _file_asked(db, fresh, hit, sought, now=now, settings=settings)
         if job is None:
             current = db.get_wanted(wanted_id) or fresh
             return {
@@ -523,7 +543,7 @@ def search_wanted_selection(
                 )
                 paused = True
                 continue
-            result = _consider_row(db, row, now=moment, run_search=run_search)
+            result = _consider_row(db, row, now=moment, run_search=run_search, settings=settings)
             result.pop("searched", None)
             result.pop("calls", None)
             results.append(result)
@@ -610,6 +630,7 @@ def ask_wanted_hit(
     hit: Mapping[str, Any],
     *,
     now: Optional[float] = None,
+    settings: Any = None,
 ) -> Dict[str, Any]:
     """File one Asked slip for a hit the house picked. A second call does not enqueue."""
     from librarian.wanted import public_wanted
@@ -630,7 +651,7 @@ def ask_wanted_hit(
     if not _text(hit.get("guid") or hit.get("indexer_guid")):
         raise WantedError("This release is missing its id")
     sought = sought_for_row(row)
-    job = _file_asked(db, row, hit, sought, now=moment)
+    job = _file_asked(db, row, hit, sought, now=moment, settings=settings)
     fresh = db.get_wanted(str(row["id"])) or row
     if job is None:
         return {
@@ -735,7 +756,7 @@ def _walk_due(
             ):
                 logger.info("Wanted pass stopped: host budget used for today")
                 break
-            result = _consider_row(db, row, now=moment, run_search=run_search)
+            result = _consider_row(db, row, now=moment, run_search=run_search, settings=settings)
             calls += int(result.get("calls") or 0)
             if result.get("outcome") == "rate_limited":
                 logger.info("Wanted pass stopped on a 429; the rest wait for the next hour")

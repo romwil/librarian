@@ -17,6 +17,7 @@ from librarian.noted import (
     HOUSEHOLD_CACHE_SOURCE,
     HOUSEHOLD_ORIGIN_LABEL,
     MISSING_NYT_AND_MODEL,
+    MODEL_PICKS_ORIGIN_LABEL,
     NYT_CACHE_SOURCE,
     _cache_rows,
     _cache_upsert,
@@ -157,13 +158,16 @@ def test_cached_noted_desk_marks_a_shelved_title(tmp_path):
 def test_cached_noted_desk_reports_missing_nyt_key_without_network_work(tmp_path):
     db = Database(tmp_path / "library.db")
     try:
-        desk = cached_noted_desk(db, Settings(), data_dir=tmp_path)
+        hidden = cached_noted_desk(db, Settings(), data_dir=tmp_path)
+        desk = cached_noted_desk(db, Settings(show_model_suggested_lists=True), data_dir=tmp_path)
     finally:
         db.close()
 
+    assert all(not row["id"].startswith("nyt-") for row in hidden["lanes"])
     lane = next(row for row in desk["lanes"] if row["id"] == "nyt-hardcover-fiction")
     assert lane["items"] == []
     assert lane["empty_copy"] == MISSING_NYT_AND_MODEL
+    assert lane["label"].startswith("Model picks")
     assert lane["origin_label"] == ""
 
 
@@ -264,6 +268,7 @@ def _llm_settings() -> Settings:
         llm_base_url="http://llm.test/v1",
         llm_api_key="test-llm-key",
         llm_model="gpt-test",
+        show_model_suggested_lists=True,
     )
 
 
@@ -736,7 +741,8 @@ def test_household_range_reuses_stored_weeks_including_empty(tmp_path, monkeypat
     lane = next(row for row in desk["lanes"] if row["id"] == "nyt-hardcover-fiction")
     assert [row["title"] for row in lane["items"]] == ["Household 20260301"]
     assert lane["origin"] == "household"
-    assert lane["origin_label"] == HOUSEHOLD_ORIGIN_LABEL
+    assert lane["origin_label"] == MODEL_PICKS_ORIGIN_LABEL
+    assert lane["label"].startswith("Model picks")
 
 
 def test_add_missing_skips_shelved_titles(tmp_path):

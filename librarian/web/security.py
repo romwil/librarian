@@ -112,6 +112,7 @@ def apply_security_headers(request: Request, response: Response) -> Response:
     headers["Permissions-Policy"] = PERMISSIONS_POLICY
     headers["Cross-Origin-Opener-Policy"] = "same-origin"
     headers["Content-Security-Policy"] = csp_for(request)
+    headers["X-Robots-Tag"] = "noindex, nofollow"
     if request.url.path.startswith("/assets/"):
         headers["Cache-Control"] = "public, max-age=31536000, immutable"
     return response
