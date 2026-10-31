@@ -116,7 +116,7 @@ test.describe("More shelves", () => {
 
     await expect(page.getByRole("heading", { name: "On the shelf" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Lamp on the Shelf", exact: true })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Beyond" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Beyond the shelves" }).first()).toBeVisible();
     await expect(page.getByRole("button", { name: "More shelves" })).toHaveCount(0);
   });
 

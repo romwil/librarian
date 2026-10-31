@@ -9,9 +9,10 @@ import json
 import logging
 import os
 import secrets
+import threading
 import time
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Dict, Optional, Tuple
 
 SESSION_COOKIE_NAME = "librarian_session"
 DEFAULT_TTL_SECONDS = 30 * 86400
@@ -22,6 +23,10 @@ _ENV_SESSION_SECRET = "LIBRARIAN_SESSION_SECRET"
 logger = logging.getLogger(__name__)
 
 _cached_secret: Optional[str] = None
+SESSION_CACHE_TTL_SECONDS = 60.0
+_session_cache_lock = threading.Lock()
+# jti -> (deadline_monotonic, user_dict or None if revoked/missing)
+_session_cache: Dict[str, Tuple[float, Optional[Dict[str, Any]]]] = {}
 
 
 def _data_dir() -> Path:
@@ -156,3 +161,52 @@ def parse_session_token(token: str, *, data_dir: Optional[Path] = None) -> Optio
     if not uid:
         return None
     return payload
+
+
+def session_cache_get(jti: str) -> Tuple[bool, Optional[Dict[str, Any]]]:
+    """Return (hit, user). hit=False means caller should load from SQLite."""
+    key = str(jti or "").strip()
+    if not key:
+        return False, None
+    now = time.monotonic()
+    with _session_cache_lock:
+        row = _session_cache.get(key)
+        if row is None:
+            return False, None
+        deadline, user = row
+        if deadline < now:
+            _session_cache.pop(key, None)
+            return False, None
+        return True, user
+
+
+def session_cache_put(jti: str, user: Optional[Dict[str, Any]]) -> None:
+    key = str(jti or "").strip()
+    if not key:
+        return
+    with _session_cache_lock:
+        _session_cache[key] = (time.monotonic() + SESSION_CACHE_TTL_SECONDS, user)
+
+
+def invalidate_session_cache(*, jti: Optional[str] = None, user_id: Optional[str] = None) -> None:
+    with _session_cache_lock:
+        if jti:
+            _session_cache.pop(str(jti), None)
+            if user_id is None:
+                return
+        if user_id:
+            uid = str(user_id)
+            stale = [
+                key
+                for key, (_deadline, user) in _session_cache.items()
+                if user and str(user.get("id") or "") == uid
+            ]
+            for key in stale:
+                _session_cache.pop(key, None)
+            return
+        _session_cache.clear()
+
+
+def clear_session_cache() -> None:
+    invalidate_session_cache()
+

@@ -30,6 +30,7 @@ ENV_TO_FIELD = {
     "LLM_MODEL": "llm_model",
     "LLM_PROVIDER": "llm_provider",
     "HOUSEHOLD_NAME": "household_name",
+    "PUBLIC_BASE_URL": "public_base_url",
     "HARDCOVER_API_TOKEN": "hardcover_api_token",
     "NYT_BOOKS_API_KEY": "nyt_books_api_key",
     "COMICVINE_API_KEY": "comicvine_api_key",
@@ -189,6 +190,7 @@ class Settings:
     llm_model: str = "gpt-4o-mini"
     llm_profiles: dict = field(default_factory=dict)
     household_name: str = "The Hall"
+    public_base_url: str = ""
     hardcover_api_token: str = ""
     nyt_books_api_key: str = ""
     comicvine_api_key: str = ""

@@ -15,6 +15,8 @@ from librarian.db import Database, InviteConflict
 from librarian.sessions import resolve_session_secret
 
 DEFAULT_INVITE_TTL_SECONDS = 7 * 24 * 3600
+MIN_INVITE_TTL_SECONDS = 3600
+MAX_INVITE_TTL_SECONDS = DEFAULT_INVITE_TTL_SECONDS
 
 
 def hash_invite_token(raw_token: str) -> str:
@@ -47,12 +49,34 @@ def parse_invite_token(token: str) -> Tuple[str, str]:
     return invite_id, raw
 
 
+def cap_invite_ttl(expires_in_seconds: int) -> int:
+    try:
+        ttl = int(expires_in_seconds)
+    except (TypeError, ValueError):
+        ttl = DEFAULT_INVITE_TTL_SECONDS
+    return min(max(MIN_INVITE_TTL_SECONDS, ttl), MAX_INVITE_TTL_SECONDS)
+
+
+def resolve_invite_base_url(settings: Any = None, request: Any = None) -> str:
+    configured = ""
+    if settings is not None:
+        configured = str(getattr(settings, "public_base_url", "") or "").strip()
+    if configured:
+        return configured.rstrip("/")
+    if request is not None:
+        return str(getattr(request, "base_url", "") or "").rstrip("/")
+    return ""
+
+
 def public_invite_view(invite: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "id": invite["id"],
         "status": invite["status"],
         "expires_at": invite["expires_at"],
         "role": invite["role"],
+        "created_at": invite.get("created_at"),
+        "created_by": invite.get("created_by"),
+        "redeemed_at": invite.get("redeemed_at"),
     }
 
 
@@ -82,7 +106,7 @@ def create_household_invite(
     invite_id = uuid.uuid4().hex
     raw = generate_invite_token()
     token_hash = hash_invite_token(raw)
-    expires_at = time.time() + max(3600, int(expires_in_seconds))
+    expires_at = time.time() + cap_invite_ttl(expires_in_seconds)
     invite = db.create_invite(
         invite_id=invite_id,
         token_hash=token_hash,
@@ -99,7 +123,32 @@ def create_household_invite(
         "token": signed,
         "join_path": join_path,
         "join_url": join_url,
+        "expires_at": invite["expires_at"],
     }
+
+
+def list_pending_invites(db: Database) -> list[Dict[str, Any]]:
+    now = time.time()
+    pending = []
+    for invite in db.list_invites(status="pending"):
+        if float(invite.get("expires_at") or 0) < now:
+            continue
+        pending.append(public_invite_view(invite))
+    return pending
+
+
+def revoke_household_invite(db: Database, *, invite_id: str, actor_role: str) -> Dict[str, Any]:
+    invite = db.get_invite(invite_id)
+    if invite is None:
+        raise ValueError("Invite not found")
+    if invite["status"] != "pending":
+        raise ValueError("Invite is not pending")
+    if actor_role == "op" and str(invite.get("role") or "") != "reader":
+        raise ValueError("Not allowed to revoke this invite")
+    db.revoke_invite(invite_id)
+    updated = db.get_invite(invite_id)
+    assert updated is not None
+    return public_invite_view(updated)
 
 
 def lookup_pending_invite(db: Database, raw_token: str) -> Dict[str, Any]:

@@ -7,6 +7,7 @@ import hmac as _hmac
 import logging
 import os
 import secrets
+import time
 from typing import Any, Dict, FrozenSet, Optional, Tuple
 
 from librarian.db import Database
@@ -14,7 +15,10 @@ from librarian.sessions import (
     DEFAULT_TTL_SECONDS,
     SESSION_COOKIE_NAME,
     create_session_token,
+    invalidate_session_cache,
     parse_session_token,
+    session_cache_get,
+    session_cache_put,
 )
 
 logger = logging.getLogger(__name__)
@@ -33,6 +37,8 @@ PUBLIC_HANDSHAKE_EXACT: FrozenSet[Tuple[str, str]] = frozenset(
         ("POST", "/api/invites/redeem/local"),
         ("POST", "/api/auth/local/login"),
         ("POST", "/api/auth/logout"),
+        ("GET", "/api/auth/reset/validate"),
+        ("POST", "/api/auth/reset/redeem"),
     }
 )
 
@@ -92,12 +98,17 @@ def has_real_owner(db: Database) -> bool:
     return db.owner_count() > 0
 
 
-def public_user(row: Dict[str, Any]) -> Dict[str, Any]:
-    return {
+def public_user(row: Dict[str, Any], *, include_activity: bool = False) -> Dict[str, Any]:
+    payload = {
         "id": row["id"],
         "display_name": row["display_name"],
         "role": row["role"],
+        "disabled": bool(int(row.get("disabled") or 0)),
     }
+    if include_activity:
+        payload["last_login_at"] = row.get("last_login_at")
+        payload["created_at"] = row.get("created_at")
+    return payload
 
 
 def seed_env_owner(db: Database) -> Optional[str]:
@@ -168,8 +179,25 @@ def set_session_cookie(
     request: Any = None,
     secure: Optional[bool] = None,
     session_epoch: int = 0,
-) -> None:
-    token = create_session_token(user_id, session_epoch=session_epoch)
+    db: Any = None,
+) -> str:
+    jti = secrets.token_urlsafe(16)
+    token = create_session_token(user_id, session_epoch=session_epoch, jti=jti)
+    if db is not None:
+        from librarian.rate_limit import client_ip
+
+        user_agent = ""
+        ip = ""
+        if request is not None:
+            user_agent = str(request.headers.get("user-agent") or "")
+            ip = client_ip(request)
+        db.create_session(
+            jti=jti,
+            user_id=user_id,
+            expires_at=time.time() + DEFAULT_TTL_SECONDS,
+            user_agent=user_agent,
+            ip=ip,
+        )
     use_secure = cookie_should_be_secure(request) if secure is None else bool(secure)
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
@@ -180,6 +208,7 @@ def set_session_cookie(
         path="/",
         secure=use_secure,
     )
+    return jti
 
 
 def clear_session_cookie(response: Any, request: Any = None) -> None:
@@ -190,18 +219,59 @@ def clear_session_cookie(response: Any, request: Any = None) -> None:
     )
 
 
-def user_from_request(request: Any, db: Database) -> Optional[Dict[str, Any]]:
-    token = request.cookies.get(SESSION_COOKIE_NAME)
-    payload = parse_session_token(token or "")
-    if payload is None:
-        return None
-    user = db.get_user(str(payload["uid"]))
+def _user_if_valid(user: Optional[Dict[str, Any]], payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     if user is None:
+        return None
+    if bool(int(user.get("disabled") or 0)):
         return None
     expected_epoch = int(user.get("session_epoch") or 0)
     if int(payload.get("sv") or 0) != expected_epoch:
         return None
     return user
+
+
+def user_from_request(request: Any, db: Database) -> Optional[Dict[str, Any]]:
+    token = request.cookies.get(SESSION_COOKIE_NAME)
+    payload = parse_session_token(token or "")
+    if payload is None:
+        return None
+    jti = str(payload.get("jti") or "").strip()
+    if jti:
+        hit, cached = session_cache_get(jti)
+        if hit:
+            return cached
+        session = db.get_session(jti)
+        if session is not None:
+            if session.get("revoked_at") or float(session.get("expires_at") or 0) < time.time():
+                session_cache_put(jti, None)
+                return None
+            user = _user_if_valid(db.get_user(str(session["user_id"])), payload)
+            session_cache_put(jti, user)
+            return user
+    user = _user_if_valid(db.get_user(str(payload["uid"])), payload)
+    if jti:
+        session_cache_put(jti, user)
+    return user
+
+
+def change_own_password(db: Database, user: Dict[str, Any], *, current: str, new_password: str) -> None:
+    if len(new_password) < MIN_PASSWORD_LENGTH:
+        raise ValueError("Password must be at least 8 characters")
+    stored = str(user.get("password_hash") or "")
+    if not verify_password(current, stored):
+        raise ValueError("Current password does not match")
+    user_id = str(user["id"])
+    db.update_user_password(user_id, hash_password(new_password))
+    db.revoke_sessions_for_user(user_id)
+    invalidate_session_cache(user_id=user_id)
+    db.add_security_event(kind="password_change", user_id=user_id, actor_id=user_id)
+
+
+def sign_out_everywhere(db: Database, user_id: str) -> None:
+    db.bump_session_epoch(user_id)
+    db.revoke_sessions_for_user(user_id)
+    invalidate_session_cache(user_id=user_id)
+    db.add_security_event(kind="sign_out_everywhere", user_id=user_id, actor_id=user_id)
 
 
 def require_role(user: Optional[Dict[str, Any]], *allowed: str) -> None:

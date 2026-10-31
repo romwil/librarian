@@ -24,6 +24,8 @@ def test_public_handshake_exact_is_exhaustive():
         ("POST", "/api/invites/redeem/local"),
         ("POST", "/api/auth/local/login"),
         ("POST", "/api/auth/logout"),
+        ("GET", "/api/auth/reset/validate"),
+        ("POST", "/api/auth/reset/redeem"),
     }
     assert is_public_handshake("GET", "/api/health?x=1") is True
     assert is_public_handshake("GET", "/api/health/ready") is True

@@ -236,3 +236,302 @@ class PeopleRepository(RepositoryBase):
                 )
         self.run_write(_write, label='set_user_prefs')
         return self.get_user_prefs(user_id)
+
+    def list_invites(self, *, status: Optional[str] = None) -> List[Dict[str, Any]]:
+        sql = "SELECT * FROM invites"
+        params: List[Any] = []
+        if status:
+            sql += " WHERE status = ?"
+            params.append(status)
+        sql += " ORDER BY created_at DESC"
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return [_row_dict(row) or {} for row in rows]
+
+    def set_user_disabled(self, user_id: str, disabled: bool) -> None:
+        def _write() -> Any:
+            with self._connect() as conn:
+                conn.execute(
+                    "UPDATE users SET disabled = ? WHERE id = ?",
+                    (1 if disabled else 0, user_id),
+                )
+        self.run_write(_write, label="set_user_disabled")
+
+    def bump_session_epoch(self, user_id: str) -> int:
+        def _write() -> Any:
+            with self._connect() as conn:
+                conn.execute(
+                    "UPDATE users SET session_epoch = session_epoch + 1 WHERE id = ?",
+                    (user_id,),
+                )
+                row = conn.execute(
+                    "SELECT session_epoch FROM users WHERE id = ?", (user_id,)
+                ).fetchone()
+            return int(row["session_epoch"] if row else 0)
+
+        return int(self.run_write(_write, label="bump_session_epoch") or 0)
+
+    def create_session(
+        self,
+        *,
+        jti: str,
+        user_id: str,
+        expires_at: float,
+        user_agent: str = "",
+        ip: str = "",
+    ) -> None:
+        now = time.time()
+
+        def _write() -> Any:
+            with self._connect() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO sessions (
+                        id, user_id, created_at, last_seen_at, expires_at, user_agent, ip
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (jti, user_id, now, now, expires_at, user_agent[:240], ip[:64]),
+                )
+
+        self.run_write(_write, label="create_session")
+
+    def get_session(self, jti: str) -> Optional[Dict[str, Any]]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM sessions WHERE id = ?", (jti,)).fetchone()
+        return _row_dict(row)
+
+    def touch_session(self, jti: str) -> None:
+        def _write() -> Any:
+            with self._connect() as conn:
+                conn.execute(
+                    "UPDATE sessions SET last_seen_at = ? WHERE id = ? AND revoked_at IS NULL",
+                    (time.time(), jti),
+                )
+
+        self.try_run_write(_write, label="touch_session")
+
+    def revoke_session(self, jti: str) -> None:
+        def _write() -> Any:
+            with self._connect() as conn:
+                conn.execute(
+                    "UPDATE sessions SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL",
+                    (time.time(), jti),
+                )
+
+        self.run_write(_write, label="revoke_session")
+
+    def revoke_sessions_for_user(self, user_id: str) -> int:
+        now = time.time()
+
+        def _write() -> Any:
+            with self._connect() as conn:
+                cursor = conn.execute(
+                    "UPDATE sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL",
+                    (now, user_id),
+                )
+                return int(cursor.rowcount or 0)
+
+        return int(self.run_write(_write, label="revoke_sessions_for_user") or 0)
+
+    def create_password_reset(
+        self,
+        *,
+        reset_id: str,
+        token_hash: str,
+        user_id: str,
+        created_by: str,
+        expires_at: float,
+    ) -> Dict[str, Any]:
+        now = time.time()
+
+        def _write() -> Any:
+            with self._connect() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO password_resets (
+                        id, token_hash, user_id, created_by, expires_at, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (reset_id, token_hash, user_id, created_by, expires_at, now),
+                )
+
+        self.run_write(_write, label="create_password_reset")
+        row = self.get_password_reset(reset_id)
+        assert row is not None
+        return row
+
+    def get_password_reset(self, reset_id: str) -> Optional[Dict[str, Any]]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM password_resets WHERE id = ?", (reset_id,)).fetchone()
+        return _row_dict(row)
+
+    def get_password_reset_by_token_hash(self, token_hash: str) -> Optional[Dict[str, Any]]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM password_resets WHERE token_hash = ?", (token_hash,)
+            ).fetchone()
+        return _row_dict(row)
+
+    def consume_password_reset(self, reset_id: str) -> bool:
+        now = time.time()
+
+        def _write() -> Any:
+            with self._connect() as conn:
+                cursor = conn.execute(
+                    """
+                    UPDATE password_resets
+                    SET used_at = ?
+                    WHERE id = ? AND used_at IS NULL AND expires_at >= ?
+                    """,
+                    (now, reset_id, now),
+                )
+                return int(cursor.rowcount or 0) == 1
+
+        return bool(self.run_write(_write, label="consume_password_reset"))
+
+    def add_security_event(
+        self,
+        *,
+        kind: str,
+        user_id: Optional[str] = None,
+        actor_id: Optional[str] = None,
+        detail: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        event_id = uuid.uuid4().hex
+        now = time.time()
+        payload = _dumps(detail or {})
+
+        def _write() -> Any:
+            with self._connect() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO security_events (id, at, user_id, actor_id, kind, detail_json)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (event_id, now, user_id, actor_id, kind, payload),
+                )
+
+        self.try_run_write(_write, label="add_security_event")
+
+    def export_member_bundle(self, user_id: str) -> Dict[str, Any]:
+        """Everything this member owns, minus secrets. Used by /api/auth/export."""
+        user = self.get_user(user_id)
+        if user is None:
+            return {}
+        prefs = self.get_user_prefs(user_id)
+        with self._connect() as conn:
+            progress = [
+                _row_dict(row) or {}
+                for row in conn.execute(
+                    "SELECT work_id, position, fraction, updated_at FROM progress WHERE user_id = ?",
+                    (user_id,),
+                ).fetchall()
+            ]
+            shelves = [
+                _row_dict(row) or {}
+                for row in conn.execute(
+                    "SELECT id, name, created_at, shared FROM shelves WHERE owner_user_id = ?",
+                    (user_id,),
+                ).fetchall()
+            ]
+            shelf_ids = [str(row["id"]) for row in shelves]
+            items: List[Dict[str, Any]] = []
+            if shelf_ids:
+                placeholders = ",".join("?" * len(shelf_ids))
+                items = [
+                    _row_dict(row) or {}
+                    for row in conn.execute(
+                        f"SELECT shelf_id, work_id, added_at FROM shelf_items WHERE shelf_id IN ({placeholders})",
+                        shelf_ids,
+                    ).fetchall()
+                ]
+            whispers = [
+                _row_dict(row) or {}
+                for row in conn.execute(
+                    "SELECT id, work_id, body, created_at FROM whispers WHERE user_id = ?",
+                    (user_id,),
+                ).fetchall()
+            ]
+            notifications = [
+                _row_dict(row) or {}
+                for row in conn.execute(
+                    """
+                    SELECT id, kind, title, body, related_id, created_at, seen_at
+                    FROM user_notifications WHERE user_id = ?
+                    """,
+                    (user_id,),
+                ).fetchall()
+            ]
+        return {
+            "user": {
+                "id": user["id"],
+                "display_name": user["display_name"],
+                "role": user["role"],
+                "created_at": user.get("created_at"),
+                "last_login_at": user.get("last_login_at"),
+                "disabled": bool(int(user.get("disabled") or 0)),
+            },
+            "prefs": {"ambient": prefs.get("ambient"), "prefs": prefs.get("prefs") or {}},
+            "progress": progress,
+            "shelves": shelves,
+            "shelf_items": items,
+            "whispers": whispers,
+            "notifications": notifications,
+        }
+
+    def delete_user_cascade(self, user_id: str) -> None:
+        """Erase a member. Walks every user-id column; FKs cover the new tables."""
+
+        def _write() -> Any:
+            with self._connect() as conn:
+                shelf_ids = [
+                    str(row["id"])
+                    for row in conn.execute(
+                        "SELECT id FROM shelves WHERE owner_user_id = ?", (user_id,)
+                    ).fetchall()
+                ]
+                if shelf_ids:
+                    placeholders = ",".join("?" * len(shelf_ids))
+                    conn.execute(
+                        f"DELETE FROM shelf_items WHERE shelf_id IN ({placeholders})",
+                        shelf_ids,
+                    )
+                conn.execute("DELETE FROM shelves WHERE owner_user_id = ?", (user_id,))
+                conn.execute("DELETE FROM progress WHERE user_id = ?", (user_id,))
+                conn.execute("DELETE FROM user_prefs WHERE user_id = ?", (user_id,))
+                conn.execute("DELETE FROM whispers WHERE user_id = ?", (user_id,))
+                conn.execute("DELETE FROM celebrations_seen WHERE user_id = ?", (user_id,))
+                conn.execute("DELETE FROM user_notifications WHERE user_id = ?", (user_id,))
+                conn.execute("DELETE FROM notification_digest_queue WHERE user_id = ?", (user_id,))
+                conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+                conn.execute("DELETE FROM password_resets WHERE user_id = ?", (user_id,))
+                conn.execute(
+                    "UPDATE invites SET status = 'revoked' WHERE created_by = ? AND status = 'pending'",
+                    (user_id,),
+                )
+                conn.execute(
+                    "UPDATE invites SET redeemed_user_id = NULL WHERE redeemed_user_id = ?",
+                    (user_id,),
+                )
+                conn.execute(
+                    "UPDATE jobs SET requested_by = '' WHERE requested_by = ?",
+                    (user_id,),
+                )
+                conn.execute(
+                    "UPDATE user_notifications SET from_user_id = NULL WHERE from_user_id = ?",
+                    (user_id,),
+                )
+                conn.execute(
+                    "UPDATE security_events SET user_id = NULL WHERE user_id = ?",
+                    (user_id,),
+                )
+                conn.execute(
+                    "UPDATE security_events SET actor_id = NULL WHERE actor_id = ?",
+                    (user_id,),
+                )
+                cursor = conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+                if int(cursor.rowcount or 0) != 1:
+                    raise ValueError("User not found")
+
+        self.run_write(_write, label="delete_user_cascade")
+

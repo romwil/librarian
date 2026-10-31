@@ -22,6 +22,29 @@ export const FOYER_LEDE =
 export const JOIN_LEDE =
   "You've been invited to the household library. Choose the name your family will see and a password of at least 8 characters.";
 export const JOIN_PASTE_HINT = "Got an invite link? Open it from your message, or paste it here.";
+export const FOYER_PASTE_LABEL = "Paste an invite";
+export const PAGE_TITLE_SIGN_IN = "Sign in · Librarian";
+export const PAGE_TITLE_JOIN = "Join · Librarian";
+export const PAGE_TITLE_RESET = "Reset password · Librarian";
+export const PAGE_TITLE_PEOPLE = "People · Librarian";
+export const PAGE_TITLE_CARD = "Library card · Librarian";
+export const READER_WELCOME_TITLE = "Welcome to the household library";
+export const READER_WELCOME_LEDE =
+  "This is the Hall. Search finds what's already on the shelves. Your library card remembers where you left off. If a title is missing, Ask the house — a keeper still confirms before anything is fetched.";
+export const READER_WELCOME_GOT_IT = "Show me the Hall";
+export const INVITE_READER_LABEL = "Invite a reader";
+export const INVITE_OP_LABEL = "Invite a helper";
+export const INVITE_OP_HELP =
+  "A helper can tend Holds and Downloads. They cannot change household settings, pause a card, or delete anyone.";
+export const INVITE_TTL_HELP = "Invites last 7 days. Copy the link once — the raw token is not stored.";
+export const SHOW_PASSWORD = "Show password";
+export const HIDE_PASSWORD = "Hide password";
+export const SIGN_OUT_EVERYWHERE = "Sign out everywhere";
+export const CHANGE_PASSWORD = "Change password";
+export const EXPORT_MY_CARD = "Export my card";
+export const PRIVACY_HEADING = "Privacy";
+export const ACCOUNT_HEADING = "Account";
+export const CARD_PAUSED = "This library card is paused. Ask whoever runs the library.";
 
 const UNREACHABLE_COPY = "Can't reach Librarian — is it running?";
 
@@ -73,9 +96,14 @@ const SAB_COPY = [
 export const FIELD_HELP = {
   loginName: "The name you use here (not an email).",
   loginPassword:
-    "Forgot it? Ask whoever runs the library to reset it. A new join link makes a separate account, and your bookmarks stay behind.",
+    "Forgot it? Ask whoever runs the library to send a reset link. A new join link makes a separate account, and your bookmarks stay behind.",
   joinName: "A short display name for this household. Not an email.",
-  joinPassword: "At least 8 characters. This is the key for the glass door.",
+  joinPassword: "At least 8 characters. Password managers can save this as a new key.",
+  resetPassword: "At least 8 characters. This replaces your old key and signs other devices out.",
+  currentPassword: "The key you use at the glass door today.",
+  newPassword: "At least 8 characters. Other devices will need to sign in again.",
+  public_base_url:
+    "Absolute address for invite and reset links, such as http://10.10.1.202:8793. Leave blank to use this visit’s host.",
   sabnzbd_url: "HTTP address of SABnzbd, such as http://downloader.sl:8080.",
   sabnzbd_api_key: "From SABnzbd Config → General. It stays on this host.",
   nzbfinder_url: "Indexer base URL. Leave the default unless you host a mirror.",
@@ -223,6 +251,37 @@ export function inviteTokenFromInput(raw) {
   }
   if (/^[A-Za-z0-9._~-]{8,}$/.test(text)) return text;
   return "";
+}
+
+export function inviteShareMessage({ joinUrl, role, expiresLabel, householdName } = {}) {
+  const who = role === "op" ? "someone who can tend Holds and Downloads" : "a reader";
+  const house = householdName || "the household library";
+  const until = expiresLabel ? ` until ${expiresLabel}` : " for 7 days";
+  return `You're invited to ${house} as ${who}. Open this link${until}:\n${joinUrl || ""}`;
+}
+
+export function formatInviteExpiry(expiresAt, now = Date.now()) {
+  const ms = Number(expiresAt) * 1000;
+  if (!Number.isFinite(ms) || ms <= 0) return "";
+  const delta = ms - now;
+  if (delta <= 0) return "expired";
+  const hours = Math.round(delta / 3600000);
+  if (hours < 24) return hours <= 1 ? "in about an hour" : `in ${hours} hours`;
+  const days = Math.round(hours / 24);
+  return days <= 1 ? "in 1 day" : `in ${days} days`;
+}
+
+export function formatLastSignIn(epoch, now = Date.now()) {
+  const ms = Number(epoch) * 1000;
+  if (!Number.isFinite(ms) || ms <= 0) return "Never signed in";
+  const delta = now - ms;
+  if (delta < 60000) return "Just now";
+  const minutes = Math.round(delta / 60000);
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 36) return hours === 1 ? "1 hour ago" : `${hours} hours ago`;
+  const days = Math.round(hours / 24);
+  return days === 1 ? "Yesterday" : `${days} days ago`;
 }
 
 export function beyondSearchCopy({ q = "", error = "", role = "reader" } = {}) {
@@ -385,9 +444,15 @@ export function humanError(error, context = "", extras = {}) {
   }
   if (isUnreachable(error, raw)) return UNREACHABLE_COPY;
   if (context === "login") {
+    if (/paused|disabled/i.test(raw)) return CARD_PAUSED;
     if (LOGIN_COPY[status]) return LOGIN_COPY[status];
     if (/invalid username or password/i.test(raw)) return LOGIN_COPY[401];
     if (/too many/i.test(raw)) return LOGIN_COPY[429];
+  }
+  if (context === "reset") {
+    if (/already been used/i.test(raw)) return "This reset link has already been used. Ask for a new one.";
+    if (/expired/i.test(raw)) return "This reset link expired. They last 24 hours.";
+    if (/not found/i.test(raw)) return "This reset link is missing or broken. Ask whoever runs the library for a new one.";
   }
   if (context === "join") {
     if (/already been used/i.test(raw)) return JOIN_USED;

@@ -174,7 +174,7 @@ export default function ProfileMenu({
                     Settings
                   </Link>
                 ) : null}
-                {owner ? (
+                {op ? (
                   <Link to="/people" className="profile-menu-link" role="menuitem" onClick={() => setOpen(false)}>
                     People
                   </Link>

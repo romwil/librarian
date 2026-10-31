@@ -433,6 +433,19 @@ export default function SettingsPage() {
             {activeSection === "household" ? (
               <section className="settings-panel" id="household" data-testid="settings-panel-household">
                 <p className="kicker">Household</p>
+                <h2>Invite links and quiet hours</h2>
+                <div className="field">
+                  <FieldLabel htmlFor="setting-public_base_url" label="Public URL" help={FIELD_HELP.public_base_url} />
+                  <input
+                    id="setting-public_base_url"
+                    type="url"
+                    value={settings.public_base_url || ""}
+                    onChange={(e) => patch("public_base_url", e.target.value)}
+                    placeholder="http://10.10.1.202:8793"
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                </div>
                 <h2>Quiet hours</h2>
                 <p className="lede">
                   Defer unpack and convert during a household window. Review shows Queued for tonight. Owner and ops can

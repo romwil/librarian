@@ -10,7 +10,7 @@ import pytest
 
 from librarian.rate_limit import clear_rate_limits
 from librarian.services.search import clear_beyond_cache
-from librarian.sessions import clear_session_secret_cache
+from librarian.sessions import clear_session_cache, clear_session_secret_cache
 
 
 @pytest.fixture(autouse=True)
@@ -34,9 +34,11 @@ def _isolate_session_secret(monkeypatch, tmp_path_factory):
     ):
         monkeypatch.setenv(key, "")
     clear_session_secret_cache()
+    clear_session_cache()
     clear_rate_limits()
     clear_beyond_cache()
     yield
     clear_rate_limits()
+    clear_session_cache()
     clear_session_secret_cache()
     clear_beyond_cache()
