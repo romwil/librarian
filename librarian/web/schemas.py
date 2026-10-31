@@ -20,7 +20,25 @@ class RedeemPayload(BaseModel):
 
 class InvitePayload(BaseModel):
     role: str
-    expires_in_seconds: int = 7 * 24 * 3600
+    expires_in_seconds: int = Field(default=7 * 24 * 3600, ge=3600, le=7 * 24 * 3600)
+
+
+class PasswordChangePayload(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class ResetRedeemPayload(BaseModel):
+    token: str
+    password: str
+
+
+class RoleChangePayload(BaseModel):
+    role: str
+
+
+class DisablePayload(BaseModel):
+    disabled: bool = True
 
 
 class RequestPayload(BaseModel):
@@ -119,6 +137,7 @@ class SettingsPayload(BaseModel):
     llm_model: Optional[str] = None
     llm_profiles: Optional[Dict[str, Any]] = None
     household_name: Optional[str] = None
+    public_base_url: Optional[str] = None
     hardcover_api_token: Optional[str] = None
     nyt_books_api_key: Optional[str] = None
     comicvine_api_key: Optional[str] = None
@@ -146,6 +165,8 @@ class ProgressPayload(BaseModel):
     finished: bool = False
     # Optional household note when marking Finished (Beautiful Finished / D2).
     whisper: Optional[str] = Field(default=None, max_length=280)
+    # PRIV-007: fan-out only when the reader opts in. A whisper implies share.
+    share: Optional[bool] = None
 
 
 class ConvertPayload(BaseModel):

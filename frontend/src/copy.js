@@ -1,7 +1,50 @@
 const LOGIN_COPY = {
-  401: "That name or password did not match. Try again, or ask the owner for a join link.",
+  401: "That name and password don't match. Check the spelling and try again.",
   429: "Too many tries. Wait a minute, then knock again.",
 };
+
+const JOIN_USED = "This invite has already been used. If that was you, sign in instead.";
+const JOIN_EXPIRED = "This invite expired. Ask whoever sent it for a new one — invites last 7 days.";
+const JOIN_MISSING =
+  "This link looks incomplete. Open the full link from your message, or paste it below.";
+
+const ERROR_READER =
+  "Something went wrong on our side. Try again in a minute. If it keeps happening, tell whoever runs the library.";
+const ERROR_KEEPER =
+  "Something went wrong on the server. Try again. If it repeats, the container log has the details.";
+const ERROR_SLIP = "Something went wrong filing this slip. Try again, or check the Librarian logs.";
+const FORBIDDEN_COPY = "That's for whoever runs the library.";
+
+export const FINISH_PRIVATE_LABEL = "Finished — keep it to myself";
+export const FINISH_TELL_LABEL = "Finished — tell the house";
+export const FOYER_LEDE =
+  "Your household's books, comics, and audiobooks. Sign in to pick up where you left off.";
+export const JOIN_LEDE =
+  "You've been invited to the household library. Choose the name your family will see and a password of at least 8 characters.";
+export const JOIN_PASTE_HINT = "Got an invite link? Open it from your message, or paste it here.";
+export const FOYER_PASTE_LABEL = "Paste an invite";
+export const PAGE_TITLE_SIGN_IN = "Sign in · Librarian";
+export const PAGE_TITLE_JOIN = "Join · Librarian";
+export const PAGE_TITLE_RESET = "Reset password · Librarian";
+export const PAGE_TITLE_PEOPLE = "People · Librarian";
+export const PAGE_TITLE_CARD = "Library card · Librarian";
+export const READER_WELCOME_TITLE = "Welcome to the household library";
+export const READER_WELCOME_LEDE =
+  "This is the Hall. Search finds what's already on the shelves. Your library card remembers where you left off. If a title is missing, Ask the house — a keeper still confirms before anything is fetched.";
+export const READER_WELCOME_GOT_IT = "Show me the Hall";
+export const INVITE_READER_LABEL = "Invite a reader";
+export const INVITE_OP_LABEL = "Invite a helper";
+export const INVITE_OP_HELP =
+  "A helper can tend Holds and Downloads. They cannot change household settings, pause a card, or delete anyone.";
+export const INVITE_TTL_HELP = "Invites last 7 days. Copy the link once — the raw token is not stored.";
+export const SHOW_PASSWORD = "Show password";
+export const HIDE_PASSWORD = "Hide password";
+export const SIGN_OUT_EVERYWHERE = "Sign out everywhere";
+export const CHANGE_PASSWORD = "Change password";
+export const EXPORT_MY_CARD = "Export my card";
+export const PRIVACY_HEADING = "Privacy";
+export const ACCOUNT_HEADING = "Account";
+export const CARD_PAUSED = "This library card is paused. Ask whoever runs the library.";
 
 const UNREACHABLE_COPY = "Can't reach Librarian — is it running?";
 
@@ -51,10 +94,16 @@ const SAB_COPY = [
 ];
 
 export const FIELD_HELP = {
-  loginName: "The household name you were given — not an email.",
-  loginPassword: "Your door key. Need a new one? Ask the owner for a join link.",
+  loginName: "The name you use here (not an email).",
+  loginPassword:
+    "Forgot it? Ask whoever runs the library to send a reset link. A new join link makes a separate account, and your bookmarks stay behind.",
   joinName: "A short display name for this household. Not an email.",
-  joinPassword: "At least 8 characters. This is the key for the glass door.",
+  joinPassword: "At least 8 characters. Password managers can save this as a new key.",
+  resetPassword: "At least 8 characters. This replaces your old key and signs other devices out.",
+  currentPassword: "The key you use at the glass door today.",
+  newPassword: "At least 8 characters. Other devices will need to sign in again.",
+  public_base_url:
+    "Absolute address for invite and reset links, such as http://10.10.1.202:8793. Leave blank to use this visit’s host.",
   sabnzbd_url: "HTTP address of SABnzbd, such as http://downloader.sl:8080.",
   sabnzbd_api_key: "From SABnzbd Config → General. It stays on this host.",
   nzbfinder_url: "Indexer base URL. Leave the default unless you host a mirror.",
@@ -145,16 +194,120 @@ export const WATCH_FOLDER_LEDE =
 export function emptyHallCopy({ owner = false, configured = false } = {}) {
   if (configured) {
     return {
-      title: "The shelves are still bare",
-      lede: "Find a volume beyond the shelves, or wait for the first organize to land.",
+      title: "No books on the shelves yet",
+      lede: "If your files are already on disk, scan your library folders. New downloads appear here once they're filed.",
+      cta: "Scan the shelves",
+      href: "/maintain#shelf-health",
+    };
+  }
+  if (owner) {
+    return {
+      title: "The shelves are waiting",
+      lede: "Add an indexer and library roots in Settings. The Hall stays quiet and open while you do.",
+      cta: "Add an indexer",
+      href: "/settings",
     };
   }
   return {
-    title: "The shelves are waiting",
-    lede: owner
-      ? "Add an indexer and library roots in Settings. The Hall stays quiet and open while you do."
-      : "Ask the owner to add an indexer. Covers will land here.",
+    title: "The library is still being set up",
+    lede: "New arrivals will appear here.",
   };
+}
+
+export function emptyLibraryCardCopy() {
+  return {
+    title: "Nothing here yet",
+    lede: "Open a book or audiobook and it will wait for you here.",
+    cta: "Browse the stacks",
+    href: "/browse",
+  };
+}
+
+export function emptyInboxCopy() {
+  return {
+    title: "No notices yet.",
+    lede: "You'll see a note here when something you asked for arrives.",
+  };
+}
+
+/** Pull an invite token out of a pasted URL, query string, or bare token. */
+export function inviteTokenFromInput(raw) {
+  const text = String(raw || "").trim();
+  if (!text) return "";
+  try {
+    const url = new URL(text);
+    const fromQuery = String(url.searchParams.get("token") || "").trim();
+    if (fromQuery) return fromQuery;
+  } catch {
+    /* not a full URL */
+  }
+  const match = text.match(/[?&]token=([^&\s]+)/i);
+  if (match) {
+    try {
+      return decodeURIComponent(match[1]).trim();
+    } catch {
+      return String(match[1] || "").trim();
+    }
+  }
+  if (/^[A-Za-z0-9._~-]{8,}$/.test(text)) return text;
+  return "";
+}
+
+export function inviteShareMessage({ joinUrl, role, expiresLabel, householdName } = {}) {
+  const who = role === "op" ? "someone who can tend Holds and Downloads" : "a reader";
+  const house = householdName || "the household library";
+  const until = expiresLabel ? ` until ${expiresLabel}` : " for 7 days";
+  return `You're invited to ${house} as ${who}. Open this link${until}:\n${joinUrl || ""}`;
+}
+
+export function formatInviteExpiry(expiresAt, now = Date.now()) {
+  const ms = Number(expiresAt) * 1000;
+  if (!Number.isFinite(ms) || ms <= 0) return "";
+  const delta = ms - now;
+  if (delta <= 0) return "expired";
+  const hours = Math.round(delta / 3600000);
+  if (hours < 24) return hours <= 1 ? "in about an hour" : `in ${hours} hours`;
+  const days = Math.round(hours / 24);
+  return days <= 1 ? "in 1 day" : `in ${days} days`;
+}
+
+export function formatLastSignIn(epoch, now = Date.now()) {
+  const ms = Number(epoch) * 1000;
+  if (!Number.isFinite(ms) || ms <= 0) return "Never signed in";
+  const delta = now - ms;
+  if (delta < 60000) return "Just now";
+  const minutes = Math.round(delta / 60000);
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 36) return hours === 1 ? "1 hour ago" : `${hours} hours ago`;
+  const days = Math.round(hours / 24);
+  return days === 1 ? "Yesterday" : `${days} days ago`;
+}
+
+export function beyondSearchCopy({ q = "", error = "", role = "reader" } = {}) {
+  const query = String(q || "").trim();
+  const quoted = query ? `“${query}”` : "this search";
+  if (error) {
+    return {
+      empty: "Couldn't check beyond the shelves just now, so this list may be incomplete.",
+      ownerDetail: role === "owner" || role === "op" ? humanError(error) : "",
+    };
+  }
+  return {
+    empty: `No copies found beyond the shelves for ${quoted}. Try just the author, or fewer words.`,
+    ownerDetail: "",
+  };
+}
+
+export function localSearchEmpty(q = "") {
+  const query = String(q || "").trim();
+  if (!query) return "Nothing on the shelves matches this search.";
+  return `Nothing on the shelves matches “${query}”.`;
+}
+
+export function settingsSavedCopy(sectionLabel = "") {
+  const name = String(sectionLabel || "Settings").trim() || "Settings";
+  return `${name} settings saved.`;
 }
 
 export function peekMediaNote(work, { canDownload = false, ready = true } = {}) {
@@ -278,7 +431,8 @@ function matchCopy(raw, table) {
   return "";
 }
 
-export function humanError(error, context = "") {
+export function humanError(error, context = "", extras = {}) {
+  const role = extras && typeof extras === "object" ? extras.role : "";
   const status = error?.status;
   let raw = "";
   if (typeof error === "string") {
@@ -290,12 +444,20 @@ export function humanError(error, context = "") {
   }
   if (isUnreachable(error, raw)) return UNREACHABLE_COPY;
   if (context === "login") {
+    if (/paused|disabled/i.test(raw)) return CARD_PAUSED;
     if (LOGIN_COPY[status]) return LOGIN_COPY[status];
     if (/invalid username or password/i.test(raw)) return LOGIN_COPY[401];
     if (/too many/i.test(raw)) return LOGIN_COPY[429];
   }
-  if (context === "join" && /invite|token|not found/i.test(raw)) {
-    return "That join link is missing or already used. Ask the owner for a new invite.";
+  if (context === "reset") {
+    if (/already been used/i.test(raw)) return "This reset link has already been used. Ask for a new one.";
+    if (/expired/i.test(raw)) return "This reset link expired. They last 24 hours.";
+    if (/not found/i.test(raw)) return "This reset link is missing or broken. Ask whoever runs the library for a new one.";
+  }
+  if (context === "join") {
+    if (/already been used/i.test(raw)) return JOIN_USED;
+    if (/expired/i.test(raw)) return JOIN_EXPIRED;
+    if (/invite|token|not found|revoked|not available|incomplete/i.test(raw)) return JOIN_MISSING;
   }
   for (const table of [LLM_COPY, INDEXER_COPY, SAB_COPY]) {
     for (const [, copy] of table) {
@@ -318,7 +480,7 @@ export function humanError(error, context = "") {
   const sab = matchCopy(raw, SAB_COPY);
   if (sab) return sab;
   if (/authentication required/i.test(raw)) return "Sign in to continue.";
-  if (/not allowed/i.test(raw)) return "That shelf is for the house keepers.";
+  if (/not allowed/i.test(raw)) return FORBIDDEN_COPY;
   if (/owner has not been seeded/i.test(raw)) return "The reading room is not seeded yet.";
   if (/work not found/i.test(raw)) return "That volume is not on these shelves.";
   // Apply / shelf write failures — keep guidance; don't reuse cover-only copy.
@@ -346,10 +508,14 @@ export function humanError(error, context = "") {
     if (raw && !/^internal server error$/i.test(raw) && raw.length <= 180 && !/traceback|exception/i.test(raw)) {
       return raw;
     }
-    return "Something went wrong filing this slip. Try again, or check the Librarian logs.";
+    if (context === "slip") return ERROR_SLIP;
+    if (role === "owner" || role === "op") return ERROR_KEEPER;
+    return ERROR_READER;
   }
   if (!raw || raw.length > 180 || /traceback|exception/i.test(raw)) {
-    return "Something went wrong in the stacks. Try again, or check Settings.";
+    if (context === "slip") return ERROR_SLIP;
+    if (role === "owner" || role === "op") return ERROR_KEEPER;
+    return ERROR_READER;
   }
   return raw;
 }

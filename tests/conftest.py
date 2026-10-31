@@ -9,7 +9,7 @@ os.environ.setdefault("LIBRARIAN_OWNER_PASSWORD", "password123")
 import pytest
 
 from librarian.rate_limit import clear_rate_limits
-from librarian.sessions import clear_session_secret_cache
+from librarian.sessions import clear_session_cache, clear_session_secret_cache
 
 
 @pytest.fixture(autouse=True)
@@ -33,7 +33,9 @@ def _isolate_session_secret(monkeypatch, tmp_path_factory):
     ):
         monkeypatch.setenv(key, "")
     clear_session_secret_cache()
+    clear_session_cache()
     clear_rate_limits()
     yield
     clear_rate_limits()
+    clear_session_cache()
     clear_session_secret_cache()

@@ -8,9 +8,23 @@ import {
   ADD_TO_LIBRARY_LEDE,
   canPromoteIncomingMusic,
   emptyHallCopy,
+  emptyInboxCopy,
+  emptyLibraryCardCopy,
   emptyReviewCopy,
+  FINISH_PRIVATE_LABEL,
+  FINISH_TELL_LABEL,
+  FOYER_LEDE,
+  beyondSearchCopy,
   findStatusLine,
   humanError,
+  inviteShareMessage,
+  inviteTokenFromInput,
+  formatInviteExpiry,
+  PAGE_TITLE_SIGN_IN,
+  PAGE_TITLE_JOIN,
+  READER_WELCOME_TITLE,
+  localSearchEmpty,
+  settingsSavedCopy,
   peekMediaNote,
   peekTeachesAsk,
   queueNeedsYouHelp,
@@ -27,7 +41,11 @@ describe("reading room copy", () => {
   });
 
   it("turns login failures into door copy", () => {
-    assert.match(humanError({ status: 401, message: "Invalid username or password" }, "login"), /join link/);
+    assert.match(
+      humanError({ status: 401, message: "Invalid username or password" }, "login"),
+      /don't match|spelling/i,
+    );
+    assert.doesNotMatch(humanError({ status: 401, message: "Invalid username or password" }, "login"), /join link/i);
     assert.match(humanError({ status: 429, message: "Too many requests" }, "login"), /Wait a minute/);
   });
 
@@ -36,7 +54,7 @@ describe("reading room copy", () => {
     assert.match(humanError(new TypeError("Failed to fetch"), "login"), unreachable);
     assert.match(humanError({ message: "NetworkError when attempting to fetch resource" }), unreachable);
     assert.match(humanError({ message: "Load failed" }), unreachable);
-    assert.match(humanError({ status: 401, message: "Failed to fetch" }, "login"), /join link/);
+    assert.match(humanError({ status: 401, message: "Failed to fetch" }, "login"), /don't match|spelling/i);
   });
 
   it("describes extra Newznab hosts without Prowlarr copy", () => {
@@ -100,7 +118,8 @@ describe("reading room copy", () => {
 
   it("keeps Hall and Review empty states human", () => {
     assert.equal(emptyHallCopy({ owner: true }).title, "The shelves are waiting");
-    assert.equal(emptyHallCopy({ configured: true }).title, "The shelves are still bare");
+    assert.equal(emptyHallCopy({ configured: true }).title, "No books on the shelves yet");
+    assert.equal(emptyHallCopy({ owner: false }).title, "The library is still being set up");
     assert.doesNotMatch(emptyHallCopy({ owner: true }).title, /stacks|lamp/i);
     assert.doesNotMatch(emptyHallCopy({ owner: true }).lede, /stacks|lamp/i);
     assert.doesNotMatch(emptyHallCopy({ configured: true }).lede, /stacks|lamp/i);
@@ -181,13 +200,14 @@ describe("reading room copy", () => {
     );
   });
 
-  it("turns bare Internal Server Error / empty 500 into filing copy", () => {
-    assert.match(humanError({ status: 500, message: "Internal Server Error" }), /filing this slip|Librarian logs/i);
-    assert.match(humanError({ status: 500, message: "" }), /filing this slip|Librarian logs/i);
+  it("turns bare Internal Server Error / empty 500 into household copy", () => {
+    assert.match(humanError({ status: 500, message: "Internal Server Error" }), /our side|Librarian logs/i);
+    assert.match(humanError({ status: 500, message: "" }), /our side|Librarian logs/i);
     assert.match(
       humanError({ status: 500, message: "Internal Server Error", statusText: "Internal Server Error" }),
-      /filing this slip|Librarian logs/i,
+      /our side|Librarian logs/i,
     );
+    assert.match(humanError({ status: 500, message: "Internal Server Error" }, "slip"), /filing this slip/i);
     assert.doesNotMatch(humanError({ status: 500, message: "Internal Server Error" }), /Internal Server Error/);
   });
 
@@ -200,6 +220,51 @@ describe("reading room copy", () => {
       humanError({ status: 500, message: `[Errno 13] Permission denied: "/data/media/library/books/Author/Title"` }),
       /library shelf|PUID/i,
     );
+  });
+
+  it("says a forgotten password is not a join link", () => {
+    assert.match(FIELD_HELP.loginPassword, /Ask whoever runs the library to send a reset/);
+    assert.match(FIELD_HELP.loginPassword, /separate account/);
+    assert.match(FOYER_LEDE, /household/);
+  });
+
+  it("does not call an indexer miss Nothing on Usenet", () => {
+    const empty = beyondSearchCopy({ q: "Dune" });
+    assert.match(empty.empty, /No copies found beyond the shelves/);
+    assert.doesNotMatch(empty.empty, /Nothing on Usenet/i);
+    const failed = beyondSearchCopy({ q: "Dune", error: "timeout", role: "reader" });
+    assert.match(failed.empty, /Couldn't check beyond the shelves/);
+    assert.equal(localSearchEmpty("Dune"), "Nothing on the shelves matches “Dune”.");
+  });
+
+  it("names empty inbox, library card, and Settings save without lying", () => {
+    assert.equal(emptyInboxCopy().title, "No notices yet.");
+    assert.match(emptyLibraryCardCopy().lede, /Open a book or audiobook/);
+    assert.equal(settingsSavedCopy("Indexer"), "Indexer settings saved.");
+    assert.equal(FINISH_PRIVATE_LABEL, "Finished — keep it to myself");
+    assert.equal(FINISH_TELL_LABEL, "Finished — tell the house");
+  });
+
+  it("pulls an invite token from a pasted URL", () => {
+    assert.equal(inviteTokenFromInput("https://example.local/join?token=abc_123"), "abc_123");
+    assert.equal(inviteTokenFromInput("household_token"), "household_token");
+  });
+
+  it("writes an invite share message with an absolute URL and a 7-day TTL", () => {
+    const message = inviteShareMessage({
+      joinUrl: "http://10.10.1.202:8793/join?token=abc",
+      role: "reader",
+      expiresLabel: "in 7 days",
+      householdName: "The Hall",
+    });
+    assert.match(message, /http:\/\/10\.10\.1\.202:8793\/join\?token=abc/);
+    assert.match(message, /reader/);
+    assert.doesNotMatch(message, /join link makes a separate account/i);
+    assert.equal(formatInviteExpiry(Date.now() / 1000 + 7 * 24 * 3600), "in 7 days");
+    assert.match(PAGE_TITLE_SIGN_IN, /Sign in/);
+    assert.match(PAGE_TITLE_JOIN, /Join/);
+    assert.notEqual(PAGE_TITLE_SIGN_IN, PAGE_TITLE_JOIN);
+    assert.match(READER_WELCOME_TITLE, /Welcome/);
   });
 
   it("keeps Review Apply collision guidance instead of masking it", () => {

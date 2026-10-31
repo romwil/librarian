@@ -17,15 +17,9 @@ const THEME_OPTIONS = [
   { value: "system", label: "Match system" },
 ];
 
-const AMBIENT_OPTIONS = [
-  { value: "off", label: "Off" },
-  { value: "paper", label: "Paper" },
-  { value: "lamp", label: "Lamp wash" },
-];
-
 /**
  * Library card chip + anchored menu of personal prefs.
- * Sections: appearance → room → links → Logout last.
+ * Sections: appearance → links → Logout last.
  */
 export default function ProfileMenu({
   user,
@@ -33,8 +27,6 @@ export default function ProfileMenu({
   onFontStepChange,
   uiTheme = "system",
   onThemeChange,
-  ambient = "off",
-  onAmbientChange,
   owner = false,
   op = false,
 }) {
@@ -73,10 +65,6 @@ export default function ProfileMenu({
     api.savePrefs({ ui_theme: next }).catch(() => {
       /* keep local */
     });
-  }
-
-  function handleAmbientPick(value) {
-    onAmbientChange?.(value);
   }
 
   const roleLabel = String(user?.role || "reader").toUpperCase();
@@ -164,25 +152,6 @@ export default function ProfileMenu({
             />
           </label>
 
-          <div className="profile-menu-section" data-testid="profile-ambient-section">
-            <p className="profile-menu-section-label">Room wash</p>
-            <div className="profile-chip-row" role="radiogroup" aria-label="Ambient room wash">
-              {AMBIENT_OPTIONS.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={ambient === option.value}
-                  className={`profile-chip${ambient === option.value ? " is-selected" : ""}`}
-                  data-testid={`profile-ambient-${option.value}`}
-                  onClick={() => handleAmbientPick(option.value)}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
           <div className="profile-menu-section profile-menu-links">
             <Link to="/card" className="profile-menu-link" role="menuitem" onClick={() => setOpen(false)}>
               Your library
@@ -205,7 +174,7 @@ export default function ProfileMenu({
                     Settings
                   </Link>
                 ) : null}
-                {owner ? (
+                {op ? (
                   <Link to="/people" className="profile-menu-link" role="menuitem" onClick={() => setOpen(false)}>
                     People
                   </Link>

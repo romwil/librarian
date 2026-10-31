@@ -332,7 +332,7 @@ class ShelvesRepository(RepositoryBase):
                 SELECT w.*, p.fraction, p.position, p.updated_at AS progress_at
                 FROM progress p
                 JOIN works w ON w.id = p.work_id
-                WHERE p.user_id = ? AND p.fraction < 1
+                WHERE p.user_id = ? AND p.fraction < 1 AND p.fraction >= 0.01
                   AND {self._HAS_FILES_SQL.format(alias="w")}
                 ORDER BY p.updated_at DESC
                 LIMIT ?

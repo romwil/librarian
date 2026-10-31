@@ -392,6 +392,26 @@ class CatalogRepository(RepositoryBase):
             ).fetchall()
         return [_row_dict(row) or {} for row in rows]
 
+    def count_work_household_links(self, work_ids: Sequence[str]) -> Dict[str, int]:
+        """How many of these works sit on a shelf or have reading progress."""
+        ids = [str(wid) for wid in work_ids if str(wid or "").strip()]
+        if not ids:
+            return {"on_shelves": 0, "with_progress": 0}
+        placeholders = ",".join("?" * len(ids))
+        with self._connect() as conn:
+            shelves = conn.execute(
+                f"SELECT COUNT(DISTINCT work_id) AS n FROM shelf_items WHERE work_id IN ({placeholders})",
+                ids,
+            ).fetchone()
+            progress = conn.execute(
+                f"SELECT COUNT(DISTINCT work_id) AS n FROM progress WHERE work_id IN ({placeholders})",
+                ids,
+            ).fetchone()
+        return {
+            "on_shelves": int(shelves["n"] if shelves else 0),
+            "with_progress": int(progress["n"] if progress else 0),
+        }
+
     def get_work_by_folder_path(self, folder_path: str) -> Optional[Dict[str, Any]]:
         text = str(folder_path or "").rstrip("/")
         if not text:

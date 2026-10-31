@@ -10,6 +10,7 @@ from librarian.notifications.kinds import (
     normalize_kind,
     normalize_kind_pref,
     normalize_newsletter_timing,
+    public_kind_catalog,
 )
 from librarian.notifications.newsletters import (
     build_member_edition,
@@ -41,6 +42,7 @@ __all__ = [
     "normalize_kind",
     "normalize_kind_pref",
     "normalize_newsletter_timing",
+    "public_kind_catalog",
     "get_kind_pref",
     "get_newsletter_last_edition_at",
     "kind_prefs_map",

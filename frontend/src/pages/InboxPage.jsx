@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
-import { humanError } from "../copy.js";
+import { emptyInboxCopy, humanError } from "../copy.js";
 import WarmLoad from "../components/WarmLoad.jsx";
 import {
   INBOX_LIST_PARAMS,
@@ -92,8 +92,8 @@ export default function InboxPage() {
       ) : null}
       {!loading && !items.length && !error ? (
         <div className="inbox-empty" data-testid="inbox-empty">
-          <p className="lede">The desk is clear.</p>
-          <p className="muted">When something arrives or needs you, it will wait here calmly.</p>
+          <p className="lede">{emptyInboxCopy().title}</p>
+          <p className="muted">{emptyInboxCopy().lede}</p>
         </div>
       ) : null}
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { api } from "./api.js";
 import AppChrome from "./components/AppChrome.jsx";
+import ReaderWelcomeGate from "./components/ReaderWelcomeGate.jsx";
 import WhatsNewGate from "./components/WhatsNewGate.jsx";
 
 export default function App() {
@@ -72,7 +73,8 @@ export default function App() {
       reviewCount={reviewCount}
       inboxUnread={inboxUnread}
     >
-      <WhatsNewGate />
+      <WhatsNewGate user={user} />
+      <ReaderWelcomeGate user={user} />
       <Outlet context={{ user, features, setUser, reviewCount, inboxUnread }} />
     </AppChrome>
   );

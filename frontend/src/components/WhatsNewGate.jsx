@@ -18,10 +18,11 @@ import WhatsNewModal from "./WhatsNewModal.jsx";
  * never a newer/older story that would lie about this deploy.
  * Dismiss / Read full notes persist last-seen = runtime (no silent seed).
  */
-export default function WhatsNewGate() {
+export default function WhatsNewGate({ user } = {}) {
   const [open, setOpen] = useState(false);
   const [version, setVersion] = useState("");
   const [release, setRelease] = useState(null);
+  const keeper = user?.role === "owner" || user?.role === "op";
 
   useEffect(() => {
     let cancelled = false;
@@ -33,6 +34,10 @@ export default function WhatsNewGate() {
         if (!runtimeVersion || cancelled) return;
 
         const lastSeen = getLastSeenVersion();
+        if (!keeper) {
+          if (shouldShowWhatsNew(runtimeVersion, lastSeen)) setLastSeenVersion(runtimeVersion);
+          return;
+        }
         if (!shouldShowWhatsNew(runtimeVersion, lastSeen)) return;
 
         let matched = null;
@@ -57,7 +62,7 @@ export default function WhatsNewGate() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [keeper]);
 
   function dismiss() {
     if (version) setLastSeenVersion(version);

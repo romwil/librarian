@@ -24,7 +24,7 @@ export async function loginAsOwner(page: Page) {
   await page.goto("/login");
   await expect(page.getByRole("heading", { name: "The Reading Room" })).toBeVisible();
   await page.getByRole("textbox", { name: "Name" }).fill(E2E_OWNER.username);
-  await page.getByRole("textbox", { name: "Password" }).fill(E2E_OWNER.password);
+  await page.getByLabel("Password", { exact: true }).fill(E2E_OWNER.password);
   await page.getByRole("button", { name: "Enter" }).click();
   await expect(page.getByRole("heading", { name: "Hall" })).toBeVisible({
     timeout: 30_000,

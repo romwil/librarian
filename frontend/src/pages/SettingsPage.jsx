@@ -5,7 +5,14 @@ import { FieldLabel } from "../components/FieldHelp.jsx";
 import { SetupFields } from "../components/SetupWizard.jsx";
 import AboutPanel from "../components/AboutPanel.jsx";
 import RssPanel from "../components/RssPanel.jsx";
-import { FIELD_HELP, WATCH_FOLDER_LEDE, humanError, setupComplete, setupStepComplete } from "../copy.js";
+import {
+  FIELD_HELP,
+  WATCH_FOLDER_LEDE,
+  humanError,
+  settingsSavedCopy,
+  setupComplete,
+  setupStepComplete,
+} from "../copy.js";
 import { SETTINGS_NAV, settingsNavFromHash, settingsNavHref } from "../lib/settingsNav.js";
 import { DRUNKENSLUG_PRESET, addIndexerPreset, extraIndexersHavePreset } from "../lib/indexerPresets.js";
 import LlmSettingsPanel from "../components/LlmSettingsPanel.jsx";
@@ -58,6 +65,17 @@ export default function SettingsPage() {
   }, [user]);
 
   useEffect(() => {
+    setSaved("");
+    setError("");
+  }, [activeSection]);
+
+  useEffect(() => {
+    if (!saved) return undefined;
+    const timer = window.setTimeout(() => setSaved(""), 4000);
+    return () => window.clearTimeout(timer);
+  }, [saved]);
+
+  useEffect(() => {
     if (typeof window === "undefined") return undefined;
     function onHash() {
       const item = settingsNavFromHash(window.location.hash);
@@ -91,13 +109,15 @@ export default function SettingsPage() {
   async function onSubmit(event) {
     event.preventDefault();
     setError("");
+    setSaved("");
+    const sectionLabel = SETTINGS_NAV.find((row) => row.id === activeSection)?.label || "Settings";
     try {
       const data = await api.saveSettings(settings);
       setSettings(data.settings);
       setAbsMatch(data.abs_match || absMatch);
-      setSaved("Saved.");
+      setSaved(settingsSavedCopy(sectionLabel));
     } catch (err) {
-      setError(humanError(err));
+      setError(humanError(err, "", { role: "owner" }));
     }
   }
 
@@ -413,6 +433,19 @@ export default function SettingsPage() {
             {activeSection === "household" ? (
               <section className="settings-panel" id="household" data-testid="settings-panel-household">
                 <p className="kicker">Household</p>
+                <h2>Invite links and quiet hours</h2>
+                <div className="field">
+                  <FieldLabel htmlFor="setting-public_base_url" label="Public URL" help={FIELD_HELP.public_base_url} />
+                  <input
+                    id="setting-public_base_url"
+                    type="url"
+                    value={settings.public_base_url || ""}
+                    onChange={(e) => patch("public_base_url", e.target.value)}
+                    placeholder="http://10.10.1.202:8793"
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                </div>
                 <h2>Quiet hours</h2>
                 <p className="lede">
                   Defer unpack and convert during a household window. Review shows Queued for tonight. Owner and ops can
@@ -488,7 +521,7 @@ export default function SettingsPage() {
 
             {activeSection === "about" ? <AboutPanel /> : null}
 
-            {activeSection !== "appearance" && activeSection !== "about" ? (
+            {activeSection !== "appearance" && activeSection !== "about" && activeSection !== "notifications" ? (
               <div className="cta-row settings-save-row">
                 <button type="submit" className="cta" data-testid="settings-save">
                   Save
@@ -496,6 +529,11 @@ export default function SettingsPage() {
                 <Link className="cta ghost" to="/maintain">
                   Open Maintain
                 </Link>
+                {saved ? (
+                  <p className="muted" role="status">
+                    {saved}
+                  </p>
+                ) : null}
               </div>
             ) : null}
           </form>

@@ -18,8 +18,9 @@ Does not delete media on disk.
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Mapping
+from typing import Any, Dict, List, Mapping, Optional
 
 from librarian.config import Settings
 from librarian.db import Database
@@ -75,6 +76,46 @@ def classify_shell_purge(
     return to_purge
 
 
+def preview_shell_purge(
+    db: Database,
+    settings: Settings,
+    *,
+    limit: int = PURGE_SHELL_LIMIT_DEFAULT,
+) -> Dict[str, Any]:
+    """Dry-run counts for the Purge shells confirm (OPS-009)."""
+    classified = classify_shell_purge(db, settings, limit=limit)
+    ids = list(classified.keys())
+    links = db.count_work_household_links(ids)
+    sample: List[str] = []
+    for work in db.list_shell_works(limit=max(1, int(limit) or PURGE_SHELL_LIMIT_DEFAULT)):
+        work_id = str(work.get("id") or "")
+        if work_id not in classified:
+            continue
+        title = str(work.get("title") or work_id).strip()
+        if title:
+            sample.append(title)
+        if len(sample) >= 10:
+            break
+    return {
+        "candidates": len(ids),
+        "would_purge": len(ids),
+        "on_shelves": int(links.get("on_shelves") or 0),
+        "with_progress": int(links.get("with_progress") or 0),
+        "sample": sample,
+    }
+
+
+def _take_pre_purge_snapshot(db: Database, data_dir: Any) -> Optional[str]:
+    root = Path(data_dir) if data_dir is not None else None
+    if root is None:
+        return None
+    from librarian.backup import backup_dir_for, snapshot_named
+
+    stamp = datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
+    path = snapshot_named(db.path, backup_dir_for(root), f"pre-purge-shells-{stamp}")
+    return path.name
+
+
 def purge_shell_works(
     db: Database,
     settings: Settings,
@@ -84,6 +125,13 @@ def purge_shell_works(
     data_dir: Any = None,
 ) -> Dict[str, Any]:
     """Owner bulk: delete catalog shells with no on-disk media."""
+    snapshot_file: Optional[str] = None
+    root = data_dir or getattr(progress, "data_dir", None)
+    if root is not None:
+        snapshot_file = _take_pre_purge_snapshot(db, root)
+        if progress is not None and snapshot_file:
+            progress.log(f"Snapshot {snapshot_file} before purge.")
+
     candidates = db.list_shell_works(limit=max(1, int(limit) or PURGE_SHELL_LIMIT_DEFAULT))
     total = len(candidates)
     if progress is not None:
@@ -174,7 +222,6 @@ def purge_shell_works(
                 failed=failed,
             )
 
-    root = data_dir or getattr(progress, "data_dir", None)
     if removed and root is not None:
         try:
             from librarian.grooming_undo import record_grooming_batch
@@ -191,6 +238,7 @@ def purge_shell_works(
         "kept": kept,
         "failed": failed,
         "errors": errors,
+        "snapshot": snapshot_file,
     }
     if progress is not None:
         progress.complete(result)

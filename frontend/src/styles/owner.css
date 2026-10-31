@@ -166,14 +166,40 @@
 .shelf-progress-title {
   margin: var(--space-2) 0;
   font-family: var(--font-display);
-  color: var(--gilt);
+  color: var(--gilt-text);
 }
 
 .join-once {
   word-break: break-all;
-  color: var(--gilt);
+  color: var(--gilt-text);
   font-family: var(--font-mono);
   font-size: 13px;
+}
+
+.password-field {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.password-toggle {
+  white-space: nowrap;
+}
+
+.foyer-paste {
+  margin-top: var(--space-4);
+}
+
+.invite-once,
+.people-pending,
+.card-panel {
+  margin: var(--space-5) 0;
+  padding: 0 var(--gutter);
+}
+
+.people-actions {
+  flex-wrap: wrap;
 }
 
 /* ═══════════ Help, wizard, tickets, search status ═══════════ */
@@ -192,9 +218,9 @@
   height: 1.25rem;
   padding: 0;
   border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--gilt) 40%, var(--border));
+  border: 1px solid var(--control-border);
   background: transparent;
-  color: var(--gilt);
+  color: var(--muted);
   font-size: 11px;
   font-weight: 700;
   line-height: 1;
@@ -1038,7 +1064,7 @@ html[data-theme="lights-down"] .grooming-undo.is-available {
 .ticket-diagnosis summary {
   cursor: pointer;
   font-family: var(--font-display);
-  color: var(--gilt);
+  color: var(--gilt-text);
   margin-bottom: 0.4rem;
 }
 .ticket-diagnosis .empty-note,
@@ -1111,15 +1137,18 @@ html[data-theme="lights-down"] .grooming-undo.is-available {
   display: flex;
   align-items: baseline;
   gap: var(--space-3);
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
+  row-gap: var(--space-2);
   min-width: 0;
 }
 .hold-slip-line .ticket-title {
-  flex: 1 1 auto;
+  flex: 1 1 100%;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 .hold-slip-reason {
   flex: 0 0 auto;
@@ -1127,6 +1156,18 @@ html[data-theme="lights-down"] .grooming-undo.is-available {
 }
 .hold-slip-line .cta {
   flex: 0 0 auto;
+}
+@media (min-width: 720px) {
+  .hold-slip-line {
+    flex-wrap: nowrap;
+  }
+  .hold-slip-line .ticket-title {
+    flex: 1 1 auto;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    display: block;
+    -webkit-line-clamp: unset;
+  }
 }
 .review-extra-files-progress {
   margin: 0 0 var(--space-5);

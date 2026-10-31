@@ -41,6 +41,17 @@ def test_continue_rail_orders_unfinished(tmp_path, monkeypatch):
     assert body["wanted_count"] == 0
 
 
+def test_continue_rail_skips_sub_percent_progress(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    client.post("/api/auth/local/login", json={"username": "owner", "password": "password123"})
+    db = Database(tmp_path / "librarian.db")
+    glance = db.upsert_work({"kind": "book", "title": "Glance", "author": "A"})
+    db.add_file({"work_id": glance["id"], "path": "/b/Glance.epub", "filename": "Glance.epub", "kind": "book"})
+    client.post(f"/api/works/{glance['id']}/progress", json={"fraction": 0.0})
+    rail = client.get("/api/hall").json()["continue"]
+    assert rail == []
+
+
 def test_reader_forbidden_on_indexer_ping(tmp_path, monkeypatch):
     client = _client(tmp_path, monkeypatch)
     client.post("/api/auth/local/login", json={"username": "owner", "password": "password123"})

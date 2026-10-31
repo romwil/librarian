@@ -21,7 +21,7 @@ const SPINES = [
 
 export default function GlassDoor({ eyebrow, title, lede, seal, footer, children, testId = "foyer" }) {
   return (
-    <div className="foyer" data-testid={testId}>
+    <div className="foyer" data-theme="lights-down" data-testid={testId}>
       <div className="lamp-shaft" aria-hidden="true" />
       <div className="lamp-bulb" aria-hidden="true" />
       <div className="dust" aria-hidden="true" />

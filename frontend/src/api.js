@@ -40,6 +40,28 @@ export const api = {
   redeem: (token, username, password) =>
     request("/invites/redeem/local", { method: "POST", body: JSON.stringify({ token, username, password }) }),
   mintInvite: (role) => request("/invites", { method: "POST", body: JSON.stringify({ role }) }),
+  listInvites: () => request("/invites"),
+  revokeInvite: (inviteId) => request(`/invites/${encodeURIComponent(inviteId)}/revoke`, { method: "POST" }),
+  changePassword: (currentPassword, newPassword) =>
+    request("/auth/password", {
+      method: "POST",
+      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    }),
+  signOutEverywhere: () => request("/auth/sessions/revoke-all", { method: "POST" }),
+  exportCard: () => request("/auth/export"),
+  privacy: () => request("/privacy"),
+  validateReset: (token) => request(`/auth/reset/validate?token=${encodeURIComponent(token)}`),
+  redeemReset: (token, password) =>
+    request("/auth/reset/redeem", { method: "POST", body: JSON.stringify({ token, password }) }),
+  issueReset: (userId) => request(`/people/${encodeURIComponent(userId)}/reset`, { method: "POST" }),
+  changeRole: (userId, role) =>
+    request(`/people/${encodeURIComponent(userId)}/role`, { method: "POST", body: JSON.stringify({ role }) }),
+  disablePerson: (userId, disabled) =>
+    request(`/people/${encodeURIComponent(userId)}/disable`, {
+      method: "POST",
+      body: JSON.stringify({ disabled }),
+    }),
+  deletePerson: (userId) => request(`/people/${encodeURIComponent(userId)}`, { method: "DELETE" }),
   hall: () => request("/hall"),
   libraryCard: () => request("/library-card"),
   gapsLocal: () => request("/gaps/local"),
@@ -148,6 +170,8 @@ export const api = {
     request(`/maintain/purge-shells${limit ? `?limit=${encodeURIComponent(String(limit))}` : ""}`, {
       method: "POST",
     }),
+  maintainPurgeShellsPreview: (limit = 0) =>
+    request(`/maintain/purge-shells/preview${limit ? `?limit=${encodeURIComponent(String(limit))}` : ""}`),
   maintainPurgeShellsStatus: () => request("/maintain/purge-shells/status"),
   maintainSplitMixedKinds: (limit = 0) =>
     request(`/maintain/split-mixed-kinds${limit ? `?limit=${encodeURIComponent(String(limit))}` : ""}`, {

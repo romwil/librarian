@@ -20,7 +20,6 @@ export default function AppChrome({ user, features, reviewCount = 0, inboxUnread
   const stacksNav = stacksNavState(location.pathname, location.search);
   const op = user.role === "owner" || user.role === "op";
   const owner = user.role === "owner";
-  const [ambient, setAmbient] = useState("off");
   const [uiTheme, setUiTheme] = useState(() => loadStoredUiTheme());
   const [fontStep, setFontStep] = useState(() => loadStoredUiFontStep());
 
@@ -36,7 +35,6 @@ export default function AppChrome({ user, features, reviewCount = 0, inboxUnread
     api
       .prefs()
       .then((data) => {
-        setAmbient(data.ambient || "off");
         if (data.ui_theme != null) {
           const next = normalizeUiTheme(data.ui_theme);
           setUiTheme(next);
@@ -49,7 +47,7 @@ export default function AppChrome({ user, features, reviewCount = 0, inboxUnread
           applyUiFontStep(next);
         }
       })
-      .catch(() => setAmbient("off"));
+      .catch(() => {});
   }, [user?.id]);
 
   useEffect(() => {
@@ -69,19 +67,10 @@ export default function AppChrome({ user, features, reviewCount = 0, inboxUnread
     return () => window.removeEventListener("keydown", onKey);
   }, [navigate]);
 
-  async function setAmbientPref(next) {
-    setAmbient(next);
-    try {
-      await api.savePrefs({ ambient: next });
-    } catch {
-      /* keep local */
-    }
-  }
-
   const holdsLabel = reviewCount > 0 ? `Holds ${reviewCount}` : "Holds";
 
   return (
-    <div className={`room ambient-${ambient}`} data-ambient={ambient}>
+    <div className="room ambient-off" data-ambient="off">
       <header className="topbar">
         <NavLink to="/" className="brand" end>
           Librarian
@@ -133,8 +122,6 @@ export default function AppChrome({ user, features, reviewCount = 0, inboxUnread
             onFontStepChange={setFontStep}
             uiTheme={uiTheme}
             onThemeChange={setUiTheme}
-            ambient={ambient}
-            onAmbientChange={setAmbientPref}
           />
         </div>
       </header>

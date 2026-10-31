@@ -200,9 +200,10 @@ def register_works_routes(app: FastAPI, deps: WebDeps) -> None:
                     user_id=request.state.user["id"],
                     body=whisper_text,
                 )
-        # Beautiful Finished: first transition to Finished whispers the household
-        # (optional note rides along). Re-finish does not re-notify.
-        if payload.finished and not already_finished:
+        # Beautiful Finished: first transition to Finished may whisper the household
+        # when the reader opts in (share=true, or a note which implies tell).
+        share_finished = bool(payload.share) or bool(whisper_text)
+        if payload.finished and not already_finished and share_finished:
             notice = finished_notice_copy(
                 finisher_name=request.state.user.get("display_name") or "",
                 work_title=work.get("title") or "",

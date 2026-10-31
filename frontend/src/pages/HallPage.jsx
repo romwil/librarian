@@ -91,9 +91,9 @@ function HallRails({ owner, configured }) {
         <section className="empty-cta hall-empty" data-testid="hall-empty">
           <h2>{empty.title}</h2>
           <p className="lede">{empty.lede}</p>
-          {owner ? (
-            <Link className="cta" to="/settings">
-              {configured ? "Open Settings" : "Add an indexer"}
+          {empty.cta && empty.href ? (
+            <Link className="cta" to={empty.href}>
+              {empty.cta}
             </Link>
           ) : null}
         </section>

@@ -106,7 +106,9 @@ test.describe("Hall", () => {
     await expect(page.getByLabel("Search")).toBeVisible();
     // Fresh e2e DATA_DIR: empty Hall CTA (Visual State Triad — Empty/Unlit).
     await expect(
-      page.getByRole("heading", { name: /The shelves are waiting|The shelves are still bare/ }),
+      page.getByRole("heading", {
+        name: /The shelves are waiting|No books on the shelves yet|The library is still being set up/,
+      }),
     ).toBeVisible({ timeout: 30_000 });
   });
 
@@ -117,7 +119,9 @@ test.describe("Hall", () => {
     await expect(page.getByRole("search")).toBeVisible();
     await expect(page.getByLabel("Search")).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: /The shelves are waiting|The shelves are still bare/ }),
+      page.getByRole("heading", {
+        name: /The shelves are waiting|No books on the shelves yet|The library is still being set up/,
+      }),
     ).toBeVisible({ timeout: 30_000 });
   });
 

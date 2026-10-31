@@ -10,6 +10,7 @@ describe("health behind auth (BD-5)", () => {
     const src = fs.readFileSync(path.join(srcDir, "components/WhatsNewGate.jsx"), "utf8");
     assert.match(src, /api\.features\(\)/);
     assert.doesNotMatch(src, /api\.health\(\)/);
+    assert.match(src, /user\?\.role === "owner" \|\| user\?\.role === "op"/);
   });
 
   it("AboutPanel reads owner /api/status for version and rev", () => {

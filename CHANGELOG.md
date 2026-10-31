@@ -15,6 +15,20 @@
 - **Maintain indexer lanterns.** Lights Down no longer paints pale paper cards with tan status copy. Lantern names, weather sentences, and Mute sit on raised leather; an idle host is a hollow ring so flicker vs silent is not hue-only. Safe undo uses the same dark wash. Lights Up stays ink on paper.
 - **Library card text size.** Clicking Text size or the slider no longer closes the Library card. Ambient room layering had flattened the topbar under Hall, so the panel was visible through empty Hall and the click counted as outside; range thumb retargets onto `document` are hit-tested too.
 
+## [0.6.13] — 2026-10-31
+
+### Highlights
+
+- **Guest-ready accounts.** Invite a reader or a helper with an absolute link, Copy, a 7-day expiry, and revoke. Members can change a password, the owner can send a one-time 24-hour reset, and anyone can sign out everywhere. Roles, pause, delete, export, and a Privacy panel on the Library card are in the UI. What’s New stays keeper-only; readers get a welcome. **Do not mint Automat household invites yet** — search, CSP, and a local walk of this gate still sit ahead.
+
+### Changed
+
+- Invite hygiene (1.1): `public_base_url` (or this visit’s host) on join links, pending list + revoke, op invite UI, foyer paste-a-token, unique titles, announced login errors, autocomplete, show-password, reader welcome.
+- Sessions and reset (1.2): `sessions` table, revoke on logout, sign-out-everywhere, self-service password change, owner-issued 24h single-use reset, ~60s session cache cleared on revoke, per-account login backoff, thin `security_events` rows.
+- Remove and roles (1.3): reader ↔ helper, pause a card, delete with cascade. **Invite gate.** Op API does not exceed the People UI.
+- Export and privacy (1.4): member export, Privacy + Account on `/card`, household notice from live config.
+- Also lands truth-and-theme (Lights Up contrast, honest Settings, Continue, Purge, keeper-only What’s New) for hosts that skipped 0.6.4.
+
 ## [0.6.12] — 2026-10-31
 
 ### Highlights
@@ -27,6 +41,21 @@
 - Miss backoff is 6 hours, then 12 hours (no weekly cap). Sprint 3.3 still owes the 500-call/day host budget.
 - Find beyond uses the same ladder and match rules. Extra indexers stay on Find; the hourly Wanted pass is still NZBFinder only.
 - `rapidfuzz` scores cleaned titles. Convert-fails-twice remains a Sorting slip.
+
+## [0.6.4] — 2026-10-31
+
+### Highlights
+
+- **Truth and theme.** Lights Up body copy meets 4.5:1 on warm paper without dulling Lights Down; gilt is for words and controls, not decoration. Settings Subscribe and Save actually persist. Continue only appears after you Read or Listen, finishing a title is private unless you tell the house, Purge shells asks you to type the count after a snapshot, and What’s New greets keepers only.
+
+### Changed
+
+- Lights Up `--paper` / `--gilt-text` / `--control-border`; foyer stays `lights-down`; phantom token aliases; grip below cover art; slip wrap; rail `scroll-padding-inline`.
+- RSS and notification prefs are no longer nested `<form>`s inside Settings.
+- Honesty copy: forgotten-password is not a join link; Beyond empty is not “Nothing on Usenet”; dead notification kinds hidden; Settings save feedback clears.
+- Continue rail requires ≥1% progress; finished broadcast is opt-in (`share` or a whisper).
+- Room wash control removed. Purge shells preview + typed count + `pre-purge-shells-*.db` snapshot.
+- What’s New owner/op only. `/` search hint hides on coarse pointers.
 
 ## [0.6.3] — 2026-10-31
 

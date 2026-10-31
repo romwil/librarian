@@ -3,26 +3,51 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api.js";
 import { FieldLabel } from "../components/FieldHelp.jsx";
 import GlassDoor from "../components/GlassDoor.jsx";
-import { FIELD_HELP, humanError } from "../copy.js";
+import PasswordField from "../components/PasswordField.jsx";
+import useDocumentTitle from "../hooks/useDocumentTitle.js";
+import {
+  FIELD_HELP,
+  JOIN_LEDE,
+  JOIN_PASTE_HINT,
+  PAGE_TITLE_JOIN,
+  formatInviteExpiry,
+  humanError,
+  inviteTokenFromInput,
+} from "../copy.js";
 
 export default function JoinPage() {
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const token = params.get("token") || "";
   const navigate = useNavigate();
   const [invite, setInvite] = useState(null);
   const [error, setError] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [paste, setPaste] = useState("");
+  useDocumentTitle(PAGE_TITLE_JOIN);
 
   useEffect(() => {
     if (!token) {
-      setError(humanError("Invite not found", "join"));
+      setInvite(null);
+      setError("");
       return;
     }
+    let cancelled = false;
     api
       .validateInvite(token)
-      .then((data) => setInvite(data.invite))
-      .catch((err) => setError(humanError(err, "join")));
+      .then((data) => {
+        if (cancelled) return;
+        setInvite(data.invite);
+        setError("");
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setInvite(null);
+        setError(humanError(err, "join"));
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [token]);
 
   async function onSubmit(event) {
@@ -36,39 +61,82 @@ export default function JoinPage() {
     }
   }
 
-  const role = invite?.role === "op" ? "Op" : "Reader";
+  function onPasteSubmit(event) {
+    event.preventDefault();
+    const next = inviteTokenFromInput(paste);
+    if (!next) {
+      setError(humanError("Invite not found", "join"));
+      return;
+    }
+    const query = new URLSearchParams(params);
+    query.set("token", next);
+    setParams(query);
+  }
+
+  const role = invite?.role === "op" ? "Helper" : "Reader";
+  const expiry = invite?.expires_at ? formatInviteExpiry(invite.expires_at) : "";
 
   return (
-    <GlassDoor
-      eyebrow="Household library"
-      title="The Reading Room"
-      seal={invite ? role : null}
-      lede="The same foyer as sign-in. Your role is sealed on the invite — you do not choose it."
-      footer={<Link to="/login">Already have a key?</Link>}
-    >
-      {error ? <p className="alert">{error}</p> : null}
-      {invite ? (
-        <form className="login-form" onSubmit={onSubmit}>
-          <div className="field">
-            <FieldLabel htmlFor="join-name" label="Name" help={FIELD_HELP.joinName} />
-            <input id="join-name" value={username} onChange={(e) => setUsername(e.target.value)} minLength={2} required />
-          </div>
-          <div className="field">
-            <FieldLabel htmlFor="join-pass" label="Password" help={FIELD_HELP.joinPassword} />
-            <input
+    <main id="main" tabIndex={-1}>
+      <GlassDoor
+        eyebrow="Household library"
+        title="The Reading Room"
+        seal={invite ? role : null}
+        lede={JOIN_LEDE}
+        footer={<Link to="/login">Already have a key?</Link>}
+      >
+        {error ? (
+          <p className="alert" role="alert" aria-live="assertive">
+            {error}
+          </p>
+        ) : null}
+        {!token ? (
+          <form className="login-form" onSubmit={onPasteSubmit}>
+            <p className="lede">{JOIN_PASTE_HINT}</p>
+            <div className="field">
+              <label htmlFor="join-paste">Invite link</label>
+              <input
+                id="join-paste"
+                value={paste}
+                onChange={(event) => setPaste(event.target.value)}
+                aria-label="Invite link"
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </div>
+            <button type="submit" className="cta outline">
+              Open invite
+            </button>
+          </form>
+        ) : null}
+        {invite ? (
+          <form className="login-form" onSubmit={onSubmit}>
+            {expiry ? <p className="muted">This invite expires {expiry}.</p> : null}
+            <div className="field">
+              <FieldLabel htmlFor="join-name" label="Name" help={FIELD_HELP.joinName} />
+              <input
+                id="join-name"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                autoComplete="username"
+                minLength={2}
+                required
+              />
+            </div>
+            <PasswordField
               id="join-pass"
-              type="password"
+              label="Password"
+              help={FIELD_HELP.joinPassword}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              minLength={8}
-              required
+              autoComplete="new-password"
             />
-          </div>
-          <button type="submit" className="cta">
-            Enter
-          </button>
-        </form>
-      ) : null}
-    </GlassDoor>
+            <button type="submit" className="cta">
+              Enter
+            </button>
+          </form>
+        ) : null}
+      </GlassDoor>
+    </main>
   );
 }

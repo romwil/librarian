@@ -222,7 +222,7 @@ def test_newsletters_api_push(tmp_path, monkeypatch):
         },
     )
     assert put.status_code == 200, put.text
-    assert put.json()["kinds"]["newsletter"]["timing"] == "weekly"
+    assert "newsletter" not in put.json()["kinds"]
 
     with patch(
         "librarian.notifications.service.send_mail",

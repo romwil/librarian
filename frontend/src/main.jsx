@@ -8,6 +8,7 @@ import HallPage from "./pages/HallPage.jsx";
 import WantedPage from "./pages/WantedPage.jsx";
 import JoinPage from "./pages/JoinPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
+import ResetPage from "./pages/ResetPage.jsx";
 import PeoplePage from "./pages/PeoplePage.jsx";
 import QueuePage from "./pages/QueuePage.jsx";
 import ReviewPage from "./pages/ReviewPage.jsx";
@@ -34,6 +35,7 @@ createRoot(document.getElementById("root")).render(
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/join" element={<JoinPage />} />
+          <Route path="/reset" element={<ResetPage />} />
           <Route path="/" element={<App />}>
             <Route index element={<HallPage />} />
             <Route path="browse" element={<BrowsePage />} />
