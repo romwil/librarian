@@ -3,7 +3,7 @@ import { Link, useOutletContext } from "react-router-dom";
 import { api } from "../api.js";
 import { browseHref } from "../browse.js";
 import Rail from "../components/Rail.jsx";
-import { humanError } from "../copy.js";
+import { emptyLibraryCardCopy, humanError } from "../copy.js";
 import { continueRailItems } from "../hallRails.js";
 
 export default function CardPage() {
@@ -33,6 +33,8 @@ export default function CardPage() {
   const finished = continueRailItems(card?.finished);
   const favorites = continueRailItems(card?.favorites);
   const wantedCount = Number(card?.wanted_count || 0);
+  const empty = emptyLibraryCardCopy();
+  const hasRails = Boolean(listening || reading || finished || favorites);
 
   return (
     <div className="hall page-settle" data-testid="library-card">
@@ -41,6 +43,15 @@ export default function CardPage() {
         <h1>Your library</h1>
       </header>
       {error ? <p className="alert">{error}</p> : null}
+      {card && !error && !hasRails ? (
+        <section className="empty-cta" data-testid="library-card-empty">
+          <h2>{empty.title}</h2>
+          <p className="lede">{empty.lede}</p>
+          <Link className="cta" to={empty.href}>
+            {empty.cta}
+          </Link>
+        </section>
+      ) : null}
       {listening ? <Rail title="Continue listening" items={listening} role={user?.role} /> : null}
       {reading ? <Rail title="Continue reading" items={reading} role={user?.role} /> : null}
       {finished ? <Rail title="Recently finished" items={finished} role={user?.role} /> : null}

@@ -13,7 +13,9 @@
   --fg: #1c1612;
   --muted: #3a322c;
   --paper: #f3ecdf;
-  --gilt: #cbbfaa;
+  --gilt: #7a5424;
+  --gilt-text: #6e6256;
+  --control-border: #857563;
   --accent: #8c3a2f;
   --accent-2: #8c3a2f;
   --accent-soft: rgba(140, 58, 47, 0.1);
@@ -28,6 +30,15 @@
   --workspace-wash-a: #f3ecdf;
   --workspace-wash-b: #f3ecdf;
   --menu-hover: rgba(28, 22, 18, 0.06);
+
+  /* Phantom aliases (VIS-017) — jobs, not leftover hex. */
+  --ink: var(--text);
+  --tan: var(--gilt-text);
+  --radius-md: 8px;
+  --font-ui: var(--font-body);
+  --font-serif: var(--font-display);
+  --paper-deep: var(--surface-2);
+  --brass: var(--accent);
 
   /* —— Type —— */
   --font-display: "Literata", "Palatino Linotype", Palatino, serif;
@@ -81,8 +92,8 @@
   --tap-min: 44px;
 }
 
-/* Night library / Lights Down — brass lamp, leather, gilt */
-html[data-theme="lights-down"] {
+/* Night library / Lights Down — brass lamp, leather, gilt. Do not dull. */
+[data-theme="lights-down"] {
   color-scheme: dark;
   --bg: #110d09;
   --surface: #1a1410;
@@ -95,6 +106,8 @@ html[data-theme="lights-down"] {
   --muted: #b5a48a;
   --paper: #e8dcc4;
   --gilt: #e4c078;
+  --gilt-text: #e4c078;
+  --control-border: #8a7862;
   --accent: #c9954a;
   --accent-2: #a87838;
   --accent-soft: rgba(201, 149, 74, 0.16);
@@ -112,7 +125,7 @@ html[data-theme="lights-down"] {
 }
 
 /* Paper / Lights Up — warm paper, ink, one accent on the primary action */
-html[data-theme="lights-up"] {
+[data-theme="lights-up"] {
   color-scheme: light;
   --bg: #f3ecdf;
   --surface: #faf6ee;
@@ -124,7 +137,9 @@ html[data-theme="lights-up"] {
   --fg: #1c1612;
   --muted: #3a322c;
   --paper: #f3ecdf;
-  --gilt: #cbbfaa;
+  --gilt: #7a5424;
+  --gilt-text: #6e6256;
+  --control-border: #857563;
   --accent: #8c3a2f;
   --accent-2: #8c3a2f;
   --accent-soft: rgba(140, 58, 47, 0.1);
@@ -278,11 +293,11 @@ main:focus {
 }
 
 .lede {
-  color: var(--fg);
+  color: var(--muted);
 }
 
 .muted {
-  color: var(--fg);
+  color: var(--muted);
 }
 
 .admin-room .lede {

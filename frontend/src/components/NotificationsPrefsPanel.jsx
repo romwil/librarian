@@ -75,7 +75,7 @@ export default function NotificationsPrefsPanel({ showOwnerTest = false } = {}) 
   }
 
   async function handleSave(event) {
-    event.preventDefault();
+    event?.preventDefault?.();
     setSaving(true);
     setStatus("");
     try {
@@ -89,6 +89,9 @@ export default function NotificationsPrefsPanel({ showOwnerTest = false } = {}) 
       setChannels(Array.isArray(data.channels) ? data.channels : channels);
       setMailConfigured(Boolean(data.mail_configured));
       setStatus("Notification preferences saved.");
+      window.setTimeout(() => {
+        setStatus((current) => (/saved/i.test(current) ? "" : current));
+      }, 4000);
     } catch (err) {
       setStatus(humanError(err));
     } finally {
@@ -136,9 +139,7 @@ export default function NotificationsPrefsPanel({ showOwnerTest = false } = {}) 
       </p>
       <h2>What the house tells you</h2>
       <p className="lede">
-        Choose which notices you want, whether they land in the in-app inbox and/or email, and whether email should wait
-        for a daily or weekly digest. The library newsletter uses its own weekly or monthly cadence. Email only leaves
-        the house when Mail is configured and you opt in.
+        Choose which notices you want in your inbox. Only kinds that actually fire are listed here.
       </p>
 
       <p className="muted">
@@ -147,7 +148,7 @@ export default function NotificationsPrefsPanel({ showOwnerTest = false } = {}) 
         {emailAvailable ? "" : " — owner Mail setup is still needed before email can leave the house"}.
       </p>
 
-      <form className="notifications-prefs-form" onSubmit={handleSave}>
+      <div className="notifications-prefs-form">
         <label className="field">
           <span>Notification email</span>
           <input
@@ -197,7 +198,7 @@ export default function NotificationsPrefsPanel({ showOwnerTest = false } = {}) 
                     <input
                       type="checkbox"
                       checked={channelSet.has("email")}
-                      disabled={!pref.enabled || !emailAvailable}
+                      disabled={!pref.enabled || !emailAvailable || row.email_offered === false}
                       onChange={(event) => toggleChannel(row.id, "email", event.target.checked)}
                     />{" "}
                     Email
@@ -224,7 +225,7 @@ export default function NotificationsPrefsPanel({ showOwnerTest = false } = {}) 
         </ul>
 
         <div className="notifications-prefs-actions">
-          <button type="submit" className="cta" disabled={saving}>
+          <button type="button" className="cta" disabled={saving} onClick={handleSave}>
             {saving ? "Saving…" : "Save preferences"}
           </button>
           {showOwnerTest ? (
@@ -233,8 +234,12 @@ export default function NotificationsPrefsPanel({ showOwnerTest = false } = {}) 
             </button>
           ) : null}
         </div>
-        {status ? <p className="muted" role="status">{status}</p> : null}
-      </form>
+        {status ? (
+          <p className={/saved/i.test(status) ? "muted" : "alert"} role={/saved/i.test(status) ? "status" : "alert"}>
+            {status}
+          </p>
+        ) : null}
+      </div>
     </section>
   );
 }

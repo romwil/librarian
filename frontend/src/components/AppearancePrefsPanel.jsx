@@ -18,17 +18,10 @@ const THEME_OPTIONS = [
   { value: "system", label: "Match system" },
 ];
 
-const AMBIENT_OPTIONS = [
-  { value: "off", label: "Off" },
-  { value: "paper", label: "Paper dust" },
-  { value: "lamp", label: "Lamp wash" },
-];
-
 /** Personal appearance prefs — same store as the profile menu (`api.prefs`). */
 export default function AppearancePrefsPanel() {
   const [uiTheme, setUiTheme] = useState(() => loadStoredUiTheme());
   const [fontStep, setFontStep] = useState(() => loadStoredUiFontStep());
-  const [ambient, setAmbient] = useState("off");
   const [note, setNote] = useState("");
 
   useEffect(() => {
@@ -46,7 +39,6 @@ export default function AppearancePrefsPanel() {
           persistUiFontStep(next);
           applyUiFontStep(next);
         }
-        setAmbient(data.ambient || "off");
       })
       .catch(() => {
         /* keep localStorage defaults */
@@ -68,8 +60,7 @@ export default function AppearancePrefsPanel() {
         persistUiFontStep(next);
         applyUiFontStep(next);
       }
-      if (saved.ambient != null) setAmbient(saved.ambient);
-      setNote("Saved to your profile.");
+      setNote("Saved to your library card.");
     } catch (error) {
       setNote(error.message || "Could not save appearance.");
     }
@@ -79,8 +70,7 @@ export default function AppearancePrefsPanel() {
     <details className="more-settings" open data-testid="appearance-prefs">
       <summary className="kicker">Your appearance</summary>
       <p className="lede">
-        Personal to you — theme, text size, and room wash. Same controls as the profile menu. Quiet hours stay under
-        household ops below.
+        Personal to you — theme and text size. Same controls as the Library card menu.
       </p>
       <div className="field">
         <span className="kicker">Theme</span>
@@ -128,30 +118,6 @@ export default function AppearancePrefsPanel() {
             }}
           />
         </label>
-      </div>
-      <div className="field">
-        <span className="kicker">Room wash</span>
-        <div className="settings-appearance-options" role="radiogroup" aria-label="Ambient">
-          {AMBIENT_OPTIONS.map((option) => (
-            <label
-              key={option.value}
-              className={`settings-theme-option${ambient === option.value ? " selected" : ""}`}
-            >
-              <input
-                type="radio"
-                name="settings-ambient"
-                value={option.value}
-                checked={ambient === option.value}
-                data-testid={`settings-ambient-${option.value}`}
-                onChange={() => {
-                  setAmbient(option.value);
-                  save({ ambient: option.value });
-                }}
-              />
-              <span>{option.label}</span>
-            </label>
-          ))}
-        </div>
       </div>
       {note ? <p className="muted">{note}</p> : null}
     </details>

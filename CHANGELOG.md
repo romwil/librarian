@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.6.4] — 2026-10-31
+
+### Highlights
+
+- **Truth and theme.** Lights Up body copy meets 4.5:1 on warm paper without dulling Lights Down; gilt is for words and controls, not decoration. Settings Subscribe and Save actually persist. Continue only appears after you Read or Listen, finishing a title is private unless you tell the house, Purge shells asks you to type the count after a snapshot, and What’s New greets keepers only.
+
+### Changed
+
+- Lights Up `--paper` / `--gilt-text` / `--control-border`; foyer stays `lights-down`; phantom token aliases; grip below cover art; slip wrap; rail `scroll-padding-inline`.
+- RSS and notification prefs are no longer nested `<form>`s inside Settings.
+- Honesty copy: forgotten-password is not a join link; Beyond empty is not “Nothing on Usenet”; dead notification kinds hidden; Settings save feedback clears.
+- Continue rail requires ≥1% progress; finished broadcast is opt-in (`share` or a whisper).
+- Room wash control removed. Purge shells preview + typed count + `pre-purge-shells-*.db` snapshot.
+- What’s New owner/op only. `/` search hint hides on coarse pointers.
+
 ## [Unreleased]
 
 - Nightly backup: the poller snapshots the catalog into `config/backups` (7 daily + 4 weekly), runs `integrity_check` on each copy, writes files `0600`, and leaves `session_secret` and `settings.json` out. The database file is `0600` too. Maintain shows **Last backup**; the restore steps are in [AUTOMAT.md](docs/ops/AUTOMAT.md).

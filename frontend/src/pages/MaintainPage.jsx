@@ -17,6 +17,7 @@ import GroomingUndo from "../components/GroomingUndo.jsx";
 import ShelfHealthPulse from "../components/ShelfHealthPulse.jsx";
 import { FieldLabel } from "../components/FieldHelp.jsx";
 import { ThinkingButton } from "../components/Thinking.jsx";
+import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import { FIELD_HELP, humanError } from "../copy.js";
 import {
   extraFilesReprocessIsRunning,
@@ -124,6 +125,11 @@ export default function MaintainPage() {
   const [shellPurging, setShellPurging] = useState(false);
   const [shellBacklog, setShellBacklog] = useState(0);
   const [shellStatus, setShellStatus] = useState(null);
+  const [purgeDialogOpen, setPurgeDialogOpen] = useState(false);
+  const [purgePreview, setPurgePreview] = useState(null);
+  const [purgeTyped, setPurgeTyped] = useState("");
+  const [purgePreviewing, setPurgePreviewing] = useState(false);
+  const purgeButtonRef = useRef(null);
   const shellPollRef = useRef(0);
   const [mixNote, setMixNote] = useState("");
   const [mixSplitting, setMixSplitting] = useState(false);
@@ -582,6 +588,33 @@ export default function MaintainPage() {
     }
   }
 
+  async function openPurgeDialog() {
+    setPurgePreviewing(true);
+    setShellNote("");
+    try {
+      const preview = await api.maintainPurgeShellsPreview();
+      setPurgePreview(preview);
+      setPurgeTyped("");
+      setPurgeDialogOpen(true);
+    } catch (err) {
+      setShellNote(humanError(err));
+    } finally {
+      setPurgePreviewing(false);
+    }
+  }
+
+  function closePurgeDialog() {
+    setPurgeDialogOpen(false);
+    setPurgeTyped("");
+  }
+
+  async function confirmPurgeShells() {
+    const expected = String(Number(purgePreview?.would_purge ?? purgePreview?.candidates ?? 0) || 0);
+    if (purgeTyped.trim() !== expected) return;
+    closePurgeDialog();
+    await purgeShells();
+  }
+
   async function purgeShells() {
     setShellPurging(true);
     setShellNote("Purging shells…");
@@ -897,12 +930,12 @@ export default function MaintainPage() {
           Remove catalog rows that never got a file on the shelf — dismissed Review slips and dump-title ghosts.
           Volumes that still have media on disk are kept.
         </p>
-        <div className="cta-row">
+        <div className="cta-row" ref={purgeButtonRef}>
           <ThinkingButton
             type="button"
             className="cta outline"
-            busy={shellPurging}
-            onClick={purgeShells}
+            busy={shellPurging || purgePreviewing}
+            onClick={openPurgeDialog}
             data-testid="maintain-purge-shells"
           >
             {shellBacklog > 0 ? `Purge shells (${shellBacklog})` : "Purge shells"}
@@ -914,6 +947,53 @@ export default function MaintainPage() {
             Purge shells running
           </p>
         ) : null}
+        <ConfirmDialog
+          open={purgeDialogOpen}
+          title="Purge unshelved shells"
+          confirmLabel="Purge shells"
+          cancelLabel="Cancel"
+          onConfirm={confirmPurgeShells}
+          onCancel={closePurgeDialog}
+          busy={shellPurging}
+          confirmDisabled={
+            purgeTyped.trim() !==
+            String(Number(purgePreview?.would_purge ?? purgePreview?.candidates ?? 0) || 0)
+          }
+          confirmTestId="maintain-purge-shells-confirm"
+          returnFocusRef={purgeButtonRef}
+          testId="maintain-purge-shells-dialog"
+        >
+          <p className="lede">
+            This removes {Number(purgePreview?.would_purge ?? 0)} catalog{" "}
+            {Number(purgePreview?.would_purge ?? 0) === 1 ? "row" : "rows"} with no file on the
+            shelf. A snapshot is taken first.
+          </p>
+          {Number(purgePreview?.on_shelves || 0) || Number(purgePreview?.with_progress || 0) ? (
+            <p className="muted">
+              {Number(purgePreview?.on_shelves || 0)} still on a household shelf
+              {Number(purgePreview?.with_progress || 0)
+                ? ` · ${Number(purgePreview.with_progress)} with reading progress`
+                : ""}
+              .
+            </p>
+          ) : null}
+          {Array.isArray(purgePreview?.sample) && purgePreview.sample.length ? (
+            <p className="muted">Examples: {purgePreview.sample.slice(0, 5).join(" · ")}</p>
+          ) : null}
+          <div className="field">
+            <label htmlFor="purge-shells-count">
+              Type {Number(purgePreview?.would_purge ?? 0)} to confirm
+            </label>
+            <input
+              id="purge-shells-count"
+              value={purgeTyped}
+              onChange={(event) => setPurgeTyped(event.target.value)}
+              inputMode="numeric"
+              autoComplete="off"
+              data-testid="maintain-purge-shells-count"
+            />
+          </div>
+        </ConfirmDialog>
       </section>
 
       <section className="maintain-section" id="maintain-split-mixed" data-testid="maintain-split-mixed">

@@ -1,6 +1,41 @@
 {
-  "generated_at": "2026-10-31T05:08:46Z",
+  "generated_at": "2026-10-31T05:28:32Z",
   "releases": [
+    {
+      "version": "0.6.4",
+      "date": "2026-10-31",
+      "summary": "",
+      "highlights": [
+        "**Truth and theme.** Lights Up body copy meets 4.5:1 on warm paper without dulling Lights Down; gilt is for words and controls, not decoration. Settings Subscribe and Save actually persist. Continue only appears after you Read or Listen, finishing a title is private unless you tell the house, Purge shells asks you to type the count after a snapshot, and What’s New greets keepers only."
+      ],
+      "sections": [
+        {
+          "title": "Changed",
+          "bullets": [
+            "Lights Up `--paper` / `--gilt-text` / `--control-border`; foyer stays `lights-down`; phantom token aliases; grip below cover art; slip wrap; rail `scroll-padding-inline`.",
+            "RSS and notification prefs are no longer nested `<form>`s inside Settings.",
+            "Honesty copy: forgotten-password is not a join link; Beyond empty is not “Nothing on Usenet”; dead notification kinds hidden; Settings save feedback clears.",
+            "Continue rail requires ≥1% progress; finished broadcast is opt-in (`share` or a whisper).",
+            "Room wash control removed. Purge shells preview + typed count + `pre-purge-shells-*.db` snapshot.",
+            "What’s New owner/op only. `/` search hint hides on coarse pointers.",
+            "Nightly backup: the poller snapshots the catalog into `config/backups` (7 daily + 4 weekly), runs `integrity_check` on each copy, writes files `0600`, and leaves `session_secret` and `settings.json` out. The database file is `0600` too. Maintain shows **Last backup**; the restore steps are in [AUTOMAT.md](docs/ops/AUTOMAT.md).",
+            "Cover art lands on the shelf more often: audiobooks keep square Audnexus jackets (Amazon CDN allowlisted, no HTML scrape), Comic Vine match downloads the issue image, and a scan without a sidecar extracts CBZ page 1 or embedded album art. Wikipedia stays atmosphere / last-resort, never a print jacket when a kind-specific provider can fill it. Cards only claim a cover when the file is still on disk.",
+            "Maintain **Indexer scorecard** keeps lantern weather and Mute, and now shows match rate by media type (books, audiobooks, comics, …) as compact chips after Find / Discover speak. Counts persist in SQLite.",
+            "Enrich the shelves skips volumes that already have author, blurb, year, cover, and genre, and looks up the emptiest titles first. Maintain reports how many were already full.",
+            "Settings can add **DrunkenSlug** as an extra Newznab host (URL preset, paste the API token). Find beyond merges those hits with NZBFinder. Classic Newznab XML/`o=json` is spoken on that host — not a second search stack.",
+            "Search Beyond Usenet cards say **Get**, then **Getting…**, then **Queued** (an Asked slip). Confirm on Downloads still sends SABnzbd. Failures restore Get with a short error.",
+            "Idle Search shows indexer **Discover** again — trending latest by category — with fielded search easy to reach. New & noted stays at `/noted`."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "bullets": [
+            "**Maintain indexer lanterns.** Lights Down no longer paints pale paper cards with tan status copy. Lantern names, weather sentences, and Mute sit on raised leather; an idle host is a hollow ring so flicker vs silent is not hue-only. Safe undo uses the same dark wash. Lights Up stays ink on paper.",
+            "**Library card text size.** Clicking Text size or the slider no longer closes the Library card. Ambient room layering had flattened the topbar under Hall, so the panel was visible through empty Hall and the click counted as outside; range thumb retargets onto `document` are hit-tested too."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.6.3",
       "date": "2026-10-31",

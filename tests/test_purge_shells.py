@@ -145,6 +145,35 @@ def test_maintain_purge_shells_api(tmp_path, monkeypatch):
     assert db.get_work(shell["id"]) is None
 
 
+def test_maintain_purge_shells_preview_and_pre_snapshot(tmp_path, monkeypatch):
+    settings = _book_settings(tmp_path)
+    client, app = _client(tmp_path, monkeypatch, settings=settings)
+    db = app.state.db
+    shell = db.upsert_work(
+        {
+            "kind": "audiobook",
+            "title": "Ghost.Title.Audio.book",
+            "folder_path": str(tmp_path / "missing-dump-2"),
+            "review_state": "resolved",
+        }
+    )
+    preview = client.get("/api/maintain/purge-shells/preview")
+    assert preview.status_code == 200
+    body = preview.json()
+    assert int(body.get("would_purge") or 0) >= 1
+    assert "Ghost.Title.Audio.book" in (body.get("sample") or [])
+
+    started = client.post("/api/maintain/purge-shells")
+    assert started.status_code == 200
+    finished = _wait_status(client)
+    assert finished.get("status") == "completed"
+    assert db.get_work(shell["id"]) is None
+    backups = tmp_path / "backups"
+    snaps = list(backups.glob("pre-purge-shells-*.db"))
+    assert snaps, "purge must snapshot the catalog first"
+    assert snaps[0].stat().st_size > 0
+
+
 def test_review_skip_deletes_slip(tmp_path, monkeypatch):
     settings = _book_settings(tmp_path)
     client, app = _client(tmp_path, monkeypatch, settings=settings)

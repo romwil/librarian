@@ -34,7 +34,7 @@ from librarian.grooming_undo import assemble_grooming_undo, restore_grooming_bat
 from librarian.indexer_scorecard import assemble_indexer_scorecard, mute_host
 from librarian.ingest_progress import finish_ingest_run, read_ingest_progress
 from librarian.morning_brief import assemble_morning_brief
-from librarian.purge_shells import purge_shell_works
+from librarian.purge_shells import preview_shell_purge, purge_shell_works
 from librarian.purge_shells_progress import (
     PurgeShellsProgressReporter,
     begin_purge_shells_run,
@@ -336,6 +336,13 @@ def register_maintain_routes(app: FastAPI, deps: WebDeps) -> None:
         """One graceful ritual: copy Calibre dump into books_root (never move)."""
         require_role(current_user(request), "owner")
         return assemble_calibre_renormalize(settings(), apply=True, limit=None)
+
+    @app.get("/api/maintain/purge-shells/preview")
+    def maintain_purge_shells_preview(request: Request, limit: int = 0):
+        """Dry-run: how many shells would go, and which household links they hold."""
+        require_role(request.state.user, "owner", "op")
+        run_limit = max(0, int(limit or 0))
+        return preview_shell_purge(db, settings(), limit=run_limit)
 
     @app.post("/api/maintain/purge-shells")
     def maintain_purge_shells(request: Request, limit: int = 0):

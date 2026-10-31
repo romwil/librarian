@@ -112,6 +112,50 @@ def test_finish_fans_out_someone_finished_once_with_optional_whisper(tmp_path, m
     assert len(owner_notes_again) == 1
 
 
+def test_finish_without_share_does_not_fan_out(tmp_path, monkeypatch):
+    client = _client(tmp_path, monkeypatch)
+    assert client.post(
+        "/api/auth/local/login", json={"username": "owner", "password": "password123"}
+    ).status_code == 200
+    minted = client.post("/api/invites", json={"role": "reader"})
+    token = minted.json()["token"]
+    client.post("/api/auth/logout")
+    client.cookies.clear()
+    clear_rate_limits()
+    assert (
+        client.post(
+            "/api/invites/redeem/local",
+            json={"token": token, "username": "reader1", "password": "password123"},
+        ).status_code
+        == 200
+    )
+
+    db = Database(Path(tmp_path) / "librarian.db")
+    work = db.upsert_work({"kind": "book", "title": "Kindred", "author": "Butler"})
+    db.add_file(
+        {
+            "work_id": work["id"],
+            "path": "/b/Kindred.epub",
+            "filename": "Kindred.epub",
+            "kind": "book",
+        }
+    )
+
+    finished = client.post(
+        f"/api/works/{work['id']}/progress",
+        json={"finished": True, "share": False},
+    )
+    assert finished.status_code == 200
+    owner = db.get_user_by_display_name("owner")
+    assert owner
+    owner_notes = [
+        n
+        for n in db.list_notifications_for_user(owner["id"], unread_only=False, limit=20)
+        if n.get("kind") == "someone_finished"
+    ]
+    assert owner_notes == []
+
+
 def test_whisper_payload_rejects_overlong_body(tmp_path, monkeypatch):
     client = _client(tmp_path, monkeypatch)
     assert client.post(

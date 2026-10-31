@@ -266,6 +266,7 @@ export default function CoverCard({ work, onRequest, badge, beyond = false, role
           </span>
         ) : null}
       </button>
+      </div>
         {showActions ? (
           <WorkActionMenu label={tip || caption} onOpen={loadDetail} testId="rail-action">
             <button type="button" className="work-action-item" onClick={toggleFavorite}>
@@ -326,7 +327,6 @@ export default function CoverCard({ work, onRequest, badge, beyond = false, role
             ) : null}
           </WorkActionMenu>
         ) : null}
-      </div>
       {stacksCard ? (
         <StacksCardFooter work={item} tip={tip} />
       ) : (

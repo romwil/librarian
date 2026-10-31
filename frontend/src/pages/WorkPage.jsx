@@ -5,7 +5,13 @@ import { busyLabel } from "../actionBusy.js";
 import { ThinkingButton } from "../components/Thinking.jsx";
 import { browseHref } from "../browse.js";
 import { coverWashStyle, coverWashUrl, isInboundJob } from "../cover.js";
-import { canPromoteIncomingMusic, humanError, peekMediaNote } from "../copy.js";
+import {
+  FINISH_PRIVATE_LABEL,
+  FINISH_TELL_LABEL,
+  canPromoteIncomingMusic,
+  humanError,
+  peekMediaNote,
+} from "../copy.js";
 import { looksLikeHtml, sanitizeDescriptionHtml } from "../description.js";
 import { findHref, gapFindFields } from "../find.js";
 import { companionAudiobookView } from "../audiobookCompanion.js";
@@ -64,10 +70,6 @@ export default function WorkPage() {
       .then((payload) => {
         if (!alive) return;
         setData(payload);
-        // Books/comics leave a Continue bookmark on open; audiobooks only on real Listen progress.
-        if (payload?.work?.id && payload.work.kind !== "audiobook") {
-          api.progress(payload.work.id).catch(() => {});
-        }
       })
       .catch((err) => {
         if (alive) setError(humanError(err));
@@ -169,14 +171,15 @@ export default function WorkPage() {
     setFinishWhisper("");
   }
 
-  async function completeFinish({ withWhisper = false } = {}) {
+  async function completeFinish({ withWhisper = false, share = false } = {}) {
     if (!work?.id || finishSaving) return;
     setFinishSaving(true);
     setError("");
     try {
-      const body = { finished: true };
+      const body = { finished: true, share: Boolean(share) };
       if (withWhisper && finishWhisper.trim()) {
         body.whisper = finishWhisper.trim();
+        body.share = true;
       }
       const result = await api.progress(work.id, body);
       setData((prev) => {
@@ -576,7 +579,7 @@ export default function WorkPage() {
                 className="finish-ceremony-form"
                 onSubmit={(event) => {
                   event.preventDefault();
-                  completeFinish({ withWhisper: true });
+                  completeFinish({ withWhisper: true, share: true });
                 }}
               >
                 <label className="sr-only" htmlFor="finish-whisper-body">
@@ -602,12 +605,21 @@ export default function WorkPage() {
                   </button>
                   <button
                     type="button"
+                    className="cta compact"
+                    disabled={finishSaving}
+                    onClick={() => completeFinish({ withWhisper: false, share: false })}
+                    data-testid="finish-keep-private"
+                  >
+                    {FINISH_PRIVATE_LABEL}
+                  </button>
+                  <button
+                    type="button"
                     className="cta ghost compact"
                     disabled={finishSaving}
-                    onClick={() => completeFinish({ withWhisper: false })}
+                    onClick={() => completeFinish({ withWhisper: false, share: true })}
                     data-testid="finish-just-finished"
                   >
-                    Just finished
+                    {FINISH_TELL_LABEL}
                   </button>
                   <button
                     type="button"

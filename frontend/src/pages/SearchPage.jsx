@@ -7,7 +7,14 @@ import QueryForm from "../components/QueryForm.jsx";
 import Rail from "../components/Rail.jsx";
 import SearchModeControl, { normalizeSearchMode } from "../components/SearchModeControl.jsx";
 import { ThinkingButton } from "../components/Thinking.jsx";
-import { FIELD_HELP, discoverStatusLine, humanError, searchStatusLine } from "../copy.js";
+import {
+  FIELD_HELP,
+  beyondSearchCopy,
+  discoverStatusLine,
+  humanError,
+  localSearchEmpty,
+  searchStatusLine,
+} from "../copy.js";
 import {
   DISCOVER_PAGE_SIZE,
   buildFindSearchParams,
@@ -133,7 +140,7 @@ export default function SearchPage() {
 
   useEffect(() => {
     if (!composed) {
-      setResult({ local: [] });
+      setResult({ local: [], beyond: [], public_domain: [], beyond_error: "" });
       setPhase("idle");
       setError("");
       return undefined;
@@ -163,6 +170,7 @@ export default function SearchPage() {
           public_domain: data.public_domain || [],
           did_you_mean: data.did_you_mean || [],
           forgave: Boolean(data.forgave),
+          beyond_error: data.beyond_error || "",
         });
         setPhase("done");
       })
@@ -301,6 +309,12 @@ export default function SearchPage() {
         ? { id: "saved", status: "wanted" }
         : item.wanted,
   }));
+  const keeper = user?.role === "owner" || user?.role === "op";
+  const beyondCopy = beyondSearchCopy({
+    q: composed,
+    error: result.beyond_error,
+    role: user?.role,
+  });
   const discoverItems = (discover.items || []).map((item) => ({
     ...item,
     job_status: jobs[item.guid || item.title] === "asked" ? "asked" : item.job_status,
@@ -507,16 +521,25 @@ export default function SearchPage() {
               title="On the shelf"
               kicker={phase === "local" ? "Searching…" : "Local catalog · click cover to peek"}
               items={filtered.local}
-              empty={phase === "local" ? "Searching…" : "Nothing on the shelf yet."}
+              empty={phase === "local" ? "Searching…" : localSearchEmpty(composed)}
               role={user?.role}
             />
             <section id="beyond" className="search-beyond" data-testid="search-beyond">
-              <h2>Beyond</h2>
+              <h2>Beyond the shelves</h2>
+              {result.beyond_error && beyondCopy.ownerDetail ? (
+                <p className="alert" data-testid="search-beyond-error">
+                  {beyondCopy.empty} {beyondCopy.ownerDetail}
+                </p>
+              ) : result.beyond_error ? (
+                <p className="alert" data-testid="search-beyond-error">
+                  {beyondCopy.empty}
+                </p>
+              ) : null}
               <Rail
-                title="Usenet"
-                kicker="NZBFinder and the extra indexers in Settings"
+                title="Beyond the shelves"
+                kicker={keeper ? "NZBFinder and extra indexers" : ""}
                 items={beyondItems}
-                empty={phase === "local" ? "Looking beyond the shelves…" : "Nothing on Usenet for this search."}
+                empty={phase === "local" ? "Looking beyond the shelves…" : beyondCopy.empty}
                 beyond
                 onRequest={request}
                 role={user?.role}

@@ -146,6 +146,8 @@ class ProgressPayload(BaseModel):
     finished: bool = False
     # Optional household note when marking Finished (Beautiful Finished / D2).
     whisper: Optional[str] = Field(default=None, max_length=280)
+    # PRIV-007: fan-out only when the reader opts in. A whisper implies share.
+    share: Optional[bool] = None
 
 
 class ConvertPayload(BaseModel):

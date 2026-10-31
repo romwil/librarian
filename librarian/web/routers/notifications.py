@@ -89,7 +89,9 @@ def register_notification_routes(app: FastAPI, deps: WebDeps) -> None:
         user = request.state.user
         require_role(user, "owner", "op", "reader")
         cfg = settings()
-        prefs = public_notification_prefs(db.get_user_prefs(user["id"]))
+        prefs = public_notification_prefs(
+            db.get_user_prefs(user["id"]), role=str(user.get("role") or "reader")
+        )
         return {
             **prefs,
             "channels": notification_channel_offerings(cfg),
@@ -118,7 +120,9 @@ def register_notification_routes(app: FastAPI, deps: WebDeps) -> None:
             raise HTTPException(status_code=400, detail=str(error)) from error
         saved = db.set_user_prefs(user["id"], prefs=nested)
         cfg = settings()
-        prefs = public_notification_prefs(saved)
+        prefs = public_notification_prefs(
+            saved, role=str(user.get("role") or "reader")
+        )
         return {
             **prefs,
             "channels": notification_channel_offerings(cfg),

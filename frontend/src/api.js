@@ -148,6 +148,8 @@ export const api = {
     request(`/maintain/purge-shells${limit ? `?limit=${encodeURIComponent(String(limit))}` : ""}`, {
       method: "POST",
     }),
+  maintainPurgeShellsPreview: (limit = 0) =>
+    request(`/maintain/purge-shells/preview${limit ? `?limit=${encodeURIComponent(String(limit))}` : ""}`),
   maintainPurgeShellsStatus: () => request("/maintain/purge-shells/status"),
   maintainSplitMixedKinds: (limit = 0) =>
     request(`/maintain/split-mixed-kinds${limit ? `?limit=${encodeURIComponent(String(limit))}` : ""}`, {

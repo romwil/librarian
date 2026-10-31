@@ -192,7 +192,7 @@
 }
 .file-list-open:hover,
 .file-list-open:focus-visible {
-  color: var(--gilt);
+  color: var(--gilt-text);
   text-decoration: underline;
 }
 .file-list button.chip,
@@ -202,7 +202,7 @@
 }
 .file-list li.is-playing > span:first-child,
 .file-list li.is-playing .file-list-open {
-  color: var(--gilt);
+  color: var(--gilt-text);
 }
 .album-now-playing {
   margin: 0 0 var(--space-3);

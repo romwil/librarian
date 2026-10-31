@@ -163,6 +163,26 @@ def _clear_partials(backup_dir: Path) -> None:
         leftover.unlink(missing_ok=True)
 
 
+def snapshot_named(db_path: Path, backup_dir: Path, stem: str) -> Path:
+    """Write ``backup_dir/{stem}.db`` (0600, integrity-checked). Not rotated with dailies."""
+    cleaned = str(stem or "").strip()
+    if not cleaned or "/" in cleaned or "\\" in cleaned or ".." in cleaned:
+        raise BackupError("Backup name is not usable")
+    db_path = Path(db_path)
+    backup_dir = Path(backup_dir)
+    _ensure_dir(backup_dir)
+    destination = backup_dir / f"{cleaned}.db"
+    temp = backup_dir / f"{_TMP_PREFIX}{uuid.uuid4().hex}.db"
+    try:
+        _snapshot(db_path, temp)
+        os.replace(temp, destination)
+    except BaseException:
+        temp.unlink(missing_ok=True)
+        raise
+    _chmod(destination, _FILE_MODE)
+    return destination
+
+
 def run_backup(db_path: Path, backup_dir: Path, *, now: Optional[datetime] = None) -> BackupResult:
     """Take today's snapshot (and this week's, if missing), then prune.
 

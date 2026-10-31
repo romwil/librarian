@@ -26,8 +26,15 @@ export default function RssPanel({ compact = false }) {
     load();
   }, []);
 
+  function onAddKey(event) {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      if (!busy && url.trim()) addFeed();
+    }
+  }
+
   async function addFeed(event) {
-    event.preventDefault();
+    event?.preventDefault?.();
     setError("");
     setNote("");
     setBusy(true);
@@ -83,10 +90,15 @@ export default function RssPanel({ compact = false }) {
           </li>
         ))}
       </ul>
-      <form className="rss-add" onSubmit={addFeed}>
+      <div className="rss-add">
         <div className="field">
           <FieldLabel htmlFor="rss-name" label="Feed name" />
-          <input id="rss-name" value={name} onChange={(event) => setName(event.target.value)} />
+          <input
+            id="rss-name"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            onKeyDown={onAddKey}
+          />
         </div>
         <div className="field">
           <FieldLabel htmlFor="rss-url" label="RSS URL" help={FIELD_HELP.rss_url} />
@@ -94,6 +106,7 @@ export default function RssPanel({ compact = false }) {
             id="rss-url"
             value={url}
             onChange={(event) => setUrl(event.target.value)}
+            onKeyDown={onAddKey}
             required
             spellCheck={false}
           />
@@ -109,11 +122,11 @@ export default function RssPanel({ compact = false }) {
           </select>
         </div>
         <div className="cta-row">
-          <button type="submit" className="cta outline" disabled={busy || !url.trim()}>
+          <button type="button" className="cta outline" disabled={busy || !url.trim()} onClick={addFeed}>
             {busy ? "Saving…" : "Subscribe"}
           </button>
         </div>
-      </form>
+      </div>
     </div>
   );
 }
