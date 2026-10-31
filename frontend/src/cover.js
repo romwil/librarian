@@ -81,6 +81,7 @@ export const JOB_HOUSEHOLD = {
   organized: "Arrived",
   review: "Needs you",
   failed: "Failed",
+  skipped: "Skipped",
 };
 
 const JOB_SAB_HINT = {
@@ -105,7 +106,7 @@ export function jobChipLabel(status, role = "reader") {
 export function jobChipTone(status) {
   const label = jobHouseholdLabel(status);
   if (label === "Asked") return "is-asked";
-  if (label === "Failed") return "is-failed";
+  if (label === "Failed" || label === "Skipped") return "is-failed";
   if (label === "Needs you") return "is-review";
   if (label === "On the way") return "is-transit";
   if (label === "Arrived") return "is-arrived";
@@ -117,6 +118,14 @@ export function jobNeedsYouReason(job = {}) {
   const fail = String(job.error || "").trim();
   if (fail) return fail;
   return queueReviewReasonCopy(job.review_reason);
+}
+
+export function sortQueueNeedsYouFirst(jobs = []) {
+  return [...jobs].sort((a, b) => {
+    const aNeeds = a?.status === "review" ? 0 : 1;
+    const bNeeds = b?.status === "review" ? 0 : 1;
+    return aNeeds - bNeeds;
+  });
 }
 
 export function jobQueueDetail(job = {}) {

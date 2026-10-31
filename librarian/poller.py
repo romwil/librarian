@@ -75,7 +75,7 @@ _STATUS_ORDER = (
 _FAILURE_LOG = {
     "watch": "Watch poller tick failed",
     "rss": "RSS poller tick failed",
-    "repair": "Review soft-repair tick failed",
+    "repair": "Sorting diagnosis tick failed",
     "abs": "ABS match tick failed",
     "sweep": "Wanted sweep tick failed",
     "owned": "Owned slip sweep tick failed",
@@ -121,7 +121,7 @@ def _build_steps(short: float) -> tuple[_Step, ...]:
     return (
         _Step("watch", "Watch folder", short, True),
         _Step("rss", "RSS", _env_seconds(RSS_POLL_ENV, DEFAULT_RSS_POLL_SECONDS), True),
-        _Step("repair", "Holds repair", short, True),
+        _Step("repair", "Sorting repair", short, True),
         _Step("abs", "Audiobookshelf", short, False),
         _Step(
             "sweep",
@@ -345,8 +345,13 @@ class JobPoller:
 
     def _run_repair(self, settings: Settings) -> int:
         from librarian.organize import soft_repair_review_reasons
+        from librarian.review_diagnosis import fill_review_diagnosis
+        from librarian.sorting_autopilot import run_sorting_autopilot
 
-        return int(soft_repair_review_reasons(self.db, settings) or 0)
+        filled = int(fill_review_diagnosis(self.db, settings) or 0)
+        repaired = int(soft_repair_review_reasons(self.db, settings) or 0)
+        auto = run_sorting_autopilot(self.db, settings)
+        return filled + repaired + int(auto.get("changed") or 0)
 
     def _run_abs(self, settings: Settings) -> int:
         from librarian.audiobookshelf import match_audiobooks

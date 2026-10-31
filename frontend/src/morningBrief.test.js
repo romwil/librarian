@@ -42,7 +42,7 @@ test("briefIsEmpty treats missing and empty lists as quiet", () => {
   assert.equal(briefIsEmpty({ empty: false, items: [{ id: "x" }] }), false);
 });
 
-test("rankMorningKinds prefers locked roots then Holds desk", () => {
+test("rankMorningKinds prefers locked roots then Sorting", () => {
   assert.deepEqual(
     rankMorningKinds({
       comic_book_blends: 9,
@@ -55,7 +55,7 @@ test("rankMorningKinds prefers locked roots then Holds desk", () => {
   );
 });
 
-test("MorningBrief is alive — glow, settle, breathing, Holds lexicon", () => {
+test("MorningBrief is alive — glow, settle, breathing, Sorting lexicon", () => {
   assert.match(briefSrc, /morning-brief-alive/);
   assert.match(briefSrc, /morning-brief-glow/);
   assert.match(briefSrc, /cover-settle/);
@@ -72,7 +72,7 @@ test("Maintain mounts morning brief above the dock", () => {
   assert.match(maintainSrc, /MorningBrief/);
   assert.match(maintainSrc, /maintainMorningBrief/);
   assert.match(apiSrc, /maintainMorningBrief/);
-  assert.match(maintainSrc, /Holds desk/);
+  assert.match(maintainSrc, /Sorting/);
   assert.doesNotMatch(maintainSrc, /Review bag|bagging/i);
   const briefAt = maintainSrc.indexOf("<MorningBrief");
   const dockAt = maintainSrc.indexOf("<MaintainStatusDock");

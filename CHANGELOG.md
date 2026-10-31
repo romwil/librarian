@@ -2,6 +2,34 @@
 
 ## [Unreleased]
 
+- Nightly backup: the poller snapshots the catalog into `config/backups` (7 daily + 4 weekly), runs `integrity_check` on each copy, writes files `0600`, and leaves `session_secret` and `settings.json` out. The database file is `0600` too. Maintain shows **Last backup**; the restore steps are in [AUTOMAT.md](docs/ops/AUTOMAT.md).
+- Cover art lands on the shelf more often: audiobooks keep square Audnexus jackets (Amazon CDN allowlisted, no HTML scrape), Comic Vine match downloads the issue image, and a scan without a sidecar extracts CBZ page 1 or embedded album art. Wikipedia stays atmosphere / last-resort, never a print jacket when a kind-specific provider can fill it. Cards only claim a cover when the file is still on disk.
+- Maintain **Indexer scorecard** keeps lantern weather and Mute, and now shows match rate by media type (books, audiobooks, comics, …) as compact chips after Find / Discover speak. Counts persist in SQLite.
+- Enrich the shelves skips volumes that already have author, blurb, year, cover, and genre, and looks up the emptiest titles first. Maintain reports how many were already full.
+- Settings can add **DrunkenSlug** as an extra Newznab host (URL preset, paste the API token). Find beyond merges those hits with NZBFinder. Classic Newznab XML/`o=json` is spoken on that host — not a second search stack.
+- Search Beyond Usenet cards say **Get**, then **Getting…**, then **Queued** (an Asked slip). Confirm on Downloads still sends SABnzbd. Failures restore Get with a short error.
+- Idle Search shows indexer **Discover** again — trending latest by category — with fielded search easy to reach. New & noted stays at `/noted`.
+
+### Fixed
+
+- **Maintain indexer lanterns.** Lights Down no longer paints pale paper cards with tan status copy. Lantern names, weather sentences, and Mute sit on raised leather; an idle host is a hollow ring so flicker vs silent is not hue-only. Safe undo uses the same dark wash. Lights Up stays ink on paper.
+- **Library card text size.** Clicking Text size or the slider no longer closes the Library card. Ambient room layering had flattened the topbar under Hall, so the panel was visible through empty Hall and the click counted as outside; range thumb retargets onto `document` are hit-tested too.
+
+## [0.6.17] — 2026-10-31
+
+### Highlights
+
+- **Sorting desk.** Holds is now **Sorting** in nav, titles, and empty states — the route stays `/review`, and readers still Ask the house (never “Place a hold”). The desk pages 25 slips from a diagnosis cache so listing does not walk Unraid folders, group actions preview then undo for 24 hours, Downloads puts Needs you first with failed jobs you can retry, and high-confidence Author/Title books can file themselves with the same undo. Confirm on Downloads still sends SABnzbd; Sorting never does.
+
+### Changed
+
+- 2.1 Sorting rename: nav = h1 = document title **Sorting**; Downloads is one name; lexicon and glossary follow BD-6.
+- 2.2 Desk pagination: `GET /api/review?reason=&cursor=&limit=25` with `counts_by_reason`; `review_diagnosis` filled by the poller (no rglob on GET); match candidates load in the drawer.
+- 2.3 Desk triage: compact 48px rows, per-slip `h3`, group preview + typed count above 500, 24h SQLite undo, j/k/x off-switch.
+- 2.4 Downloads desk: Needs you first; paths behind Details; failed/skipped **Try again** / **Dismiss**; owner/op **Desk** tab; readers four tabs (Hall / Search / Favorites / You).
+- 2.5 Identify inflow: Calibre `(id)` suffixes strip; scene-release Author/Title parses to high confidence.
+- 2.6 Sorting autopilot: path-clear books file on the poller tick with 24h undo. **Never SAB.** Convert-fails-twice stays a `convert_failed` slip.
+
 ## [0.6.16] — 2026-10-31
 
 ### Highlights

@@ -540,9 +540,29 @@ def identify_completed(
         identity, folder, indexer_item=indexer_item, files=files, llm_client=llm_client
     )
 
+    from librarian.naming.book import parse_book_scene, strip_calibre_suffix
     from librarian.slip_gate import sign_path_clear_book
 
+    if identity.title:
+        identity.title = strip_calibre_suffix(identity.title)
     sign_path_clear_book(identity, folder, files)
+    if (
+        identity.kind == KIND_BOOK
+        and identity.confidence != "high"
+        and identity.review_reason in (None, "", REVIEW_LOW, REVIEW_UNKNOWN)
+    ):
+        scene = parse_book_scene(Path(folder).name) or parse_book_scene(files[0].stem if files else "")
+        if scene:
+            scene_author, scene_title = scene
+            if not str(identity.author or "").strip():
+                identity.author = scene_author
+            if not str(identity.title or "").strip() or looks_like_dump_title(str(identity.title or "")):
+                identity.title = scene_title
+            book_files = [path for path in files if path.suffix.lower() in EBOOK_FORMAT_EXTENSIONS]
+            if identity.author and identity.title and 1 <= len(book_files) <= 2:
+                identity.confidence = "high"
+                identity.review_reason = None
+                identity.rationale = "scene-release author/title"
     auto = identity.confidence == "high" and not identity.review_reason
     return {
         "identity": identity.as_dict(),

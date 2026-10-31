@@ -14,9 +14,11 @@ from librarian.indexers.scrub import (
 from librarian.ingest import poll_watch_folder
 from librarian.jobs import (
     confirm_asked_job,
+    dismiss_queue_job,
     enqueue_indexer_item,
     poll_active_jobs,
     poll_job,
+    retry_failed_job,
 )
 from librarian.nzbfinder import NZBFinderError
 from librarian.rss import poll_rss_feeds
@@ -66,6 +68,8 @@ def register_queue_routes(app: FastAPI, deps: WebDeps) -> None:
                 continue
             job["review_reason"] = work.get("review_reason")
             job["review_state"] = work.get("review_state")
+        rank = {"review": 0, "failed": 1, "skipped": 1, "asked": 2}
+        jobs.sort(key=lambda row: (rank.get(str(row.get("status") or ""), 3), -float(row.get("updated_at") or 0)))
         return {"jobs": public_jobs(jobs)}
 
     @app.post("/api/queue/tick")
@@ -99,6 +103,25 @@ def register_queue_routes(app: FastAPI, deps: WebDeps) -> None:
         try:
             job = confirm_asked_job(db, settings(), job_id)
         except (ValueError, SABError, NZBFinderError) as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        return {"job": public_job(job)}
+
+    @app.post("/api/queue/{job_id}/retry")
+    def queue_retry(job_id: str, request: Request):
+        """Failed/skipped → Asked. Confirm still sends SABnzbd."""
+        require_role(request.state.user, "owner", "op")
+        try:
+            job = retry_failed_job(db, job_id)
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        return {"job": public_job(job)}
+
+    @app.post("/api/queue/{job_id}/dismiss")
+    def queue_dismiss(job_id: str, request: Request):
+        require_role(request.state.user, "owner", "op")
+        try:
+            job = dismiss_queue_job(db, job_id)
+        except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
         return {"job": public_job(job)}
 

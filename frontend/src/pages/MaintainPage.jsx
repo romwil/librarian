@@ -917,14 +917,14 @@ export default function MaintainPage() {
       </section>
 
       <section className="maintain-section" id="maintain-review" data-testid="maintain-review">
-        <p className="kicker">Holds desk</p>
+        <p className="kicker">Sorting</p>
         <h2>Slips and extra files</h2>
         <p className="lede">
-          Open the Holds desk for identity slips. Clear extra-files reprocesses Calibre dumps that landed as extras.
+          Open Sorting for identity slips. Clear extra-files reprocesses Calibre dumps that landed as extras.
         </p>
         <div className="cta-row">
           <Link className="cta outline" to="/review" data-testid="maintain-review-link">
-            Open Holds desk
+            Open Sorting
           </Link>
           <ThinkingButton
             type="button"
@@ -1043,7 +1043,7 @@ export default function MaintainPage() {
         <p className="kicker">Catalog</p>
         <h2>Canonical cleanup</h2>
         <p className="lede">
-          Preview hashes, author aliases, duplicate merges, editions, and quarantine first. Title-and-author matches stay on the Holds desk.
+          Preview hashes, author aliases, duplicate merges, editions, and quarantine first. Title-and-author matches stay on Sorting.
         </p>
         <div className="cta-row">
           <ThinkingButton

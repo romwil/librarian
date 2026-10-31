@@ -85,6 +85,14 @@ def parse_usenet_name(name: str, *, category: object = None, kind: object = None
         if hinted == KIND_BOOK and " by " in cleaned.lower():
             head, tail = re.split(r"\s+by\s+", cleaned, maxsplit=1, flags=re.IGNORECASE)
             title, author = head.strip(), tail.strip()
+        elif hinted in ("", KIND_BOOK) and not author:
+            from librarian.naming.book import parse_book_scene, strip_calibre_suffix
+
+            scene = parse_book_scene(stem)
+            if scene:
+                author, title = scene
+            else:
+                title = strip_calibre_suffix(title)
 
     inferred = hinted
     if not inferred:

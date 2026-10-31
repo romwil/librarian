@@ -69,11 +69,11 @@ Find and Queue speak household English. The downloader’s raw line (Verifying, 
 | **Needs you** | Something unexpected; open **Review** (unknown identify, extra files, convert fail, collision, missing *arr*, and so on). The files are here — the house isn’t sure how to shelve them. Not a Failed download. |
 | **Failed** | It did not land — missing files, a damaged archive, or unpack that never finished |
 
-Queue cards for **Needs you** show a short reason and **Open Review** (deep-link when the job already has a work). The NZB id stays muted ops detail. The title on the job is the title you asked for on Find. SABnzbd’s Usenet filename stays ops-only on Queue.
+Queue cards for **Needs you** show a short reason and **Open Sorting** (deep-link when the job already has a work). Paths sit behind **Details**. Failed and skipped jobs can **Try again** (returns to Asked — confirm still sends SABnzbd) or **Dismiss**. The title on the job is the title you asked for on Find. SABnzbd’s Usenet filename stays ops-only on Downloads.
 
 **Finished** is reading progress (you finished the book). **Promote** is for incoming music only: move the album into the Plexamp library. Those two words are not job chips.
 
-## Review / Holds desk
+## Review / Sorting
 
 A **hold slip** (or just **slip**) is a download (or Add-to-shelves dump) that identify/organize could not finish filing. Happy-path ISBN books do not stop here. Each slip shows what Librarian tried, what’s wrong, and what to do next.
 
@@ -99,7 +99,7 @@ Owners and ops keep the lamp healthy from **Maintain** (`/maintain`) — not Set
 | **Scan the shelves** | Walks Settings library roots into the catalog; never moves files |
 | **Enrich the shelves** | Fills thin book/audiobook metadata (Hardcover → Open Library); skips volumes that are already full and starts with the emptiest; never invents an ISBN |
 | **Add to the shelves** | Ingest a dump already on disk under `/data` (same as Settings → Ingest) |
-| **Open Review** | Hold slips that need identity / folder help |
+| **Open Sorting** | Slips that need identity / folder help |
 | **Clear extra-files** | Bulk reprocess `extra_files` slips — including flat multi-title **collection dumps** (Fiction folders with many `Title - Author.epub` stems). Prefer Clear over Apply 29 times |
 | **Purge duplicates / shells** | Dismiss safely redundant Review slips or empty catalog shells when offered |
 
@@ -111,8 +111,8 @@ If Review **Apply** hits a PUID-locked author folder (often after Calibre migrat
 
 | Prefer | Meaning |
 | --- | --- |
-| **Holds desk** | Review (`/review`) — where hold slips wait |
-| **Hold slip** | One Review item needing identity / folder help (short **slip** is fine) |
+| **Sorting** | Nav, page title, and h1 for `/review` — where slips wait. Not a reader reservation. |
+| **Slip** | One Sorting item needing identity / folder help |
 | **Library card** | Your personal chrome menu — theme, text size, inbox, library preferences |
 | **Shelving** | Settings panel for SAB complete root (`#shelving`; legacy `#bagging` still works) |
 | **Hall / shelves / lamp** | The reading room itself — presence, not KPI dashboards. Dawn/dusk wash and a quiet welcome-back when Continue waits are lamp rituals, not settings. |

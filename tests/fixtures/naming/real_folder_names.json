@@ -139,7 +139,8 @@
     "category": null,
     "expect": {
       "kind": "book",
-      "title": "Herbert Dune ebook GROUP",
+      "title": "Dune",
+      "author": "Herbert",
       "year": 1977,
       "confidence": "low"
     }

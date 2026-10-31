@@ -55,6 +55,10 @@ def test_review_list_diagnoses_unpack_stuck_without_sqlite_write(tmp_path, monke
             "folder_path": str(stuck),
         }
     )
+    from librarian.review_diagnosis import fill_review_diagnosis
+
+    written = fill_review_diagnosis(db, settings, work_ids=[work["id"]])
+    assert written == 1
     listed = client.get("/api/review")
     assert listed.status_code == 200
     row = listed.json()["works"][0]

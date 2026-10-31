@@ -17,7 +17,7 @@ const DeskTally = memo(function DeskTally({ trusted, ambiguous, failed }) {
   );
 });
 
-/** Holds desk bulk bar: unpack repair/retry, clear extra-files, purge, and model triage. */
+/** Sorting bulk bar: unpack repair/retry, clear extra-files, purge, and model triage. */
 export default function ReviewBulkBar({
   show,
   unpackCount,
@@ -52,7 +52,7 @@ export default function ReviewBulkBar({
 
   return (
     <div className="review-bulk" data-testid="review-bulk">
-      <div className="cta-row" role="group" aria-label="Holds desk actions">
+      <div className="cta-row" role="group" aria-label="Sorting actions">
         {unpackCount ? (
           <>
             <button type="button" className="cta outline compact" onClick={() => onRepair()}>

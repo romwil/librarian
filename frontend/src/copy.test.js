@@ -22,6 +22,10 @@ import {
   formatInviteExpiry,
   PAGE_TITLE_SIGN_IN,
   PAGE_TITLE_JOIN,
+  PAGE_TITLE_SORTING,
+  PAGE_TITLE_DOWNLOADS,
+  SORTING_NAV,
+  DOWNLOADS_NAV,
   READER_WELCOME_TITLE,
   localSearchEmpty,
   settingsSavedCopy,
@@ -35,9 +39,14 @@ import {
 
 describe("reading room copy", () => {
   it("explains Needs you on Queue", () => {
-    assert.match(queueNeedsYouHelp(), /Needs you means Review/);
+    assert.match(queueNeedsYouHelp(), /Needs you means Sorting/);
     assert.match(queueNeedsYouHelp(), /files are here/);
-    assert.match(queueNeedsYouHelp(), /Open Review/);
+    assert.match(queueNeedsYouHelp(), /Open Sorting/);
+    assert.equal(PAGE_TITLE_SORTING, "Sorting · Librarian");
+    assert.equal(PAGE_TITLE_DOWNLOADS, "Downloads · Librarian");
+    assert.equal(SORTING_NAV, "Sorting");
+    assert.equal(DOWNLOADS_NAV, "Downloads");
+    assert.doesNotMatch(queueNeedsYouHelp(), /Place a hold/);
   });
 
   it("turns login failures into door copy", () => {
@@ -124,7 +133,7 @@ describe("reading room copy", () => {
     assert.doesNotMatch(emptyHallCopy({ owner: true }).lede, /stacks|lamp/i);
     assert.doesNotMatch(emptyHallCopy({ configured: true }).lede, /stacks|lamp/i);
     assert.doesNotMatch(emptyHallCopy({ owner: false }).lede, /stacks|lamp/i);
-    assert.match(emptyReviewCopy(), /Holds desk is empty/);
+    assert.match(emptyReviewCopy(), /Sorting is empty/);
   });
 
   it("describes Add to the shelves without an import wizard", () => {
@@ -137,7 +146,7 @@ describe("reading room copy", () => {
     assert.equal(peekMediaNote({ id: "w1" }, { ready: false }), "");
     assert.match(
       peekMediaNote({ id: "w1", review_reason: "no_payload", review_state: "needs_review" }, { ready: true }),
-      /Holds desk|isn’t a file/i,
+      /Sorting|isn’t a file/i,
     );
     assert.match(peekMediaNote({ id: "w1" }, { ready: true }), /isn’t on the shelf as a file yet/i);
     assert.match(

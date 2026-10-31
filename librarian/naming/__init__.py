@@ -14,6 +14,7 @@ from librarian.naming.audiobook import (
     normalize_audiobook_name,
     tokens_for_identity,
 )
+from librarian.naming.book import parse_book_scene, strip_calibre_suffix
 from librarian.naming.comic import (
     ComicTokens,
     comic_identity_fields,
@@ -83,11 +84,13 @@ __all__ = [
     "parse_comic",
     "parse_library_volume",
     "parse_magazine",
+    "parse_book_scene",
     "parse_usenet_name",
     "path_author_title",
     "release_file_fields",
     "restore_path_punctuation",
     "scrub_comic_stem",
+    "strip_calibre_suffix",
     "tidy_title",
     "title_and_series",
     "tokens_for_identity",

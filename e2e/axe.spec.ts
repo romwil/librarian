@@ -90,9 +90,9 @@ test.describe("axe-core", () => {
         await assertAxe(page);
       });
 
-      test("Holds", async ({ page }) => {
+      test("Sorting", async ({ page }) => {
         await page.goto("/review");
-        await expect(page.getByRole("heading", { name: "Sorting returns" })).toBeVisible();
+        await expect(page.getByRole("heading", { name: "Sorting", exact: true })).toBeVisible();
         await assertAxe(page);
       });
 

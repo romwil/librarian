@@ -102,9 +102,18 @@ async function expectShelfCurrent(
   which: "stacks" | "favorites",
   viewport: (typeof VIEWPORTS)[number]["name"],
 ) {
-  const nav = page.getByRole("navigation", { name: viewport === "desktop" ? "Library" : "Mobile" });
+  const favorites = page.getByRole("navigation", { name: viewport === "desktop" ? "Library" : "Mobile" }).getByRole("link", { name: "Favorites", exact: true });
+  if (viewport === "phone") {
+    // Phone tab bar is Hall / Search / Favorites / Desk / You — Stacks lives in the desktop nav.
+    if (which === "favorites") {
+      await expect(favorites).toHaveAttribute("aria-current", "page");
+    } else {
+      await expect(favorites).not.toHaveAttribute("aria-current", "page");
+    }
+    return;
+  }
+  const nav = page.getByRole("navigation", { name: "Library" });
   const stacks = nav.getByRole("link", { name: "Stacks", exact: true });
-  const favorites = nav.getByRole("link", { name: "Favorites", exact: true });
   if (which === "stacks") {
     await expect(stacks).toHaveAttribute("aria-current", "page");
     await expect(favorites).not.toHaveAttribute("aria-current", "page");
@@ -126,9 +135,11 @@ async function expectChromeForViewport(page: Page, viewport: (typeof VIEWPORTS)[
   } else {
     await expect(reader).toBeHidden();
     await expect(mobile.getByRole("link", { name: "Hall", exact: true })).toBeVisible();
-    await expect(mobile.getByRole("link", { name: "Stacks", exact: true })).toBeVisible();
     await expect(mobile.getByRole("link", { name: "Search", exact: true })).toBeVisible();
     await expect(mobile.getByRole("link", { name: "Favorites", exact: true })).toBeVisible();
+    await expect(mobile.getByRole("link", { name: "Desk", exact: true })).toBeVisible();
+    await expect(mobile.getByRole("link", { name: "You", exact: true })).toBeVisible();
+    await expect(mobile.getByRole("link", { name: "Stacks", exact: true })).toHaveCount(0);
   }
 }
 

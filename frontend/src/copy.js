@@ -34,8 +34,14 @@ export const READER_WELCOME_LEDE =
 export const READER_WELCOME_GOT_IT = "Show me the Hall";
 export const INVITE_READER_LABEL = "Invite a reader";
 export const INVITE_OP_LABEL = "Invite a helper";
+export const PAGE_TITLE_SORTING = "Sorting · Librarian";
+export const PAGE_TITLE_DOWNLOADS = "Downloads · Librarian";
+export const SORTING_NAV = "Sorting";
+export const DOWNLOADS_NAV = "Downloads";
+export const DESK_TAB = "Desk";
+export const JKX_SHORTCUTS_LABEL = "Keyboard shortcuts (j next, k previous, x more)";
 export const INVITE_OP_HELP =
-  "A helper can tend Holds and Downloads. They cannot change household settings, pause a card, or delete anyone.";
+  "A helper can tend Sorting and Downloads. They cannot change household settings, pause a card, or delete anyone.";
 export const INVITE_TTL_HELP = "Invites last 7 days. Copy the link once — the raw token is not stored.";
 export const SHOW_PASSWORD = "Show password";
 export const HIDE_PASSWORD = "Hide password";
@@ -159,7 +165,7 @@ export const FIELD_HELP = {
   searchYear: "Publication year, if you know it.",
 };
 
-/** ? help on Holds desk slip actions. Matches what each control actually does. */
+/** ? help on Sorting desk slip actions. Matches what each control actually does. */
 export const SLIP_ACTION_HELP = {
   repair:
     "Repair the archives already in this complete folder with par2, then unpack with unar. This does not shelve the volume.",
@@ -186,7 +192,7 @@ export const DISCOVER_CTA = "What's trending";
 export const MORE_SHELVES_LABEL = "More shelves";
 
 export const ADD_TO_LIBRARY_LEDE =
-  "Point at a dump folder or file under /data — not a library root. If Librarian is sure, it files the volume. If not, it waits in Review. Empty dumps say why they Failed.";
+  "Point at a dump folder or file under /data — not a library root. If Librarian is sure, it files the volume. If not, it waits on Sorting. Empty dumps say why they Failed.";
 
 export const WATCH_FOLDER_LEDE =
   "A drop folder. New top-level files and folders are identified the same way. Not a library root, and not SAB’s complete folder.";
@@ -254,7 +260,7 @@ export function inviteTokenFromInput(raw) {
 }
 
 export function inviteShareMessage({ joinUrl, role, expiresLabel, householdName } = {}) {
-  const who = role === "op" ? "someone who can tend Holds and Downloads" : "a reader";
+  const who = role === "op" ? "someone who can tend Sorting and Downloads" : "a reader";
   const house = householdName || "the household library";
   const until = expiresLabel ? ` until ${expiresLabel}` : " for 7 days";
   return `You're invited to ${house} as ${who}. Open this link${until}:\n${joinUrl || ""}`;
@@ -313,7 +319,7 @@ export function settingsSavedCopy(sectionLabel = "") {
 export function peekMediaNote(work, { canDownload = false, ready = true } = {}) {
   if (!ready || canDownload || !work?.id) return "";
   if (work.review_reason === "no_payload" || work.review_state === "needs_review") {
-    return "Still at the Holds desk — there isn’t a file to open yet. The lamp is honest about what’s missing.";
+    return "Still at Sorting — there isn’t a file to open yet. The lamp is honest about what’s missing.";
   }
   return "This volume isn’t on the shelf as a file yet — the house hasn’t shelved it.";
 }
@@ -332,8 +338,8 @@ export function peekTeachesAsk(work, { canDownload = false, ready = true, role =
   if (work.review_state === "needs_review") {
     return {
       kind: "holds",
-      label: role === "reader" ? "Ask the house" : "Open Holds desk",
-      teach: "A slip is waiting — ask the house, or tend the Holds desk.",
+      label: role === "reader" ? "Ask the house" : "Open Sorting",
+      teach: "A slip is waiting — ask the house, or tend Sorting.",
     };
   }
   if (role === "reader") {
@@ -355,7 +361,7 @@ export function canPromoteIncomingMusic(work, role) {
 }
 
 export function emptyReviewCopy() {
-  return "The Holds desk is empty. The lamp is quiet — slips only appear when organize needs you.";
+  return "Sorting is empty. The lamp is quiet — slips only appear when organize needs you.";
 }
 
 export function discoverLoadingCopy() {
@@ -367,7 +373,7 @@ export function emptyQueueCopy() {
 }
 
 export function queueNeedsYouHelp() {
-  return "Needs you means Review — the files are here; the house isn’t sure how to shelve them. Use Open Review.";
+  return "Needs you means Sorting — the files are here; the house isn’t sure how to shelve them. Use Open Sorting.";
 }
 
 export function searchIdleHint(kind = "") {

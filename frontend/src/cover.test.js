@@ -20,6 +20,7 @@ import {
   jobHouseholdLabel,
   jobNeedsYouReason,
   jobQueueDetail,
+  sortQueueNeedsYouFirst,
   listRowCoverUrl,
   localCoverUrl,
   partHint,
@@ -124,6 +125,18 @@ describe("reading room cover helpers", () => {
       /Radarr is not configured/,
     );
     assert.equal(jobNeedsYouReason({ status: "failed", error: "boom" }), "");
+  });
+
+  it("lists Needs you jobs first on Downloads", () => {
+    const listed = sortQueueNeedsYouFirst([
+      { id: "fail", status: "failed" },
+      { id: "review", status: "review" },
+      { id: "asked", status: "asked" },
+    ]);
+    assert.deepEqual(
+      listed.map((job) => job.id),
+      ["review", "fail", "asked"],
+    );
   });
 
   it("draws audiobook chips square, with the narrator under the title", () => {

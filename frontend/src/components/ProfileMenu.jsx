@@ -181,7 +181,7 @@ export default function ProfileMenu({
                 ) : null}
                 {op ? (
                   <Link to="/review" className="profile-menu-link" role="menuitem" onClick={() => setOpen(false)}>
-                    Holds
+                    Sorting
                   </Link>
                 ) : null}
                 {op ? (

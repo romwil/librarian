@@ -56,7 +56,7 @@ async function mockDesk(page: Page, initial: Slip[]) {
   return state;
 }
 
-test.describe("Holds desk group actions", () => {
+test.describe("Sorting group actions", () => {
   test.beforeEach(async ({ page }) => {
     await loginAsOwner(page);
   });
@@ -69,8 +69,24 @@ test.describe("Holds desk group actions", () => {
     ]);
     const bodies: Record<string, unknown>[] = [];
     await page.route("**/api/review/bulk-by-reason", async (route) => {
-      const body = route.request().postDataJSON();
+      const body = route.request().postDataJSON() as Record<string, unknown>;
       bodies.push(body);
+      if (body.dry_run) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            action: "delete",
+            reason: body.reason,
+            dry_run: true,
+            would_change: 2,
+            requires_typed_count: false,
+            examined: 2,
+            changed: 0,
+          }),
+        });
+        return;
+      }
       state.works = state.works.filter((w) => !(body.work_ids as string[]).includes(String(w.id)));
       await route.fulfill({
         status: 200,
@@ -104,13 +120,15 @@ test.describe("Holds desk group actions", () => {
     await page.keyboard.press("Escape");
     await expect(dialog).toHaveCount(0);
     await expect(trigger).toBeFocused();
-    expect(bodies).toHaveLength(0);
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0]).toMatchObject({ dry_run: true, action: "delete" });
 
     await trigger.click();
     await page.getByRole("dialog").getByRole("button", { name: "Delete 2 slips" }).click();
     await expect(page.getByTestId("review-group-note")).toContainText("Deleted 2 of 2.");
     await expect(page.getByTestId("review-group-note")).toContainText("Download folders stay on disk");
-    expect(bodies[0]).toMatchObject({ reason: "low_confidence", action: "delete", work_ids: ["low-1", "low-2"] });
+    const confirmed = bodies.filter((row) => row.dry_run !== true);
+    expect(confirmed[0]).toMatchObject({ reason: "low_confidence", action: "delete", work_ids: ["low-1", "low-2"] });
     await expect(page.getByRole("heading", { name: /Low confidence/ })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: /Collision/ })).toBeVisible();
   });

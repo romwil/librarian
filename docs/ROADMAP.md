@@ -179,7 +179,7 @@ A household **library for readers**. The Library is the product: scan `/data`, e
 - Empty Find is **Discover**: trending indexer category feeds from capabilities. Not a second Hall. Not auto-SAB. No HTML scrape.
 - `show_extra_categories` default **off**. Never Hall kinds.
 - Household job words: **Asked / On the way / Arrived / Needs you / Failed**. **Finished** is reading progress. **Promote** is incoming music → `music_root`.
-- Lexicon: **Holds desk** · Hold slip · **Library card** · **Shelving** (legacy `#bagging` maps). Routes stay `/review`.
+- Lexicon: **Sorting** · Slip · **Library card** · **Shelving** (legacy `#bagging` maps). Route stays `/review`. No reader “Place a hold.”
 - Auto-organize only when identify is confident. Unexpected → Review. Scan never moves files; ingest/watch may.
 - BYO LLM may assist later. LLM never invents an ISBN.
 - Automat media contract: [automat-media-contract.md](automat-media-contract.md). **No shared Python package** until mutagen + filename agreement proves high reuse.

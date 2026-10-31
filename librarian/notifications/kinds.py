@@ -49,8 +49,8 @@ KIND_CATALOG: List[Dict[str, Any]] = [
     },
     {
         "id": "needs_you",
-        "label": "Needs you (Review)",
-        "help": "When Review slips are waiting for a calm sort.",
+        "label": "Needs you (Sorting)",
+        "help": "When Sorting slips are waiting for a calm sort.",
         "default": {"enabled": True, "channels": ["inbox"], "timing": "realtime"},
         "live": False,
         "roles": ("owner", "op"),

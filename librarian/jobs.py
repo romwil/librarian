@@ -205,6 +205,32 @@ def confirm_asked_job(
     )
 
 
+def retry_failed_job(db: Database, job_id: str) -> Dict[str, Any]:
+    """Return a failed/skipped job to Asked. Owner/op still confirm before SAB."""
+    job = db.get_job(job_id)
+    if job is None:
+        raise ValueError("Job not found")
+    if job["status"] not in ("failed", "skipped"):
+        raise ValueError("Job is not failed or skipped")
+    updated = db.update_job(job_id, status="asked", error=None, sab_status="")
+    if updated is None:
+        raise ValueError("Job not found")
+    return updated
+
+
+def dismiss_queue_job(db: Database, job_id: str) -> Dict[str, Any]:
+    """Mark a failed, skipped, or asked job skipped. Does not send SABnzbd."""
+    job = db.get_job(job_id)
+    if job is None:
+        raise ValueError("Job not found")
+    if job["status"] not in ("failed", "skipped", "asked"):
+        raise ValueError("Job cannot be dismissed")
+    updated = db.update_job(job_id, status="skipped")
+    if updated is None:
+        raise ValueError("Job not found")
+    return updated
+
+
 def find_identity_item(job: Dict[str, Any]) -> Dict[str, Any]:
     """Catalog identity from the Find request — never SAB's nzo filename."""
     payload = dict(job.get("payload") or {})

@@ -1,6 +1,27 @@
 {
-  "generated_at": "2026-10-31T07:45:14Z",
+  "generated_at": "2026-10-31T08:00:00Z",
   "releases": [
+    {
+      "version": "0.6.17",
+      "date": "2026-10-31",
+      "summary": "",
+      "highlights": [
+        "**Sorting desk.** Holds is now **Sorting** in nav, titles, and empty states — the route stays `/review`, and readers still Ask the house (never “Place a hold”). The desk pages 25 slips from a diagnosis cache so listing does not walk Unraid folders, group actions preview then undo for 24 hours, Downloads puts Needs you first with failed jobs you can retry, and high-confidence Author/Title books can file themselves with the same undo. Confirm on Downloads still sends SABnzbd; Sorting never does."
+      ],
+      "sections": [
+        {
+          "title": "Changed",
+          "bullets": [
+            "2.1 Sorting rename: nav = h1 = document title **Sorting**; Downloads is one name; lexicon and glossary follow BD-6.",
+            "2.2 Desk pagination: `GET /api/review?reason=&cursor=&limit=25` with `counts_by_reason`; `review_diagnosis` filled by the poller (no rglob on GET); match candidates load in the drawer.",
+            "2.3 Desk triage: compact 48px rows, per-slip `h3`, group preview + typed count above 500, 24h SQLite undo, j/k/x off-switch.",
+            "2.4 Downloads desk: Needs you first; paths behind Details; failed/skipped **Try again** / **Dismiss**; owner/op **Desk** tab; readers four tabs (Hall / Search / Favorites / You).",
+            "2.5 Identify inflow: Calibre `(id)` suffixes strip; scene-release Author/Title parses to high confidence.",
+            "2.6 Sorting autopilot: path-clear books file on the poller tick with 24h undo. **Never SAB.** Convert-fails-twice stays a `convert_failed` slip."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.6.16",
       "date": "2026-10-31",

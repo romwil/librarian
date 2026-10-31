@@ -1133,13 +1133,22 @@ html[data-theme="lights-down"] .grooming-undo.is-available {
 .hold-slip {
   /* alias of .ticket — library voice without a ticket-queue feel */
 }
+.review-page[data-density="compact"] .hold-slip {
+  padding: var(--space-2) var(--space-3);
+}
 .hold-slip-line {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: var(--space-3);
   flex-wrap: wrap;
   row-gap: var(--space-2);
   min-width: 0;
+  min-height: 48px;
+}
+.hold-slip-line .ticket-title {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0;
 }
 .hold-slip-line .ticket-title {
   flex: 1 1 100%;
@@ -1171,6 +1180,28 @@ html[data-theme="lights-down"] .grooming-undo.is-available {
 }
 .review-extra-files-progress {
   margin: 0 0 var(--space-5);
+}
+.queue-page,
+.review-page {
+  overflow-x: hidden;
+  max-width: 100%;
+}
+.queue-job,
+.hold-slip,
+.holds-group {
+  min-width: 0;
+  max-width: 100%;
+}
+.queue-job-title,
+.hold-slip-line .ticket-title {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.queue-job-details {
+  min-width: 0;
+}
+.queue-job-details p {
+  overflow-wrap: anywhere;
 }
 
 .bag-glyph {

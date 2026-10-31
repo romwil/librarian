@@ -293,7 +293,7 @@ test.describe("Canonical works", () => {
     expect(historyUrls).toHaveLength(2);
   });
 
-  test("possible duplicates pile is visible on the mocked Holds desk", async ({ page }) => {
+  test("possible duplicates pile is visible on mocked Sorting", async ({ page }) => {
     await page.route(
       (url) => pathIs(url, "/api/review"),
       async (route) => {

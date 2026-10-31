@@ -4,6 +4,7 @@ import { api } from "../api.js";
 import { stacksNavState } from "../lib/stacksNav.js";
 import ProfileMenu from "./ProfileMenu.jsx";
 import InboxBadgeButton from "./InboxBadgeButton.jsx";
+import { DESK_TAB, DOWNLOADS_NAV, SORTING_NAV } from "../copy.js";
 import {
   applyUiFontStep,
   applyUiTheme,
@@ -67,7 +68,8 @@ export default function AppChrome({ user, features, reviewCount = 0, inboxUnread
     return () => window.removeEventListener("keydown", onKey);
   }, [navigate]);
 
-  const holdsLabel = reviewCount > 0 ? `Holds ${reviewCount}` : "Holds";
+  const sortingLabel = reviewCount > 0 ? `${SORTING_NAV} ${reviewCount}` : SORTING_NAV;
+  const deskLabel = reviewCount > 0 ? `${DESK_TAB} ${reviewCount}` : DESK_TAB;
 
   return (
     <div className="room ambient-off" data-ambient="off">
@@ -103,12 +105,12 @@ export default function AppChrome({ user, features, reviewCount = 0, inboxUnread
           </NavLink>
           {op ? (
             <NavLink to="/queue" className={({ isActive }) => (isActive ? "is-current" : undefined)}>
-              Downloads
+              {DOWNLOADS_NAV}
             </NavLink>
           ) : null}
           {op ? (
             <NavLink to="/review" className={({ isActive }) => (isActive ? "is-current" : undefined)} data-testid="holds-link">
-              {holdsLabel}
+              {sortingLabel}
             </NavLink>
           ) : null}
         </nav>
@@ -128,18 +130,10 @@ export default function AppChrome({ user, features, reviewCount = 0, inboxUnread
       <main id="main" tabIndex={-1}>
         {children}
       </main>
-      <nav className="mobile-tabbar" aria-label="Mobile" style={{ "--tab-count": 6 }}>
+      <nav className="mobile-tabbar" aria-label="Mobile" style={{ "--tab-count": op ? 5 : 4 }}>
         <NavLink to="/" end className={({ isActive }) => (isActive ? "is-current" : undefined)}>
           Hall
         </NavLink>
-        <Link
-          to="/browse"
-          className={stacksNav.stacks ? "is-current" : undefined}
-          aria-current={stacksNav.stacks ? "page" : undefined}
-          title="Browse the stacks"
-        >
-          Stacks
-        </Link>
         <NavLink to="/search" className={({ isActive }) => (isActive ? "is-current" : undefined)}>
           Search
         </NavLink>
@@ -150,11 +144,13 @@ export default function AppChrome({ user, features, reviewCount = 0, inboxUnread
         >
           Favorites
         </Link>
-        <NavLink to="/wanted" className={({ isActive }) => (isActive ? "is-current" : undefined)}>
-          Wanted
-        </NavLink>
+        {op ? (
+          <NavLink to="/review" className={({ isActive }) => (isActive ? "is-current" : undefined)} data-testid="desk-tab">
+            {deskLabel}
+          </NavLink>
+        ) : null}
         <NavLink to="/card" className={({ isActive }) => (isActive ? "is-current" : undefined)}>
-          Library card
+          You
         </NavLink>
       </nav>
     </div>

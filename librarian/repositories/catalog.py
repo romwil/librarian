@@ -300,6 +300,7 @@ class CatalogRepository(RepositoryBase):
                 conn.execute("DELETE FROM whispers WHERE work_id = ?", (wid,))
                 conn.execute("DELETE FROM works_fts WHERE work_id = ?", (wid,))
                 conn.execute("DELETE FROM jobs WHERE work_id = ?", (wid,))
+                conn.execute("DELETE FROM review_diagnosis WHERE work_id = ?", (wid,))
                 conn.execute("DELETE FROM works WHERE id = ?", (wid,))
 
         self.run_write(_write, label="delete_work")
