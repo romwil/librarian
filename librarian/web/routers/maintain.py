@@ -225,6 +225,10 @@ def register_maintain_routes(app: FastAPI, deps: WebDeps) -> None:
             ),
         }
 
+        from librarian.indexer_budget import household_totals
+        from librarian.indexers.hosts import enabled_hosts
+
+        cfg = settings()
         return {
             "scan": scan,
             "enrich": enrich,
@@ -233,6 +237,7 @@ def register_maintain_routes(app: FastAPI, deps: WebDeps) -> None:
             "cleanup": read_cleanup_progress(root),
             "poller": _background_poller_status(app),
             "backup": _backup_report(app, root),
+            "indexer_budget": household_totals(db, enabled_hosts(cfg), settings=cfg),
         }
 
     @app.post("/api/maintain/cleanup")

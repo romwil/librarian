@@ -24,6 +24,11 @@ import {
   extraFilesReprocessProgressSummary,
 } from "../review.js";
 import { backupSummary } from "../lib/backupStatus.js";
+import {
+  indexerBudgetCaption,
+  indexerBudgetHosts,
+  pollerStepCaption,
+} from "../lib/indexerBudget.js";
 import { wakeMaintainJobs } from "../lib/maintainDock.js";
 
 function purgeShellsIsRunning(status) {
@@ -156,6 +161,7 @@ export default function MaintainPage() {
   const [calibreBusy, setCalibreBusy] = useState(false);
   const [calibreNote, setCalibreNote] = useState("");
   const [pollerSteps, setPollerSteps] = useState([]);
+  const [indexerBudget, setIndexerBudget] = useState([]);
   const [backup, setBackup] = useState(null);
   const [notedRefresh, setNotedRefresh] = useState("");
   const [notedRefreshing, setNotedRefreshing] = useState(false);
@@ -169,11 +175,13 @@ export default function MaintainPage() {
         const body = await api.maintainJobsStatus();
         if (!cancelled) {
           setPollerSteps(pollerStepsFrom(body));
+          setIndexerBudget(indexerBudgetHosts(body));
           setBackup(backupSummary(body));
         }
       } catch {
         if (!cancelled) {
           setPollerSteps([]);
+          setIndexerBudget([]);
           setBackup(null);
         }
       }
@@ -827,15 +835,14 @@ export default function MaintainPage() {
             .filter((step) => step.id !== "backup")
             .map((step) => {
               const error = typeof step.last_error === "string" ? step.last_error.trim() : "";
+              const off = pollerStepCaption(step);
               const interval = formatPollerInterval(step.interval_seconds);
               const ran = step.last_run ? `Last run ${formatPollerTime(step.last_run)}` : "Not run yet";
               return (
                 <div key={step.id}>
                   <p className="muted" data-testid={`maintain-poller-${step.id}`}>
-                    {step.label}
-                    {interval ? ` · ${interval}` : ""}
-                    {" · "}
-                    {ran}
+                    {off ||
+                      `${step.label}${interval ? ` · ${interval}` : ""} · ${ran}`}
                   </p>
                   {error ? (
                     <p className="alert" role="status" data-testid={`maintain-poller-${step.id}-error`}>
@@ -845,6 +852,16 @@ export default function MaintainPage() {
                 </div>
               );
             })}
+          {indexerBudget.length ? (
+            <div data-testid="maintain-indexer-budget">
+              <p className="muted">Indexer calls today — household totals</p>
+              {indexerBudget.map((host) => (
+                <p key={host.id} className="muted" data-testid={`maintain-indexer-budget-${host.id}`}>
+                  {indexerBudgetCaption(host)}
+                </p>
+              ))}
+            </div>
+          ) : null}
         </section>
       ) : null}
 

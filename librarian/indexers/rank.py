@@ -350,6 +350,8 @@ def search_and_rank(
     data_dir: Any = None,
     deadline: Optional[float] = None,
     heuristic_only: bool = False,
+    db: Any = None,
+    now: Optional[float] = None,
     **fields: Any,
 ) -> Dict[str, Any]:
     """Indexer search + rank. Attaches pick/candidates/conversation onto the traced search."""
@@ -357,7 +359,13 @@ def search_and_rank(
     from librarian.indexers.query import clean_sought
 
     traced = search_beyond_traced(
-        settings, transport=transport, data_dir=data_dir, deadline=deadline, **fields
+        settings,
+        transport=transport,
+        data_dir=data_dir,
+        deadline=deadline,
+        db=db,
+        now=now,
+        **fields,
     )
     sought = clean_sought(fields)
     ranked = rank_beyond_hits(

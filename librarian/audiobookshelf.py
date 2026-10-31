@@ -315,12 +315,12 @@ def match_audiobooks(
     client: Optional[AudiobookshelfClient] = None,
     force: bool = False,
 ) -> Dict[str, Any]:
-    """Match catalog audiobooks to ABS items. No token → no HTTP."""
+    """Match catalog audiobooks to ABS items. No token → no HTTP, no catalog load."""
     url = _text(getattr(settings, "audiobookshelf_url", ""))
     token = _text(getattr(settings, "audiobookshelf_api_token", ""))
-    counts = abs_match_counts(db)
     if not url or not token:
-        return {**counts, "updated": 0, "called": False}
+        return {"matched": 0, "audiobooks": 0, "updated": 0, "called": False}
+    counts = abs_match_counts(db)
     works = db.list_works(kind="audiobook", limit=500)
     unmatched = [row for row in works if not _text(row.get("abs_item_id"))]
     if not unmatched and not force:

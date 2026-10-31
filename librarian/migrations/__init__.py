@@ -18,6 +18,7 @@ from librarian.migrations import (
     m0003_canonical_works,
     m0004_noted_cache,
     m0005_guest_accounts,
+    m0006_provider_calls,
 )
 
 logger = logging.getLogger("librarian.migrations")
@@ -44,6 +45,9 @@ MIGRATIONS: Tuple[Migration, ...] = (
     ),
     Migration(m0004_noted_cache.VERSION, m0004_noted_cache.NAME, m0004_noted_cache.apply),
     Migration(m0005_guest_accounts.VERSION, m0005_guest_accounts.NAME, m0005_guest_accounts.apply),
+    Migration(
+        m0006_provider_calls.VERSION, m0006_provider_calls.NAME, m0006_provider_calls.apply
+    ),
 )
 LATEST_VERSION = MIGRATIONS[-1].version
 

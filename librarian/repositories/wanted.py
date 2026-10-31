@@ -120,11 +120,13 @@ class WantedRepository(RepositoryBase):
         return [str(row["kind"]) for row in rows if row["kind"]]
 
     def list_due_wanted(self, *, now: float, limit: Optional[int] = None) -> List[Dict[str, Any]]:
-        """Every wanted row whose search time has come, oldest first. No cap unless asked."""
+        """Due rows: owner-added before sweep, then newest. No cap unless asked."""
         sql = """
             SELECT * FROM wanted
             WHERE status = 'wanted' AND next_search_at <= ?
-            ORDER BY next_search_at ASC, id ASC
+            ORDER BY CASE WHEN IFNULL(source, '') = 'sweep' THEN 1 ELSE 0 END ASC,
+                     created_at DESC,
+                     id DESC
         """
         args: List[Any] = [float(now)]
         if limit is not None:

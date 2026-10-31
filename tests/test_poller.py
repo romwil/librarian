@@ -15,6 +15,7 @@ from librarian.poller import (
     DEFAULT_BACKUP_POLL_SECONDS,
     DEFAULT_ENRICH_POLL_SECONDS,
     DEFAULT_NOTED_POLL_SECONDS,
+    DEFAULT_OWNED_POLL_SECONDS,
     DEFAULT_RSS_POLL_SECONDS,
     DEFAULT_SAB_POLL_SECONDS,
     DEFAULT_SWEEP_POLL_SECONDS,
@@ -174,9 +175,14 @@ _POLL_ENV = (
     "LIBRARIAN_RSS_POLL_SECONDS",
     "LIBRARIAN_SWEEP_POLL_SECONDS",
     "LIBRARIAN_WANTED_POLL_SECONDS",
+    "LIBRARIAN_OWNED_POLL_SECONDS",
     "LIBRARIAN_NOTED_POLL_SECONDS",
     "LIBRARIAN_BACKUP_POLL_SECONDS",
 )
+
+
+def _always_enabled(monkeypatch) -> None:
+    monkeypatch.setattr(JobPoller, "_step_enabled", lambda self, name, settings: True)
 
 
 def _clear_poll_env(monkeypatch) -> None:
@@ -234,6 +240,7 @@ def test_poll_seconds_and_step_env_overrides(tmp_path, monkeypatch):
 
 def test_step_intervals_are_independent(tmp_path, monkeypatch):
     _clear_poll_env(monkeypatch)
+    _always_enabled(monkeypatch)
     clock = _Clock()
     calls = []
     poller = JobPoller(
@@ -271,6 +278,7 @@ def test_step_intervals_are_independent(tmp_path, monkeypatch):
     assert _status(poller)["enrich"]["last_error"] is None
     assert DEFAULT_RSS_POLL_SECONDS == DEFAULT_ENRICH_POLL_SECONDS
     assert DEFAULT_WANTED_POLL_SECONDS == 3600.0
+    assert DEFAULT_OWNED_POLL_SECONDS == 300.0
     assert DEFAULT_WANTED_POLL_SECONDS > DEFAULT_SWEEP_POLL_SECONDS > DEFAULT_SAB_POLL_SECONDS
 
 
@@ -334,6 +342,7 @@ def test_noted_refresh_is_due_after_its_interval(tmp_path, monkeypatch):
 
 def test_one_step_failure_does_not_skip_the_others(tmp_path, monkeypatch):
     _clear_poll_env(monkeypatch)
+    _always_enabled(monkeypatch)
     calls = []
     poller = JobPoller(Database(tmp_path / "librarian.db"), lambda: Settings(), interval=30)
     for name in list(poller._runners):
@@ -371,6 +380,7 @@ def test_one_step_failure_does_not_skip_the_others(tmp_path, monkeypatch):
 
 
 def test_download_loop_does_not_run_enrich(tmp_path, monkeypatch):
+    _always_enabled(monkeypatch)
     calls = []
     poller = JobPoller(Database(tmp_path / "librarian.db"), lambda: Settings(), interval=12.5)
     for name in list(poller._runners):
@@ -391,6 +401,7 @@ def test_download_loop_does_not_run_enrich(tmp_path, monkeypatch):
 
 def test_housekeeping_failure_does_not_skip_later_steps(tmp_path, monkeypatch):
     _clear_poll_env(monkeypatch)
+    _always_enabled(monkeypatch)
     clock = _Clock()
     calls = []
     poller = JobPoller(
@@ -428,6 +439,7 @@ def test_housekeeping_failure_does_not_skip_later_steps(tmp_path, monkeypatch):
 
 def test_slow_enrich_does_not_hold_back_downloads(tmp_path, monkeypatch):
     _clear_poll_env(monkeypatch)
+    _always_enabled(monkeypatch)
     monkeypatch.delenv("LIBRARIAN_SKIP_APP_BOOT")
     monkeypatch.delenv("LIBRARIAN_DISABLE_POLLER", raising=False)
     held = threading.Event()
@@ -508,3 +520,11 @@ def test_maintain_jobs_status_reports_poller_steps(tmp_path, monkeypatch):
         assert step["label"]
         assert step["last_run"] is None
         assert step["last_error"] is None
+    assert by_id["abs"]["state"] == "off"
+    assert by_id["watch"]["state"] == "off"
+    assert by_id["wanted"]["state"] == "off"
+    assert by_id["sab"]["state"] == "off"
+    assert by_id["owned"]["state"] == "off"
+    assert "Off" in by_id["abs"]["off_reason"]
+    assert "indexer_budget" in body
+    assert "user_id" not in json.dumps(body["indexer_budget"])

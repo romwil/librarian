@@ -608,7 +608,11 @@ def test_poller_tick_calls_sweep_and_search(db, monkeypatch):
         "librarian.wanted_search.poll_wanted",
         lambda *_a, **_k: seen.append("search") or 0,
     )
-    JobPoller(db, lambda: Settings(), interval=3600).tick()
+    JobPoller(
+        db,
+        lambda: Settings(nzbfinder_api_token="tok", nzbfinder_url="https://nzbfinder.test"),
+        interval=3600,
+    ).tick()
     assert seen == ["sweep", "search"]
 
 

@@ -41,6 +41,7 @@ DEFAULT_ENRICH_POLL_SECONDS = 300.0
 DEFAULT_RSS_POLL_SECONDS = 300.0
 DEFAULT_SWEEP_POLL_SECONDS = 900.0
 DEFAULT_WANTED_POLL_SECONDS = 3600.0
+DEFAULT_OWNED_POLL_SECONDS = 300.0
 DEFAULT_NOTED_POLL_SECONDS = 21600.0
 # Hourly look; a snapshot is only taken when today's is missing (nightly in effect).
 DEFAULT_BACKUP_POLL_SECONDS = 3600.0
@@ -50,6 +51,7 @@ ENRICH_POLL_ENV = "LIBRARIAN_ENRICH_POLL_SECONDS"
 RSS_POLL_ENV = "LIBRARIAN_RSS_POLL_SECONDS"
 SWEEP_POLL_ENV = "LIBRARIAN_SWEEP_POLL_SECONDS"
 WANTED_POLL_ENV = "LIBRARIAN_WANTED_POLL_SECONDS"
+OWNED_POLL_ENV = "LIBRARIAN_OWNED_POLL_SECONDS"
 NOTED_POLL_ENV = "LIBRARIAN_NOTED_POLL_SECONDS"
 BACKUP_POLL_ENV = "LIBRARIAN_BACKUP_POLL_SECONDS"
 
@@ -127,7 +129,12 @@ def _build_steps(short: float) -> tuple[_Step, ...]:
             _env_seconds(SWEEP_POLL_ENV, DEFAULT_SWEEP_POLL_SECONDS),
             False,
         ),
-        _Step("owned", "Owned slips", short, False),
+        _Step(
+            "owned",
+            "Owned slips",
+            _env_seconds(OWNED_POLL_ENV, DEFAULT_OWNED_POLL_SECONDS),
+            False,
+        ),
         _Step(
             "wanted",
             "Wanted search",
@@ -217,20 +224,57 @@ class JobPoller:
 
     def step_status(self) -> Dict[str, object]:
         """Last run and last error for Maintain. One entry per scheduled step."""
+        try:
+            settings = self.settings_fn()
+        except Exception:
+            settings = None
         with self._lock:
             steps = []
             for step_id in _STATUS_ORDER:
                 step = self._by_id[step_id]
-                steps.append(
-                    {
-                        "id": step.id,
-                        "label": step.label,
-                        "interval_seconds": step.interval,
-                        "last_run": self._last_run[step.id],
-                        "last_error": self._last_error[step.id],
-                    }
-                )
+                enabled = True if settings is None else self._step_enabled(step.id, settings)
+                entry = {
+                    "id": step.id,
+                    "label": step.label,
+                    "interval_seconds": step.interval,
+                    "last_run": self._last_run[step.id],
+                    "last_error": self._last_error[step.id],
+                    "state": "ok" if enabled else "off",
+                }
+                if not enabled:
+                    entry["off_reason"] = self._off_reason(step.id)
+                steps.append(entry)
         return {"steps": steps}
+
+    def _step_enabled(self, name: str, settings: Settings) -> bool:
+        """Skip unconfigured work. Owned only runs when a file-less slip exists."""
+        if name == "watch":
+            return bool(getattr(settings, "watch_enabled", False)) and bool(
+                str(getattr(settings, "watch_root", "") or "").strip()
+            )
+        if name == "abs":
+            return bool(str(getattr(settings, "audiobookshelf_url", "") or "").strip()) and bool(
+                str(getattr(settings, "audiobookshelf_api_token", "") or "").strip()
+            )
+        if name == "sab":
+            return bool(str(getattr(settings, "sabnzbd_api_key", "") or "").strip())
+        if name == "wanted":
+            from librarian.indexers.hosts import enabled_hosts
+
+            return bool(enabled_hosts(settings))
+        if name == "owned":
+            return bool(self.db.has_fileless_slips())
+        return True
+
+    def _off_reason(self, name: str) -> str:
+        if name == "owned":
+            return "Off: nothing to do"
+        return "Off: not configured"
+
+    def _defer(self, name: str) -> None:
+        """Advance next_due without stamping last_run (disabled / idle steps)."""
+        with self._lock:
+            self._next_due[name] = self._clock() + self._by_id[name].interval
 
     def tick(self) -> int:
         """Run every step that is due, in shelf order. Failures stay on that step."""
@@ -261,8 +305,12 @@ class JobPoller:
 
     def _run_step(self, name: str) -> int:
         spec = self._by_id[name]
+        settings = self.settings_fn()
+        if not self._step_enabled(name, settings):
+            self._defer(name)
+            return 0
         try:
-            produced = int(self._runners[name](self.settings_fn()) or 0)
+            produced = int(self._runners[name](settings) or 0)
         except SABError as error:
             self._mark(name, error=_error_text(error))
             if name == "sab":
@@ -328,6 +376,13 @@ class JobPoller:
 
     def _start_wanted_pass(self) -> None:
         """Start the hourly pass on its own thread unless one is still walking."""
+        try:
+            settings = self.settings_fn()
+        except Exception:
+            settings = None
+        if settings is None or not self._step_enabled("wanted", settings):
+            self._defer("wanted")
+            return
         with self._lock:
             running = self._wanted_thread
             if running is not None and running.is_alive():
