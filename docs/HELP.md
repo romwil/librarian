@@ -103,15 +103,33 @@ If Review **Apply** hits a PUID-locked author folder (often after Calibre migrat
 
 ## Motif glossary
 
+The same terms live in-app at `/help` (`frontend/src/copy/glossary.js`).
+
 | Prefer | Meaning |
 | --- | --- |
-| **Sorting** | Nav, page title, and h1 for `/review` — where slips wait. Not a reader reservation. |
-| **Slip** | One Sorting item needing identity / folder help |
-| **Library card** | Your personal chrome menu — theme, text size, inbox, library preferences |
+| **Hall** | The front of the library after you sign in. Continue, arrivals, and a search that starts on the shelves. |
+| **Search** | Looks at what the house already owns first. Beyond the shelves is a later door. |
+| **Ask the house** | A reader’s request for a missing title. A keeper still confirms before anything is fetched. |
+| **Wanted** | Titles the house is looking for. Asked stays looking; Arrived means it is on the shelf. |
+| **Library card** | Your personal door: theme, text size, inbox, asks, export, and the OPDS catalog link. |
+| **Continue** | Where you left off — only after real reading or listening, not by opening a page. |
+| **Arrived** | Something you asked for has been filed on the shelves. |
+| **Inbox** | In-app notices. Arrival notes and asked-confirm live here; email is optional. |
+| **Sorting** | The owner desk at /review. Slips wait here. It is not a reader reservation. |
+| **Slip** | One Sorting item that needs identity or folder help before it can be filed. |
+| **Downloads** | The queue of fetches. Confirm is the only way SABnzbd starts. |
+| **Confirm** | The keeper step before a download. Product control — not a legal review. |
+| **Beyond the shelves** | Indexer search outside what the house already owns. Readers opt in with Ask the house. |
+| **Maintain** | Owner grooming: scan, enrich, backup, House pulse, shelf health. Credentials stay in Settings. |
+| **House pulse** | On-box household totals. Member reading figures hide until three people have a card. No analytics SDK. |
+| **OPDS** | A catalog link for e-reader apps. Copy it from the Library card. It lasts 180 days. |
 | **Shelving** | Settings panel for SAB complete root (`#shelving`; legacy `#bagging` still works) |
 | **Hall / shelves / lamp** | The reading room itself — presence, not KPI dashboards. Dawn/dusk wash and a quiet welcome-back when Continue waits are lamp rituals, not settings. |
 | **Reading room (open volume)** | Margins and lights-down tuned for long sessions; chrome dims so the rest of the app falls away. |
-| **Find beyond / Ask the house** | Looking outside the stacks; household voice stays warm and honest |
+
+## OPDS
+
+Ebook apps can browse shelved books, magazines, and comics over OPDS 1.2. Open **Library card → Read in another app**, copy the catalog link (`/opds?token=`), and paste it into KOReader, Moon+ Reader, or Panels. The link lasts 180 days and is private to your card — anyone with it can browse the shelves. TLS waits on a real hostname; LAN HTTP guests are fine.
 
 ## Indexers
 

@@ -162,6 +162,9 @@ export default function ProfileMenu({
             <Link to="/notifications" className="profile-menu-link" role="menuitem" onClick={() => setOpen(false)}>
               Notifications
             </Link>
+            <Link to="/help" className="profile-menu-link" role="menuitem" onClick={() => setOpen(false)}>
+              Help
+            </Link>
             {showHouseholdLinks ? (
               <>
                 {owner ? (

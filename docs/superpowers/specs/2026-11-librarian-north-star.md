@@ -18,6 +18,10 @@ A reader who asks sees **Your asks** on the Library card: Looking, Waiting for t
 
 New York Times list names only appear when a NYT Books API key is set. Without it, those lanes are off unless the owner turns on **Show model picks**. They then read as Model picks, with the chip “Suggested by your language model.”
 
+## House pulse
+
+The household north star is **volumes read or listened this week** — real Continue progress, not opening a page. Maintain shows it only when three people have a card. With fewer members, that figure stays hidden; asks filed, confirms waiting, arrived, beyond-search errors, and last backup still show. Counters live in SQLite on this box. There is no analytics SDK.
+
 ## Locked contracts
 
 - Retriever: SABnzbd. Confirm on Downloads is the only start.

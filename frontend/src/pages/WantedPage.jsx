@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link, useOutletContext } from "react-router-dom";
 import { api } from "../api.js";
-import { humanError } from "../copy.js";
+import { PAGE_TITLE_WANTED, humanError } from "../copy.js";
+import useDocumentTitle from "../hooks/useDocumentTitle.js";
 import { WANTED_COPY, wantedDeskModel } from "../wantedDesk.js";
 import { ThinkingButton } from "../components/Thinking.jsx";
 import WarmLoad from "../components/WarmLoad.jsx";
@@ -19,6 +20,7 @@ function downloaderMessage(error) {
 
 export default function WantedPage() {
   const { user } = useOutletContext() || {};
+  useDocumentTitle(PAGE_TITLE_WANTED);
   const role = user?.role || "reader";
   const [items, setItems] = useState([]);
   const [kinds, setKinds] = useState([]);

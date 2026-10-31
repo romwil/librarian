@@ -3,7 +3,8 @@ import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api.js";
 import NotedBookCard from "../components/NotedBookCard.jsx";
 import WarmLoad from "../components/WarmLoad.jsx";
-import { humanError } from "../copy.js";
+import { PAGE_TITLE_NOTED, humanError } from "../copy.js";
+import useDocumentTitle from "../hooks/useDocumentTitle.js";
 import {
   collapseNotedBooks,
   listFormatActions,
@@ -19,6 +20,7 @@ function itemKey(item, kind) {
 }
 
 export default function NotedPage() {
+  useDocumentTitle(PAGE_TITLE_NOTED);
   const [searchParams] = useSearchParams();
   const [payload, setPayload] = useState(null);
   const [activeList, setActiveList] = useState("");

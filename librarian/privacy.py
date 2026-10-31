@@ -47,7 +47,14 @@ def household_privacy_notice(settings: Any) -> Dict[str, Any]:
         )
     else:
         paragraphs.append("Mail is off. Notices stay in the Inbox on this box.")
-    paragraphs.append("The house does not use a third-party analytics SDK.")
+    paragraphs.append(
+        "The house does not use a third-party analytics SDK. House pulse on Maintain "
+        "is on-box household totals — never a per-reader funnel."
+    )
+    paragraphs.append(
+        "An OPDS catalog link on your Library card lasts 180 days. Anyone with that "
+        "link can browse the shelves; copy it only into your own reader app."
+    )
     paragraphs.append(
         "You can export your card, or ask whoever runs the library to disable or delete it. "
         "Delete removes your progress, shelves, whispers, and notices from the live database. "

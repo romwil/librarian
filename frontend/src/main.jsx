@@ -21,6 +21,7 @@ import NotedPage from "./pages/NotedPage.jsx";
 import NotedHistoryPage from "./pages/NotedHistoryPage.jsx";
 import WorkPage from "./pages/WorkPage.jsx";
 import CardPage from "./pages/CardPage.jsx";
+import HelpPage from "./pages/HelpPage.jsx";
 import "./styles.css";
 
 function FindToSearch() {
@@ -53,6 +54,7 @@ createRoot(document.getElementById("root")).render(
             <Route path="settings" element={<SettingsPage />} />
             <Route path="inbox" element={<InboxPage />} />
             <Route path="notifications" element={<NotificationsPage />} />
+            <Route path="help" element={<HelpPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

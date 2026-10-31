@@ -97,12 +97,12 @@ def _version_two_db(path):
 def test_steps_are_numbered_in_order():
     versions = [step.version for step in MIGRATIONS]
     assert versions == list(range(1, len(MIGRATIONS) + 1))
-    assert LATEST_VERSION == SCHEMA_VERSION == 9
+    assert LATEST_VERSION == SCHEMA_VERSION == 10
 
 
 def test_fresh_database_lands_on_latest_version(tmp_path):
     db = Database(tmp_path / "librarian.db")
-    assert db.schema_version == 9
+    assert db.schema_version == 10
     tables, indexes = _schema(tmp_path / "librarian.db")
     assert "source" in tables["wanted"]
     assert {"host_id", "guid", "wanted_id", "reason", "seen_count"} <= tables["bad_indexer_releases"]
@@ -111,7 +111,7 @@ def test_fresh_database_lands_on_latest_version(tmp_path):
     assert {"title_sort", "author_sort", "metadata_locked"} <= tables["works"]
     assert "sha256" in tables["files"]
     assert {"editions", "work_identifiers", "authors", "author_aliases", "work_authors", "noted_cache"} <= set(tables)
-    assert {"sessions", "password_resets", "security_events", "provider_calls"} <= set(tables)
+    assert {"sessions", "password_resets", "security_events", "provider_calls", "metrics_daily"} <= set(tables)
     assert {"review_diagnosis", "sorting_undo"} <= set(tables)
     assert "disabled" in tables["users"]
     assert "idx_bad_indexer_releases_guid" in indexes
@@ -127,7 +127,7 @@ def test_legacy_and_fresh_databases_end_on_the_same_schema(tmp_path):
     _legacy_db(legacy_path)
     legacy = Database(legacy_path)
 
-    assert legacy.schema_version == 9
+    assert legacy.schema_version == 10
     assert _schema(legacy_path) == _schema(fresh_path)
 
 
@@ -139,7 +139,7 @@ def test_version_two_and_fresh_databases_end_on_the_same_schema(tmp_path):
 
     version_two = Database(version_two_path)
 
-    assert version_two.schema_version == 9
+    assert version_two.schema_version == 10
     assert _schema(version_two_path) == _schema(fresh_path)
 
 
@@ -164,7 +164,7 @@ def test_reopening_does_not_rerun_steps(tmp_path):
 
     reopened = Database(path)
 
-    assert reopened.schema_version == 9
+    assert reopened.schema_version == 10
     # A second boot is a no-op: the FTS rebuild step does not run again.
     assert reopened.search_works("Kindred") == []
 
@@ -187,7 +187,7 @@ def test_sorting_desk_catalog_upgrades_through_canonical(tmp_path):
 
     db = Database(path)
     try:
-        assert db.schema_version == 9
+        assert db.schema_version == 10
         with db._connect() as upgraded:
             parents = {
                 row[2] for row in upgraded.execute("PRAGMA foreign_key_list(review_diagnosis)")

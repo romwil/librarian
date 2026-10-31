@@ -22,6 +22,7 @@ from librarian.migrations import (
     m0007_sorting_desk,
     m0008_schema_integrity,
     m0009_finish_canonical,
+    m0010_house_pulse,
 )
 
 logger = logging.getLogger("librarian.migrations")
@@ -62,6 +63,7 @@ MIGRATIONS: Tuple[Migration, ...] = (
         m0009_finish_canonical.NAME,
         m0009_finish_canonical.apply,
     ),
+    Migration(m0010_house_pulse.VERSION, m0010_house_pulse.NAME, m0010_house_pulse.apply),
 )
 LATEST_VERSION = MIGRATIONS[-1].version
 

@@ -12,8 +12,9 @@ from typing import Any, Optional
 
 from librarian.sessions import resolve_session_secret
 
-# Long enough for a reader app to keep a catalog URL and a downloaded book link.
-OPDS_TTL_SECONDS = 10 * 365 * 24 * 60 * 60
+# 180-day sliding TTL: copying the Library-card link mints a fresh token.
+OPDS_TTL_DAYS = 180
+OPDS_TTL_SECONDS = OPDS_TTL_DAYS * 24 * 60 * 60
 _PURPOSE_CATALOG = "catalog"
 _PURPOSE_FILE = "file"
 
@@ -55,14 +56,16 @@ def _parse(token: str, *, data_dir: Optional[Path] = None) -> Optional[dict[str,
 
 def create_catalog_token(
     *,
+    user_id: str = "",
     ttl_seconds: int = OPDS_TTL_SECONDS,
     data_dir: Optional[Path] = None,
 ) -> str:
     """Token that may open the catalog. It cannot download a file."""
-    return _sign(
-        {"v": 1, "pur": _PURPOSE_CATALOG, "exp": time.time() + ttl_seconds},
-        data_dir=data_dir,
-    )
+    payload: dict[str, Any] = {"v": 1, "pur": _PURPOSE_CATALOG, "exp": time.time() + ttl_seconds}
+    uid = str(user_id or "").strip()
+    if uid:
+        payload["uid"] = uid
+    return _sign(payload, data_dir=data_dir)
 
 
 def create_file_token(

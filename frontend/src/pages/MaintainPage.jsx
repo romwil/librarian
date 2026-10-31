@@ -18,7 +18,9 @@ import ShelfHealthPulse from "../components/ShelfHealthPulse.jsx";
 import { FieldLabel } from "../components/FieldHelp.jsx";
 import { ThinkingButton } from "../components/Thinking.jsx";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
-import { FIELD_HELP, humanError } from "../copy.js";
+import { FIELD_HELP, PAGE_TITLE_MAINTAIN, humanError } from "../copy.js";
+import useDocumentTitle from "../hooks/useDocumentTitle.js";
+import HousePulse from "../components/HousePulse.jsx";
 import {
   extraFilesReprocessIsRunning,
   extraFilesReprocessProgressSummary,
@@ -171,6 +173,9 @@ export default function MaintainPage() {
   const [backup, setBackup] = useState(null);
   const [notedRefresh, setNotedRefresh] = useState("");
   const [notedRefreshing, setNotedRefreshing] = useState(false);
+  const [pulse, setPulse] = useState(null);
+  const [pulseLoading, setPulseLoading] = useState(false);
+  useDocumentTitle(PAGE_TITLE_MAINTAIN);
 
   useEffect(() => {
     if (user?.role !== "owner") return undefined;
@@ -286,6 +291,7 @@ export default function MaintainPage() {
     // Wave 1 — morning desk hero after first paint.
     later(0, () => {
       setMorningBriefLoading(true);
+      setPulseLoading(true);
       api
         .maintainMorningBrief()
         .then((data) => {
@@ -297,6 +303,18 @@ export default function MaintainPage() {
           if (cancelled) return;
           setMorningBrief(null);
           setMorningBriefLoading(false);
+        });
+      api
+        .pulse()
+        .then((data) => {
+          if (cancelled) return;
+          setPulse(data);
+          setPulseLoading(false);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setPulse(null);
+          setPulseLoading(false);
         });
     });
 
@@ -774,6 +792,7 @@ export default function MaintainPage() {
       </p>
 
       <MorningBrief brief={morningBrief} loading={morningBriefLoading} />
+      <HousePulse pulse={pulse} loading={pulseLoading} />
       {Array.isArray(morningBrief?.screen_leftovers?.items) && morningBrief.screen_leftovers.items.length > 0 ? (
         <section
           className="maintain-section"

@@ -10,12 +10,14 @@ import SearchModeControl, { normalizeSearchMode } from "../components/SearchMode
 import { ThinkingButton } from "../components/Thinking.jsx";
 import {
   FIELD_HELP,
+  PAGE_TITLE_SEARCH,
   beyondSearchCopy,
   discoverStatusLine,
   humanError,
   localSearchEmpty,
   searchStatusLine,
 } from "../copy.js";
+import useDocumentTitle from "../hooks/useDocumentTitle.js";
 import {
   DISCOVER_PAGE_SIZE,
   buildFindSearchParams,
@@ -107,6 +109,7 @@ function SkeletonRail({ label = "Warming the lamp…" }) {
 export default function SearchPage() {
   const [params, setParams] = useSearchParams();
   const { user, features } = useOutletContext();
+  useDocumentTitle(PAGE_TITLE_SEARCH);
   const showExtra = Boolean(features?.show_extra_categories);
   const kindOptions = findKindOptions(showExtra);
   const fields = findFieldsFromSearchParams(params);

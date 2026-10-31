@@ -10,6 +10,10 @@ import {
   CHANGE_PASSWORD,
   EXPORT_MY_CARD,
   FIELD_HELP,
+  OPDS_COPIED,
+  OPDS_COPY,
+  OPDS_HEADING,
+  OPDS_LEDE,
   PAGE_TITLE_CARD,
   PRIVACY_HEADING,
   SIGN_OUT_EVERYWHERE,
@@ -28,6 +32,8 @@ export default function CardPage() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [accountNote, setAccountNote] = useState("");
+  const [opdsUrl, setOpdsUrl] = useState("");
+  const [opdsNote, setOpdsNote] = useState("");
   useDocumentTitle(PAGE_TITLE_CARD);
 
   useEffect(() => {
@@ -46,6 +52,12 @@ export default function CardPage() {
       .privacy()
       .then((data) => {
         if (!cancelled) setNotice(data);
+      })
+      .catch(() => {});
+    api
+      .opds()
+      .then((data) => {
+        if (!cancelled) setOpdsUrl(String(data?.catalog_url || ""));
       })
       .catch(() => {});
     return () => {
@@ -82,6 +94,20 @@ export default function CardPage() {
       navigate("/login");
     } catch (err) {
       setAccountNote(humanError(err));
+    }
+  }
+
+  async function onCopyOpds() {
+    setOpdsNote("");
+    try {
+      const data = await api.opds();
+      const url = String(data?.catalog_url || "");
+      if (!url) return;
+      setOpdsUrl(url);
+      await navigator.clipboard.writeText(url);
+      setOpdsNote(OPDS_COPIED);
+    } catch (err) {
+      setOpdsNote(humanError(err));
     }
   }
 
@@ -147,6 +173,24 @@ export default function CardPage() {
         </section>
       ) : null}
 
+      <section className="card-panel" id="opds" data-testid="opds-panel">
+        <p className="kicker">{OPDS_HEADING}</p>
+        <h2>Catalog link</h2>
+        <p className="lede">{OPDS_LEDE}</p>
+        {opdsUrl ? (
+          <p className="lede" data-testid="opds-catalog-url">
+            <code>{opdsUrl}</code>
+          </p>
+        ) : null}
+        {opdsNote ? (
+          <p className="alert" role="status">
+            {opdsNote}
+          </p>
+        ) : null}
+        <button type="button" className="cta outline" onClick={onCopyOpds}>
+          {OPDS_COPY}
+        </button>
+      </section>
       <section className="card-panel" id="comfort">
         <p className="kicker">Comfort</p>
         <h2>Lights and type</h2>

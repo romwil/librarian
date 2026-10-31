@@ -15,6 +15,20 @@
 - **Maintain indexer lanterns.** Lights Down no longer paints pale paper cards with tan status copy. Lantern names, weather sentences, and Mute sit on raised leather; an idle host is a hollow ring so flicker vs silent is not hue-only. Safe undo uses the same dark wash. Lights Up stays ink on paper.
 - **Library card text size.** Clicking Text size or the slider no longer closes the Library card. Ambient room layering had flattened the topbar under Hall, so the panel was visible through empty Hall and the click counted as outside; range thumb retargets onto `document` are hit-tested too.
 
+## [0.6.21] — 2026-10-31
+
+### Highlights
+
+- **House pulse.** Maintain shows household totals on this box: asks filed, confirms waiting, arrived, beyond-search errors, and last backup. Volumes read or listened this week stay hidden until three people have a card. Nothing is sent to an analytics company.
+- **Read in another app.** The Library card copies an OPDS 1.2 catalog link (`?token=`). It lasts 180 days and dies with the card. Confirm on Downloads is still the only way a download starts.
+- **Help.** `/help` lists the household glossary. Dead notice kinds (`needs_you`, `quiet_hours_wake`, `newsletter`, `shelf_health`) stay hidden until they have producers. Nightly retention clears old notices and closed invites.
+
+### Changed
+
+- `metrics_daily` is household-only (no user, IP, query, title, or work id). Owner `GET /api/pulse`. Poller retention strips aged personal rows; terminal jobs older than 180 days lose `requested_by`.
+- OPDS catalog tokens carry the member id and a 180-day sliding TTL. Copying the link mints a fresh one.
+- Per-route document titles on Hall, Search, Wanted, Maintain, Settings, Inbox, Help, and New & noted.
+
 ## [0.6.20] — 2026-10-31
 
 ### Highlights
