@@ -334,7 +334,7 @@ export default function SearchPage() {
     setAskBusy(true);
     setError("");
     try {
-      const data = await api.askHouse({
+      await api.askHouse({
         q: searchRequestQuery(fields),
         kind: fields.kind || "book",
         title: fields.title || fields.q,
