@@ -12,6 +12,7 @@ from librarian.indexers.sync import ping_nzbfinder, summarize_capabilities, sync
 from librarian.jobs import enqueue_indexer_item
 from librarian.noted import run_noted_refresh
 from librarian.poller import (
+    DEFAULT_BACKUP_POLL_SECONDS,
     DEFAULT_ENRICH_POLL_SECONDS,
     DEFAULT_NOTED_POLL_SECONDS,
     DEFAULT_RSS_POLL_SECONDS,
@@ -174,6 +175,7 @@ _POLL_ENV = (
     "LIBRARIAN_SWEEP_POLL_SECONDS",
     "LIBRARIAN_WANTED_POLL_SECONDS",
     "LIBRARIAN_NOTED_POLL_SECONDS",
+    "LIBRARIAN_BACKUP_POLL_SECONDS",
 )
 
 
@@ -207,6 +209,7 @@ def test_poll_seconds_and_step_env_overrides(tmp_path, monkeypatch):
     monkeypatch.setenv("LIBRARIAN_SWEEP_POLL_SECONDS", "4")
     monkeypatch.setenv("LIBRARIAN_WANTED_POLL_SECONDS", "90")
     monkeypatch.setenv("LIBRARIAN_NOTED_POLL_SECONDS", "3")
+    monkeypatch.setenv("LIBRARIAN_BACKUP_POLL_SECONDS", "7200")
     poller = JobPoller(Database(tmp_path / "librarian.db"), lambda: Settings())
     status = _status(poller)
     assert poller.interval == 15
@@ -218,6 +221,8 @@ def test_poll_seconds_and_step_env_overrides(tmp_path, monkeypatch):
     assert status["sweep"]["interval_seconds"] == 5
     assert status["wanted"]["interval_seconds"] == 90
     assert status["noted"]["interval_seconds"] == 5
+    assert status["backup"]["interval_seconds"] == 7200
+    assert status["backup"]["label"] == "Nightly backup"
     assert status["sab"]["last_run"] is None
     assert status["sab"]["last_error"] is None
 
@@ -241,7 +246,18 @@ def test_step_intervals_are_independent(tmp_path, monkeypatch):
         poller._runners[name] = _record(calls, name)
 
     poller.tick()
-    assert calls == ["watch", "rss", "repair", "abs", "sweep", "owned", "wanted", "noted", "sab"]
+    assert calls == [
+        "watch",
+        "rss",
+        "repair",
+        "abs",
+        "sweep",
+        "owned",
+        "wanted",
+        "noted",
+        "backup",
+        "sab",
+    ]
     assert _status(poller)["enrich"]["last_run"] is None
     assert _status(poller)["sab"]["last_run"]
 
@@ -250,6 +266,7 @@ def test_step_intervals_are_independent(tmp_path, monkeypatch):
     poller.tick()
     assert "enrich" in calls
     assert "sweep" not in calls
+    assert "backup" not in calls
     assert "rss" in calls
     assert _status(poller)["enrich"]["last_error"] is None
     assert DEFAULT_RSS_POLL_SECONDS == DEFAULT_ENRICH_POLL_SECONDS
@@ -482,6 +499,10 @@ def test_maintain_jobs_status_reports_poller_steps(tmp_path, monkeypatch):
     assert by_id["wanted"]["interval_seconds"] == DEFAULT_WANTED_POLL_SECONDS
     assert by_id["noted"]["interval_seconds"] == DEFAULT_NOTED_POLL_SECONDS
     assert by_id["noted"]["label"] == "New & noted"
+    assert by_id["backup"]["interval_seconds"] == DEFAULT_BACKUP_POLL_SECONDS
+    assert by_id["backup"]["label"] == "Nightly backup"
+    assert body["backup"]["last_backup"] is None
+    assert body["backup"]["daily_count"] == 0
     for step in steps:
         assert step["label"]
         assert step["last_run"] is None

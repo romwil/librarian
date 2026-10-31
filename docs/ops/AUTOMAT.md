@@ -2,7 +2,7 @@
 
 Task-first notes for the **Automat** Unraid host that runs Librarian. Audience: developers and Cursor agents working on this repo’s live stack — not generic install docs (see [DOCKER.md](../DOCKER.md)).
 
-Jump to: [LAN hosts](#lan-hosts-source-of-truth) · [Kit](#kit--appdata) · [First boot](#first-boot-env) · [Deploy](#deploy-now-on-host-build) · [Audiobookshelf](#audiobookshelf) · [See also](#see-also)
+Jump to: [LAN hosts](#lan-hosts-source-of-truth) · [Kit](#kit--appdata) · [First boot](#first-boot-env) · [Deploy](#deploy-now-on-host-build) · [Backups](#backups-and-restore) · [Audiobookshelf](#audiobookshelf) · [See also](#see-also)
 
 ---
 
@@ -55,7 +55,7 @@ Members may later reach the library through a **user reverse proxy** (Caddy / NP
 
 ```
 /mnt/user/appdata/librarian/          # kit (Dockerfile, docker-run.sh, source)
-├── config/                           # settings.json, librarian.db, session_secret — KEEP; never wipe
+├── config/                           # settings.json, librarian.db, session_secret, backups/ — KEEP; never wipe
 ├── .env                              # owner + session secret + indexer keys — not in git
 ├── docker-run.sh                     # on-host build — **current Automat path**
 ├── rollout.sh                        # Hub pull stub only (fails until image exists; not current truth)
@@ -134,6 +134,36 @@ Hub pull-only ship for Librarian yet. `./rollout.sh` is a stub that fails until 
 exists — use `./docker-run.sh` on the kit. Hub publish stays a later milestone.
 
 Do **not** stop Projectionist (`:8788`) or Smart Map (`:8790`) while deploying Librarian.
+
+---
+
+## Backups and restore
+
+The poller takes a SQLite snapshot of the catalog nightly (first poll after a new local day) into
+`/mnt/user/appdata/librarian/config/backups/` (`/config/backups` in the container): the newest
+**7 daily** (`librarian-YYYY-MM-DD.db`) and **4 weekly** (`librarian-weekly-YYYY-Www.db`). Each copy
+is taken with SQLite's online backup, passes `PRAGMA integrity_check` before it is kept, and is
+`0600` in a `0700` folder. A failed check keeps the older snapshots and shows on Maintain.
+Maintain → **Nightly backup** shows the last backup.
+
+`session_secret` and `settings.json` are **not** in a snapshot (they hold keys and API tokens).
+They stay in `/config`; copy them separately if you rebuild the host.
+
+Restore (the container must be stopped so nothing writes while you swap the file):
+
+```bash
+cd /mnt/user/appdata/librarian
+docker stop librarian
+mv config/librarian.db config/librarian.db.broken
+rm -f config/librarian.db-wal config/librarian.db-shm
+cp config/backups/librarian-YYYY-MM-DD.db config/librarian.db
+chmod 600 config/librarian.db
+./docker-run.sh
+curl -s http://10.10.1.202:8793/api/health
+```
+
+Use a weekly file the same way when no daily is old enough. Keep `librarian.db.broken` until the
+shelves look right.
 
 ---
 
