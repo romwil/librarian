@@ -53,6 +53,7 @@ def _indexer(responses, seen):
     def handler(request: httpx.Request) -> httpx.Response:
         params = dict(request.url.params)
         entry = {
+            "host": request.url.host,
             "path": request.url.path,
             "query": params.get("query", ""),
             "title": params.get("title", ""),
@@ -430,10 +431,9 @@ def test_click_search_never_sends_every_field_at_once(tmp_path, monkeypatch):
     seen: list = []
     client = _find_client(tmp_path, monkeypatch, lambda _entry: (200, []), seen)
     resp = client.get(
-        "/api/search",
+        "/api/search/beyond",
         params={
             "q": "Frank Herbert Dune 9780441172719 1965",
-            "beyond": 1,
             "kind": "book",
             "title": "Dune",
             "author": "Frank Herbert",
@@ -466,8 +466,8 @@ def test_click_search_stops_on_a_confident_title_hit(tmp_path, monkeypatch):
         seen,
     )
     resp = client.get(
-        "/api/search",
-        params={"beyond": 1, "kind": "book", "title": "Dune", "author": "Frank Herbert", "isbn": DUNE_ISBN},
+        "/api/search/beyond",
+        params={"kind": "book", "title": "Dune", "author": "Frank Herbert", "isbn": DUNE_ISBN},
     )
     assert resp.status_code == 200, resp.text
     assert [(row["isbn"], row["title"], row["author"]) for row in seen] == [
@@ -503,3 +503,34 @@ def test_wanted_reopen_is_searched_again_from_a_clean_streak(tmp_path, monkeypat
         assert database.get_wanted(row["id"])["miss_streak"] == 1
     finally:
         database.close()
+
+
+def test_hourly_pass_searches_extra_indexers(db, monkeypatch):
+    seen: list = []
+    extra = "https://extra.test"
+    _patch_client(
+        monkeypatch,
+        "librarian.wanted_search.NZBFinderClient",
+        _indexer(lambda _entry: (200, []), seen),
+    )
+    row = _want(db, "Kindred", "Octavia Butler")
+    settings = Settings(
+        nzbfinder_api_token="tok",
+        nzbfinder_url=INDEXER,
+        extra_indexers=[
+            {
+                "id": "extra1",
+                "name": "Books.nzb",
+                "url": extra,
+                "api_token": "extra-tok",
+                "enabled": True,
+                "dialect": "v2",
+            }
+        ],
+    )
+    calls = poll_wanted(db, settings, now=NOW)
+    assert calls >= 2
+    hosts = {entry["host"] for entry in seen}
+    assert "nzbfinder.test" in hosts
+    assert "extra.test" in hosts
+    assert db.get_wanted(row["id"])["status"] == "wanted"

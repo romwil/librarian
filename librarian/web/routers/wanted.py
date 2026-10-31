@@ -128,7 +128,7 @@ def register_wanted_routes(app: FastAPI, deps: WebDeps) -> None:
 
     @app.post("/api/wanted/{wanted_id}/beyond")
     def wanted_beyond(wanted_id: str, request: Request):
-        require_role(request.state.user, "owner", "op", "reader")
+        require_role(request.state.user, "owner", "op")
         try:
             return beyond_wanted(db, deps.settings(), wanted_id, data_dir=deps.root)
         except WantedError as error:

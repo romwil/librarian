@@ -298,7 +298,7 @@ def test_reader_can_view_discover_and_request_is_asked(tmp_path, monkeypatch):
     )
     _patch_discover_client(monkeypatch, latest=lambda self, cat: [COMIC_HIT])
     listed = client.get("/api/discover", params={"kind": "comic"})
-    assert listed.status_code == 200
+    assert listed.status_code == 403
     asked = client.post(
         "/api/request",
         json={"title": "Saga 001", "guid": "g-saga", "kind": "comic", "download_url": "https://example.test/saga.nzb"},

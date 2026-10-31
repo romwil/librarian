@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useOutletContext, useSearchParams } from "react-router-dom";
 import { api } from "../api.js";
 import { saveBeyondGet } from "../beyondGet.js";
+import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import CoverCard from "../components/CoverCard.jsx";
 import QueryForm from "../components/QueryForm.jsx";
 import Rail from "../components/Rail.jsx";
@@ -35,6 +36,17 @@ import {
   emptyFacetSelection,
   yearFacetEntries,
 } from "../searchFacets.js";
+import {
+  ASK_THE_HOUSE,
+  ASK_THE_HOUSE_PROMPT,
+  DISCLOSURE_STAY,
+  DISCLOSURE_TITLE,
+  beyondDisclosureBody,
+  rememberDisclosure,
+  readerSawDisclosure,
+  searchFieldParams,
+  shouldAutoBeyond,
+} from "../searchLanes.js";
 
 function fieldsFromState(draft, kind, advanced) {
   return pruneFieldsForKind(kind, {
@@ -115,6 +127,10 @@ export default function SearchPage() {
   const [discoverPage, setDiscoverPage] = useState(0);
   const [discoverPaging, setDiscoverPaging] = useState("");
   const [jobs, setJobs] = useState({});
+  const [asked, setAsked] = useState("");
+  const [askOpen, setAskOpen] = useState(false);
+  const [askBusy, setAskBusy] = useState(false);
+  const keeper = shouldAutoBeyond(user?.role);
 
   useEffect(() => {
     const bag = snapshotFindFields(
@@ -144,11 +160,13 @@ export default function SearchPage() {
       setResult({ local: [], beyond: [], public_domain: [], beyond_error: "" });
       setPhase("idle");
       setError("");
+      setAsked("");
       return undefined;
     }
     let alive = true;
     setPhase("local");
     setError("");
+    setAsked("");
     const bag = snapshotFindFields(
       fields.q,
       fields.kind,
@@ -161,19 +179,42 @@ export default function SearchPage() {
       fields.album,
       fields.year,
     );
+    const extras = searchFieldParams(bag, { mode });
     api
-      .search(searchRequestQuery(bag), { beyond: true, kind: fields.kind, mode, ...bag })
+      .search(searchRequestQuery(bag), extras)
       .then((data) => {
         if (!alive) return;
         setResult({
           local: data.local || [],
-          beyond: data.beyond || [],
-          public_domain: data.public_domain || [],
+          beyond: [],
+          public_domain: [],
           did_you_mean: data.did_you_mean || [],
           forgave: Boolean(data.forgave),
-          beyond_error: data.beyond_error || "",
+          beyond_error: "",
+          beyond_disclosure: data.beyond_disclosure || {},
         });
-        setPhase("done");
+        if (!keeper) {
+          setPhase("done");
+          return;
+        }
+        setPhase("beyond");
+        return api.searchBeyond(searchRequestQuery(bag), extras).then(
+          (beyond) => {
+            if (!alive) return;
+            setResult((prev) => ({
+              ...prev,
+              beyond: beyond.beyond || [],
+              public_domain: beyond.public_domain || [],
+              beyond_error: beyond.beyond_error || "",
+            }));
+            setPhase("done");
+          },
+          (err) => {
+            if (!alive) return;
+            setResult((prev) => ({ ...prev, beyond_error: humanError(err) }));
+            setPhase("done");
+          },
+        );
       })
       .catch((err) => {
         if (!alive) return;
@@ -183,7 +224,7 @@ export default function SearchPage() {
     return () => {
       alive = false;
     };
-  }, [composed, fields.q, fields.kind, mode, fields.author, fields.title, fields.isbn, fields.series, fields.year, fields.issue, fields.artist, fields.album]);
+  }, [composed, fields.q, fields.kind, mode, fields.author, fields.title, fields.isbn, fields.series, fields.year, fields.issue, fields.artist, fields.album, keeper]);
 
   useEffect(() => {
     if (!discoverOpen) return undefined;
@@ -289,6 +330,40 @@ export default function SearchPage() {
     return { job: { status: data.jobStatus === "asked" ? "asked" : "saved" }, wanted: data.wanted };
   }
 
+  async function fileAsk() {
+    setAskBusy(true);
+    setError("");
+    try {
+      const data = await api.askHouse({
+        q: searchRequestQuery(fields),
+        kind: fields.kind || "book",
+        title: fields.title || fields.q,
+        author: fields.author,
+        isbn: fields.isbn,
+      });
+      setAsked("asked");
+      setAskOpen(false);
+    } catch (err) {
+      setError(humanError(err));
+      setAskOpen(false);
+    } finally {
+      setAskBusy(false);
+    }
+  }
+
+  function onAskHouse() {
+    if (readerSawDisclosure()) {
+      fileAsk();
+      return;
+    }
+    setAskOpen(true);
+  }
+
+  function confirmAsk() {
+    rememberDisclosure();
+    fileAsk();
+  }
+
   const status = searchStatusLine({
     q: searchRequestQuery(fields),
     kind: composed ? fields.kind : kind,
@@ -310,7 +385,6 @@ export default function SearchPage() {
         ? { id: "saved", status: "wanted" }
         : item.wanted,
   }));
-  const keeper = user?.role === "owner" || user?.role === "op";
   const beyondCopy = beyondSearchCopy({
     q: composed,
     error: result.beyond_error,
@@ -448,33 +522,39 @@ export default function SearchPage() {
           <p className="search-noted-door muted" data-testid="noted-door">
             <Link to="/noted">New & noted</Link>
           </p>
-          <div className="discover-launch">
-            <button
-              type="button"
-              className="cta outline"
-              data-testid="discover-toggle"
-              aria-expanded={discoverOpen}
-              aria-controls="discover-panel"
-              onClick={toggleDiscover}
-            >
-              Discover
-            </button>
-          </div>
-          {discoverOpen ? renderDiscoverFeed() : null}
+          {keeper ? (
+            <>
+              <div className="discover-launch">
+                <button
+                  type="button"
+                  className="cta outline"
+                  data-testid="discover-toggle"
+                  aria-expanded={discoverOpen}
+                  aria-controls="discover-panel"
+                  onClick={toggleDiscover}
+                >
+                  Discover
+                </button>
+              </div>
+              {discoverOpen ? renderDiscoverFeed() : null}
+            </>
+          ) : null}
         </>
       ) : (
         <div className="search-with-facets">
           <aside className="search-facets" aria-label="Filters">
-            <FacetGroup
-              legend="Format"
-              options={FORMAT_FACETS}
-              value={facet.format}
-              onChange={(format) => setFacet((prev) => ({ ...prev, format }))}
-              counts={counts.formats}
-            />
+            {fields.kind ? null : (
+              <FacetGroup
+                legend="Format"
+                options={FORMAT_FACETS}
+                value={facet.format}
+                onChange={(format) => setFacet((prev) => ({ ...prev, format }))}
+                counts={counts.formats}
+              />
+            )}
             <FacetGroup
               legend="Where"
-              options={WHERE_FACETS}
+              options={keeper ? WHERE_FACETS : WHERE_FACETS.filter(([key]) => key === "shelf")}
               value={facet.where}
               onChange={(where) => setFacet((prev) => ({ ...prev, where }))}
               counts={counts.where}
@@ -525,6 +605,7 @@ export default function SearchPage() {
               empty={phase === "local" ? "Searching…" : localSearchEmpty(composed)}
               role={user?.role}
             />
+            {keeper ? (
             <section id="beyond" className="search-beyond" data-testid="search-beyond">
               <h2>Beyond the shelves</h2>
               {result.beyond_error && beyondCopy.ownerDetail ? (
@@ -538,9 +619,13 @@ export default function SearchPage() {
               ) : null}
               <Rail
                 title="Beyond the shelves"
-                kicker={keeper ? "NZBFinder and extra indexers" : ""}
+                kicker="NZBFinder and extra indexers"
                 items={beyondItems}
-                empty={phase === "local" ? "Looking beyond the shelves…" : beyondCopy.empty}
+                empty={
+                  phase === "local" || phase === "beyond"
+                    ? "Looking beyond the shelves…"
+                    : beyondCopy.empty
+                }
                 beyond
                 onRequest={request}
                 role={user?.role}
@@ -571,13 +656,41 @@ export default function SearchPage() {
                 )}
               </div>
             </section>
+            ) : (
+            <div className="search-ask-house" data-testid="search-ask-house">
+              <p className="lede">{ASK_THE_HOUSE_PROMPT}</p>
+              {asked ? (
+                <p className="search-status" role="status">
+                  The owner will look. Nothing downloads until they confirm.
+                </p>
+              ) : (
+                <button type="button" className="cta" onClick={onAskHouse}>
+                  {ASK_THE_HOUSE}
+                </button>
+              )}
+            </div>
+            )}
+            {keeper ? (
             <details className="discover-fold" onToggle={onDiscoverFold}>
               <summary className="kicker">Discover</summary>
               {discoverOpen ? renderDiscoverFeed() : null}
             </details>
+            ) : null}
           </div>
         </div>
       )}
+      <ConfirmDialog
+        open={askOpen}
+        title={DISCLOSURE_TITLE}
+        confirmLabel={ASK_THE_HOUSE}
+        cancelLabel={DISCLOSURE_STAY}
+        onConfirm={confirmAsk}
+        onCancel={() => setAskOpen(false)}
+        busy={askBusy}
+        testId="search-ask-disclosure"
+      >
+        <p>{beyondDisclosureBody(result.beyond_disclosure || {})}</p>
+      </ConfirmDialog>
     </div>
   );
 }

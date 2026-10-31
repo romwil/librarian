@@ -134,16 +134,18 @@ export default function QueryForm({
         >
           <summary className="kicker">{advancedSummary}</summary>
           <div className="advanced-fields">
-            <div className="field">
-              <FieldLabel htmlFor={`${inputId}-kind`} label="Kind" help={kindHelp} />
-              <select id={`${inputId}-kind`} value={kind} onChange={(e) => onKindCommit(e.target.value)}>
-                {kinds.map(([value, label]) => (
-                  <option key={value || "any"} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {showKindChips ? null : (
+              <div className="field">
+                <FieldLabel htmlFor={`${inputId}-kind`} label="Kind" help={kindHelp} />
+                <select id={`${inputId}-kind`} value={kind} onChange={(e) => onKindCommit(e.target.value)}>
+                  {kinds.map(([value, label]) => (
+                    <option key={value || "any"} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             {shown.map(renderField)}
           </div>
         </details>

@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import csv
 import io
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
@@ -57,6 +60,107 @@ _CSV_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
 
 REQUEST_ROLES = ("owner", "op", "reader")
 CONFIRM_ROLES = ("owner", "op")
+BEYOND_DEADLINE_SECONDS = 10.0
+BEYOND_CACHE_TTL_SECONDS = 10 * 60.0
+
+_BEYOND_CACHE: Dict[str, tuple[float, Dict[str, Any]]] = {}
+_BEYOND_CACHE_LOCK = threading.Lock()
+
+
+def _text(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def beyond_disclosure(settings: Any) -> Dict[str, Any]:
+    """Names the services a beyond look may contact. No secrets."""
+    from librarian.indexers.hosts import enabled_hosts
+    from librarian.llm_providers import PROVIDER_CATALOG, resolve_llm_connection
+
+    hosts = enabled_hosts(settings)
+    indexers = [str(host.get("name") or "").strip() for host in hosts if str(host.get("name") or "").strip()]
+    model = ""
+    try:
+        connection = resolve_llm_connection(settings)
+    except Exception:  # noqa: BLE001 — disclosure must not fail the local lane
+        connection = {}
+    if connection.get("api_key"):
+        provider = str(connection.get("provider") or "")
+        model = str((PROVIDER_CATALOG.get(provider) or {}).get("label") or provider)
+    return {
+        "indexers": indexers,
+        "model": model,
+        "public_domain": ["Project Gutenberg", "Standard Ebooks"],
+    }
+
+
+def _sought_payload(
+    *,
+    q: str,
+    kind: str,
+    title: str,
+    author: str,
+    isbn: str,
+    series: str,
+    issue: str,
+    artist: str,
+    album: str,
+    year: str,
+    mode: str,
+) -> Dict[str, Any]:
+    search_mode = normalize_search_mode(mode)
+    sought = {
+        "kind": kind,
+        "q": q,
+        "title": title,
+        "author": author,
+        "isbn": isbn,
+        "series": series,
+        "issue": issue,
+        "artist": artist,
+        "album": album,
+        "year": year,
+    }
+    if search_mode:
+        sought = apply_search_mode(sought, search_mode, (q or "").strip() or q)
+    return {"sought": sought, "mode": search_mode}
+
+
+def _beyond_cache_key(sought: Mapping[str, Any], *, heuristic_only: bool, hosts: str = "") -> str:
+    parts = [f"h={int(heuristic_only)}"]
+    if hosts:
+        parts.append(f"hosts={hosts}")
+    for key in ("kind", "q", "title", "author", "isbn", "series", "issue", "artist", "album", "year"):
+        value = _text(sought.get(key))
+        if value:
+            parts.append(f"{key}={value.lower()}")
+    return "|".join(parts)
+
+
+def _beyond_cache_get(key: str) -> Optional[Dict[str, Any]]:
+    now = time.monotonic()
+    with _BEYOND_CACHE_LOCK:
+        row = _BEYOND_CACHE.get(key)
+        if row is None:
+            return None
+        stamped, payload = row
+        if now - stamped > BEYOND_CACHE_TTL_SECONDS:
+            _BEYOND_CACHE.pop(key, None)
+            return None
+        return dict(payload)
+
+
+def _beyond_cache_put(key: str, payload: Mapping[str, Any]) -> None:
+    with _BEYOND_CACHE_LOCK:
+        if len(_BEYOND_CACHE) > 128:
+            oldest = sorted(_BEYOND_CACHE.items(), key=lambda item: item[1][0])[:32]
+            for stale, _ in oldest:
+                _BEYOND_CACHE.pop(stale, None)
+        _BEYOND_CACHE[key] = (time.monotonic(), dict(payload))
+
+
+def clear_beyond_cache() -> None:
+    with _BEYOND_CACHE_LOCK:
+        _BEYOND_CACHE.clear()
 
 
 def parse_browse_export_columns(raw: str) -> List[str]:
@@ -300,10 +404,24 @@ def run_search(
     year: str = "",
     mode: str = "",
 ) -> Dict[str, Any]:
-    """``GET /api/search``: local shelf (with forgiveness), then indexers and public domain."""
+    """``GET /api/search``: local shelf only. ``beyond`` is ignored — use ``/beyond``."""
+    del beyond  # local lane never fans out
     local_kind = kind if kind in ALL_KINDS else None
     local_q = q.strip()
-    search_mode = normalize_search_mode(mode)
+    packed = _sought_payload(
+        q=q,
+        kind=kind,
+        title=title,
+        author=author,
+        isbn=isbn,
+        series=series,
+        issue=issue,
+        artist=artist,
+        album=album,
+        year=year,
+        mode=mode,
+    )
+    search_mode = packed["mode"]
     forgiven: Dict[str, Any] = {"local": [], "did_you_mean": [], "forgave": False}
     if local_q and search_mode:
         forgiven = {
@@ -314,69 +432,138 @@ def run_search(
     elif local_q:
         forgiven = search_with_forgiveness(db, local_q, limit=24, kind=local_kind)
     local = public_works(forgiven.get("local") or [])
-    indexer: List[Dict[str, Any]] = []
-    beyond_error = None
-    sought = {
-        "kind": kind,
-        "q": q,
-        "title": title,
-        "author": author,
-        "isbn": isbn,
-        "series": series,
-        "issue": issue,
-        "artist": artist,
-        "album": album,
-        "year": year,
-    }
-    if search_mode:
-        sought = apply_search_mode(sought, search_mode, local_q or q)
-    has_beyond_query = bool(beyond) and any(
-        str(sought[key] or "").strip() for key in sought if key != "kind"
-    )
-    search_trace = None
-    pick = None
-    candidates: List[Dict[str, Any]] = []
-    rank_method = ""
-    rank_reason = ""
-    if str(kind or "").strip().lower() in {"movie", "tv", "xxx"}:
-        indexer, beyond_error = [], None
-    elif has_beyond_query:
-        ranked = search_and_rank(settings(), data_dir=root, **sought)
-        indexer = list(ranked.get("hits") or [])
-        beyond_error = ranked.get("error")
-        if beyond_error:
-            from librarian.llm import friendly_llm_error
-
-            beyond_error = friendly_llm_error(RuntimeError(str(beyond_error)))
-        pick = ranked.get("pick")
-        candidates = list(ranked.get("candidates") or [])
-        rank_method = str(ranked.get("rank_method") or "")
-        rank_reason = str(ranked.get("rank_reason") or "")
-        search_trace = {
-            "conversation": list(ranked.get("conversation") or []),
-            "steps": list(ranked.get("steps") or []),
-            "results": list(ranked.get("results") or []),
-            "plan": ranked.get("plan"),
-            "raw_count": ranked.get("raw_count"),
-            "rejected_count": ranked.get("rejected_count"),
-            "rank_method": rank_method,
-            "rank_reason": rank_reason,
-        }
-    owner_trace = user["role"] in CONFIRM_ROLES
-    public_domain: List[Dict[str, Any]] = []
-    public_domain_error = None
-    if has_beyond_query:
-        try:
-            public_domain = search_public_domain(local_q or q, mode=search_mode or "title")
-        except Exception as error:  # noqa: BLE001 — lane must not blank the shelf
-            public_domain = []
-            public_domain_error = str(error)
     return {
         "q": q,
         "mode": search_mode,
         "local": local,
         "did_you_mean": list(forgiven.get("did_you_mean") or []),
         "forgave": bool(forgiven.get("forgave")),
+        "beyond": [],
+        "beyond_error": None,
+        "public_domain": [],
+        "public_domain_error": None,
+        "pick": None,
+        "candidates": [],
+        "rank_method": "",
+        "rank_reason": "",
+        "search_trace": None,
+        "beyond_disclosure": beyond_disclosure(settings()),
+        "can_request": user["role"] in REQUEST_ROLES,
+        "can_beyond": user["role"] in CONFIRM_ROLES,
+    }
+
+
+def run_search_beyond(
+    db: Any,
+    settings: Callable[[], Any],
+    *,
+    root: Path,
+    user: Mapping[str, Any],
+    q: str = "",
+    kind: str = "",
+    title: str = "",
+    author: str = "",
+    isbn: str = "",
+    series: str = "",
+    issue: str = "",
+    artist: str = "",
+    album: str = "",
+    year: str = "",
+    mode: str = "",
+) -> Dict[str, Any]:
+    """``GET /api/search/beyond``: indexers + public domain. Owner/op only."""
+    if user["role"] not in CONFIRM_ROLES:
+        raise ServiceError("Stay on the shelves, or Ask the house.", status_code=403)
+    packed = _sought_payload(
+        q=q,
+        kind=kind,
+        title=title,
+        author=author,
+        isbn=isbn,
+        series=series,
+        issue=issue,
+        artist=artist,
+        album=album,
+        year=year,
+        mode=mode,
+    )
+    sought = packed["sought"]
+    search_mode = packed["mode"]
+    has_query = any(_text(sought.get(key)) for key in sought if key != "kind")
+    if str(kind or "").strip().lower() in {"movie", "tv", "xxx"} or not has_query:
+        return {
+            "q": q,
+            "mode": search_mode,
+            "beyond": [],
+            "beyond_error": None,
+            "public_domain": [],
+            "public_domain_error": None,
+            "pick": None,
+            "candidates": [],
+            "rank_method": "",
+            "rank_reason": "",
+            "search_trace": None,
+            "can_request": user["role"] in REQUEST_ROLES,
+            "cached": False,
+        }
+    heuristic_only = user["role"] not in CONFIRM_ROLES
+    cfg = settings()
+    from librarian.indexers.hosts import enabled_hosts
+
+    host_ids = ",".join(str(host.get("id") or "") for host in enabled_hosts(cfg))
+    cache_key = _beyond_cache_key(sought, heuristic_only=heuristic_only, hosts=host_ids)
+    cached = _beyond_cache_get(cache_key)
+    if cached is not None:
+        cached["cached"] = True
+        return cached
+    ranked: Dict[str, Any] = {}
+    public_domain: List[Dict[str, Any]] = []
+    public_domain_error = None
+
+    def _indexers() -> Dict[str, Any]:
+        return search_and_rank(
+            cfg,
+            data_dir=root,
+            deadline=BEYOND_DEADLINE_SECONDS,
+            heuristic_only=heuristic_only,
+            **sought,
+        )
+
+    def _public() -> List[Dict[str, Any]]:
+        return search_public_domain(q.strip() or q, mode=search_mode or "title")
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        indexer_future = pool.submit(_indexers)
+        public_future = pool.submit(_public)
+        try:
+            ranked = indexer_future.result(timeout=BEYOND_DEADLINE_SECONDS)
+        except Exception as error:  # noqa: BLE001 — partial beyond is still a result
+            ranked = {"hits": [], "error": str(error)}
+        try:
+            public_domain = public_future.result(timeout=BEYOND_DEADLINE_SECONDS)
+        except Exception as error:  # noqa: BLE001 — lane must not blank indexer hits
+            public_domain = []
+            public_domain_error = str(error)
+
+    indexer = list(ranked.get("hits") or [])
+    beyond_error = ranked.get("error")
+    pick = ranked.get("pick")
+    candidates = list(ranked.get("candidates") or [])
+    rank_method = str(ranked.get("rank_method") or "")
+    rank_reason = str(ranked.get("rank_reason") or "")
+    search_trace = {
+        "conversation": list(ranked.get("conversation") or []),
+        "steps": list(ranked.get("steps") or []),
+        "results": list(ranked.get("results") or []),
+        "plan": ranked.get("plan"),
+        "raw_count": ranked.get("raw_count"),
+        "rejected_count": ranked.get("rejected_count"),
+        "rank_method": rank_method,
+        "rank_reason": rank_reason,
+    }
+    payload = {
+        "q": q,
+        "mode": search_mode,
         "beyond": public_indexer_hits(indexer),
         "beyond_error": beyond_error,
         "public_domain": public_domain,
@@ -385,8 +572,49 @@ def run_search(
         "candidates": public_indexer_hits(candidates),
         "rank_method": rank_method,
         "rank_reason": rank_reason,
-        "search_trace": search_trace if owner_trace else None,
+        "search_trace": search_trace if user["role"] in CONFIRM_ROLES else None,
         "can_request": user["role"] in REQUEST_ROLES,
+        "cached": False,
+    }
+    _beyond_cache_put(cache_key, payload)
+    return payload
+
+
+def ask_from_search(
+    db: Any,
+    user: Mapping[str, Any],
+    *,
+    q: str = "",
+    kind: str = "",
+    title: str = "",
+    author: str = "",
+    isbn: str = "",
+) -> Dict[str, Any]:
+    """File a Wanted row from a search. Never searches indexers. Never calls SABnzbd."""
+    from librarian.wanted import AlreadyShelved, WantedError, add_wanted, public_wanted
+
+    if user["role"] not in REQUEST_ROLES:
+        raise ServiceError("Stay on the shelves, or Ask the house.", status_code=403)
+    wanted_kind = kind if kind in ALL_KINDS else "book"
+    wanted_title = _text(title) or _text(q)
+    try:
+        row = add_wanted(
+            db,
+            {
+                "title": wanted_title,
+                "author": _text(author),
+                "isbn": _text(isbn),
+                "kind": wanted_kind,
+            },
+        )
+    except AlreadyShelved as error:
+        raise ServiceError("Already on the shelf", status_code=409) from error
+    except WantedError as error:
+        raise ServiceError(str(error)) from error
+    return {
+        "item": public_wanted(row),
+        "searched": False,
+        "can_confirm": user["role"] in CONFIRM_ROLES,
     }
 
 
@@ -404,7 +632,10 @@ def discover_page(
     """One page of an indexer Discover feed.
 
     ``page`` is 1-based. A positive ``offset`` wins. The first page is offset 0.
+    Readers stay on the shelves; Discover is an indexer door for owner and op.
     """
+    if user["role"] not in CONFIRM_ROLES:
+        raise ServiceError("Stay on the shelves, or Ask the house.", status_code=403)
     feed_limit = resolve_feed_limit(cat=cat, limit=limit if limit else None)
     skip = resolve_discover_offset(offset=offset, page=page, limit=feed_limit)
     items, categories, beyond_error = discover_beyond(

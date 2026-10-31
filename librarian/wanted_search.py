@@ -90,6 +90,57 @@ def nzbfinder_search(client: NZBFinderClient, sought: Mapping[str, Any]) -> List
     return client.search(query, cat=cat, kind=kind or None, limit=25)
 
 
+def search_wanted_hosts(
+    settings: Settings,
+    sought: Mapping[str, Any],
+    *,
+    transport: Any = None,
+) -> List[Dict[str, Any]]:
+    """One ladder rung against every enabled indexer. A 429 is raised; other host errors skip."""
+    from librarian.indexers.hosts import enabled_hosts
+
+    query = _text(sought.get("q"))
+    cat = _text(sought.get("cat"))
+    if not query or not cat:
+        return []
+    hits: List[Dict[str, Any]] = []
+    seen: set[str] = set()
+    last_error: Optional[NZBFinderError] = None
+    for host in enabled_hosts(settings):
+        client = NZBFinderClient(
+            host["url"],
+            host["api_token"],
+            transport=transport,
+            label=host["name"],
+            dialect=host.get("dialect") or "",
+        )
+        try:
+            batch = nzbfinder_search(client, sought)
+        except NZBFinderError as error:
+            if is_rate_limited(error):
+                raise
+            last_error = error
+            continue
+        finally:
+            client.close()
+        for hit in batch or []:
+            if not isinstance(hit, Mapping):
+                continue
+            tagged = dict(hit)
+            tagged["host_id"] = host["id"]
+            tagged["host_name"] = host["name"]
+            key = _text(tagged.get("guid") or tagged.get("indexer_guid")) or (
+                f"{tagged.get('title')}:{tagged.get('size')}"
+            )
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            hits.append(tagged)
+    if last_error is not None and not hits:
+        raise last_error
+    return hits
+
+
 def choose_hit(
     sought: Mapping[str, Any],
     hits: List[Mapping[str, Any]],
@@ -309,19 +360,15 @@ def _open_search(
 ) -> tuple[SearchFn, Optional[NZBFinderClient], bool]:
     if search is not None:
         return search, None, False
-    token = _text(getattr(settings, "nzbfinder_api_token", ""))
-    muted = bool(getattr(settings, "nzbfinder_muted", False))
-    if not token or muted:
+    from librarian.indexers.hosts import enabled_hosts
+
+    if not enabled_hosts(settings):
         raise WantedError("Beyond the shelves needs an NZBFinder token in Settings.")
-    finder = NZBFinderClient(
-        str(getattr(settings, "nzbfinder_url", "") or ""),
-        token,
-    )
 
     def _default_search(sought: Mapping[str, Any]) -> List[Dict[str, Any]]:
-        return nzbfinder_search(finder, sought)
+        return search_wanted_hosts(settings, sought)
 
-    return _default_search, finder, True
+    return _default_search, None, False
 
 
 def search_wanted_selection(
@@ -524,21 +571,24 @@ def _walk_due(
     own_client = False
     finder = client
     if search is None and finder is None:
-        token = _text(getattr(settings, "nzbfinder_api_token", ""))
-        muted = bool(getattr(settings, "nzbfinder_muted", False))
-        if not token or muted:
+        from librarian.indexers.hosts import enabled_hosts
+
+        if not enabled_hosts(settings):
             return 0
-        finder = NZBFinderClient(
-            str(getattr(settings, "nzbfinder_url", "") or ""),
-            token,
-        )
-        own_client = True
 
-    def _default_search(sought: Mapping[str, Any]) -> List[Dict[str, Any]]:
+        def _hosts_search(sought: Mapping[str, Any]) -> List[Dict[str, Any]]:
+            return search_wanted_hosts(settings, sought)
+
+        run_search = _hosts_search
+    elif search is None:
         assert finder is not None
-        return nzbfinder_search(finder, sought)
 
-    run_search = search or _default_search
+        def _client_search(sought: Mapping[str, Any]) -> List[Dict[str, Any]]:
+            return nzbfinder_search(finder, sought)
+
+        run_search = _client_search
+    else:
+        run_search = search
     calls = 0
     try:
         for row in due:

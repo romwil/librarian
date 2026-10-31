@@ -84,7 +84,8 @@ def test_extra_host_502_keeps_nzbfinder_hits(tmp_path, monkeypatch):
         return {"accepted": rows, "rejected": [], "raw": rows, "default_kind": default_kind}
 
     monkeypatch.setattr("librarian.nzbfinder.NZBFinderClient.books_traced", fake_books_traced)
-    resp = client.get("/api/search", params={"beyond": 1, "kind": "book", "title": "Dune"})
+    monkeypatch.setattr("librarian.services.search.search_public_domain", lambda *a, **k: [])
+    resp = client.get("/api/search/beyond", params={"kind": "book", "title": "Dune"})
     assert resp.status_code == 200
     body = resp.json()
     assert [row["title"] for row in body["beyond"]] == ["Dune"]
@@ -128,9 +129,10 @@ def test_extra_host_is_queried_and_deduped(tmp_path, monkeypatch):
         return {"accepted": rows, "rejected": [], "raw": rows, "default_kind": default_kind}
 
     monkeypatch.setattr("librarian.nzbfinder.NZBFinderClient.books_traced", fake_books_traced)
-    resp = client.get("/api/search", params={"beyond": 1, "kind": "book", "title": "Dune"})
+    monkeypatch.setattr("librarian.services.search.search_public_domain", lambda *a, **k: [])
+    resp = client.get("/api/search/beyond", params={"kind": "book", "title": "Dune"})
     assert resp.status_code == 200
-    assert hosts == ["NZBFinder", "Books.nzb"]
+    assert set(hosts) == {"NZBFinder", "Books.nzb"}
     assert [row["guid"] for row in resp.json()["beyond"]] == ["g-dune"]
     assert resp.json()["beyond"][0]["host_name"] == "NZBFinder"
     assert resp.json()["beyond_error"] is None
