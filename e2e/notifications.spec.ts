@@ -14,8 +14,10 @@ test.describe("Notifications inbox + prefs", () => {
     await expect(page.getByRole("heading", { name: "What the house tells you" })).toBeVisible();
     await expect(page.getByLabel("Notification email")).toBeVisible();
     await expect(page.getByLabel("Enable Someone finished")).toBeVisible();
+    await expect(page.getByLabel("Enable Arrived (your Request)")).toBeVisible();
+    await expect(page.getByLabel("Enable Asked slip needs confirm")).toBeVisible();
     await expect(page.getByRole("button", { name: "Save preferences" })).toBeVisible();
-    await expect(page.getByLabel("Enable Arrived (your Request)")).toHaveCount(0);
+    await expect(page.getByLabel("Enable Needs you (Sorting)")).toHaveCount(0);
   });
 
   test("Inbox empty state and top-bar entry", async ({ page }) => {
@@ -33,7 +35,8 @@ test.describe("Notifications inbox + prefs", () => {
     await dismissWhatsNewIfPresent(page);
     await expect(page.getByRole("heading", { name: "Notifications" })).toBeVisible({ timeout: 30_000 });
     await expect(page.getByLabel("Enable Someone finished")).toBeVisible();
-    await expect(page.getByLabel("Enable Needs you (Review)")).toHaveCount(0);
+    await expect(page.getByLabel("Enable Arrived (your Request)")).toBeVisible();
+    await expect(page.getByLabel("Enable Needs you (Sorting)")).toHaveCount(0);
   });
 
   test("Library newsletter cadence and owner early push", async ({ page }) => {
