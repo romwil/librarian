@@ -33,6 +33,8 @@ function renderCard(work, props = {}) {
   return render(
     <MemoryRouter>
       <WorkPeekProvider>
+        {/* household `role`, not ARIA */}
+        {/* eslint-disable-next-line jsx-a11y/aria-role */}
         <CoverCard work={work} role="reader" {...props} />
       </WorkPeekProvider>
     </MemoryRouter>,
@@ -129,7 +131,7 @@ describe("CoverCard footer", () => {
     assert.equal(within(footer).queryByRole("link", { name: "Read" }), null);
     assert.equal(within(footer).queryByRole("link", { name: "Download" }), null);
 
-    fireEvent.click(screen.getByRole("button", { name: "<script>alert(1)</script>" }));
+    fireEvent.click(screen.getByRole("button", { name: /^<script>alert\(1\)<\/script>/ }));
     assert.ok(await screen.findByRole("dialog"));
     assert.equal(within(footer).queryByText("On the shelf"), null);
   });

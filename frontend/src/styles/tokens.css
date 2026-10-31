@@ -30,6 +30,8 @@
   --workspace-wash-a: #f3ecdf;
   --workspace-wash-b: #f3ecdf;
   --menu-hover: rgba(28, 22, 18, 0.06);
+  --focus-ring: #8c3a2f;
+  --focus-halo: #fffdf8;
 
   /* Phantom aliases (VIS-017) — jobs, not leftover hex. */
   --ink: var(--text);
@@ -122,6 +124,8 @@
   --workspace-wash-a: #2a1c10;
   --workspace-wash-b: #161018;
   --menu-hover: rgba(244, 234, 214, 0.08);
+  --focus-ring: #f0b85a;
+  --focus-halo: #110d09;
 }
 
 /* Paper / Lights Up — warm paper, ink, one accent on the primary action */
@@ -154,6 +158,8 @@
   --workspace-wash-a: #f3ecdf;
   --workspace-wash-b: #f3ecdf;
   --menu-hover: rgba(28, 22, 18, 0.06);
+  --focus-ring: #8c3a2f;
+  --focus-halo: #fffdf8;
 }
 
 html {
@@ -194,6 +200,13 @@ a:hover {
   text-decoration: underline;
 }
 
+/* Inline links in body copy must not rely on color alone (WCAG 1.4.1). */
+.lede a,
+.muted a {
+  text-decoration: underline;
+  text-underline-offset: 0.12em;
+}
+
 button,
 input {
   font: inherit;
@@ -209,8 +222,33 @@ input {
   color: var(--fg);
 }
 
+:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 3px;
+}
+
 main:focus {
   outline: none;
+}
+main:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 3px;
+}
+
+.skip-link {
+  position: absolute;
+  left: 12px;
+  top: -48px;
+  z-index: 300;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--surface-raised);
+  color: var(--text);
+  font-weight: 600;
+}
+.skip-link:focus,
+.skip-link:focus-visible {
+  top: 12px;
 }
 
 /* ═══════════ SPA glue (same tokens, no cinema chrome) ═══════════ */

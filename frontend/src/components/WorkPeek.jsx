@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import useModal from "../hooks/useModal.js";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
 import { browseHref } from "../browse.js";
@@ -75,13 +76,15 @@ export default function WorkPeek({ work, onClose, onRequest }) {
       .me()
       .then((data) => setRole(data.user?.role || "reader"))
       .catch(() => {});
-    function onKey(event) {
-      if (event.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    closeBtn.current?.focus();
-    return () => window.removeEventListener("keydown", onKey);
-  }, [work, onClose]);
+    return undefined;
+  }, [work]);
+
+  useModal({
+    open: Boolean(work),
+    onEscape: onClose,
+    panelRef: panel,
+    initialFocusRef: closeBtn,
+  });
 
   if (!work) return null;
 
@@ -273,7 +276,7 @@ export default function WorkPeek({ work, onClose, onRequest }) {
 
   return (
     <>
-      <button type="button" className="scrim" aria-label="Close peek" onClick={onClose} />
+      <button type="button" className="scrim" tabIndex={-1} aria-hidden="true" onClick={onClose} />
       <div
         className={`peek peek-ritual${washUrl ? " has-wash" : ""}`}
         role="dialog"

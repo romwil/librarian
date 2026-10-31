@@ -81,7 +81,7 @@ test.describe("More shelves", () => {
     await expect(page.getByRole("heading", { name: "Continue reading" })).toBeVisible({
       timeout: 30_000,
     });
-    await expect(page.getByRole("button", { name: "Kept Volume", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Kept Volume/ })).toBeVisible();
     await expect(page.getByRole("search")).toBeVisible();
     await expect(page.getByRole("button", { name: "All", exact: true })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Name a shelf" })).toHaveCount(0);
@@ -115,7 +115,7 @@ test.describe("More shelves", () => {
     await page.goto("/search?q=lamp");
 
     await expect(page.getByRole("heading", { name: "On the shelf" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Lamp on the Shelf", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Lamp on the Shelf/ })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Beyond the shelves" }).first()).toBeVisible();
     await expect(page.getByRole("button", { name: "More shelves" })).toHaveCount(0);
   });

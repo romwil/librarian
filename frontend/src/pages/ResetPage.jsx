@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api.js";
+import Alert from "../components/Alert.jsx";
 import GlassDoor from "../components/GlassDoor.jsx";
 import PasswordField from "../components/PasswordField.jsx";
-import useDocumentTitle from "../hooks/useDocumentTitle.js";
+import usePageTitle from "../hooks/usePageTitle.js";
 import { FIELD_HELP, PAGE_TITLE_RESET, humanError } from "../copy.js";
 
 export default function ResetPage() {
@@ -14,7 +15,7 @@ export default function ResetPage() {
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  useDocumentTitle(PAGE_TITLE_RESET);
+  usePageTitle(PAGE_TITLE_RESET);
 
   useEffect(() => {
     if (!token) {
@@ -57,11 +58,7 @@ export default function ResetPage() {
         }
         footer={<Link to="/login">Back to sign in</Link>}
       >
-        {error ? (
-          <p className="alert" role="alert" aria-live="assertive">
-            {error}
-          </p>
-        ) : null}
+        {error ? <Alert>{error}</Alert> : null}
         {ready ? (
           <form className="login-form" onSubmit={onSubmit}>
             <PasswordField

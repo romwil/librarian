@@ -4,7 +4,7 @@ import { api } from "../api.js";
 import { stacksNavState } from "../lib/stacksNav.js";
 import ProfileMenu from "./ProfileMenu.jsx";
 import InboxBadgeButton from "./InboxBadgeButton.jsx";
-import { DESK_TAB, DOWNLOADS_NAV, SORTING_NAV } from "../copy.js";
+import { DESK_TAB, DOWNLOADS_NAV, SKIP_TO_CONTENT, SORTING_NAV } from "../copy.js";
 import {
   applyUiFontStep,
   applyUiTheme,
@@ -73,6 +73,9 @@ export default function AppChrome({ user, features, reviewCount = 0, inboxUnread
 
   return (
     <div className="room ambient-off" data-ambient="off">
+      <a className="skip-link" href="#main">
+        {SKIP_TO_CONTENT}
+      </a>
       <header className="topbar">
         <NavLink to="/" className="brand" end>
           Librarian

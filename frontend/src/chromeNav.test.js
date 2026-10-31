@@ -65,16 +65,17 @@ test("mobile tab bar is Hall, Search, Favorites, You, and Desk for keepers", () 
   assert.match(chromeSrc, /--tab-count/);
   assert.match(chromeSrc, /op \? 5 : 4/);
   assert.match(chromeSrc, /id="main"/);
-  assert.equal(chromeSrc.includes("Skip to library"), false);
-  assert.equal(chromeSrc.includes("skip-link"), false);
+  assert.match(chromeSrc, /SKIP_TO_CONTENT/);
+  assert.match(chromeSrc, /skip-link/);
+  assert.ok(chromeSrc.indexOf("skip-link") < chromeSrc.indexOf('className="topbar"'));
   assert.equal(chromeSrc.includes("bag-glyph"), false);
 });
 
-test("phone tab bar is fixed to the viewport and the skip link is gone", () => {
+test("phone tab bar is fixed to the viewport and the skip link is first in chrome", () => {
   const loginSrc = readFileSync(join(root, "pages/LoginPage.jsx"), "utf8");
   assert.equal(loginSrc.includes("Skip to library"), false);
-  assert.equal(loginSrc.includes("skip-link"), false);
-  assert.equal(stylesSrc.includes(".skip-link"), false);
+  assert.match(chromeSrc, /className="skip-link"/);
+  assert.match(stylesSrc, /\.skip-link/);
   assert.match(stylesSrc, /\.room > \.mobile-tabbar\s*\{[^}]*position:\s*fixed/s);
   assert.match(stylesSrc, /\.room > \.mobile-tabbar\s*\{[^}]*bottom:\s*0/s);
   assert.match(stylesSrc, /minmax\(0,\s*1fr\)/);

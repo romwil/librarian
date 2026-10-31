@@ -15,6 +15,19 @@
 - **Maintain indexer lanterns.** Lights Down no longer paints pale paper cards with tan status copy. Lantern names, weather sentences, and Mute sit on raised leather; an idle host is a hollow ring so flicker vs silent is not hue-only. Safe undo uses the same dark wash. Lights Up stays ink on paper.
 - **Library card text size.** Clicking Text size or the slider no longer closes the Library card. Ambient room layering had flattened the topbar under Hall, so the panel was visible through empty Hall and the click counted as outside; range thumb retargets onto `document` are hit-tested too.
 
+## [1.0.0] — 2026-10-31
+
+### Highlights
+
+- **Invite-ready.** Skip to content, a visible focus ring, announced alerts, and overlays that keep keyboard focus. axe-core walks 20+ states including join, What’s New, Ask the house, Queue to SAB, purge confirm, and Sorting group preview. A VoiceOver script for login, join, Read, Listen, and Sorting is in the docs. Confirm on Downloads is still the only way a download starts.
+- **Owner checklist.** Public URL, a timed Sorting morning, naming the unshelved shells, and mail-off-until-you-want-it stay owner work. This release does not mint household invites and does not purge the live catalog.
+
+### Changed
+
+- Shared `<Alert>`, `<Field>`, `usePageTitle`, and `useModal`. Library card is a disclosure, not a `role="menu"`. `eslint-plugin-jsx-a11y` runs in CI.
+- Queue to SAB and Sign out everywhere open a confirm dialog. A minted invite is shown once in a dialog.
+- First VoiceOver script: [docs/a11y/VOICEOVER.md](docs/a11y/VOICEOVER.md). Owner invite steps: [docs/ops/INVITE_CHECKLIST.md](docs/ops/INVITE_CHECKLIST.md).
+
 ## [0.6.21] — 2026-10-31
 
 ### Highlights

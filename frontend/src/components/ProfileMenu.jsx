@@ -82,7 +82,8 @@ export default function ProfileMenu({
         data-testid="profile-menu-trigger"
         aria-label={`Library card ${user.display_name} ${roleLabel}`}
         aria-expanded={open}
-        aria-haspopup="menu"
+        aria-haspopup="dialog"
+        aria-controls="library-card-panel"
         onClick={() => setOpen((value) => !value)}
       >
         <span className="profile-menu-avatar" aria-hidden="true" data-initial={initials} />
@@ -90,9 +91,13 @@ export default function ProfileMenu({
         <span className="profile-menu-role">{roleLabel}</span>
       </button>
       {open ? (
+        // Pointer stop keeps theme/slider clicks from dismissing the card.
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
         <div
+          id="library-card-panel"
           className="profile-menu-panel"
-          role="menu"
+          role="dialog"
+          aria-label="Library card"
           data-testid="profile-menu-panel"
           onPointerDown={(event) => event.stopPropagation()}
           onMouseDown={(event) => event.stopPropagation()}
@@ -122,16 +127,7 @@ export default function ProfileMenu({
             </div>
           </div>
 
-          <label
-            className="profile-font-control"
-            data-testid="profile-font-slider"
-            onPointerDown={(event) => event.stopPropagation()}
-            onMouseDown={(event) => event.stopPropagation()}
-            onKeyDown={(event) => {
-              if (event.key === "Escape") return;
-              event.stopPropagation();
-            }}
-          >
+          <label className="profile-font-control" data-testid="profile-font-slider">
             <span className="profile-font-label">
               Text size
               <span className="profile-font-value">{fontStep === 0 ? "Default" : `+${fontStep}`}</span>
@@ -153,42 +149,42 @@ export default function ProfileMenu({
           </label>
 
           <div className="profile-menu-section profile-menu-links">
-            <Link to="/card" className="profile-menu-link" role="menuitem" onClick={() => setOpen(false)}>
+            <Link to="/card" className="profile-menu-link" onClick={() => setOpen(false)}>
               Your library
             </Link>
-            <Link to="/inbox" className="profile-menu-link" role="menuitem" onClick={() => setOpen(false)}>
+            <Link to="/inbox" className="profile-menu-link" onClick={() => setOpen(false)}>
               Inbox
             </Link>
-            <Link to="/notifications" className="profile-menu-link" role="menuitem" onClick={() => setOpen(false)}>
+            <Link to="/notifications" className="profile-menu-link" onClick={() => setOpen(false)}>
               Notifications
             </Link>
-            <Link to="/help" className="profile-menu-link" role="menuitem" onClick={() => setOpen(false)}>
+            <Link to="/help" className="profile-menu-link" onClick={() => setOpen(false)}>
               Help
             </Link>
             {showHouseholdLinks ? (
               <>
                 {owner ? (
-                  <Link to="/maintain" className="profile-menu-link" role="menuitem" onClick={() => setOpen(false)}>
+                  <Link to="/maintain" className="profile-menu-link" onClick={() => setOpen(false)}>
                     Maintain
                   </Link>
                 ) : null}
                 {owner ? (
-                  <Link to="/settings" className="profile-menu-link" role="menuitem" onClick={() => setOpen(false)}>
+                  <Link to="/settings" className="profile-menu-link" onClick={() => setOpen(false)}>
                     Settings
                   </Link>
                 ) : null}
                 {op ? (
-                  <Link to="/people" className="profile-menu-link" role="menuitem" onClick={() => setOpen(false)}>
+                  <Link to="/people" className="profile-menu-link" onClick={() => setOpen(false)}>
                     People
                   </Link>
                 ) : null}
                 {op ? (
-                  <Link to="/review" className="profile-menu-link" role="menuitem" onClick={() => setOpen(false)}>
+                  <Link to="/review" className="profile-menu-link" onClick={() => setOpen(false)}>
                     Sorting
                   </Link>
                 ) : null}
                 {op ? (
-                  <Link to="/queue" className="profile-menu-link" role="menuitem" onClick={() => setOpen(false)}>
+                  <Link to="/queue" className="profile-menu-link" onClick={() => setOpen(false)}>
                     Downloads
                   </Link>
                 ) : null}
@@ -199,7 +195,6 @@ export default function ProfileMenu({
           <button
             type="button"
             className="profile-menu-link profile-menu-logout"
-            role="menuitem"
             data-testid="logout-button"
             onClick={handleLogout}
           >

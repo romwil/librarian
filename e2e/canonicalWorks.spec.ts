@@ -102,7 +102,7 @@ test.describe("Canonical works", () => {
     await dismissWhatsNewIfPresent(page);
     await expect(page.getByRole("heading", { name: "The stacks", exact: true })).toBeVisible();
 
-    const cover = page.getByRole("button", { name: "The Left Hand of Darkness", exact: true });
+    const cover = page.getByRole("button", { name: /^The Left Hand of Darkness/ });
     await expect(cover).toBeVisible();
     // Cloth byline plus the footer under the cover. One copy means the footer is gone.
     await expect(page.getByText("The Left Hand of Darkness", { exact: true })).toHaveCount(2);
@@ -142,7 +142,7 @@ test.describe("Canonical works", () => {
 
     await toggle.click();
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
-    await expect(page.getByRole("button", { name: "Ebook 0", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Ebook 0/ })).toBeVisible();
     expect(discoverUrls).toHaveLength(1);
     const first = new URL(discoverUrls[0]);
     expect(first.pathname).toBe("/api/discover");
@@ -157,7 +157,7 @@ test.describe("Canonical works", () => {
     expect(discoverUrls).toHaveLength(1);
 
     await page.getByRole("button", { name: "Next", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Ebook 12", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Ebook 12/ })).toBeVisible();
     expect(discoverUrls).toHaveLength(2);
     const second = new URL(discoverUrls[1]);
     expect(second.searchParams.get("cat")).toBe("7020");

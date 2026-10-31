@@ -39,6 +39,16 @@ describe("reading room cover helpers", () => {
     assert.equal(coverAltText({ title: "Circe" }), "Circe");
   });
 
+  it("cloth covers keep the visible title and byline in the accessible name", () => {
+    const overlay = coverOverlay({ title: "Dune on the shelf", author: "Frank Herbert", kind: "book" });
+    assert.match(overlay.title, /Dune on the shelf/);
+    assert.equal(overlay.byline, "Frank Herbert");
+    assert.match(
+      coverAltText({ title: overlay.title, author: overlay.byline }),
+      /Dune on the shelf.*Frank Herbert/,
+    );
+  });
+
   it("opens peek on a plain click and not a modifier click", () => {
     assert.equal(shouldOpenPeek({ metaKey: false, ctrlKey: false, shiftKey: false, altKey: false }), true);
     assert.equal(shouldOpenPeek({ metaKey: true, ctrlKey: false, shiftKey: false, altKey: false }), false);

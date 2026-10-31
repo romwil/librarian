@@ -63,6 +63,14 @@ export const INVITE_TTL_HELP = "Invites last 7 days. Copy the link once — the 
 export const SHOW_PASSWORD = "Show password";
 export const HIDE_PASSWORD = "Hide password";
 export const SIGN_OUT_EVERYWHERE = "Sign out everywhere";
+export const SKIP_TO_CONTENT = "Skip to content";
+export const QUEUE_SAB_TITLE = "Send to the downloader?";
+export const QUEUE_SAB_BODY =
+  "This starts a download for this asked slip. Confirm is the only way a download starts.";
+export const SIGN_OUT_EVERYWHERE_TITLE = "Sign out everywhere?";
+export const SIGN_OUT_EVERYWHERE_BODY =
+  "This ends every signed-in session for this card, including this one.";
+export const INVITE_SHOWN_ONCE = "This invite is shown once";
 export const CHANGE_PASSWORD = "Change password";
 export const EXPORT_MY_CARD = "Export my card";
 export const PRIVACY_HEADING = "Privacy";

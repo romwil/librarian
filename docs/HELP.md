@@ -170,3 +170,7 @@ A **Watch folder** (Settings → Ingest) is an optional drop directory. New top-
 Owners can **Enrich the shelves** on Maintain, or **Enrich** on a book/audiobook page. Hardcover (token in Settings) fills description, series, year, and cover when a volume is thin; Open Library is the fallback. Shelf enrich skips volumes that already have author, blurb, year, cover, and genre, and starts with the emptiest. Enrich never invents an ISBN — title-only matches do not write one.
 
 **Import Goodreads CSV** on Settings takes a Goodreads shelf export. Rows with an ISBN match an existing book (ISBN-10 or ISBN-13) and land on Favorites. Unmatched ISBNs create a thin work (no file yet — use Find). Rows without an ISBN are skipped. There is no Goodreads login.
+
+## Accessibility
+
+Skip to content, a visible focus ring, announced alerts, and overlays that keep keyboard focus are on. The first VoiceOver script (login, join, Read, Listen, Sorting) is [a11y/VOICEOVER.md](a11y/VOICEOVER.md). Owner steps before inviting anyone: [ops/INVITE_CHECKLIST.md](ops/INVITE_CHECKLIST.md).

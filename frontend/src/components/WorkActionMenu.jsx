@@ -46,9 +46,13 @@ export default function WorkActionMenu({ label = "", onOpen, children, className
             className="work-action-popover"
             ref={popoverRef}
             role="menu"
+            tabIndex={0}
             aria-label={label ? `Actions for ${label}` : "Actions"}
             style={popoverStyle || { visibility: "hidden" }}
             onClick={onPopoverClick}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") setOpen(false);
+            }}
             data-testid={`${testId}-popover`}
           >
             {children}

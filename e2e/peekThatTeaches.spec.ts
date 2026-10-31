@@ -64,8 +64,8 @@ test.describe("Peek that teaches", () => {
     await mockShellPeek(page);
     await page.goto("/");
     await dismissWhatsNewIfPresent(page);
-    const note = /isn.t on the shelf|Sorting|file yet/i;
-    const cover = page.getByRole("button", { name: "Empty Shell", exact: true });
+    const note = /isn.t on the shelf|file yet/i;
+    const cover = page.getByRole("button", { name: /^Empty Shell/ });
     const onHall = await cover
       .waitFor({ state: "visible", timeout: 15_000 })
       .then(() => true)

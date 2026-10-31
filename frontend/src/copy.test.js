@@ -26,6 +26,7 @@ import {
   PAGE_TITLE_DOWNLOADS,
   PAGE_TITLE_HALL,
   PAGE_TITLE_HELP,
+  SKIP_TO_CONTENT,
   SORTING_NAV,
   DOWNLOADS_NAV,
   READER_WELCOME_TITLE,
@@ -48,6 +49,7 @@ describe("reading room copy", () => {
     assert.equal(PAGE_TITLE_DOWNLOADS, "Downloads · Librarian");
     assert.equal(PAGE_TITLE_HALL, "Hall · Librarian");
     assert.equal(PAGE_TITLE_HELP, "Help · Librarian");
+    assert.equal(SKIP_TO_CONTENT, "Skip to content");
     assert.equal(SORTING_NAV, "Sorting");
     assert.equal(DOWNLOADS_NAV, "Downloads");
     assert.doesNotMatch(queueNeedsYouHelp(), /Place a hold/);

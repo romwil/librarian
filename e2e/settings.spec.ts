@@ -22,8 +22,9 @@ test.describe("Settings nav", () => {
     await page.goto("/");
     await dismissWhatsNewIfPresent(page);
     await page.getByRole("button", { name: "Library card" }).click();
-    await expect(page.getByRole("menu")).toBeVisible();
-    await expect(page.getByRole("menuitem", { name: "Inbox" })).toBeVisible();
+    const card = page.getByRole("dialog", { name: "Library card" });
+    await expect(card).toBeVisible();
+    await expect(card.getByRole("link", { name: "Inbox" })).toBeVisible();
     await expect(page.getByRole("radiogroup", { name: "Theme" })).toBeVisible();
   });
 
@@ -31,14 +32,14 @@ test.describe("Settings nav", () => {
     await page.goto("/");
     await dismissWhatsNewIfPresent(page);
     await page.getByRole("button", { name: "Library card" }).click();
-    const menu = page.getByRole("menu");
+    const menu = page.getByRole("dialog", { name: "Library card" });
     await expect(menu).toBeVisible();
 
     const slider = page.getByRole("slider", { name: /Text size/ });
     await expect(slider).toBeVisible();
-    await page.getByRole("menu").getByText("Text size").click();
+    await menu.getByText("Text size").click();
     await expect(menu).toBeVisible();
-    await page.getByRole("menu").getByText("Default").click();
+    await menu.getByText("Default").click();
     await expect(menu).toBeVisible();
 
     const box = await slider.boundingBox();

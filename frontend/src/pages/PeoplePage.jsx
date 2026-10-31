@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import { api } from "../api.js";
+import Alert from "../components/Alert.jsx";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import WarmLoad from "../components/WarmLoad.jsx";
 import useDocumentTitle from "../hooks/useDocumentTitle.js";
@@ -8,6 +9,7 @@ import {
   INVITE_OP_HELP,
   INVITE_OP_LABEL,
   INVITE_READER_LABEL,
+  INVITE_SHOWN_ONCE,
   INVITE_TTL_HELP,
   PAGE_TITLE_PEOPLE,
   formatInviteExpiry,
@@ -143,11 +145,7 @@ export default function PeoplePage() {
       <p className="kicker">Household</p>
       <h1>People</h1>
       <p className="lede">{INVITE_TTL_HELP}</p>
-      {error ? (
-        <p className="alert" role="alert" aria-live="assertive">
-          {error}
-        </p>
-      ) : null}
+      {error ? <Alert>{error}</Alert> : null}
       <div className="cta-row">
         <button type="button" className="cta" onClick={() => mint("reader")}>
           {INVITE_READER_LABEL}
@@ -159,26 +157,34 @@ export default function PeoplePage() {
         ) : null}
       </div>
       {owner ? <p className="muted">{INVITE_OP_HELP}</p> : null}
-      {link ? (
-        <div className="invite-once">
-          <p className="join-once">{link}</p>
-          <div className="cta-row">
-            <button type="button" className="cta outline" onClick={() => copyText(link)}>
-              Copy
+      <ConfirmDialog
+        open={Boolean(link)}
+        title={INVITE_SHOWN_ONCE}
+        cancelLabel="Done"
+        onCancel={() => {
+          setLink("");
+          setShare("");
+          setCopied(false);
+        }}
+        testId="invite-dialog"
+      >
+        <p className="join-once">{link}</p>
+        <div className="cta-row">
+          <button type="button" className="cta outline" onClick={() => copyText(link)}>
+            Copy
+          </button>
+          {share ? (
+            <button type="button" className="cta ghost" onClick={() => copyText(share)}>
+              Copy message
             </button>
-            {share ? (
-              <button type="button" className="cta ghost" onClick={() => copyText(share)}>
-                Copy message
-              </button>
-            ) : null}
-          </div>
-          {copied ? (
-            <p className="muted" role="status">
-              Copied.
-            </p>
           ) : null}
         </div>
-      ) : null}
+        {copied ? (
+          <p className="muted" role="status">
+            Copied.
+          </p>
+        ) : null}
+      </ConfirmDialog>
       {resetLink ? (
         <div className="invite-once">
           <p className="lede">Reset link (shown once, lasts 24 hours):</p>

@@ -108,7 +108,10 @@
   box-shadow:
     inset 0 0 0 1px color-mix(in srgb, var(--foil) 40%, transparent),
     0 18px 36px color-mix(in srgb, var(--lamp) 22%, transparent);
-  outline: none;
+}
+.cover:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 3px;
 }
 .cover.is-square {
   width: var(--rail-square);
@@ -514,6 +517,10 @@
 .search-field .typeahead {
   flex: 1;
   min-width: 0;
+}
+.search-field:focus-within {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 3px;
 }
 .search-field input {
   flex: 1;

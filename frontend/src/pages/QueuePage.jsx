@@ -1,9 +1,18 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
+import Alert from "../components/Alert.jsx";
+import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import WarmLoad from "../components/WarmLoad.jsx";
 import { jobChipTone, jobHouseholdLabel, jobNeedsYouReason, sortQueueNeedsYouFirst } from "../cover.js";
-import { PAGE_TITLE_DOWNLOADS, emptyQueueCopy, humanError, queueNeedsYouHelp } from "../copy.js";
+import {
+  PAGE_TITLE_DOWNLOADS,
+  QUEUE_SAB_BODY,
+  QUEUE_SAB_TITLE,
+  emptyQueueCopy,
+  humanError,
+  queueNeedsYouHelp,
+} from "../copy.js";
 import useDocumentTitle from "../hooks/useDocumentTitle.js";
 
 function isUnpackStuck(job) {
@@ -21,6 +30,7 @@ export default function QueuePage() {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [pendingSab, setPendingSab] = useState(null);
   useDocumentTitle(PAGE_TITLE_DOWNLOADS);
 
   function reload() {
@@ -49,7 +59,7 @@ export default function QueuePage() {
       <h1>Downloads</h1>
       <p className="lede">Asked slips, SAB jobs, and volumes being filed. Living chips live on Find cards.</p>
       {hasNeedsYou ? <p className="empty-note" data-testid="queue-needs-you-help">{queueNeedsYouHelp()}</p> : null}
-      {error ? <p className="alert">{error}</p> : null}
+      {error ? <Alert>{error}</Alert> : null}
       {loading ? (
         <WarmLoad message="Warming the lamp on Downloads…" testId="queue-loading" />
       ) : null}
@@ -98,12 +108,7 @@ export default function QueuePage() {
                       <button
                         type="button"
                         className="cta"
-                        onClick={() =>
-                          api
-                            .confirmJob(job.id)
-                            .then(reload)
-                            .catch((err) => setError(humanError(err)))
-                        }
+                        onClick={() => setPendingSab(job)}
                       >
                         Queue to SAB
                       </button>
@@ -154,6 +159,27 @@ export default function QueuePage() {
             })
           : null}
       </ul>
+      <ConfirmDialog
+        open={Boolean(pendingSab)}
+        title={QUEUE_SAB_TITLE}
+        confirmLabel="Queue to SAB"
+        onConfirm={() => {
+          const job = pendingSab;
+          setPendingSab(null);
+          if (!job?.id) return;
+          api
+            .confirmJob(job.id)
+            .then(reload)
+            .catch((err) => setError(humanError(err)));
+        }}
+        onCancel={() => setPendingSab(null)}
+        testId="queue-sab-confirm"
+      >
+        <p>
+          {pendingSab?.title ? `This starts a download for ${pendingSab.title}. ` : null}
+          {QUEUE_SAB_BODY}
+        </p>
+      </ConfirmDialog>
     </div>
   );
 }

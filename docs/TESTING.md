@@ -47,7 +47,7 @@ ships with value-based tests, not a later cleanup pass. See [ops/MAJOR_BUILDS.md
 Front-end work **must follow** the Testing Triad and adversarial stance in
 [ops/UI_TESTING_ARCHITECTURE.md](ops/UI_TESTING_ARCHITECTURE.md). **Vitest is still the target**
 for Layer 1 and is not yet the runner (`cd frontend && npm test` uses Node `node --test`).
-axe-core is wired: Playwright `@axe-core/playwright` in `e2e/axe.spec.ts` on **8794**.
+axe-core is wired: Playwright `@axe-core/playwright` in `e2e/axe.spec.ts` on **8794** (≥20 states including overlays). VoiceOver script: [a11y/VOICEOVER.md](a11y/VOICEOVER.md). `eslint-plugin-jsx-a11y` runs in `npm run lint`.
 
 ## Layers
 

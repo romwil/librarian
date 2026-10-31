@@ -277,6 +277,8 @@ In Librarian Settings set `komga_url`, `komga_api_key`, and `komga_library_id` (
 
 ## See also
 
+- [INVITE_CHECKLIST.md](INVITE_CHECKLIST.md) — owner steps before first real invites (Public URL, Sorting morning, shells, mail off)
+- [VOICEOVER.md](../a11y/VOICEOVER.md) — first VoiceOver script (login, join, Read, Listen, Sorting)
 - [DOCKER.md](../DOCKER.md) — volumes, PUID/PGID, extra_hosts
 - [SECURITY.md](../SECURITY.md) — handshake, proxy trust, cookies
 - [automat-media-contract.md](../automat-media-contract.md) — shared `/data/media` roots with Smart Map

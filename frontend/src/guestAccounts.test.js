@@ -20,7 +20,7 @@ test("People has Copy, pending revoke, and a helper invite for the owner", () =>
 });
 
 test("foyer announces errors, pastes a token, and shows the password", () => {
-  assert.match(loginSrc, /role="alert"/);
+  assert.match(loginSrc, /<Alert/);
   assert.match(loginSrc, /FOYER_PASTE_LABEL/);
   assert.match(loginSrc, /PasswordField/);
   assert.match(joinSrc, /autoComplete="username"/);

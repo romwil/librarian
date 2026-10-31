@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api.js";
-import { FieldLabel } from "../components/FieldHelp.jsx";
+import Alert from "../components/Alert.jsx";
+import Field from "../components/Field.jsx";
 import GlassDoor from "../components/GlassDoor.jsx";
 import PasswordField from "../components/PasswordField.jsx";
-import useDocumentTitle from "../hooks/useDocumentTitle.js";
+import usePageTitle from "../hooks/usePageTitle.js";
 import {
   FIELD_HELP,
   JOIN_LEDE,
@@ -24,7 +25,7 @@ export default function JoinPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [paste, setPaste] = useState("");
-  useDocumentTitle(PAGE_TITLE_JOIN);
+  usePageTitle(PAGE_TITLE_JOIN);
 
   useEffect(() => {
     if (!token) {
@@ -85,11 +86,7 @@ export default function JoinPage() {
         lede={JOIN_LEDE}
         footer={<Link to="/login">Already have a key?</Link>}
       >
-        {error ? (
-          <p className="alert" role="alert" aria-live="assertive">
-            {error}
-          </p>
-        ) : null}
+        {error ? <Alert>{error}</Alert> : null}
         {!token ? (
           <form className="login-form" onSubmit={onPasteSubmit}>
             <p className="lede">{JOIN_PASTE_HINT}</p>
@@ -112,17 +109,16 @@ export default function JoinPage() {
         {invite ? (
           <form className="login-form" onSubmit={onSubmit}>
             {expiry ? <p className="muted">This invite expires {expiry}.</p> : null}
-            <div className="field">
-              <FieldLabel htmlFor="join-name" label="Name" help={FIELD_HELP.joinName} />
-              <input
-                id="join-name"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                autoComplete="username"
-                minLength={2}
-                required
-              />
-            </div>
+            <Field
+              id="join-name"
+              label="Name"
+              help={FIELD_HELP.joinName}
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              autoComplete="username"
+              minLength={2}
+              required
+            />
             <PasswordField
               id="join-pass"
               label="Password"
