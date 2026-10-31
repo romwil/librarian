@@ -78,7 +78,7 @@ docker start librarian
 
 ## Build caching
 
-The image is **multi-stage**. Node builds the Vite SPA; a slim Python runtime copies `frontend/dist` and installs `.[web]`. Runtime extras: `unar` for CBR→CBZ. Calibre `ebook-convert` and `pdftoppm` are optional host/image add-ons — APIs fail closed (Review / 422) when they are missing.
+The image is **multi-stage**. Node builds the Vite SPA; a slim Python runtime copies `frontend/dist` and installs hashed `requirements.lock`, then the app with `--no-deps`. Runtime extras: `unar` for CBR→CBZ. Calibre `ebook-convert` and `pdftoppm` are optional host/image add-ons — APIs fail closed (Review / 422) when they are missing.
 
 **There is no host-side `npm run build` on the Unraid path.** `docker-run.sh` only `docker build`s (BuildKit on). Compose uses the same Dockerfile. Adding SPA packages (`foliate-js`, …) or Python extras in `pyproject.toml` rebuilds those dep layers once; edits under `librarian/` or `frontend/src` reuse them.
 
@@ -87,7 +87,7 @@ The image is **multi-stage**. Node builds the Vite SPA; a slim Python runtime co
 | apt (`ca-certificates`, `gosu`, `unar`) | App and lockfiles change | Dockerfile apt list changes |
 | Frontend `npm ci` | `librarian/` or `frontend/src` changes | `frontend/package.json` / lock change |
 | BuildKit npm cache (`/root/.npm`) | Download cache across builds | Builder prune |
-| Python extras (`pip install ".[web]"` on a stub package) | `librarian/`, `frontend/src`, README, or LICENSE change | `pyproject.toml` extras / deps change |
+| Python extras (`pip install --require-hashes -r requirements.lock`) | `librarian/`, `frontend/src`, README, or LICENSE change | `pyproject.toml` extras / `requirements.lock` change |
 | BuildKit pip cache (`/root/.cache/pip`) | Wheel cache across builds | Builder prune |
 | `npm run build` + `pip install --no-deps` | Dep manifests unchanged | Frontend tree or `librarian/` source change |
 | Identity (`ARG` / `LABEL` / `/app/.build-info`) | Declared **after** apt/pip so stamps do not reinstall deps | Every rebuild (intentional) |

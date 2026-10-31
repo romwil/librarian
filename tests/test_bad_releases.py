@@ -239,7 +239,7 @@ def test_completed_no_payload_download_goes_back_to_wanted(db, tmp_path):
     assert (folder / "Dune.nfo").is_file()
 
 
-def test_second_failed_comic_convert_releases_instead_of_slip(db, tmp_path, monkeypatch):
+def test_second_failed_comic_convert_is_a_sorting_slip(db, tmp_path, monkeypatch):
     from librarian.organize import organize_identified
 
     wanted = _want(db, title="Saga 1")
@@ -271,15 +271,18 @@ def test_second_failed_comic_convert_releases_instead_of_slip(db, tmp_path, monk
         move_source=True,
     )
     assert len(calls) == 2
-    assert result.get("released_bad") is True
-    assert result["work"] is None
-    assert db.count_works(review_state="needs_review") == 0
-    assert db.get_wanted(wanted["id"])["status"] == "wanted"
-    assert db.list_bad_indexer_releases()[0]["reason"] == "convert_failed"
+    assert result.get("released_bad") is not True
+    work = result["work"]
+    assert work is not None
+    assert work["review_reason"] == "convert_failed"
+    assert work["review_state"] == "needs_review"
+    assert db.count_works(review_state="needs_review") == 1
+    assert db.get_wanted(wanted["id"])["status"] == "asked"
+    assert db.list_bad_indexer_releases() == []
     assert (folder / "Saga 001 (2012).cbr").is_file()
 
 
-def test_second_failed_convert_without_wanted_does_not_open_a_slip(db, tmp_path, monkeypatch):
+def test_second_failed_convert_without_wanted_is_a_sorting_slip(db, tmp_path, monkeypatch):
     from librarian.organize import organize_identified
 
     folder = tmp_path / "complete" / "Saga 001"
@@ -305,11 +308,14 @@ def test_second_failed_convert_without_wanted_does_not_open_a_slip(db, tmp_path,
         },
         move_source=True,
     )
-    assert result.get("dismissed_bad") is True
-    assert result.get("work") is None
-    assert db.count_works(review_state="needs_review") == 0
+    assert result.get("dismissed_bad") is not True
+    work = result["work"]
+    assert work is not None
+    assert work["review_reason"] == "convert_failed"
+    assert work["review_state"] == "needs_review"
+    assert db.count_works(review_state="needs_review") == 1
     assert db.count_wanted(include_dismissed=True) == 0
-    assert db.list_bad_indexer_releases()[0]["guid"] == "guid-cbr"
+    assert db.list_bad_indexer_releases() == []
     assert (folder / "Saga 001 (2012).cbr").is_file()
 
 

@@ -1,6 +1,25 @@
 {
-  "generated_at": "2026-10-28T04:51:39Z",
+  "generated_at": "2026-10-31T04:56:47Z",
   "releases": [
+    {
+      "version": "0.6.1",
+      "date": "2026-10-31",
+      "summary": "",
+      "highlights": [
+        "**Convert-slip CI.** A comic that fails conversion twice stays on the Sorting desk as a `convert_failed` slip instead of vanishing as a silent bad-release dismiss. GitHub Actions now runs pytest (coverage ≥70%), frontend unit tests, and Playwright on **8794** before merge. Python extras are hash-locked with upper bounds so a host rebuild is the same app that passed the gate, and e2e always rebuilds `frontend/dist`."
+      ],
+      "sections": [
+        {
+          "title": "Changed",
+          "bullets": [
+            "Second failed conversion → Sorting slip (BD-3). `test_convert_that_fails_twice_is_a_slip` is the product contract.",
+            "`requirements.lock` / `requirements-dev.lock` (hashed); Dockerfile `pip install --require-hashes`.",
+            "Playwright launcher rebuilds the SPA unless `E2E_SKIP_BUILD=1`.",
+            "Invariant test: poller / Wanted search never call SABnzbd `addfile` (PRD-001)."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.5.23",
       "date": "2026-10-20",

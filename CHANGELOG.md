@@ -14,6 +14,19 @@
 - **Maintain indexer lanterns.** Lights Down no longer paints pale paper cards with tan status copy. Lantern names, weather sentences, and Mute sit on raised leather; an idle host is a hollow ring so flicker vs silent is not hue-only. Safe undo uses the same dark wash. Lights Up stays ink on paper.
 - **Library card text size.** Clicking Text size or the slider no longer closes the Library card. Ambient room layering had flattened the topbar under Hall, so the panel was visible through empty Hall and the click counted as outside; range thumb retargets onto `document` are hit-tested too.
 
+## [0.6.1] — 2026-10-31
+
+### Highlights
+
+- **Convert-slip CI.** A comic that fails conversion twice stays on the Sorting desk as a `convert_failed` slip instead of vanishing as a silent bad-release dismiss. GitHub Actions now runs pytest (coverage ≥70%), frontend unit tests, and Playwright on **8794** before merge. Python extras are hash-locked with upper bounds so a host rebuild is the same app that passed the gate, and e2e always rebuilds `frontend/dist`.
+
+### Changed
+
+- Second failed conversion → Sorting slip (BD-3). `test_convert_that_fails_twice_is_a_slip` is the product contract.
+- `requirements.lock` / `requirements-dev.lock` (hashed); Dockerfile `pip install --require-hashes`.
+- Playwright launcher rebuilds the SPA unless `E2E_SKIP_BUILD=1`.
+- Invariant test: poller / Wanted search never call SABnzbd `addfile` (PRD-001).
+
 ## [0.5.23] — 2026-10-20
 
 ### Highlights
