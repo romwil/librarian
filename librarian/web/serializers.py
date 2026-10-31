@@ -112,6 +112,19 @@ def public_editions(rows: Iterable[Any]) -> list:
     return [public_edition(row) for row in rows if row]
 
 
+_PUBLIC_AUTHOR_KEYS: tuple[str, ...] = ("id", "display_name", "sort_name")
+
+
+def public_author(row: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    if row is None:
+        return None
+    return _pick(row, _PUBLIC_AUTHOR_KEYS)
+
+
+def public_authors(rows: Iterable[Any]) -> list:
+    return [public_author(row) for row in rows if row]
+
+
 def public_work_admin(row: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     """Owner/op work shape: public fields plus folder_path / repair counters.
 

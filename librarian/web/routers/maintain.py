@@ -13,6 +13,7 @@ from librarian.audiobookshelf import match_audiobooks
 from librarian.auth import require_role
 from librarian.backup import backup_dir_for, backup_status
 from librarian.calibre_renormalize import assemble_calibre_renormalize
+from librarian.catalog_merge import MergeRefused, apply_duplicate_merge, preview_duplicate_merge
 from librarian.cleanup import cleanup_library, restore_quarantine
 from librarian.cleanup import read_progress as read_cleanup_progress
 from librarian.config import save_settings
@@ -341,6 +342,25 @@ def register_maintain_routes(app: FastAPI, deps: WebDeps) -> None:
         """One graceful ritual: copy Calibre dump into books_root (never move)."""
         require_role(current_user(request), "owner")
         return assemble_calibre_renormalize(settings(), apply=True, limit=None)
+
+    @app.get("/api/maintain/duplicate-merge/preview")
+    def maintain_duplicate_merge_preview(request: Request):
+        """Dry-run duplicate groups. Does not write. Snapshot is required to apply."""
+        require_role(current_user(request), "owner")
+        return preview_duplicate_merge(db)
+
+    @app.post("/api/maintain/duplicate-merge")
+    def maintain_duplicate_merge(request: Request):
+        """Merge automatic duplicate groups after a named snapshot.
+
+        Rollback is that snapshot, not Safe undo. Do not run against live
+        Automat until the owner has walked a clone.
+        """
+        require_role(current_user(request), "owner")
+        try:
+            return apply_duplicate_merge(db, settings=settings(), data_dir=root, snapshot=True)
+        except MergeRefused as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
 
     @app.get("/api/maintain/purge-shells/preview")
     def maintain_purge_shells_preview(request: Request, limit: int = 0):

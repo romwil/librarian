@@ -196,7 +196,6 @@ class CatalogRepository(RepositoryBase):
                             work_id,
                         ),
                     )
-                    conn.execute("DELETE FROM works_fts WHERE work_id = ?", (work_id,))
                 else:
                     conn.execute(
                         """
@@ -247,19 +246,9 @@ class CatalogRepository(RepositoryBase):
                             payload["updated_at"],
                         ),
                     )
-                conn.execute(
-                    """
-                    INSERT INTO works_fts (work_id, title, author, genre, description)
-                    VALUES (?, ?, ?, ?, ?)
-                    """,
-                    (
-                        work_id,
-                        payload["title"] or "",
-                        payload["author"] or "",
-                        payload["genre"] or "",
-                        payload["description"] or "",
-                    ),
-                )
+                from librarian.canonical import sync_work_canonical
+
+                sync_work_canonical(conn, payload)
         self.run_write(_write, label='upsert_work')
         row = self.get_work(work_id)
         assert row is not None
@@ -294,13 +283,8 @@ class CatalogRepository(RepositoryBase):
 
         def _write() -> Any:
             with self._connect() as conn:
-                conn.execute("DELETE FROM files WHERE work_id = ?", (wid,))
-                conn.execute("DELETE FROM shelf_items WHERE work_id = ?", (wid,))
-                conn.execute("DELETE FROM progress WHERE work_id = ?", (wid,))
-                conn.execute("DELETE FROM whispers WHERE work_id = ?", (wid,))
-                conn.execute("DELETE FROM works_fts WHERE work_id = ?", (wid,))
-                conn.execute("DELETE FROM jobs WHERE work_id = ?", (wid,))
-                conn.execute("DELETE FROM review_diagnosis WHERE work_id = ?", (wid,))
+                # Child rows cascade (editions, files, work_authors, review_diagnosis, …).
+                # jobs/wanted SET NULL. FTS follows via works_ad_fts.
                 conn.execute("DELETE FROM works WHERE id = ?", (wid,))
 
         self.run_write(_write, label="delete_work")
@@ -430,17 +414,42 @@ class CatalogRepository(RepositoryBase):
         digits = re.sub(r"[^0-9Xx]", "", isbn or "").upper()
         if not digits:
             return None
+        from librarian.identity.isbn import canonical_isbn13
+
+        isbn13 = canonical_isbn13(isbn) or digits
         with self._connect() as conn:
             row = conn.execute(
                 """
-                SELECT * FROM works
-                WHERE kind = 'book' AND isbn IS NOT NULL AND isbn != ''
-                  AND replace(replace(upper(isbn), '-', ''), ' ', '') = ?
-                ORDER BY updated_at DESC
+                SELECT w.* FROM works w
+                WHERE w.kind = 'book' AND w.isbn IS NOT NULL AND w.isbn != ''
+                  AND replace(replace(upper(w.isbn), '-', ''), ' ', '') = ?
+                ORDER BY w.updated_at DESC
                 LIMIT 1
                 """,
                 (digits,),
             ).fetchone()
+            if row is None:
+                row = conn.execute(
+                    """
+                    SELECT w.* FROM works w
+                    JOIN work_identifiers i ON i.work_id = w.id
+                    WHERE i.scheme = 'isbn13' AND i.value = ?
+                    ORDER BY w.updated_at DESC
+                    LIMIT 1
+                    """,
+                    (isbn13,),
+                ).fetchone()
+            if row is None:
+                row = conn.execute(
+                    """
+                    SELECT w.* FROM works w
+                    JOIN editions e ON e.work_id = w.id
+                    WHERE e.isbn13 = ?
+                    ORDER BY w.updated_at DESC
+                    LIMIT 1
+                    """,
+                    (isbn13,),
+                ).fetchone()
         return _row_dict(row)
 
     def get_work_by_series_issue(
@@ -900,8 +909,26 @@ class CatalogRepository(RepositoryBase):
             clauses.append("w.kind = ?")
             args.append(kind)
         if author:
-            clauses.append("lower(trim(w.author)) = lower(?)")
-            args.append(author.strip())
+            needle = author.strip()
+            clauses.append(
+                """(
+                    EXISTS (
+                        SELECT 1 FROM work_authors wa
+                        JOIN authors a ON a.id = wa.author_id
+                        LEFT JOIN author_aliases aa ON aa.author_id = a.id
+                        WHERE wa.work_id = w.id
+                          AND (
+                            lower(trim(a.display_name)) = lower(?)
+                            OR lower(trim(aa.alias)) = lower(?)
+                          )
+                    )
+                    OR (
+                        NOT EXISTS (SELECT 1 FROM work_authors wa2 WHERE wa2.work_id = w.id)
+                        AND lower(trim(w.author)) = lower(?)
+                    )
+                )"""
+            )
+            args.extend([needle, needle, needle])
         if series:
             clauses.append("lower(trim(w.series_name)) = lower(?)")
             args.append(series.strip())
@@ -1068,12 +1095,13 @@ class CatalogRepository(RepositoryBase):
             ).fetchall()
             author_rows = conn.execute(
                 f"""
-                SELECT w.author AS name, COUNT(DISTINCT w.id) AS n
+                SELECT a.display_name AS name, COUNT(DISTINCT w.id) AS n
                 FROM {from_sql}
+                JOIN work_authors wa ON wa.work_id = w.id
+                JOIN authors a ON a.id = wa.author_id
                 WHERE {where_sql}
-                  AND w.author IS NOT NULL AND trim(w.author) != ''
-                GROUP BY lower(trim(w.author))
-                ORDER BY n DESC, w.author COLLATE NOCASE ASC
+                GROUP BY a.id
+                ORDER BY n DESC, a.display_name COLLATE NOCASE ASC
                 LIMIT ?
                 """,
                 [*args, max(1, min(int(author_limit or 40), 100))],
@@ -1211,24 +1239,48 @@ class CatalogRepository(RepositoryBase):
             kind_sql = " AND w.kind = ?"
             args.append(kind)
         has_files = self._HAS_FILES_SQL.format(alias="w")
+        hits: List[Dict[str, Any]] = []
+        seen: set[str] = set()
         with self._connect() as conn:
             rows = conn.execute(
                 f"""
-                SELECT w.* FROM works w
-                WHERE w.isbn IS NOT NULL AND trim(w.isbn) != ''
-                  AND {has_files}
+                SELECT DISTINCT w.* FROM works w
+                LEFT JOIN work_identifiers i
+                    ON i.work_id = w.id AND i.scheme = 'isbn13'
+                LEFT JOIN editions e ON e.work_id = w.id
+                WHERE {has_files}
                   AND w.review_state != 'needs_review'
                   {kind_sql}
+                  AND (
+                    (w.isbn IS NOT NULL AND trim(w.isbn) != '')
+                    OR (i.value IS NOT NULL AND trim(i.value) != '')
+                    OR (e.isbn13 IS NOT NULL AND trim(e.isbn13) != '')
+                  )
                 """,
                 args,
             ).fetchall()
-        hits: List[Dict[str, Any]] = []
-        for row in rows:
-            item = _row_dict(row) or {}
-            if want.intersection(isbn_match_keys(str(item.get("isbn") or ""))):
-                hits.append(item)
-            if len(hits) >= int(limit):
-                break
+            extras: Dict[str, List[str]] = {}
+            for ident in conn.execute(
+                "SELECT work_id, value FROM work_identifiers WHERE scheme = 'isbn13'"
+            ):
+                extras.setdefault(str(ident["work_id"]), []).append(str(ident["value"] or ""))
+            for edition in conn.execute(
+                "SELECT work_id, isbn13 FROM editions WHERE isbn13 IS NOT NULL AND trim(isbn13) != ''"
+            ):
+                extras.setdefault(str(edition["work_id"]), []).append(str(edition["isbn13"] or ""))
+            for row in rows:
+                item = _row_dict(row) or {}
+                work_id = str(item.get("id") or "")
+                if work_id in seen:
+                    continue
+                keys = set(isbn_match_keys(str(item.get("isbn") or "")))
+                for extra in extras.get(work_id, []):
+                    keys.update(isbn_match_keys(extra))
+                if want.intersection(keys):
+                    seen.add(work_id)
+                    hits.append(item)
+                if len(hits) >= int(limit):
+                    break
         return hits
 
     def _search_works_text_column(

@@ -636,6 +636,14 @@ export default function WorkPage() {
         </div>
       </section>
       <div className="work-body">
+        {Array.isArray(data.authors) && data.authors.length ? (
+          <p className="muted" data-testid="work-authors">
+            {data.authors
+              .map((person) => person.display_name)
+              .filter(Boolean)
+              .join(" · ")}
+          </p>
+        ) : null}
         {Array.isArray(data.editions) && data.editions.length ? (
           <section aria-labelledby="work-editions-heading" data-testid="work-editions">
             <h2 id="work-editions-heading" className="kicker">

@@ -10,12 +10,14 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
+from librarian.backup import backup_dir_for, snapshot_named
 from librarian.file_identity import files_byte_identical
 from librarian.identify import list_payload_files
 from librarian.identify.paths import dest_layout
 from librarian.identity.authors import author_match_key, display_name, sort_name, split_authors
 from librarian.identity.isbn import canonical_isbn13
-from librarian.identity.titles import title_match_key, title_sort
+from librarian.identity.match import duplicate_groups
+from librarian.identity.titles import title_sort
 from librarian.kinds import KIND_AUDIOBOOK
 from librarian.metadata import write_audiobook_sidecars
 from librarian.progress_job import ProgressJob
@@ -109,55 +111,7 @@ def _authors(db: Any) -> int:
 
 
 def _groups(db: Any) -> tuple[list[list[str]], list[list[str]]]:
-    works = _rows(db, "SELECT id, kind, title, author, isbn, publisher FROM works ORDER BY created_at, id")
-    links: dict[str, set[str]] = defaultdict(set)
-    for row in _rows(db, "SELECT scheme, value, work_id FROM work_identifiers"):
-        if row["scheme"] in {"isbn13", "asin", "ol_work", "hardcover"}:
-            links[f"id:{row['scheme']}:{row['value']}"].add(row["work_id"])
-    for work in works:
-        isbn13 = canonical_isbn13(work.get("isbn"))
-        if isbn13:
-            links[f"id:isbn13:{isbn13}"].add(work["id"])
-    for row in _rows(db, "SELECT work_id, sha256 FROM files WHERE sha256 IS NOT NULL AND sha256 != ''"):
-        links[f"hash:{row['sha256']}"].add(row["work_id"])
-    automatic = [sorted(value) for value in links.values() if len(value) > 1]
-    # Coalesce overlapping evidence groups.
-    changed = True
-    while changed:
-        changed = False
-        for left in automatic[:]:
-            for right in automatic[:]:
-                if left is not right and set(left) & set(right):
-                    automatic.remove(left)
-                    automatic.remove(right)
-                    automatic.append(sorted(set(left) | set(right)))
-                    changed = True
-                    break
-            if changed:
-                break
-    auto_ids = {item for group in automatic for item in group}
-    normalized: dict[tuple[str, str], list[str]] = defaultdict(list)
-    for work in works:
-        key = (title_match_key(work["title"]), author_match_key(work["author"], db))
-        if all(key):
-            normalized[key].append(work["id"])
-    possible = []
-    for ids in normalized.values():
-        if len(ids) <= 1 or set(ids) <= auto_ids:
-            continue
-        matched = [work for work in works if work["id"] in ids]
-        known = [work["id"] for work in matched if canonical_isbn13(work.get("isbn"))]
-        isbns = {canonical_isbn13(work.get("isbn")) for work in matched if canonical_isbn13(work.get("isbn"))}
-        # Distinct validated ISBNs are editions of one title, even though their
-        # identifiers cannot be the same. The editions are retained on merge.
-        if len(known) > 1 and len(isbns) > 1:
-            automatic.append(sorted(known))
-            auto_ids.update(known)
-        if len(known) != len(ids):
-            possible.append(ids)
-        elif len(known) <= 1:
-            possible.append(ids)
-    return automatic, possible
+    return duplicate_groups(db)
 
 
 def _quarantine_root(settings: Any, today: str) -> Path:
@@ -229,10 +183,23 @@ def _merge_group(db: Any, ids: list[str], *, settings: Any, quarantine: Path) ->
                     (source, survivor),
                 )
                 conn.execute("UPDATE editions SET work_id=? WHERE work_id=?", (survivor, source))
+                conn.execute(
+                    """
+                    DELETE FROM work_identifiers
+                    WHERE work_id = ?
+                      AND EXISTS (
+                        SELECT 1 FROM work_identifiers kept
+                        WHERE kept.work_id = ?
+                          AND kept.scheme = work_identifiers.scheme
+                          AND kept.value = work_identifiers.value
+                      )
+                    """,
+                    (source, survivor),
+                )
                 conn.execute("UPDATE work_identifiers SET work_id=? WHERE work_id=?", (survivor, source))
                 conn.execute("INSERT OR IGNORE INTO work_authors(work_id,author_id) SELECT ?,author_id FROM work_authors WHERE work_id=?", (survivor, source))
                 conn.execute("DELETE FROM work_authors WHERE work_id=?", (source,))
-                conn.execute("DELETE FROM works_fts WHERE work_id=?", (source,))
+                conn.execute("DELETE FROM review_suggestions WHERE work_id=?", (source,))
                 conn.execute("DELETE FROM works WHERE id=?", (source,))
     _write(db, operation)
     return {"merged": len(ids) - 1, "moved_files": moved_files, "quarantined_bytes": quarantined, "entries": entries}
@@ -421,6 +388,11 @@ def cleanup_library(db: Any, settings: Any, *, apply: bool = False, data_dir: Pa
         PROGRESS.finish(root, result=report, finish_log=lambda *_: "Preview ready for owner approval.")
         PROGRESS.patch(root, awaiting_approval=True, report=report)
         return report
+    stamp = date.today().isoformat()
+    snapshot_file = snapshot_named(
+        db.path, backup_dir_for(root), f"pre-canonical-cleanup-{stamp}"
+    ).name
+    report["snapshot"] = snapshot_file
     quarantine = _quarantine_root(settings, date.today().isoformat())
     totals = {"merged": 0, "moved_files": 0, "quarantined_bytes": 0}
     manifest_entries: list[dict[str, str]] = []
@@ -429,7 +401,7 @@ def cleanup_library(db: Any, settings: Any, *, apply: bool = False, data_dir: Pa
         for key in totals:
             totals[key] += result[key]
         manifest_entries.extend(result["entries"])
-    # Keep title/author-only matches intact, but surface them in the existing Holds desk.
+    # Keep title/author-only matches intact, but surface them on Sorting.
     for group in possible:
         for work_id in group:
             def hold(work_id=work_id) -> None:

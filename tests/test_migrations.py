@@ -97,12 +97,12 @@ def _version_two_db(path):
 def test_steps_are_numbered_in_order():
     versions = [step.version for step in MIGRATIONS]
     assert versions == list(range(1, len(MIGRATIONS) + 1))
-    assert LATEST_VERSION == SCHEMA_VERSION == 7
+    assert LATEST_VERSION == SCHEMA_VERSION == 9
 
 
 def test_fresh_database_lands_on_latest_version(tmp_path):
     db = Database(tmp_path / "librarian.db")
-    assert db.schema_version == 7
+    assert db.schema_version == 9
     tables, indexes = _schema(tmp_path / "librarian.db")
     assert "source" in tables["wanted"]
     assert {"host_id", "guid", "wanted_id", "reason", "seen_count"} <= tables["bad_indexer_releases"]
@@ -115,6 +115,9 @@ def test_fresh_database_lands_on_latest_version(tmp_path):
     assert {"review_diagnosis", "sorting_undo"} <= set(tables)
     assert "disabled" in tables["users"]
     assert "idx_bad_indexer_releases_guid" in indexes
+    assert "idx_files_path" in indexes
+    assert "idx_works_isbn" in indexes
+    assert "idx_jobs_indexer_guid" in indexes
 
 
 def test_legacy_and_fresh_databases_end_on_the_same_schema(tmp_path):
@@ -124,7 +127,7 @@ def test_legacy_and_fresh_databases_end_on_the_same_schema(tmp_path):
     _legacy_db(legacy_path)
     legacy = Database(legacy_path)
 
-    assert legacy.schema_version == 7
+    assert legacy.schema_version == 9
     assert _schema(legacy_path) == _schema(fresh_path)
 
 
@@ -136,7 +139,7 @@ def test_version_two_and_fresh_databases_end_on_the_same_schema(tmp_path):
 
     version_two = Database(version_two_path)
 
-    assert version_two.schema_version == 7
+    assert version_two.schema_version == 9
     assert _schema(version_two_path) == _schema(fresh_path)
 
 
@@ -161,9 +164,41 @@ def test_reopening_does_not_rerun_steps(tmp_path):
 
     reopened = Database(path)
 
-    assert reopened.schema_version == 7
+    assert reopened.schema_version == 9
     # A second boot is a no-op: the FTS rebuild step does not run again.
     assert reopened.search_works("Kindred") == []
+
+
+def test_sorting_desk_catalog_upgrades_through_canonical(tmp_path):
+    """Automat 0.6.17 is user_version 7; boot of this build applies m0008+m0009."""
+    path = tmp_path / "sorting.db"
+    conn = sqlite3.connect(path)
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        for step in MIGRATIONS:
+            if step.version > 7:
+                break
+            step.apply(conn)
+            conn.execute(f"PRAGMA user_version = {int(step.version)}")
+        conn.commit()
+        assert schema_version(conn) == 7
+    finally:
+        conn.close()
+
+    db = Database(path)
+    try:
+        assert db.schema_version == 9
+        with db._connect() as upgraded:
+            parents = {
+                row[2] for row in upgraded.execute("PRAGMA foreign_key_list(review_diagnosis)")
+            }
+            assert "works" in parents
+            indexes = {
+                row[0] for row in upgraded.execute("SELECT name FROM sqlite_master WHERE type='index'")
+            }
+            assert "idx_files_path" in indexes
+    finally:
+        db.close()
 
 
 def test_newer_schema_is_left_untouched(tmp_path):
