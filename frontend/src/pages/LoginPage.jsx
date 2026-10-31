@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api.js";
-import { FieldLabel } from "../components/FieldHelp.jsx";
+import Alert from "../components/Alert.jsx";
+import Field from "../components/Field.jsx";
 import GlassDoor from "../components/GlassDoor.jsx";
 import PasswordField from "../components/PasswordField.jsx";
-import useDocumentTitle from "../hooks/useDocumentTitle.js";
+import usePageTitle from "../hooks/usePageTitle.js";
 import {
   FIELD_HELP,
   FOYER_LEDE,
@@ -21,7 +22,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [paste, setPaste] = useState("");
   const [error, setError] = useState("");
-  useDocumentTitle(PAGE_TITLE_SIGN_IN);
+  usePageTitle(PAGE_TITLE_SIGN_IN);
 
   async function onSubmit(event) {
     event.preventDefault();
@@ -52,22 +53,17 @@ export default function LoginPage() {
         lede={FOYER_LEDE}
         footer={<Link to="/join">Got an invite link?</Link>}
       >
-        {error ? (
-          <p className="alert" role="alert" aria-live="assertive">
-            {error}
-          </p>
-        ) : null}
+        {error ? <Alert>{error}</Alert> : null}
         <form className="login-form" onSubmit={onSubmit}>
-          <div className="field">
-            <FieldLabel htmlFor="login-name" label="Name" help={FIELD_HELP.loginName} />
-            <input
-              id="login-name"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              autoComplete="username"
-              required
-            />
-          </div>
+          <Field
+            id="login-name"
+            label="Name"
+            help={FIELD_HELP.loginName}
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            autoComplete="username"
+            required
+          />
           <PasswordField
             id="login-pass"
             label="Password"

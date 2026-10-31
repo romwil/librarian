@@ -105,7 +105,7 @@ describe("Search Discover", () => {
     assert.equal(discoverCalls().length, 0);
 
     await userEvent.click(toggle);
-    await screen.findByRole("button", { name: "Ebook 0" });
+    await screen.findByRole("button", { name: /^Ebook 0/ });
     assert.equal(discoverCalls().length, 1);
     const first = discoverUrl(0);
     assert.equal(first.pathname, "/api/discover");
@@ -120,7 +120,7 @@ describe("Search Discover", () => {
     assert.equal(discoverCalls().length, 1);
 
     await userEvent.click(screen.getByRole("button", { name: "Next" }));
-    await screen.findByRole("button", { name: "Ebook 12" });
+    await screen.findByRole("button", { name: /^Ebook 12/ });
     assert.equal(discoverCalls().length, 2);
     const second = discoverUrl(1);
     assert.equal(second.searchParams.get("cat"), "7020");
@@ -130,7 +130,7 @@ describe("Search Discover", () => {
     assert.equal(screen.getByRole("button", { name: "Next" }).disabled, true);
 
     await userEvent.click(screen.getByRole("button", { name: "Previous" }));
-    await screen.findByRole("button", { name: "Ebook 0" });
+    await screen.findByRole("button", { name: /^Ebook 0/ });
     assert.equal(discoverCalls().length, 3);
     assert.equal(discoverUrl(2).searchParams.get("cat"), "7020");
     assert.equal(discoverUrl(2).searchParams.get("limit"), "12");
@@ -142,7 +142,7 @@ describe("Search Discover", () => {
     await waitFor(() => assert.ok(searchCalls().length));
     assert.equal(discoverCalls().length, 0);
     await userEvent.click(screen.getByText("Discover"));
-    await screen.findByRole("button", { name: "Ebook 0" });
+    await screen.findByRole("button", { name: /^Ebook 0/ });
     assert.equal(discoverCalls().length, 1);
     assert.equal(discoverUrl(0).searchParams.get("cat"), "7020");
     assert.equal(discoverUrl(0).searchParams.get("limit"), "12");

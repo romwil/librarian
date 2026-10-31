@@ -141,8 +141,8 @@ test.describe("Hall", () => {
     await expect(page.getByRole("navigation", { name: "Shelves" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Books · 2" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Bedside · 3" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "The Lamp Novel", exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Night Radio", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^The Lamp Novel/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Night Radio/ })).toBeVisible();
     await expect(page.getByRole("region", { name: "Tonight’s shelf" })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Pick up where you left the lamp" })).toHaveCount(0);
     await expect(page.getByRole("region", { name: "Series catch-up" })).toHaveCount(0);
@@ -202,10 +202,14 @@ test.describe("Hall", () => {
     await expect(page.getByRole("heading", { name: "On the shelf" })).toBeVisible();
   });
 
-  test("skip link is not shown in the library chrome", async ({ page }) => {
+  test("skip link jumps keyboard focus to main", async ({ page }) => {
     await page.goto("/");
     await dismissWhatsNewIfPresent(page);
-    await expect(page.getByRole("link", { name: "Skip to library" })).toHaveCount(0);
-    await expect(page.getByRole("main")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Hall" })).toBeVisible();
+    const skip = page.getByRole("link", { name: "Skip to content" });
+    await skip.focus();
+    await expect(skip).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(page.locator("#main")).toBeFocused();
   });
 });

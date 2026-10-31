@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useOutletContext } from "react-router-dom";
 import { api } from "../api.js";
 import { browseHref } from "../browse.js";
+import Alert from "../components/Alert.jsx";
+import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import PasswordField from "../components/PasswordField.jsx";
 import Rail from "../components/Rail.jsx";
 import useDocumentTitle from "../hooks/useDocumentTitle.js";
@@ -17,6 +19,8 @@ import {
   PAGE_TITLE_CARD,
   PRIVACY_HEADING,
   SIGN_OUT_EVERYWHERE,
+  SIGN_OUT_EVERYWHERE_BODY,
+  SIGN_OUT_EVERYWHERE_TITLE,
   YOUR_ASKS,
   emptyLibraryCardCopy,
   humanError,
@@ -34,6 +38,7 @@ export default function CardPage() {
   const [accountNote, setAccountNote] = useState("");
   const [opdsUrl, setOpdsUrl] = useState("");
   const [opdsNote, setOpdsNote] = useState("");
+  const [signOutOpen, setSignOutOpen] = useState(false);
   useDocumentTitle(PAGE_TITLE_CARD);
 
   useEffect(() => {
@@ -134,11 +139,7 @@ export default function CardPage() {
         <p className="kicker">Library card</p>
         <h1>Your library</h1>
       </header>
-      {error ? (
-        <p className="alert" role="alert" aria-live="assertive">
-          {error}
-        </p>
-      ) : null}
+      {error ? <Alert>{error}</Alert> : null}
       {card && !error && !hasRails ? (
         <section className="empty-cta" data-testid="library-card-empty">
           <h2>{empty.title}</h2>
@@ -182,11 +183,7 @@ export default function CardPage() {
             <code>{opdsUrl}</code>
           </p>
         ) : null}
-        {opdsNote ? (
-          <p className="alert" role="status">
-            {opdsNote}
-          </p>
-        ) : null}
+        {opdsNote ? <Alert tone="status">{opdsNote}</Alert> : null}
         <button type="button" className="cta outline" onClick={onCopyOpds}>
           {OPDS_COPY}
         </button>
@@ -200,8 +197,8 @@ export default function CardPage() {
         <p className="kicker">Accessibility</p>
         <h2>A quieter door</h2>
         <p className="lede">
-          Unique page titles, announced sign-in errors, and a show-password control are on. A fuller accessibility
-          pass lands later.
+          Skip to content, a visible focus ring, announced alerts, and overlays that keep keyboard focus are on.
+          A VoiceOver script for login, join, Read, Listen, and Sorting lives in the household Help docs.
         </p>
       </section>
       <section className="card-panel" id="privacy" data-testid="privacy-panel">
@@ -216,11 +213,7 @@ export default function CardPage() {
       <section className="card-panel" id="account" data-testid="account-panel">
         <p className="kicker">{ACCOUNT_HEADING}</p>
         <h2>Your key</h2>
-        {accountNote ? (
-          <p className="alert" role="status">
-            {accountNote}
-          </p>
-        ) : null}
+        {accountNote ? <Alert tone="status">{accountNote}</Alert> : null}
         <form className="login-form" onSubmit={onChangePassword}>
           <PasswordField
             id="card-current-pass"
@@ -246,11 +239,21 @@ export default function CardPage() {
           <button type="button" className="cta outline" onClick={onExport}>
             {EXPORT_MY_CARD}
           </button>
-          <button type="button" className="cta ghost" onClick={onSignOutEverywhere}>
+          <button type="button" className="cta ghost" onClick={() => setSignOutOpen(true)}>
             {SIGN_OUT_EVERYWHERE}
           </button>
         </div>
       </section>
+      <ConfirmDialog
+        open={signOutOpen}
+        title={SIGN_OUT_EVERYWHERE_TITLE}
+        confirmLabel={SIGN_OUT_EVERYWHERE}
+        onConfirm={onSignOutEverywhere}
+        onCancel={() => setSignOutOpen(false)}
+        testId="sign-out-everywhere-dialog"
+      >
+        <p>{SIGN_OUT_EVERYWHERE_BODY}</p>
+      </ConfirmDialog>
     </div>
   );
 }

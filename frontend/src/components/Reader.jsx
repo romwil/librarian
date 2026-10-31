@@ -370,6 +370,8 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
           Close
         </button>
       </header>
+      {/* Comic stage click is paired with on-screen turn buttons and arrow keys. */}
+      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events -- see reader keyboard in this file */}
       <div
         className="reader-stage"
         data-engine={engine || undefined}

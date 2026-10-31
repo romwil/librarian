@@ -66,8 +66,8 @@ test.describe("Library availability", () => {
     await mockBrowse(page);
     await page.goto("/browse");
     await dismissWhatsNewIfPresent(page);
-    const circe = page.getByRole("button", { name: "Circe", exact: true });
-    const dune = page.getByRole("button", { name: "Dune", exact: true });
+    const circe = page.getByRole("button", { name: /^Circe/ });
+    const dune = page.getByRole("button", { name: /^Dune/ });
     await expect(circe).toBeVisible();
     await expect(circe).toContainText("Madeline Miller");
     await expect(dune).toBeVisible();

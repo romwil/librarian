@@ -6,21 +6,27 @@ export const E2E_OWNER = {
   password: process.env.LIBRARIAN_OWNER_PASSWORD || "e2e-password-ok",
 };
 
-/** Dismiss What’s New if it appears after first login for this runtime version. */
+/** Dismiss What’s New or reader welcome if either overlay is on top. */
 export async function dismissWhatsNewIfPresent(page: Page) {
-  // Gate loads release notes async — wait briefly so we do not race the backdrop.
+  // Gates load async — wait briefly so we do not race the backdrop.
   const gotIt = page.getByRole("button", { name: "Got it" });
+  const showHall = page.getByRole("button", { name: "Show me the Hall" });
   try {
-    await gotIt.waitFor({ state: "visible", timeout: 2500 });
+    await gotIt.or(showHall).waitFor({ state: "visible", timeout: 2500 });
   } catch {
     return;
   }
-  await gotIt.click();
-  await expect(gotIt).toHaveCount(0);
+  if (await gotIt.isVisible()) {
+    await gotIt.click();
+    await expect(gotIt).toHaveCount(0);
+    return;
+  }
+  await showHall.click();
+  await expect(showHall).toHaveCount(0);
 }
 
 /** Log in as the seeded e2e owner and land on the Hall. */
-export async function loginAsOwner(page: Page) {
+export async function loginAsOwner(page: Page, { dismissWhatsNew = true } = {}) {
   await page.goto("/login");
   await expect(page.getByRole("heading", { name: "The Reading Room" })).toBeVisible();
   await page.getByRole("textbox", { name: "Name" }).fill(E2E_OWNER.username);
@@ -29,5 +35,5 @@ export async function loginAsOwner(page: Page) {
   await expect(page.getByRole("heading", { name: "Hall" })).toBeVisible({
     timeout: 30_000,
   });
-  await dismissWhatsNewIfPresent(page);
+  if (dismissWhatsNew) await dismissWhatsNewIfPresent(page);
 }

@@ -154,13 +154,6 @@ export default function PartSetCard({
     peek.openWork({ ...item, beyond: true, job_status: jobs[itemKey(item)] }, { triggerEl: event?.currentTarget, onRequest });
   }
 
-  function onPartKeyDown(event, key) {
-    if (event.key === " " || event.key === "Enter") {
-      event.preventDefault();
-      if (!busy && !jobs[key]) toggle(key);
-    }
-  }
-
   return (
     <article
       className={`part-set${chasing ? " is-chasing" : ""}${collapsed && showFinish ? " is-finish" : ""}`}
@@ -250,9 +243,8 @@ export default function PartSetCard({
               <div
                 key={key}
                 className={`part-cell${checked ? " is-selected" : ""}`}
-                role="listitem"
-                tabIndex={0}
-                onKeyDown={(event) => onPartKeyDown(event, key)}
+                role="group"
+                aria-label={`Part ${part}`}
                 data-testid="part-cell"
               >
                 <label className="part-check">

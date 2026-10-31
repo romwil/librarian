@@ -1,20 +1,36 @@
+import { useRef } from "react";
 import { Link } from "react-router-dom";
+import useModal from "../hooks/useModal.js";
 import ReleaseNotesPanel from "./ReleaseNotesPanel.jsx";
 
 export default function WhatsNewModal({ open, version, release, onDismiss, onReadFull }) {
-  if (!open || !version) return null;
+  const panelRef = useRef(null);
+  const titleRef = useRef(null);
+  const shown = Boolean(open && version);
+
+  useModal({
+    open: shown,
+    onEscape: onDismiss,
+    panelRef,
+    initialFocusRef: titleRef,
+  });
+
+  if (!shown) return null;
 
   return (
-    <div className="whats-new-backdrop" data-testid="whats-new-modal" onClick={onDismiss}>
+    <div className="whats-new-backdrop" data-testid="whats-new-modal">
+      <button type="button" className="modal-scrim" aria-label="Close overlay" tabIndex={-1} onClick={onDismiss} />
       <div
+        ref={panelRef}
         className="whats-new-panel"
         role="dialog"
         aria-modal="true"
         aria-labelledby="whats-new-title"
-        onClick={(event) => event.stopPropagation()}
       >
         <div className="whats-new-header">
-          <h2 id="whats-new-title">What’s new in {version}</h2>
+          <h2 id="whats-new-title" ref={titleRef} tabIndex={-1}>
+            What’s new in {version}
+          </h2>
           <button
             type="button"
             className="cta ghost whats-new-close"
@@ -26,7 +42,7 @@ export default function WhatsNewModal({ open, version, release, onDismiss, onRea
           </button>
         </div>
 
-        <div className="whats-new-body">
+        <div className="whats-new-body" role="region" aria-label="Release notes">
           {release ? (
             <ReleaseNotesPanel releases={[release]} preferHighlights testId="whats-new-notes" />
           ) : (

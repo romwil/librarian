@@ -247,9 +247,9 @@ export default function CoverCard({ work, onRequest, badge, beyond = false, role
         style={{ "--cloth": work.cloth || clothFor(tip || work.title), "--progress": `${work.progress || 0}%` }}
         onClick={onClick}
         title={tip || undefined}
-        aria-label={hasArt && !isGap ? undefined : isGap ? `Find ${caption} beyond the shelves` : tip || caption}
+        aria-label={isGap ? `Find ${caption} beyond the shelves` : undefined}
       >
-        <span className="cover-meta" aria-hidden="true">
+        <span className="cover-meta" aria-hidden={hasArt || isGap ? "true" : undefined}>
           <strong>{overlay.title}</strong>
           <em>{overlay.byline}</em>
         </span>
@@ -346,7 +346,6 @@ export default function CoverCard({ work, onRequest, badge, beyond = false, role
             <button
               key={bead.value}
               type="button"
-              role="listitem"
               className={`gap-bead is-${bead.state}`}
               title={bead.state === "owned" ? `Owned ${bead.value}` : `Find ${bead.value}`}
               aria-label={bead.state === "owned" ? `Owned ${bead.value}` : `Find missing ${bead.value}`}

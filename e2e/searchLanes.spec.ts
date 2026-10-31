@@ -37,7 +37,7 @@ test.describe("Search lanes", () => {
     });
     const started = Date.now();
     await page.goto("/search?q=dune");
-    await expect(page.getByRole("button", { name: "Dune on the shelf" }).first()).toBeVisible({
+    await expect(page.getByRole("button", { name: /^Dune on the shelf/ }).first()).toBeVisible({
       timeout: 1000,
     });
     expect(Date.now() - started).toBeLessThan(1000);
@@ -75,7 +75,7 @@ test.describe("Search lanes", () => {
       });
     });
     await page.goto("/search?q=dune");
-    await expect(page.getByRole("button", { name: "Dune on the shelf" }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Dune on the shelf/ }).first()).toBeVisible();
     await expect(page.getByRole("button", { name: "Ask the house" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Beyond the shelves" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Discover" })).toHaveCount(0);

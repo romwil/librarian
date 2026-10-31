@@ -1,6 +1,25 @@
 {
-  "generated_at": "2026-10-31T09:24:26Z",
+  "generated_at": "2026-10-31T10:20:35Z",
   "releases": [
+    {
+      "version": "1.0.0",
+      "date": "2026-10-31",
+      "summary": "",
+      "highlights": [
+        "**Invite-ready.** Skip to content, a visible focus ring, announced alerts, and overlays that keep keyboard focus. axe-core walks 20+ states including join, What’s New, Ask the house, Queue to SAB, purge confirm, and Sorting group preview. A VoiceOver script for login, join, Read, Listen, and Sorting is in the docs. Confirm on Downloads is still the only way a download starts.",
+        "**Owner checklist.** Public URL, a timed Sorting morning, naming the unshelved shells, and mail-off-until-you-want-it stay owner work. This release does not mint household invites and does not purge the live catalog."
+      ],
+      "sections": [
+        {
+          "title": "Changed",
+          "bullets": [
+            "Shared `<Alert>`, `<Field>`, `usePageTitle`, and `useModal`. Library card is a disclosure, not a `role=\"menu\"`. `eslint-plugin-jsx-a11y` runs in CI.",
+            "Queue to SAB and Sign out everywhere open a confirm dialog. A minted invite is shown once in a dialog.",
+            "First VoiceOver script: [docs/a11y/VOICEOVER.md](docs/a11y/VOICEOVER.md). Owner invite steps: [docs/ops/INVITE_CHECKLIST.md](docs/ops/INVITE_CHECKLIST.md)."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.6.21",
       "date": "2026-10-31",
