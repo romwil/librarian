@@ -177,52 +177,162 @@ def _annotate_slip(work: Dict[str, Any], job: Optional[Mapping[str, Any]], db: A
             work["match_candidates"] = []
 
 
-def review_desk(db: Any, cfg: Any, *, root: Path, focus: str = "") -> Dict[str, Any]:
-    """``GET /api/review``: open slips with diagnosis, actions, and persisted model triage."""
-    # Slip pruning scans the catalog and deletes rows. The poller already
-    # sweeps; doing it here stalls the desk while purge is fingerprinting.
+def _annotate_slip_from_cache(
+    work: Dict[str, Any],
+    job: Optional[Mapping[str, Any]],
+    db: Any,
+    llm_ok: bool,
+    *,
+    diagnosis: Optional[Mapping[str, Any]] = None,
+    suggestion: Optional[Mapping[str, Any]] = None,
+) -> None:
+    """Shape one desk row from cached diagnosis. Does not walk the folder."""
+    from librarian.organize import review_slip_actions, shelf_work_for_collision
+    from librarian.slip_gate import parse_library_volume
+
+    storage = str((job or {}).get("storage_path") or "")
+    work["storage_path"] = storage or None
+    if not work.get("folder_path") and storage:
+        work["folder_path"] = storage
+    folder_raw = str(work.get("folder_path") or storage or "")
+    cached = dict(diagnosis or {})
+    work["folder_diagnosis"] = cached
+    if cached.get("path_clear") and str(work.get("kind") or "") == "book":
+        parsed = parse_library_volume(Path(folder_raw)) if folder_raw else None
+        if parsed and str(work.get("review_reason") or "") in {REVIEW_LOW, REVIEW_UNKNOWN, ""}:
+            work["author"] = parsed["author"]
+            work["title"] = parsed["title"]
+            if parsed.get("series_name"):
+                work["series_name"] = parsed["series_name"]
+    problem = cached.get("problem")
+    stored = str(work.get("review_reason") or "")
+    if problem == REVIEW_UNPACK_STUCK and stored in {"", REVIEW_NO_PAYLOAD}:
+        work["review_reason"] = REVIEW_UNPACK_STUCK
+    shelf = shelf_work_for_collision(db, work)
+    work["shelf_work"] = public_work_admin(shelf) if shelf else None
+    work["actions"] = review_slip_actions(work, cached, llm_configured=llm_ok)
+    work["match_candidates"] = []
+    work["llm_triage"] = public_triage(suggestion)
+    work["effective_reason"] = effective_review_reason(
+        {**work, "review_reason": work.get("review_reason")},
+        cached,
+        suggestion,
+    )
+
+
+def review_desk(
+    db: Any,
+    cfg: Any,
+    *,
+    root: Path,
+    focus: str = "",
+    reason: str = "",
+    cursor: str = "",
+    limit: int = 25,
+) -> Dict[str, Any]:
+    """``GET /api/review``: paginated slips. Diagnosis comes from the table, not rglob."""
     from librarian.llm_providers import resolve_llm_connection
     from librarian.owned_slip import owned_slip_note
+    from librarian.review_diagnosis import (
+        PAGE_LIMIT_DEFAULT,
+        PAGE_LIMIT_MAX,
+        counts_by_effective_reason,
+        diagnosis_from_row,
+        list_review_page,
+    )
+    from librarian.sorting_undo import public_undo
 
     note = owned_slip_note(db)
     llm_ok = bool(resolve_llm_connection(cfg).get("api_key"))
-    works = public_works_admin(db.list_works(review_state="needs_review", limit=80))
+    counts = counts_by_effective_reason(db)
+    total = int(sum(counts.values()))
+    page = list_review_page(
+        db,
+        reason=reason,
+        cursor=cursor,
+        limit=min(PAGE_LIMIT_MAX, max(1, int(limit or PAGE_LIMIT_DEFAULT))),
+    )
+    raw_rows = page["rows"]
+    works = public_works_admin(raw_rows)
+    by_id = {str(row.get("id") or ""): row for row in raw_rows}
     focus = str(focus or "").strip()
     if focus and all(str(row.get("id") or "") != focus for row in works):
         pinned = db.get_work(focus)
         if pinned and str(pinned.get("review_state") or "") == "needs_review":
             works.insert(0, public_work_admin(pinned))
+            cached = db.get_review_diagnoses([focus]).get(focus) or {}
+            by_id[focus] = {
+                **pinned,
+                "_diagnosis_json": cached.get("diagnosis_json"),
+            }
     jobs_by_work: Dict[str, Any] = {}
     for job in db.list_jobs(limit=200):
         work_id = job.get("work_id")
         if work_id and work_id not in jobs_by_work:
             jobs_by_work[work_id] = job
-    for work in works:
-        job = jobs_by_work.get(work["id"]) if work else None
-        _annotate_slip(work, job, db, cfg, llm_ok)
-    suggestions = db.get_review_suggestions([str(w.get("id") or "") for w in works if w])
     needs_owner = db.review_audit_work_ids(NEEDS_OWNER_ACTION)
     for work in works:
-        row = suggestions.get(str(work.get("id") or ""))
-        work["llm_triage"] = public_triage(row)
-        work["effective_reason"] = effective_review_reason(
-            {**work, "review_reason": work.get("review_reason")},
-            work.get("folder_diagnosis") or {},
-            row,
+        source = by_id.get(str(work.get("id") or ""), {})
+        suggestion = None
+        if source.get("_suggestion_outcome"):
+            suggestion = {
+                "outcome": source.get("_suggestion_outcome"),
+                "suggestion": source.get("_suggestion_json"),
+                "explanation": source.get("_suggestion_explanation") or "",
+                "updated_at": source.get("_suggestion_updated_at"),
+            }
+            if isinstance(suggestion["suggestion"], str):
+                from librarian.repositories._base import _loads
+
+                suggestion["suggestion"] = _loads(suggestion["suggestion"], None)
+        _annotate_slip_from_cache(
+            work,
+            jobs_by_work.get(work["id"]) if work else None,
+            db,
+            llm_ok,
+            diagnosis=diagnosis_from_row(source),
+            suggestion=suggestion,
         )
         if (
             str(work.get("id") or "") in needs_owner
             and str(work.get("review_reason") or "") in BAD_RELEASE_REASONS
         ):
             work["owner_decision_note"] = NEEDS_OWNER_NOTE
+    extra_files_count = int(counts.get(REVIEW_EXTRA) or 0)
     return {
+        "items": works,
         "works": works,
+        "next_cursor": page["next_cursor"],
+        "counts_by_reason": counts,
+        "total": total,
         "llm_configured": llm_ok,
-        "extra_files_count": db.count_works(review_state="needs_review", review_reason=REVIEW_EXTRA),
-        "needs_review_count": db.count_works(review_state="needs_review"),
+        "extra_files_count": extra_files_count,
+        "needs_review_count": total,
         "owned_slip_note": note,
         "bad_release_migration": bad_release_migration_status(db, root),
+        "undo": public_undo(db),
     }
+
+
+def review_candidates(db: Any, cfg: Any, *, work_id: str) -> Dict[str, Any]:
+    """Lazy match candidates for the slip drawer. Not loaded on the desk GET."""
+    from librarian.enrich import list_match_candidates
+
+    work = _require_work(db, work_id)
+    if str(work.get("review_state") or "") != "needs_review":
+        return {"candidates": []}
+    reason = str(work.get("review_reason") or "")
+    if work.get("kind") != "comic" or reason not in (
+        REVIEW_COMICVINE_AMBIGUOUS,
+        REVIEW_COMICVINE_UNMATCHED,
+        REVIEW_LOW,
+        REVIEW_UNKNOWN,
+    ):
+        return {"candidates": []}
+    try:
+        return {"candidates": list_match_candidates(work, settings=cfg, limit=6)}
+    except Exception:
+        return {"candidates": []}
 
 
 # --- bulk motions ------------------------------------------------------------
@@ -233,6 +343,8 @@ def bulk_motion(db: Any, cfg: Any, *, root: Path, payload: Mapping[str, Any]) ->
     raw_ids = payload.get("work_ids")
     work_ids = [str(item) for item in raw_ids] if isinstance(raw_ids, list) else None
     try:
+        confirm = payload.get("confirm_count")
+        confirm_count = int(confirm) if confirm is not None and str(confirm) != "" else None
         return bulk_by_reason(
             db,
             cfg,
@@ -241,6 +353,7 @@ def bulk_motion(db: Any, cfg: Any, *, root: Path, payload: Mapping[str, Any]) ->
             work_ids=work_ids,
             dry_run=bool(payload.get("dry_run")),
             data_dir=root,
+            confirm_count=confirm_count,
         )
     except BulkError as error:
         raise ServiceError(str(error)) from error

@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
 import WarmLoad from "../components/WarmLoad.jsx";
-import { jobChipTone, jobHouseholdLabel, jobNeedsYouReason, jobQueueDetail } from "../cover.js";
-import { emptyQueueCopy, humanError, queueNeedsYouHelp } from "../copy.js";
+import { jobChipTone, jobHouseholdLabel, jobNeedsYouReason, sortQueueNeedsYouFirst } from "../cover.js";
+import { PAGE_TITLE_DOWNLOADS, emptyQueueCopy, humanError, queueNeedsYouHelp } from "../copy.js";
+import useDocumentTitle from "../hooks/useDocumentTitle.js";
 
 function isUnpackStuck(job) {
   const reason = String(job?.review_reason || "").trim();
@@ -11,10 +12,16 @@ function isUnpackStuck(job) {
   return reason === "unpack_stuck" || problem === "unpack_stuck";
 }
 
+function jobPath(job) {
+  const payload = job.payload && typeof job.payload === "object" ? job.payload : {};
+  return String(job.storage_path || payload.path || "").trim();
+}
+
 export default function QueuePage() {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  useDocumentTitle(PAGE_TITLE_DOWNLOADS);
 
   function reload() {
     setLoading(true);
@@ -33,31 +40,35 @@ export default function QueuePage() {
 
   useEffect(reload, []);
 
-  const hasNeedsYou = jobs.some((job) => job.status === "review");
+  const listed = sortQueueNeedsYouFirst(jobs);
+  const hasNeedsYou = listed.some((job) => job.status === "review");
 
   return (
-    <div className="admin-room page-settle">
-      <p className="kicker">Exceptions</p>
-      <h1>Queue</h1>
-      <p className="lede">Living chips live on Find cards. This list is for asked slips, SAB jobs, and volumes being filed.</p>
+    <div className="admin-room page-settle queue-page" data-density="compact">
+      <p className="kicker">Downloads</p>
+      <h1>Downloads</h1>
+      <p className="lede">Asked slips, SAB jobs, and volumes being filed. Living chips live on Find cards.</p>
       {hasNeedsYou ? <p className="empty-note" data-testid="queue-needs-you-help">{queueNeedsYouHelp()}</p> : null}
       {error ? <p className="alert">{error}</p> : null}
       {loading ? (
-        <WarmLoad message="Warming the lamp on the Queue…" testId="queue-loading" />
+        <WarmLoad message="Warming the lamp on Downloads…" testId="queue-loading" />
       ) : null}
       {!loading && !jobs.length ? <p className="empty-note">{emptyQueueCopy()}</p> : null}
       <ul className="stack">
         {!loading
-          ? jobs.map((job) => {
+          ? listed.map((job) => {
               const household = jobHouseholdLabel(job.status) || job.status;
               const tone = jobChipTone(job.status);
               const needsYou = jobNeedsYouReason(job);
-              const raw = jobQueueDetail(job);
+              const path = jobPath(job);
+              const nzo = String(job.nzo_id || "").trim();
+              const fail = String(job.error || "").trim();
               const reviewTo = job.work_id ? `/review?work=${encodeURIComponent(job.work_id)}` : "/review";
               const unpack = isUnpackStuck(job);
+              const actionableFail = job.status === "failed" || job.status === "skipped";
               return (
-                <li key={job.id} className="card" data-testid="queue-job" data-status={job.status || ""}>
-                  <strong>{job.title || job.nzo_id || job.id}</strong>
+                <li key={job.id} className="card queue-job" data-testid="queue-job" data-status={job.status || ""}>
+                  <strong className="queue-job-title">{job.title || job.nzo_id || job.id}</strong>
                   <p className="chip-row" data-testid="queue-household">
                     <span className={["live-chip", tone].filter(Boolean).join(" ")}>{household}</span>
                     {unpack ? (
@@ -67,27 +78,76 @@ export default function QueuePage() {
                     ) : null}
                   </p>
                   {needsYou ? <p data-testid="queue-needs-you-reason">{needsYou}</p> : null}
-                  {raw ? <p className="muted" data-testid="queue-ops-detail">{raw}</p> : null}
+                  {fail && job.status === "failed" ? <p data-testid="queue-fail-message">{fail}</p> : null}
+                  {path || nzo ? (
+                    <details className="queue-job-details">
+                      <summary>Details</summary>
+                      {path ? <p className="muted" data-testid="queue-ops-detail">{path}</p> : null}
+                      {nzo ? <p className="muted">{nzo}</p> : null}
+                    </details>
+                  ) : null}
                   {job.status === "review" ? (
                     <div className="cta-row">
                       <Link className="cta" to={reviewTo} data-testid="queue-open-review">
-                        Open Review
+                        Open Sorting
                       </Link>
                     </div>
                   ) : null}
                   {job.status === "asked" ? (
-                    <button
-                      type="button"
-                      className="cta"
-                      onClick={() =>
-                        api
-                          .confirmJob(job.id)
-                          .then(reload)
-                          .catch((err) => setError(humanError(err)))
-                      }
-                    >
-                      Queue to SAB
-                    </button>
+                    <div className="cta-row">
+                      <button
+                        type="button"
+                        className="cta"
+                        onClick={() =>
+                          api
+                            .confirmJob(job.id)
+                            .then(reload)
+                            .catch((err) => setError(humanError(err)))
+                        }
+                      >
+                        Queue to SAB
+                      </button>
+                      <button
+                        type="button"
+                        className="cta outline"
+                        onClick={() =>
+                          api
+                            .dismissJob(job.id)
+                            .then(reload)
+                            .catch((err) => setError(humanError(err)))
+                        }
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  ) : null}
+                  {actionableFail ? (
+                    <div className="cta-row">
+                      <button
+                        type="button"
+                        className="cta"
+                        onClick={() =>
+                          api
+                            .retryJob(job.id)
+                            .then(reload)
+                            .catch((err) => setError(humanError(err)))
+                        }
+                      >
+                        Try again
+                      </button>
+                      <button
+                        type="button"
+                        className="cta outline"
+                        onClick={() =>
+                          api
+                            .dismissJob(job.id)
+                            .then(reload)
+                            .catch((err) => setError(humanError(err)))
+                        }
+                      >
+                        Dismiss
+                      </button>
+                    </div>
                   ) : null}
                 </li>
               );

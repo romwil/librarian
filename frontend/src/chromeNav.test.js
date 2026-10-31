@@ -11,15 +11,16 @@ const menuSrc = readFileSync(join(root, "components/ProfileMenu.jsx"), "utf8");
 const mainSrc = readFileSync(join(root, "main.jsx"), "utf8");
 const stylesSrc = readStyles();
 
-test("top nav is Hall, Stacks, Search, Favorites, and Wanted, with Downloads and Holds for owner and op", () => {
+test("top nav is Hall, Stacks, Search, Favorites, and Wanted, with Downloads and Sorting for owner and op", () => {
   assert.match(chromeSrc, />\s*Hall\s*</);
   assert.match(chromeSrc, />\s*Stacks\s*</);
   assert.match(chromeSrc, />\s*Search\s*</);
   assert.match(chromeSrc, />\s*Favorites\s*</);
   assert.match(chromeSrc, />\s*Wanted\s*</);
-  assert.match(chromeSrc, />\s*Downloads\s*</);
-  assert.match(chromeSrc, /holdsLabel/);
-  assert.match(chromeSrc, /Holds \$\{reviewCount\}/);
+  assert.match(chromeSrc, /DOWNLOADS_NAV/);
+  assert.match(chromeSrc, /SORTING_NAV/);
+  assert.match(chromeSrc, /sortingLabel/);
+  assert.doesNotMatch(chromeSrc, /Place a hold/);
   assert.equal(chromeSrc.includes(">Noted<"), false);
   assert.equal(chromeSrc.includes("Review bag"), false);
   assert.equal(chromeSrc.includes("bag-glyph"), false);
@@ -36,7 +37,7 @@ test("account menu holds theme, People, Maintain, and Settings", () => {
   assert.match(menuSrc, />\s*Maintain\s*</);
   assert.match(menuSrc, />\s*Settings\s*</);
   assert.match(menuSrc, />\s*Downloads\s*</);
-  assert.match(menuSrc, />\s*Holds\s*</);
+  assert.match(menuSrc, />\s*Sorting\s*</);
   assert.equal(chromeSrc.includes("theme-toggle"), false);
   assert.equal(chromeSrc.includes("ambient-toggle"), false);
 });
@@ -55,14 +56,14 @@ test("topbar stacks above Hall so the Library card panel can receive clicks", ()
   assert.match(stylesSrc, /\.room > \*\s*\{[^}]*z-index:\s*1/s);
 });
 
-test("mobile tab bar is Hall, Stacks, Search, Favorites, Wanted, and Library card", () => {
+test("mobile tab bar is Hall, Search, Favorites, You, and Desk for keepers", () => {
   assert.match(chromeSrc, /mobile-tabbar/);
-  assert.match(chromeSrc, />\s*Stacks\s*</);
   assert.match(chromeSrc, />\s*Favorites\s*</);
-  assert.match(chromeSrc, />\s*Wanted\s*</);
-  assert.match(chromeSrc, />\s*Library card\s*</);
+  assert.match(chromeSrc, /DESK_TAB/);
+  assert.match(chromeSrc, />\s*You\s*</);
   assert.match(chromeSrc, /to="\/card"/);
   assert.match(chromeSrc, /--tab-count/);
+  assert.match(chromeSrc, /op \? 5 : 4/);
   assert.match(chromeSrc, /id="main"/);
   assert.equal(chromeSrc.includes("Skip to library"), false);
   assert.equal(chromeSrc.includes("skip-link"), false);

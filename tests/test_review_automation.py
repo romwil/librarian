@@ -242,8 +242,8 @@ def test_purge_refuses_non_duplicate_group_and_preview_on_delete(db, tmp_path):
     settings = _settings(tmp_path)
     with pytest.raises(BulkError):
         bulk_by_reason(db, settings, reason="low_confidence", action="purge_duplicates")
-    with pytest.raises(BulkError):
-        bulk_by_reason(db, settings, reason="low_confidence", action="delete", dry_run=True)
+    preview = bulk_by_reason(db, settings, reason="low_confidence", action="delete", dry_run=True)
+    assert preview["dry_run"] is True
     with pytest.raises(BulkError):
         bulk_by_reason(db, settings, reason="low_confidence", action="rewant")
 

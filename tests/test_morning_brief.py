@@ -34,7 +34,7 @@ def test_morning_brief_prefers_locked_roots_then_holds_desk():
     kinds = [item["kind"] for item in payload["items"]]
     assert kinds == ["shelf_health", "holds_desk", "extra_files"]
     assert payload["items"][0]["label"] == "Shelf health"
-    assert payload["items"][1]["label"] == "Holds desk"
+    assert payload["items"][1]["label"] == "Sorting"
     assert "lamp" in payload["items"][0]["presence"].lower()
 
 

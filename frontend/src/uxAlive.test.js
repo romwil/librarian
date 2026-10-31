@@ -51,7 +51,7 @@ test("WarmLoad is the shared warm skeleton", () => {
 
 test("Queue / Browse / Work / People / Settings / Inbox use warm loads", () => {
   assert.match(queueSrc, /WarmLoad/);
-  assert.match(queueSrc, /Warming the lamp on the Queue/);
+  assert.match(queueSrc, /Warming the lamp on Downloads/);
   assert.match(browseSrc, /Warming the lamp on these stacks/);
   assert.match(workSrc, /Warming the lamp on this volume/);
   assert.match(peopleSrc, /Warming the lamp on the household roll/);

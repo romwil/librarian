@@ -74,11 +74,11 @@ def _holds_desk_item(count: int) -> Dict[str, Any]:
     return {
         "id": "holds_desk",
         "kind": "holds_desk",
-        "label": "Holds desk",
+        "label": "Sorting",
         "count": count,
-        "presence": f"{lead} {slip} wait at the Holds desk.",
+        "presence": f"{lead} {slip} wait at Sorting.",
         "href": "/review",
-        "cta": "Open Holds desk",
+        "cta": "Open Sorting",
         "breathing": False,
     }
 

@@ -63,7 +63,9 @@ def effective_review_reason(
     return stored or problem or ""
 
 
-def _diagnose(work: Mapping[str, Any], settings: Settings) -> Dict[str, Any]:
+def _diagnose(work: Mapping[str, Any], settings: Settings, cached: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
+    if isinstance(cached, dict) and cached:
+        return dict(cached)
     from librarian.identify import diagnose_review_folder
 
     folder = str(work.get("folder_path") or "")
@@ -96,14 +98,16 @@ def slips_in_group(
         )
         missing = 0
     suggestions = db.get_review_suggestions([str(row.get("id") or "") for row in candidates])
+    diagnoses = db.get_review_diagnoses([str(row.get("id") or "") for row in candidates])
     members: List[Dict[str, Any]] = []
     outside = 0
     for row in candidates:
         if str(row.get("review_state") or "") != "needs_review":
             outside += 1
             continue
+        cached = (diagnoses.get(str(row.get("id") or "")) or {}).get("diagnosis")
         effective = effective_review_reason(
-            row, _diagnose(row, settings), suggestions.get(str(row.get("id") or ""))
+            row, _diagnose(row, settings, cached if isinstance(cached, dict) else None), suggestions.get(str(row.get("id") or ""))
         )
         if effective != key:
             outside += 1
@@ -128,17 +132,33 @@ def _wanted_ids_for_slip(db: Database, work_id: str, jobs: Sequence[Mapping[str,
     return list(dict.fromkeys(found))
 
 
-def _record_undo(data_dir: Any, action: str, removed: List[Dict[str, Any]]) -> bool:
-    if not removed or data_dir is None:
+def _record_undo(
+    db: Database,
+    data_dir: Any,
+    action: str,
+    removed: List[Dict[str, Any]],
+    *,
+    reason: str = "",
+) -> bool:
+    if not removed:
         return False
+    recorded = False
+    try:
+        from librarian.sorting_undo import record_sorting_undo
+
+        recorded = bool(record_sorting_undo(db, action=action, works=removed, reason=reason))
+    except Exception:  # noqa: BLE001 — undo must never break a bulk action
+        logger.exception("Could not record Sorting undo for %s", action)
+    if data_dir is None:
+        return recorded
     try:
         from librarian.grooming_undo import record_grooming_batch
 
         record_grooming_batch(Path(data_dir), action=action, works=removed)
         return True
-    except Exception:  # noqa: BLE001 — undo must never break a bulk action
+    except Exception:  # noqa: BLE001
         logger.exception("Could not record grooming undo for %s", action)
-        return False
+        return recorded
 
 
 def _delete_group(
@@ -146,6 +166,7 @@ def _delete_group(
     works: List[Dict[str, Any]],
     *,
     data_dir: Any,
+    reason: str = "",
 ) -> Dict[str, Any]:
     changed = 0
     wanted_dismissed = 0
@@ -172,7 +193,7 @@ def _delete_group(
         except Exception as error:  # noqa: BLE001 — keep going; report the partial failure
             logger.exception("Delete group failed for %s", work_id)
             failures.append({"id": work_id, "title": work.get("title"), "error": str(error)})
-    undo = _record_undo(data_dir, "delete_group", removed)
+    undo = _record_undo(db, data_dir, "delete", removed, reason=reason)
     return {
         "changed": changed,
         "failed": len(failures),
@@ -233,10 +254,13 @@ def _purge_duplicate_group(
             "changed": changed,
             "failed": len(failures),
             "failures": failures[:20],
-            "undo_recorded": _record_undo(data_dir, "purge_duplicate_group", removed),
+            "undo_recorded": _record_undo(db, data_dir, "purge_duplicates", removed, reason=""),
         }
     )
     return out
+
+
+LARGE_BATCH = 500
 
 
 def bulk_by_reason(
@@ -248,6 +272,7 @@ def bulk_by_reason(
     work_ids: Optional[Sequence[str]] = None,
     dry_run: bool = False,
     data_dir: Any = None,
+    confirm_count: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Run one allow-listed action on a pile. Returns examined/changed/skipped/reasons."""
     act = str(action or "").strip()
@@ -256,8 +281,6 @@ def bulk_by_reason(
         raise BulkError("Unknown group action")
     if act == ACTION_PURGE_DUPLICATES and key not in DUPLICATE_REVIEW_REASONS:
         raise BulkError("Purge duplicate group only runs on the duplicate pile")
-    if dry_run and act != ACTION_PURGE_DUPLICATES:
-        raise BulkError("Only Purge duplicate group has a preview")
     group = slips_in_group(db, settings, reason=key, work_ids=work_ids)
     works: List[Dict[str, Any]] = group["works"]
     skip_reasons: Dict[str, int] = {}
@@ -266,33 +289,71 @@ def bulk_by_reason(
     if group["missing"]:
         skip_reasons["not_found"] = int(group["missing"])
     examined = len(works) + int(group["outside"]) + int(group["missing"])
+    if dry_run:
+        preview: Dict[str, Any] = {
+            "action": act,
+            "reason": key,
+            "dry_run": True,
+            "examined": examined,
+            "changed": 0,
+            "would_change": len(works),
+            "skipped": int(group["outside"]) + int(group["missing"]),
+            "reasons": skip_reasons,
+            "requires_typed_count": len(works) > LARGE_BATCH,
+        }
+        if act == ACTION_PURGE_DUPLICATES:
+            detail = _purge_duplicate_group(db, settings, works, dry_run=True, data_dir=data_dir)
+            preview.update({k: v for k, v in detail.items() if k != "changed"})
+            preview["would_change"] = int(detail.get("purgeable") or 0)
+        return preview
+    if len(works) > LARGE_BATCH:
+        expected = len(works)
+        if confirm_count is None or int(confirm_count) != expected:
+            raise BulkError(f"Type {expected} to continue this pile")
+        if data_dir is not None:
+            from datetime import datetime, timezone
+
+            from librarian.backup import backup_dir_for, snapshot_named
+
+            stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+            snapshot_named(db.path, backup_dir_for(Path(data_dir)), f"pre-sorting-{act}-{stamp}")
     detail: Dict[str, Any]
     if act == ACTION_DELETE:
-        detail = _delete_group(db, works, data_dir=data_dir)
+        detail = _delete_group(db, works, data_dir=data_dir, reason=key)
     elif act == ACTION_ACCEPT_CLEAR:
         from librarian.slip_gate import accept_path_clear_slips
 
+        snapshots = [dict(row) for row in works]
         accepted = accept_path_clear_slips(db, reason=key, works=works)
-        detail = {"changed": int(accepted.get("accepted") or 0), "failed": 0, "failures": []}
+        filed = []
+        for row in snapshots:
+            fresh = db.get_work(str(row.get("id") or ""))
+            if fresh is None or str(fresh.get("review_state") or "") != "needs_review":
+                filed.append(row)
+        detail = {
+            "changed": int(accepted.get("accepted") or 0),
+            "failed": 0,
+            "failures": [],
+            "undo_recorded": _record_undo(db, data_dir, "accept_clear", filed, reason=key),
+        }
         kept = int(accepted.get("kept") or 0)
         if kept:
             skip_reasons["not_path_clear"] = kept
     else:
-        detail = _purge_duplicate_group(db, settings, works, dry_run=dry_run, data_dir=data_dir)
-        if not dry_run:
-            others = len(works) - int(detail["changed"]) - int(detail["failed"])
-            if detail.get("unassessable"):
-                skip_reasons["unassessable"] = int(detail["unassessable"])
-            not_exact = others - int(detail.get("unassessable") or 0)
-            if not_exact > 0:
-                skip_reasons["not_exact_fingerprint"] = not_exact
+        detail = _purge_duplicate_group(db, settings, works, dry_run=False, data_dir=data_dir)
+        others = len(works) - int(detail["changed"]) - int(detail["failed"])
+        if detail.get("unassessable"):
+            skip_reasons["unassessable"] = int(detail["unassessable"])
+        not_exact = others - int(detail.get("unassessable") or 0)
+        if not_exact > 0:
+            skip_reasons["not_exact_fingerprint"] = not_exact
     if detail.get("failed"):
         skip_reasons["failed"] = int(detail["failed"])
     changed = int(detail.get("changed") or 0)
     return {
         "action": act,
         "reason": key,
-        "dry_run": bool(dry_run),
+        "dry_run": False,
         "examined": examined,
         "changed": changed,
         "skipped": max(0, examined - changed),

@@ -6,7 +6,8 @@ import HoldSlipCard from "../components/HoldSlipCard.jsx";
 import HoldsGroupActions from "../components/HoldsGroupActions.jsx";
 import JobProgress from "../components/JobProgress.jsx";
 import ReviewBulkBar from "../components/ReviewBulkBar.jsx";
-import { emptyReviewCopy, humanError } from "../copy.js";
+import { JKX_SHORTCUTS_LABEL, PAGE_TITLE_SORTING, emptyReviewCopy, humanError } from "../copy.js";
+import useDocumentTitle from "../hooks/useDocumentTitle.js";
 import { requestBodyFromHit } from "../find.js";
 import { useProgressJob } from "../hooks/useProgressJob.js";
 import {
@@ -72,28 +73,52 @@ export default function ReviewPage() {
   const [quietNote, setQuietNote] = useState("");
   const [suggestNotes, setSuggestNotes] = useState({});
   const [ownedSlipNote, setOwnedSlipNote] = useState("");
+  const [nextCursor, setNextCursor] = useState(null);
+  const [countsByReason, setCountsByReason] = useState({});
+  const [undo, setUndo] = useState(null);
+  const [jkxOn, setJkxOn] = useState(() => {
+    try {
+      return localStorage.getItem("librarian.sorting.jkx") !== "off";
+    } catch {
+      return true;
+    }
+  });
+  const [reasonFilter, setReasonFilter] = useState("");
   const focusRef = useRef(null);
+  useDocumentTitle(PAGE_TITLE_SORTING);
   const autoMatchTried = useRef(new Set());
   const autoSuggestTried = useRef(new Set());
   const triageSeeded = useRef(new Set());
   const reloadRef = useRef(() => {});
 
+  function applyDeskPayload(data, { append = false } = {}) {
+    const next = data.items || data.works || [];
+    setWorks((prev) => (append ? [...prev, ...next.filter((row) => !prev.some((p) => p.id === row.id))] : next));
+    setNextCursor(data.next_cursor || null);
+    if (data.counts_by_reason && typeof data.counts_by_reason === "object") {
+      setCountsByReason(data.counts_by_reason);
+    }
+    if (data.undo) setUndo(data.undo);
+    if (data.extra_files_count != null) {
+      setExtraFilesBacklog(Number(data.extra_files_count) || 0);
+    }
+    if (data.total != null) {
+      setReviewBacklog(Number(data.total) || 0);
+    } else if (data.needs_review_count != null) {
+      setReviewBacklog(Number(data.needs_review_count) || 0);
+    } else if (!append) {
+      setReviewBacklog(next.length);
+    }
+    setOwnedSlipNote(String(data.owned_slip_note || "").trim());
+    if (data.bad_release_migration) setMigration(data.bad_release_migration);
+    return next;
+  }
+
   function reload() {
     api
-      .review(focusId)
+      .review({ work: focusId, reason: reasonFilter })
       .then((data) => {
-        const next = data.works || [];
-        setWorks(next);
-        if (data.extra_files_count != null) {
-          setExtraFilesBacklog(Number(data.extra_files_count) || 0);
-        }
-        if (data.needs_review_count != null) {
-          setReviewBacklog(Number(data.needs_review_count) || 0);
-        } else {
-          setReviewBacklog(next.length);
-        }
-        setOwnedSlipNote(String(data.owned_slip_note || "").trim());
-        if (data.bad_release_migration) setMigration(data.bad_release_migration);
+        const next = applyDeskPayload(data);
         setDrafts((prev) => {
           const merged = { ...prev };
           next.forEach((work) => {
@@ -120,7 +145,15 @@ export default function ReviewPage() {
   }
   reloadRef.current = reload;
 
-  useEffect(reload, [focusId]);
+  useEffect(reload, [focusId, reasonFilter]);
+
+  function loadMore() {
+    if (!nextCursor) return;
+    api
+      .review({ work: focusId, reason: reasonFilter, cursor: nextCursor })
+      .then((data) => applyDeskPayload(data, { append: true }))
+      .catch((err) => setError(humanError(err)));
+  }
 
   useEffect(() => {
     api
@@ -745,12 +778,101 @@ export default function ReviewPage() {
   const holdGroups = groupHoldSlipsByReason(works);
   const actingPileRemains =
     Boolean(groupNoteReason) && holdGroups.some((group) => group.reason === groupNoteReason);
+  const reasonEntries = Object.entries(countsByReason).sort((a, b) => Number(b[1]) - Number(a[1]));
+  const headerTotal = reasonEntries.reduce((sum, [, n]) => sum + Number(n || 0), 0);
+  const slipIds = holdGroups.flatMap((group) => group.works.map((row) => row.id));
+
+  useEffect(() => {
+    if (!jkxOn) return undefined;
+    function onKey(event) {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const tag = String(event.target?.tagName || "").toLowerCase();
+      if (tag === "input" || tag === "textarea" || event.target?.isContentEditable) return;
+      const key = event.key.toLowerCase();
+      if (key !== "j" && key !== "k" && key !== "x") return;
+      event.preventDefault();
+      const current = focusId && slipIds.includes(focusId) ? slipIds.indexOf(focusId) : 0;
+      if (key === "j") {
+        const next = slipIds[Math.min(slipIds.length - 1, current + 1)];
+        if (next) document.querySelector(`[data-work-id="${next}"]`)?.scrollIntoView({ block: "nearest" });
+      } else if (key === "k") {
+        const prev = slipIds[Math.max(0, current - 1)];
+        if (prev) document.querySelector(`[data-work-id="${prev}"]`)?.scrollIntoView({ block: "nearest" });
+      } else if (key === "x") {
+        const node = document.querySelector(`[data-work-id="${slipIds[current]}"] details`);
+        if (node) node.open = !node.open;
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [jkxOn, slipIds, focusId]);
 
   return (
-    <div className="admin-room review-page page-settle">
-      <p className="kicker">Holds desk</p>
-      <h1>Sorting returns</h1>
+    <div className="admin-room review-page page-settle" data-density="compact">
+      <p className="kicker">Sorting</p>
+      <h1>Sorting</h1>
       <p className="lede">{holdsDeskLedeCopy()}</p>
+      <p className="muted" data-testid="sorting-counts" role="status">
+        {reviewBacklog} {reviewBacklog === 1 ? "slip" : "slips"}
+        {headerTotal && headerTotal !== reviewBacklog ? ` · ${headerTotal} in groups` : ""}
+      </p>
+      {reasonEntries.length ? (
+        <div className="chip-row" role="group" aria-label="Filter by reason">
+          <button
+            type="button"
+            className={reasonFilter ? "chip" : "chip is-on"}
+            onClick={() => setReasonFilter("")}
+          >
+            All {reviewBacklog}
+          </button>
+          {reasonEntries.map(([reason, count]) => (
+            <button
+              key={reason || "other"}
+              type="button"
+              className={reasonFilter === reason ? "chip is-on" : "chip"}
+              onClick={() => setReasonFilter(reason)}
+            >
+              {reason.replace(/_/g, " ") || "other"} {count}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      <label className="field field-check">
+        <input
+          type="checkbox"
+          checked={jkxOn}
+          onChange={(event) => {
+            const next = event.target.checked;
+            setJkxOn(next);
+            try {
+              localStorage.setItem("librarian.sorting.jkx", next ? "on" : "off");
+            } catch {
+              /* ignore */
+            }
+          }}
+        />
+        {JKX_SHORTCUTS_LABEL}
+      </label>
+      {undo?.available ? (
+        <p className="muted" role="status" data-testid="sorting-undo">
+          {undo.presence}{" "}
+          <button
+            type="button"
+            className="cta compact"
+            onClick={() =>
+              api
+                .reviewUndoRestore()
+                .then((data) => {
+                  setUndo(data.undo || data);
+                  reload();
+                })
+                .catch((err) => setError(humanError(err)))
+            }
+          >
+            Undo
+          </button>
+        </p>
+      ) : null}
       {ownedSlipNote ? (
         <p className="muted" role="status" data-testid="owned-slip-note">
           {ownedSlipNote}
@@ -895,7 +1017,7 @@ export default function ReviewPage() {
       ) : null}
       {loading ? (
         <section className="review-loading" data-testid="review-loading" aria-busy="true">
-          <p className="muted">Warming the lamp on the Holds desk…</p>
+          <p className="muted">Warming the lamp on Sorting…</p>
           <div className="hall-shelves-skeleton" aria-hidden="true" />
         </section>
       ) : !works.length ? (
@@ -960,6 +1082,13 @@ export default function ReviewPage() {
           </section>
         ))}
       </div>
+      {nextCursor ? (
+        <div className="cta-row">
+          <button type="button" className="cta outline" onClick={loadMore} data-testid="sorting-load-more">
+            Load more
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

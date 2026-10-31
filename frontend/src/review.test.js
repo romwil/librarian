@@ -130,10 +130,10 @@ describe("review identify form", () => {
 
   it("shortens review reasons for Queue Needs you cards", () => {
     assert.match(queueReviewReasonCopy("extra_files"), /Multi-title dump|extra files/i);
-    assert.match(queueReviewReasonCopy("collision"), /Open Review/i);
+    assert.match(queueReviewReasonCopy("collision"), /Open Sorting/i);
     assert.match(queueReviewReasonCopy("collision"), /shelf/i);
     assert.match(queueReviewReasonCopy("unpack_stuck"), /Archives/);
-    assert.match(queueReviewReasonCopy(""), /Waiting in Review/);
+    assert.match(queueReviewReasonCopy(""), /Waiting in Sorting/);
   });
 
   it("prefills folder from SAB storage when work.folder_path is empty", () => {
@@ -409,7 +409,7 @@ describe("ReviewPage loading", () => {
   it("shows a warming state while review loads, not empty bag", () => {
     assert.match(reviewPageSrc, /\[loading, setLoading\] = useState\(true\)/);
     assert.match(reviewPageSrc, /data-testid="review-loading"/);
-    assert.match(reviewPageSrc, /Warming the lamp on the Holds desk/);
+    assert.match(reviewPageSrc, /Warming the lamp on Sorting/);
     assert.match(reviewPageSrc, /loading \? \(/);
     assert.match(reviewPageSrc, /!works\.length/);
     assert.match(reviewPageSrc, /\.finally\(\(\) => setLoading\(false\)\)/);
@@ -439,7 +439,7 @@ describe("ReviewPage loading", () => {
   });
 });
 
-describe("smart Holds desk grouping", () => {
+describe("smart Sorting desk grouping", () => {
   it("groups hold slips by effective reason with sorting-returns order", () => {
     const groups = groupHoldSlipsByReason([
       { id: "a", title: "A", review_reason: "collision" },
@@ -487,10 +487,12 @@ describe("smart Holds desk grouping", () => {
     assert.equal(reviewActionsFromWork(collision).recommendedMotion, "skip");
   });
 
-  it("renders Holds desk groups and recommended motion chrome", () => {
+  it("renders Sorting groups and recommended motion chrome", () => {
     assert.match(reviewPageSrc, /groupHoldSlipsByReason/);
-    assert.match(reviewPageSrc, /Sorting returns/);
+    assert.match(reviewPageSrc, /<h1>Sorting<\/h1>/);
     assert.match(reviewPageSrc, /holdsDeskLedeCopy/);
+    assert.match(reviewPageSrc, /JKX_SHORTCUTS_LABEL/);
+    assert.match(holdSlipSrc, /<h3 className="ticket-title">/);
     assert.match(reviewPageSrc, /data-testid="holds-desk-groups"/);
     assert.match(reviewPageSrc, /data-testid="holds-group"/);
     assert.match(reviewPageSrc, /HoldSlipCard/);

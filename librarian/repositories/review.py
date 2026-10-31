@@ -123,6 +123,7 @@ class ReviewRepository(RepositoryBase):
         conn.execute("DELETE FROM works_fts WHERE work_id = ?", (work_id,))
         conn.execute("DELETE FROM jobs WHERE work_id = ?", (work_id,))
         conn.execute("DELETE FROM review_suggestions WHERE work_id = ?", (work_id,))
+        conn.execute("DELETE FROM review_diagnosis WHERE work_id = ?", (work_id,))
         conn.execute("DELETE FROM works WHERE id = ?", (work_id,))
 
     def record_bad_indexer_release(
@@ -453,3 +454,78 @@ class ReviewRepository(RepositoryBase):
                 )
 
         self.run_write(_write, label="mark_migration")
+
+    def upsert_review_diagnosis(
+        self,
+        work_id: str,
+        *,
+        folder_path: str = "",
+        diagnosis: Mapping[str, Any],
+        now: Optional[float] = None,
+    ) -> None:
+        moment = time.time() if now is None else float(now)
+        shaped = dict(diagnosis or {})
+
+        def _write() -> Any:
+            with self._connect() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO review_diagnosis (
+                        work_id, problem, path_clear, collection_dump, payload_count,
+                        archive_count, junk_count, par2_count, distinct_title_count,
+                        folder_path, diagnosis_json, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(work_id) DO UPDATE SET
+                        problem = excluded.problem,
+                        path_clear = excluded.path_clear,
+                        collection_dump = excluded.collection_dump,
+                        payload_count = excluded.payload_count,
+                        archive_count = excluded.archive_count,
+                        junk_count = excluded.junk_count,
+                        par2_count = excluded.par2_count,
+                        distinct_title_count = excluded.distinct_title_count,
+                        folder_path = excluded.folder_path,
+                        diagnosis_json = excluded.diagnosis_json,
+                        updated_at = excluded.updated_at
+                    """,
+                    (
+                        work_id,
+                        str(shaped.get("problem") or ""),
+                        1 if shaped.get("path_clear") else 0,
+                        1 if shaped.get("collection_dump") else 0,
+                        int(shaped.get("payload_count") or 0),
+                        int(shaped.get("archive_count") or 0),
+                        int(shaped.get("junk_count") or 0),
+                        int(shaped.get("par2_count") or 0),
+                        int(shaped.get("distinct_title_count") or 0),
+                        str(folder_path or ""),
+                        _dumps(shaped),
+                        moment,
+                    ),
+                )
+
+        self.run_write(_write, label="upsert_review_diagnosis")
+
+    def get_review_diagnoses(self, work_ids: Sequence[str]) -> Dict[str, Dict[str, Any]]:
+        ids = [str(w) for w in work_ids if str(w or "").strip()]
+        if not ids:
+            return {}
+        placeholders = ",".join("?" for _ in ids)
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"SELECT * FROM review_diagnosis WHERE work_id IN ({placeholders})",
+                ids,
+            ).fetchall()
+        out: Dict[str, Dict[str, Any]] = {}
+        for row in rows:
+            data = _row_dict(row) or {}
+            data["diagnosis"] = _loads(data.get("diagnosis_json"), {})
+            out[str(data["work_id"])] = data
+        return out
+
+    def delete_review_diagnosis(self, work_id: str) -> None:
+        def _write() -> Any:
+            with self._connect() as conn:
+                conn.execute("DELETE FROM review_diagnosis WHERE work_id = ?", (work_id,))
+
+        self.run_write(_write, label="delete_review_diagnosis")

@@ -304,6 +304,13 @@ def soft_repair_review_reasons(
         if not folder_raw:
             continue
         diagnosis = diagnose_review_folder(Path(folder_raw), settings.complete_root)
+        from librarian.review_diagnosis import diagnosis_from_live
+
+        db.upsert_review_diagnosis(
+            str(work.get("id") or ""),
+            folder_path=folder_raw,
+            diagnosis=diagnosis_from_live(diagnosis),
+        )
         if diagnosis.get("problem") != REVIEW_UNPACK_STUCK:
             continue
         db.upsert_work({**work, "review_reason": REVIEW_UNPACK_STUCK})

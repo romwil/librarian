@@ -29,9 +29,43 @@ def register_review_routes(app: FastAPI, deps: WebDeps) -> None:
     suggest_batch_job = BackgroundJobSlot()
 
     @app.get("/api/review")
-    def review_list(request: Request, work: str = ""):
+    def review_list(
+        request: Request,
+        work: str = "",
+        reason: str = "",
+        cursor: str = "",
+        limit: int = 25,
+    ):
         require_role(request.state.user, "owner", "op")
-        return review_service.review_desk(db, settings(), root=root, focus=work)
+        return review_service.review_desk(
+            db,
+            settings(),
+            root=root,
+            focus=work,
+            reason=reason,
+            cursor=cursor,
+            limit=limit,
+        )
+
+    @app.get("/api/review/{work_id}/candidates")
+    def review_candidates(work_id: str, request: Request):
+        require_role(request.state.user, "owner", "op")
+        with http_errors():
+            return review_service.review_candidates(db, settings(), work_id=work_id)
+
+    @app.get("/api/review/undo")
+    def review_undo_status(request: Request):
+        require_role(request.state.user, "owner", "op")
+        from librarian.sorting_undo import public_undo
+
+        return public_undo(db)
+
+    @app.post("/api/review/undo")
+    def review_undo_restore(request: Request):
+        require_role(request.state.user, "owner", "op")
+        from librarian.sorting_undo import restore_sorting_undo
+
+        return restore_sorting_undo(db)
 
     @app.get("/api/review/bad-release-migration/status")
     def review_bad_release_migration_status(request: Request):

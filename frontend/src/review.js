@@ -124,7 +124,7 @@ export function reviewReasonCopy(reason, diagnosis = {}) {
   if (reason === "collision") {
     return "Collision — a file already exists at the library destination (duplicate path or identity). Librarian will not silent-overwrite.";
   }
-  return "Unexpected item at the Holds desk. Confirm identity and the complete folder, then Apply or Skip.";
+  return "Unexpected item at Sorting. Confirm identity and the complete folder, then Apply or Skip.";
 }
 
 export function reviewSlipMeaning(reason, diagnosis = {}) {
@@ -284,9 +284,9 @@ export function queueReviewReasonCopy(reason) {
     return "Conversion still needed — open Review.";
   }
   if (reason === "collision") {
-    return "Already on the shelf at that path — Open Review.";
+    return "Already on the shelf at that path — Open Sorting.";
   }
-  return "Waiting in Review — the house isn’t sure how to shelve this.";
+  return "Waiting in Sorting — the house isn’t sure how to shelve this.";
 }
 
 /** How long a completed/failed Review job meter stays on screen (ms). */
@@ -611,7 +611,7 @@ export function slipRowIsPathClear(work = {}) {
   return kind === "book";
 }
 
-/** Short pile heading for the Holds desk (sorting returns). */
+/** Short pile heading for Sorting. */
 export function reviewReasonGroupLabel(reason) {
   const key = String(reason || "").trim();
   if (key === "ready_to_file") return "Ready to file";
@@ -939,10 +939,10 @@ export function badReleaseMigrationSummary(status) {
   return `Bad downloads returned to Wanted: ${tallies.join(", ")}.`;
 }
 
-/** Holds desk lede — sorting returns, not a ticket queue. */
+/** Sorting desk lede — returns waiting to be filed, not a ticket queue. */
 export function holdsDeskLedeCopy() {
   return (
-    "Hold slips are returns waiting to be sorted — grouped by why they paused. " +
+    "Slips are returns waiting to be sorted — grouped by why they paused. " +
     "Each pile names one recommended motion so filing stays calm, not a ticket queue."
   );
 }

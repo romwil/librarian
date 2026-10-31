@@ -129,6 +129,9 @@ describe("HoldsGroupActions", () => {
     const changed = [];
     const bulk = async (body) => {
       calls.push(body);
+      if (body.dryRun) {
+        return { dry_run: true, action: "delete", would_change: 2, requires_typed_count: false };
+      }
       return { action: "delete", examined: 2, changed: 2, skipped: 0, failed: 0, reasons: {} };
     };
     render(<HoldsGroupActions group={group("low_confidence", slips)} bulk={bulk} onChanged={(r) => changed.push(r)} />);
@@ -138,18 +141,21 @@ describe("HoldsGroupActions", () => {
     assert.equal(within(actions).queryByRole("button", { name: /re-want/i }), null);
 
     await user.click(trigger);
-    const dialog = screen.getByRole("dialog", { name: /Delete 2 hold slips/ });
+    const dialog = await screen.findByRole("dialog", { name: /Delete 2 hold slips/ });
     assert.match(dialog.textContent, /completed-download folder is not deleted/);
     assert.equal(document.activeElement, within(dialog).getByRole("button", { name: "Cancel" }));
     await user.keyboard("{Escape}");
     assert.equal(screen.queryByRole("dialog"), null);
     assert.equal(document.activeElement, trigger);
-    assert.equal(calls.length, 0);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].dryRun, true);
 
     await user.click(trigger);
     await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete 2 slips" }));
-    await waitFor(() => assert.equal(calls.length, 1));
-    assert.deepEqual(calls[0], { reason: "low_confidence", action: "delete", workIds: ["a", "b"], dryRun: false });
+    await waitFor(() => assert.equal(calls.length, 3));
+    assert.equal(calls[2].dryRun, false);
+    assert.equal(calls[2].action, "delete");
+    assert.deepEqual(calls[2].workIds, ["a", "b"]);
     assert.equal(changed.length, 1);
     assert.match(screen.getByRole("status").textContent, /Deleted 2 of 2/);
   });
@@ -180,15 +186,20 @@ describe("HoldsGroupActions", () => {
 
   it("shows a partial failure as an alert, not a success", async () => {
     const user = userEvent.setup();
-    const bulk = async () => ({
-      action: "delete",
-      examined: 2,
-      changed: 1,
-      skipped: 1,
-      failed: 1,
-      reasons: { failed: 1 },
-      failures: [{ id: "b", title: "B", error: "disk said no" }],
-    });
+    const bulk = async (body) => {
+      if (body?.dryRun) {
+        return { dry_run: true, action: "delete", would_change: 2, requires_typed_count: false };
+      }
+      return {
+        action: "delete",
+        examined: 2,
+        changed: 1,
+        skipped: 1,
+        failed: 1,
+        reasons: { failed: 1 },
+        failures: [{ id: "b", title: "B", error: "disk said no" }],
+      };
+    };
     render(<HoldsGroupActions group={group("low_confidence", slips)} bulk={bulk} />);
     await user.click(screen.getByRole("button", { name: "Delete group (2)" }));
     await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete 2 slips" }));
@@ -199,14 +210,17 @@ describe("HoldsGroupActions", () => {
 
   it("a rejected request leaves the slips and reports the error", async () => {
     const user = userEvent.setup();
-    const bulk = async () => {
+    const bulk = async (body) => {
+      if (body?.dryRun) {
+        return { dry_run: true, action: "delete", would_change: 2, requires_typed_count: false };
+      }
       throw new Error("Server down");
     };
     render(<HoldsGroupActions group={group("low_confidence", slips)} bulk={bulk} />);
     await act(async () => {
       await user.click(screen.getByRole("button", { name: "Delete group (2)" }));
     });
-    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete 2 slips" }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Delete 2 slips" }));
     const status = await screen.findByRole("status");
     assert.ok(status.classList.contains("alert"));
     assert.ok(status.textContent.length > 0);
@@ -246,10 +260,10 @@ function deskBar(overrides = {}) {
   );
 }
 
-describe("Holds desk tally", () => {
+describe("Sorting desk tally", () => {
   it("places the desk summary under the button row and keeps an unchanged count's text node", () => {
     const { rerender } = render(deskBar());
-    const actions = screen.getByRole("group", { name: "Holds desk actions" });
+    const actions = screen.getByRole("group", { name: "Sorting actions" });
     const summary = deskSummary();
     assert.equal(actions.contains(summary), false);
     assert.ok(within(actions).getByRole("button", { name: "Purge duplicates (454)" }));

@@ -37,7 +37,7 @@ describe("add to library browse", () => {
 
   it("uses Reading Room copy, not an import wizard", () => {
     assert.match(ADD_TO_LIBRARY_LEDE, /\/data/);
-    assert.match(ADD_TO_LIBRARY_LEDE, /Review/);
+    assert.match(ADD_TO_LIBRARY_LEDE, /Sorting/);
     assert.doesNotMatch(ADD_TO_LIBRARY_LEDE, /wizard|import/i);
     assert.match(WATCH_FOLDER_LEDE, /drop folder/i);
     assert.match(WATCH_FOLDER_LEDE, /library root/i);

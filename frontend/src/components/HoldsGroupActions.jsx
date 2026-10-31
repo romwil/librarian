@@ -11,15 +11,17 @@ import {
 } from "../review.js";
 import ConfirmDialog from "./ConfirmDialog.jsx";
 
-/** One pile's group motions on the Holds desk: Accept the clear ones, Purge duplicate group, Delete group. */
+/** One pile's group motions on Sorting: Accept the clear ones, Purge duplicate group, Delete group. */
 export default function HoldsGroupActions({ group, onChanged, bulk = api.reviewBulkByReason }) {
   const [busy, setBusy] = useState("");
   const [dialog, setDialog] = useState(null);
   const [preview, setPreview] = useState(null);
   const [result, setResult] = useState(null);
   const [note, setNote] = useState("");
+  const [typed, setTyped] = useState("");
   const deleteRef = useRef(null);
   const purgeRef = useRef(null);
+  const acceptRef = useRef(null);
   const works = group?.works || [];
   const count = works.length;
   const workIds = works.map((work) => work.id);
@@ -28,11 +30,11 @@ export default function HoldsGroupActions({ group, onChanged, bulk = api.reviewB
   const showPurge = isDuplicateGroup(reason);
   const label = group?.label || "";
 
-  async function run(action, { dryRun = false } = {}) {
+  async function run(action, { dryRun = false, confirmCount = null } = {}) {
     setBusy(action);
     setNote("");
     try {
-      const data = await bulk({ reason, action, workIds, dryRun });
+      const data = await bulk({ reason, action, workIds, dryRun, confirmCount });
       if (dryRun) {
         setPreview(data);
         return data;
@@ -54,10 +56,30 @@ export default function HoldsGroupActions({ group, onChanged, bulk = api.reviewB
     if (data) setDialog("purge");
   }
 
+  async function openAccept() {
+    const data = await run("accept_clear", { dryRun: true });
+    if (data) {
+      setTyped("");
+      setDialog("accept");
+    }
+  }
+
+  async function openDelete() {
+    const data = await run("delete", { dryRun: true });
+    if (data) {
+      setTyped("");
+      setDialog("delete");
+    }
+  }
+
   async function confirm() {
-    const action = dialog === "delete" ? "delete" : "purge_duplicates";
+    const action = dialog === "delete" ? "delete" : dialog === "accept" ? "accept_clear" : "purge_duplicates";
+    const needsCount = Boolean(preview?.requires_typed_count);
+    const expected = String(Number(preview?.would_change ?? count) || 0);
+    if (needsCount && typed.trim() !== expected) return;
+    const confirmCount = needsCount ? Number(expected) : null;
     setDialog(null);
-    await run(action);
+    await run(action, { confirmCount });
   }
 
   const deleteCopy = deleteGroupConfirmCopy({ count, label });
@@ -74,7 +96,8 @@ export default function HoldsGroupActions({ group, onChanged, bulk = api.reviewB
             className="cta compact"
             data-testid="accept-clear-ones"
             disabled={Boolean(busy)}
-            onClick={() => run("accept_clear")}
+            ref={acceptRef}
+            onClick={() => openAccept()}
           >
             {busy === "accept_clear" ? "Filing…" : "Accept the clear ones"}
           </button>
@@ -95,7 +118,7 @@ export default function HoldsGroupActions({ group, onChanged, bulk = api.reviewB
           type="button"
           className="cta outline compact"
           disabled={Boolean(busy) || !count}
-          onClick={() => setDialog("delete")}
+          onClick={() => openDelete()}
         >
           {busy === "delete" ? "Deleting…" : `Delete group (${count})`}
         </button>
@@ -118,10 +141,39 @@ export default function HoldsGroupActions({ group, onChanged, bulk = api.reviewB
         onConfirm={confirm}
         onCancel={() => setDialog(null)}
         busy={busy === "delete"}
+        confirmDisabled={Boolean(preview?.requires_typed_count) && typed.trim() !== String(Number(preview?.would_change ?? count) || 0)}
         returnFocusRef={deleteRef}
         testId="delete-group-dialog"
       >
         <p>{deleteCopy.body}</p>
+        <p>This pile has {preview?.would_change ?? count} slips.</p>
+        {preview?.requires_typed_count ? (
+          <label className="field">
+            Type {preview.would_change} to confirm
+            <input value={typed} onChange={(event) => setTyped(event.target.value)} />
+          </label>
+        ) : null}
+      </ConfirmDialog>
+      <ConfirmDialog
+        open={dialog === "accept"}
+        title={`File ${preview?.would_change ?? count} clear ${label || "slips"}?`}
+        confirmLabel="File them"
+        onConfirm={confirm}
+        onCancel={() => setDialog(null)}
+        busy={busy === "accept_clear"}
+        confirmDisabled={Boolean(preview?.requires_typed_count) && typed.trim() !== String(Number(preview?.would_change ?? count) || 0)}
+        returnFocusRef={acceptRef}
+        testId="accept-group-dialog"
+      >
+        <p>
+          {preview?.would_change ?? count} slips in {label || "this pile"} look path-clear and will be filed. Folders stay on disk.
+        </p>
+        {preview?.requires_typed_count ? (
+          <label className="field">
+            Type {preview.would_change} to confirm
+            <input value={typed} onChange={(event) => setTyped(event.target.value)} />
+          </label>
+        ) : null}
       </ConfirmDialog>
       <ConfirmDialog
         open={dialog === "purge" && Boolean(purgeCopy)}

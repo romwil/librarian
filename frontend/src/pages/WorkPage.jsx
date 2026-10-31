@@ -537,7 +537,7 @@ export default function WorkPage() {
               ) : null}
               {work.review_state === "needs_review" ? (
                 <Link className="work-action-item" to={`/review?work=${encodeURIComponent(work.id)}`}>
-                  Open Review
+                  Open Sorting
                 </Link>
               ) : null}
               {incompleteParts ? (
@@ -813,7 +813,7 @@ export default function WorkPage() {
             ) : null}
             {work.review_state === "needs_review" ? (
               <Link className="cta ghost compact" to={`/review?work=${encodeURIComponent(work.id)}`}>
-                Open Review
+                Open Sorting
               </Link>
             ) : null}
             {incompleteParts ? (

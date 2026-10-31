@@ -62,7 +62,7 @@ On each in-scope surface that accepts input, shows async state, or hosts an over
 - **Visual triad** — empty, loading (`aria-busy`), overflow/boundary
 - **Semantic locators** — prefer role/label; no CSS/DOM-path inventing
 - **Adversarial spots** — hostile paste in search/settings; double-submit; Escape restores focus
-- **Lexicon** — prefer Holds desk / Library card / Shelving labels when asserting copy ([library-lexicon.mdc](../../rules/library-lexicon.mdc))
+- **Lexicon** — prefer Sorting / Library card / Shelving labels when asserting copy ([library-lexicon.mdc](../../rules/library-lexicon.mdc)). Route stays `/review`.
 
 Stay defensive: no exploit PoCs.
 

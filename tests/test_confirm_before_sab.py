@@ -16,6 +16,9 @@ _FORBIDDEN = (
     ROOT / "poller.py",
     ROOT / "noted.py",
     ROOT / "ingest.py",
+    ROOT / "sorting_autopilot.py",
+    ROOT / "sorting_undo.py",
+    ROOT / "review_diagnosis.py",
 )
 
 

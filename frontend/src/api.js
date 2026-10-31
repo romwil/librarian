@@ -153,8 +153,19 @@ export const api = {
   wantedBeyond: (id) => request(`/wanted/${encodeURIComponent(id)}/beyond`, { method: "POST" }),
   askWanted: (id, hit) =>
     request(`/wanted/${encodeURIComponent(id)}/ask`, { method: "POST", body: JSON.stringify(hit || {}) }),
-  review: (work = "") =>
-    request(`/review${work ? `?work=${encodeURIComponent(work)}` : ""}`),
+  review: (workOrOpts = "") => {
+    const opts = typeof workOrOpts === "string" ? { work: workOrOpts } : workOrOpts || {};
+    const params = new URLSearchParams();
+    if (opts.work) params.set("work", String(opts.work));
+    if (opts.reason) params.set("reason", String(opts.reason));
+    if (opts.cursor) params.set("cursor", String(opts.cursor));
+    if (opts.limit) params.set("limit", String(opts.limit));
+    const qs = params.toString();
+    return request(`/review${qs ? `?${qs}` : ""}`);
+  },
+  reviewCandidates: (id) => request(`/review/${encodeURIComponent(id)}/candidates`),
+  reviewUndo: () => request("/review/undo"),
+  reviewUndoRestore: () => request("/review/undo", { method: "POST" }),
   reviewAcceptClear: (reason) =>
     request("/review/accept-clear", { method: "POST", body: JSON.stringify({ reason: reason || "" }) }),
   reviewApply: (id, body) => request(`/review/${id}/apply`, { method: "POST", body: JSON.stringify(body) }),
@@ -172,10 +183,16 @@ export const api = {
       method: "POST",
     }),
   reviewPurgeDuplicatesStatus: () => request("/review/purge-duplicates/status"),
-  reviewBulkByReason: ({ reason = "", action = "", workIds = [], dryRun = false } = {}) =>
+  reviewBulkByReason: ({ reason = "", action = "", workIds = [], dryRun = false, confirmCount = null } = {}) =>
     request("/review/bulk-by-reason", {
       method: "POST",
-      body: JSON.stringify({ reason, action, work_ids: workIds, dry_run: Boolean(dryRun) }),
+      body: JSON.stringify({
+        reason,
+        action,
+        work_ids: workIds,
+        dry_run: Boolean(dryRun),
+        confirm_count: confirmCount,
+      }),
     }),
   reviewSuggestBatch: (limit = 0) =>
     request(`/review/suggest-batch${limit ? `?limit=${encodeURIComponent(String(limit))}` : ""}`, {
@@ -216,6 +233,8 @@ export const api = {
   queue: () => request("/queue"),
   queueTick: () => request("/queue/tick", { method: "POST" }),
   confirmJob: (id) => request(`/queue/${id}/confirm`, { method: "POST" }),
+  retryJob: (id) => request(`/queue/${id}/retry`, { method: "POST" }),
+  dismissJob: (id) => request(`/queue/${id}/dismiss`, { method: "POST" }),
   gaps: () => request("/gaps"),
   confirmGap: (item) => request("/gaps/confirm", { method: "POST", body: JSON.stringify(item) }),
   settings: () => request("/settings"),

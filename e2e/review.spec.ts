@@ -1,24 +1,41 @@
 import { expect, test } from "@playwright/test";
 import { dismissWhatsNewIfPresent, loginAsOwner } from "./fixtures/auth";
 
-test.describe("Review / Holds desk", () => {
+const JKX_LABEL = "Keyboard shortcuts (j next, k previous, x more)";
+
+test.describe("Review / Sorting desk", () => {
   test.beforeEach(async ({ page }) => {
     await loginAsOwner(page);
   });
 
-  test("empty Review shows Holds desk empty copy", async ({ page }) => {
+  test("empty Sorting shows Sorting empty copy on /review", async ({ page }) => {
     await page.goto("/review");
     await dismissWhatsNewIfPresent(page);
-    await expect(page.getByText("Holds desk").first()).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Sorting returns" })).toBeVisible();
-    await expect(page.getByText(/Hold slips are returns waiting to be sorted/i)).toBeVisible();
-    // Lexicon: Holds desk empty copy; semantic text, not testid.
-    await expect(page.getByText(/Holds desk is empty|lamp is quiet/i)).toBeVisible({
+    await expect(page.getByRole("link", { name: "Sorting" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Sorting", exact: true })).toBeVisible();
+    await expect(page.getByText(/Slips are returns waiting to be sorted/i)).toBeVisible();
+    await expect(page.getByLabel(JKX_LABEL)).toBeVisible();
+    await expect(page.getByText(/Sorting is empty|lamp is quiet/i)).toBeVisible({
       timeout: 30_000,
     });
+    await expect(page.getByText(/Place a hold/i)).toHaveCount(0);
+    await expect(page.getByTestId("desk-tab")).toBeAttached();
   });
 
-  test("populated Holds desk groups slips by reason with one recommended motion", async ({
+  test("owner Desk tab is on the phone tab bar", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/review");
+    await dismissWhatsNewIfPresent(page);
+    const mobile = page.getByRole("navigation", { name: "Mobile" });
+    await expect(page.getByTestId("desk-tab")).toBeVisible();
+    await expect(page.getByTestId("desk-tab")).toHaveText(/^Desk/);
+    await expect(mobile.getByRole("link", { name: "Hall" })).toBeVisible();
+    await expect(mobile.getByRole("link", { name: "Search" })).toBeVisible();
+    await expect(mobile.getByRole("link", { name: "Favorites" })).toBeVisible();
+    await expect(mobile.getByRole("link", { name: "You" })).toBeVisible();
+  });
+
+  test("populated Sorting groups slips by reason with one recommended motion", async ({
     page,
   }) => {
     await page.route("**/api/review", async (route) => {
@@ -95,7 +112,7 @@ test.describe("Review / Holds desk", () => {
 
     await page.goto("/review");
     await dismissWhatsNewIfPresent(page);
-    await expect(page.getByRole("heading", { name: "Sorting returns" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Sorting", exact: true })).toBeVisible();
     await expect(page.getByTestId("holds-desk-groups")).toBeVisible({ timeout: 30_000 });
 
     const groups = page.getByTestId("holds-group");

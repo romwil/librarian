@@ -64,7 +64,7 @@ export default function HoldSlipCard({
       aria-busy={workBusy || undefined}
     >
       <div className="hold-slip-line" data-testid="hold-slip-line">
-        <strong className="ticket-title">{draft.title || work.title || "Untitled"}</strong>
+        <h3 className="ticket-title">{draft.title || work.title || "Untitled"}</h3>
         <span className="muted hold-slip-reason" data-testid="review-reason-copy">
           {holdSlipReasonWords(work)}
         </span>
