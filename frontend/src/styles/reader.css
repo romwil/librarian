@@ -181,10 +181,30 @@ body:has(.listen-room) .work-hero-art,
 body:has(.listen-room) .work-hero-scrim {
   visibility: hidden;
 }
+.reader-pdf {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: #1a1410;
+}
+.reader-pdf canvas {
+  max-width: 100%;
+  max-height: 100%;
+}
+.reader.reader-calm .reader-stage[data-engine="pdf"] .reader-pdf {
+  background: #0c0907;
+  border-radius: 2px;
+}
+html[data-theme="lights-up"] .reader.reader-calm .reader-stage[data-engine="pdf"] .reader-pdf {
+  background: #efe6d4;
+}
 .reader-status {
   position: absolute;
   left: 50%;
   top: 40%;
+  z-index: 5;
   transform: translate(-50%, -50%);
   margin: 0;
   max-width: 36ch;

@@ -60,6 +60,7 @@ test("a comic turns from the cover to the next page", async ({ page }) => {
   await dismissWhatsNewIfPresent(page);
   const reader = page.getByTestId("reader");
   await expect(reader).toBeVisible({ timeout: 30_000 });
+  await expect(reader.getByText("Opening the volume…")).toHaveCount(0, { timeout: 20_000 });
   await expect(reader.getByText("Scroll to read")).toHaveCount(0);
   await expect(reader.getByRole("button", { name: "Next page" })).toBeVisible();
 

@@ -15,6 +15,16 @@
 - **Maintain indexer lanterns.** Lights Down no longer paints pale paper cards with tan status copy. Lantern names, weather sentences, and Mute sit on raised leather; an idle host is a hollow ring so flicker vs silent is not hue-only. Safe undo uses the same dark wash. Lights Up stays ink on paper.
 - **Library card text size.** Clicking Text size or the slider no longer closes the Library card. Ambient room layering had flattened the topbar under Hall, so the panel was visible through empty Hall and the click counted as outside; range thumb retargets onto `document` are hit-tested too.
 
+## [1.0.2] — 2026-11-01
+
+### Highlights
+
+- **Reading Room opens.** PDFs stream page-by-page instead of downloading the whole file into Safari, and first-party workers can start under CSP. A volume that cannot open says so — it no longer sits on “Opening the volume…”. Confirm on Downloads is still the only way a download starts.
+
+### Fixed
+
+- **PDF and CBZ hang.** Gzip no longer buffers `/download` in memory (a 400MB comic PDF never reached the first byte). Safari can run blob workers (`script-src 'self' blob:`). PDFs use PDF.js range reads, not a blob iframe. Open has a timeout with an alert the owner can act on.
+
 ## [1.0.1] — 2026-11-02
 
 ### Highlights

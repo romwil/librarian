@@ -7,10 +7,9 @@ from pathlib import Path
 from unittest import mock
 
 from fastapi.testclient import TestClient
-from starlette.middleware.gzip import GZipMiddleware
 
 from librarian.web.app import create_app
-from librarian.web.security import APP_CSP, FILE_CSP
+from librarian.web.security import APP_CSP, FILE_CSP, FileSkipGZipMiddleware, should_gzip_path
 
 
 def _assert_baseline(response):
@@ -33,8 +32,10 @@ def test_health_carries_security_headers(tmp_path):
     assert response.status_code == 200
     _assert_baseline(response)
     assert response.headers.get("content-security-policy") == APP_CSP
-    assert "script-src 'self'" in APP_CSP
+    assert "script-src 'self' blob:" in APP_CSP
+    assert "worker-src 'self' blob:" in APP_CSP
     assert "'unsafe-inline'" not in APP_CSP.split("script-src")[1].split(";")[0]
+    assert "fonts.googleapis.com" not in APP_CSP
 
 
 @contextmanager
@@ -69,9 +70,16 @@ def test_hashed_assets_are_immutable(tmp_path):
         assert response.content.startswith(b"console.log")
 
 
+def test_volume_paths_are_not_gzip_candidates():
+    assert should_gzip_path("/api/health") is True
+    assert should_gzip_path("/api/works/abc/download") is False
+    assert should_gzip_path("/api/works/abc/stream") is False
+    assert should_gzip_path("/assets/app.js") is True
+
+
 def test_gzip_middleware_is_installed(tmp_path):
     app = create_app(tmp_path)
-    assert any(item.cls is GZipMiddleware for item in app.user_middleware)
+    assert any(item.cls is FileSkipGZipMiddleware for item in app.user_middleware)
 
 
 def test_download_uses_sandbox_csp(tmp_path, monkeypatch):
@@ -108,3 +116,47 @@ def test_download_uses_sandbox_csp(tmp_path, monkeypatch):
     assert response.status_code == 200
     assert response.headers.get("content-security-policy") == FILE_CSP
     assert response.headers.get("x-content-type-options") == "nosniff"
+
+
+def test_volume_download_is_not_gzipped_and_accepts_ranges(tmp_path, monkeypatch):
+    from librarian.db import Database
+    from librarian.rate_limit import clear_rate_limits
+    from librarian.sessions import clear_session_secret_cache
+
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("LIBRARIAN_OWNER_USERNAME", "owner")
+    monkeypatch.setenv("LIBRARIAN_OWNER_PASSWORD", "password123")
+    clear_session_secret_cache()
+    clear_rate_limits()
+    client = TestClient(create_app(tmp_path))
+    assert (
+        client.post("/api/auth/local/login", json={"username": "owner", "password": "password123"}).status_code
+        == 200
+    )
+    db = Database(tmp_path / "librarian.db")
+    folder = tmp_path / "books" / "Tia Levings" / "A Well Trained Wife"
+    folder.mkdir(parents=True)
+    body = b"%PDF-1.4\n" + (b"x" * 8000) + b"\n%%EOF\n"
+    pdf = folder / "A Well Trained Wife.pdf"
+    pdf.write_bytes(body)
+    work = db.upsert_work(
+        {
+            "kind": "book",
+            "title": "A Well Trained Wife",
+            "author": "Tia Levings",
+            "folder_path": str(folder),
+        }
+    )
+    db.add_file({"work_id": work["id"], "path": str(pdf), "filename": pdf.name, "kind": "book", "size": len(body)})
+    url = f"/api/works/{work['id']}/download"
+    full = client.get(url, params={"inline": 1}, headers={"Accept-Encoding": "gzip"})
+    assert full.status_code == 200
+    assert "gzip" not in (full.headers.get("content-encoding") or "").lower()
+    assert full.headers.get("accept-ranges") == "bytes"
+    assert full.content == body
+    start = client.get(url, params={"inline": 1}, headers={"Range": "bytes=0-7"})
+    assert start.status_code == 206
+    assert start.content == b"%PDF-1.4"
+    tail = client.get(url, params={"inline": 1}, headers={"Range": "bytes=-6"})
+    assert tail.status_code == 206
+    assert tail.content == b"%%EOF\n"

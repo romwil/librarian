@@ -1,6 +1,22 @@
 {
-  "generated_at": "2026-11-02T03:42:49Z",
+  "generated_at": "2026-11-02T03:58:00Z",
   "releases": [
+    {
+      "version": "1.0.2",
+      "date": "2026-11-01",
+      "summary": "",
+      "highlights": [
+        "**Reading Room opens.** PDFs stream page-by-page instead of downloading the whole file into Safari, and first-party workers can start under CSP. A volume that cannot open says so — it no longer sits on “Opening the volume…”. Confirm on Downloads is still the only way a download starts."
+      ],
+      "sections": [
+        {
+          "title": "Fixed",
+          "bullets": [
+            "**PDF and CBZ hang.** Gzip no longer buffers `/download` in memory (a 400MB comic PDF never reached the first byte). Safari can run blob workers (`script-src 'self' blob:`). PDFs use PDF.js range reads, not a blob iframe. Open has a timeout with an alert the owner can act on."
+          ]
+        }
+      ]
+    },
     {
       "version": "1.0.1",
       "date": "2026-11-02",
