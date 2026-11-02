@@ -1,6 +1,22 @@
 {
-  "generated_at": "2026-11-02T17:30:33Z",
+  "generated_at": "2026-11-02T18:10:32Z",
   "releases": [
+    {
+      "version": "1.0.10",
+      "date": "2026-11-02",
+      "summary": "",
+      "highlights": [
+        "**Guest vip hostname can sign in.** Settings → Public URL / `PUBLIC_BASE_URL` (and optional `LIBRARIAN_PUBLIC_ORIGINS`) joins the Origin allowlist for unsafe `/api`. Foreign Origins stay refused. Behind Cloudflare Tunnel set `LIBRARIAN_TRUST_PROXY_HEADERS=1` so Proto + Host match HTTPS."
+      ],
+      "sections": [
+        {
+          "title": "Fixed",
+          "bullets": [
+            "**Cross-origin request refused on vip login.** SPA at `https://librarian.automat.vip` posted with that Origin while the container saw LAN HTTP Host; login never reached auth. Allowlisted public origin + trusted Proto/Host fallback fix it without opening random sites."
+          ]
+        }
+      ]
+    },
     {
       "version": "1.0.9",
       "date": "2026-11-02",

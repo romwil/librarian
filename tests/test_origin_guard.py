@@ -104,3 +104,71 @@ def test_untrusted_forwarded_origin_is_ignored(tmp_path):
     )
     assert response.status_code == 403
     assert response.json()["detail"] == CROSS_ORIGIN_REFUSED
+
+
+def test_trusted_proxy_uses_host_when_forwarded_host_missing(tmp_path, monkeypatch):
+    """Cloudflare Tunnel often sets Proto + Host, not X-Forwarded-Host."""
+    monkeypatch.setenv("LIBRARIAN_TRUST_PROXY_HEADERS", "1")
+    # Socket URL is HTTP; browser Origin is HTTPS. Trust + Proto must lift scheme.
+    client = TestClient(create_app(tmp_path), base_url="http://librarian.automat.vip")
+    response = client.post(
+        "/api/auth/local/login",
+        json={"username": "owner", "password": "password123"},
+        headers={
+            **SKIP,
+            "Origin": "https://librarian.automat.vip",
+            "X-Librarian": "1",
+            "X-Forwarded-Proto": "https",
+        },
+    )
+    assert response.status_code == 200
+
+
+def test_public_base_url_origin_is_allowed(tmp_path):
+    from librarian.config import Settings, save_settings
+
+    save_settings(tmp_path, Settings(public_base_url="https://librarian.automat.vip"))
+    client = TestClient(create_app(tmp_path))
+    response = client.post(
+        "/api/auth/local/login",
+        json={"username": "owner", "password": "password123"},
+        headers={
+            **SKIP,
+            "Origin": "https://librarian.automat.vip",
+            "X-Librarian": "1",
+        },
+    )
+    assert response.status_code == 200
+
+
+def test_public_origins_env_allows_listed_host(tmp_path, monkeypatch):
+    monkeypatch.setenv("LIBRARIAN_PUBLIC_ORIGINS", "https://librarian.automat.vip")
+    client = TestClient(create_app(tmp_path))
+    response = client.post(
+        "/api/auth/local/login",
+        json={"username": "owner", "password": "password123"},
+        headers={
+            **SKIP,
+            "Origin": "https://librarian.automat.vip",
+            "X-Librarian": "1",
+        },
+    )
+    assert response.status_code == 200
+
+
+def test_foreign_origin_still_refused_with_public_base_url(tmp_path):
+    from librarian.config import Settings, save_settings
+
+    save_settings(tmp_path, Settings(public_base_url="https://librarian.automat.vip"))
+    client = TestClient(create_app(tmp_path))
+    response = client.post(
+        "/api/auth/local/login",
+        json={"username": "owner", "password": "password123"},
+        headers={
+            **SKIP,
+            "Origin": "https://evil.example",
+            "X-Librarian": "1",
+        },
+    )
+    assert response.status_code == 403
+    assert response.json()["detail"] == CROSS_ORIGIN_REFUSED

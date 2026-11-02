@@ -171,10 +171,11 @@ def test_secure_cookie_ignored_without_trusted_proxy(tmp_path, monkeypatch):
 def test_secure_cookie_when_proxy_is_trusted(tmp_path, monkeypatch):
     monkeypatch.setenv("LIBRARIAN_TRUST_PROXY_HEADERS", "1")
     client = _client(tmp_path, monkeypatch)
+    # Trusted Proto + Host lifts expected origin to https (Cloudflare Tunnel shape).
     resp = client.post(
         "/api/auth/local/login",
         json={"username": "owner", "password": "password123"},
-        headers={"X-Forwarded-Proto": "https"},
+        headers={"Origin": "https://testserver", "X-Forwarded-Proto": "https"},
     )
     assert resp.status_code == 200
     set_cookie = resp.headers.get("set-cookie", "")

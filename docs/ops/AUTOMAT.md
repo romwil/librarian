@@ -40,8 +40,9 @@ Members may later reach the library through a **user reverse proxy** (Caddy / NP
 | Topic | Automat note |
 |-------|----------------|
 | **Bind** | Container listens `0.0.0.0:8793`. Do not port-forward bare **8793** to the internet. |
-| **Proxy trust** | Set `LIBRARIAN_TRUST_PROXY_HEADERS=1` **only** on the container behind Caddy/NPM. Never on a laptop tunnel. Untrusted `X-Forwarded-*` is ignored for client IP, rate limits, and `Secure` cookies. |
-| **WAN** | Household auth is on from first boot. Spoofed forwarded proto/IP never unlocks a “trusted HTTPS” hop and never rotates the rate-limit key. |
+| **Proxy trust** | Set `LIBRARIAN_TRUST_PROXY_HEADERS=1` **only** on the container behind Caddy/NPM/Cloudflare Tunnel. Never on a laptop tunnel. Untrusted `X-Forwarded-*` is ignored for client IP, rate limits, and `Secure` cookies. |
+| **Public URL** | When guests land on a vip hostname (e.g. Cloudflare Access → Tunnel → `:8793`), set `PUBLIC_BASE_URL=https://librarian.automat.vip` (or Settings → Public URL) so Origin checks allow that landing. Optional extras: `LIBRARIAN_PUBLIC_ORIGINS`. LAN `:8793` stays ops truth — vip is not version truth. |
+| **WAN** | Household auth is on from first boot. Spoofed forwarded proto/IP never unlocks a “trusted HTTPS” hop and never rotates the rate-limit key. Foreign Origins stay refused. |
 | **SAB** | Retriever URL is `http://downloader.sl` (LAN DNS). `docker-run.sh` pins that hostname when the Unraid host can resolve it. |
 
 ---
@@ -116,6 +117,15 @@ AUDIOBOOKSHELF_API_TOKEN=
 Leave the Audiobookshelf lines blank until the player is up. The house URL is `http://10.10.1.202:13378`. See [Audiobookshelf](#audiobookshelf).
 
 Leave `LIBRARIAN_TRUST_PROXY_HEADERS` **unset** until a trusted TLS proxy is in front.
+
+When Cloudflare Tunnel (or Caddy/NPM) fronts a guest hostname:
+
+```
+LIBRARIAN_TRUST_PROXY_HEADERS=1
+PUBLIC_BASE_URL=https://librarian.automat.vip
+```
+
+Then `./docker-run.sh`. Do not disable Origin checks. Ops health/version stays on LAN `http://10.10.1.202:8793` (or Tailscale), not the vip.
 
 ---
 
