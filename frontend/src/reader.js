@@ -1,5 +1,8 @@
 export const READABLE_KINDS = ["book", "magazine", "comic"];
 export const READING_EXTS = [".epub", ".cbz", ".pdf"];
+export const READER_OPEN_TIMEOUT_MS = 90_000;
+export const READER_OPEN_TIMEOUT_MESSAGE =
+  "This volume took too long to open. Close and try again, or download it.";
 
 /** Paper under Foliate pages — Reading Room chrome stays dark; page text stays light. */
 export const EPUB_PAGE_SURFACE = "#faf6ee";
@@ -56,6 +59,11 @@ export function comicTurnSide(clientX, stageBox, imageBox) {
   const stageSide = pageTurnTarget(clientX, stageBox);
   if (stageSide) return stageSide;
   return pageTurnTarget(clientX, imageBox);
+}
+
+/** Comics and PDFs turn from the edges or arrows. Reflowable EPUB scrolls. */
+export function readerTurnsPages(engine) {
+  return engine === "cbz" || engine === "pdf";
 }
 
 /** Reflowable prose scrolls. Comics, fixed-layout pages, and PDF keep a page surface. */
@@ -291,11 +299,40 @@ export function readingFileName(files = [], header = "", fileId = "") {
 
 export function readerOpenError(error, responseStatus = 0) {
   const raw = String(error?.message || error || "").trim();
+  const name = String(error?.name || "");
+  if (name === "AbortError" || responseStatus === 504 || /took too long to open/i.test(raw)) {
+    return READER_OPEN_TIMEOUT_MESSAGE;
+  }
   if (responseStatus === 422 || /isn.?t a readable EPUB/i.test(raw)) {
     return "This file isn’t a readable EPUB, CBZ, or PDF.";
   }
-  if (/container|corrupt|zip|EPUBJS|failed to load/i.test(raw)) {
+  if (/container|corrupt|zip|EPUBJS|failed to load|Invalid PDF/i.test(raw)) {
     return "This file isn’t a readable EPUB/CBZ/PDF, or the EPUB on disk looks damaged.";
   }
   return raw || "This volume could not be opened in the reading room.";
+}
+
+/** Abort after `ms` so Opening the volume cannot hang forever. */
+export function startReaderOpenTimer(ms = READER_OPEN_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  return {
+    controller,
+    signal: controller.signal,
+    stop() {
+      clearTimeout(timer);
+    },
+  };
+}
+
+export function whenAborted(signal) {
+  return new Promise((_, reject) => {
+    const fail = () =>
+      reject(Object.assign(new Error(READER_OPEN_TIMEOUT_MESSAGE), { name: "AbortError", status: 504 }));
+    if (signal?.aborted) {
+      fail();
+      return;
+    }
+    signal?.addEventListener("abort", fail, { once: true });
+  });
 }

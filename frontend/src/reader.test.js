@@ -26,10 +26,13 @@ import {
   workPrimaryVerb,
   readerEngine,
   readerOpenError,
+  readerTurnsPages,
   readingFileName,
+  READER_OPEN_TIMEOUT_MESSAGE,
   workDownloadUrl,
   workReaderPath,
 } from "./reader.js";
+import { pdfPageFromPosition, pdfPersistDetail } from "./pdfReader.js";
 
 describe("in-app reader", () => {
   it("opens EPUB, CBZ, and magazine PDF on the work page — not Calibre-web", () => {
@@ -38,6 +41,9 @@ describe("in-app reader", () => {
     assert.equal(canReadInApp({ kind: "magazine" }, [{ filename: "Linux Magazine 2026-10.pdf" }]), true);
     assert.equal(readerEngine([{ filename: "Dune.epub" }]), "epub");
     assert.equal(readerEngine([{ filename: "Saga #54.cbz" }]), "cbz");
+    assert.equal(readerTurnsPages("cbz"), true);
+    assert.equal(readerTurnsPages("pdf"), true);
+    assert.equal(readerTurnsPages("epub"), false);
     assert.equal(readerEngine([{ filename: "issue.pdf" }]), "pdf");
   });
 
@@ -107,6 +113,24 @@ describe("in-app reader", () => {
   it("maps Foliate container failures to honest copy", () => {
     assert.match(readerOpenError(new Error("Failed to load container file")), /damaged|readable/);
     assert.equal(readerOpenError(new Error("nope"), 422), "This file isn’t a readable EPUB, CBZ, or PDF.");
+    assert.equal(readerOpenError(Object.assign(new Error("aborted"), { name: "AbortError" })), READER_OPEN_TIMEOUT_MESSAGE);
+    assert.equal(readerOpenError(new Error("timeout"), 504), READER_OPEN_TIMEOUT_MESSAGE);
+  });
+
+  it("clamps PDF page numbers from a stored position", () => {
+    assert.equal(pdfPageFromPosition("", 12), 1);
+    assert.equal(pdfPageFromPosition("3", 12), 3);
+    assert.equal(pdfPageFromPosition("99", 12), 12);
+    assert.equal(pdfPersistDetail(3, 12).cfi, "3");
+    assert.equal(pdfPersistDetail(3, 12).fraction, 0.25);
+  });
+
+  it("does not iframe a blob PDF — pdf.js streams the download URL", () => {
+    const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "components/Reader.jsx"), "utf8");
+    assert.match(src, /openPdfVolume/);
+    assert.doesNotMatch(src, /createObjectURL/);
+    assert.doesNotMatch(src, /<iframe/);
+    assert.match(src, /startReaderOpenTimer/);
   });
 
   it("deep-links peek Open onto the work page reader", () => {

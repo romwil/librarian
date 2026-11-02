@@ -7,7 +7,9 @@ from urllib.parse import urlparse
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
+from starlette.middleware.gzip import GZipMiddleware
 from starlette.responses import Response
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from librarian.proxy import trust_proxy_headers
 
@@ -17,7 +19,7 @@ HOUSEHOLD_REQUEST_VALUE = "1"
 
 APP_CSP = (
     "default-src 'self'; "
-    "script-src 'self'; "
+    "script-src 'self' blob:; "
     "style-src 'self' 'unsafe-inline'; "
     "font-src 'self'; "
     "img-src 'self' data: blob:; "
@@ -95,6 +97,24 @@ def is_file_content_path(path: str) -> bool:
     if not text.startswith("/api/works/"):
         return False
     return text.endswith("/download") or text.endswith("/stream")
+
+
+def should_gzip_path(path: str) -> bool:
+    """JSON and hashed assets compress. A volume must not — range reads and RAM."""
+    return not is_file_content_path(path)
+
+
+class FileSkipGZipMiddleware(GZipMiddleware):
+    """Gzip JSON/assets. Skip /download and /stream so PDFs can range and not hang."""
+
+    def __init__(self, app: ASGIApp, minimum_size: int = 500, compresslevel: int = 9) -> None:
+        super().__init__(app, minimum_size=minimum_size, compresslevel=compresslevel)
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope.get("type") == "http" and not should_gzip_path(str(scope.get("path") or "")):
+            await self.app(scope, receive, send)
+            return
+        await super().__call__(scope, receive, send)
 
 
 def csp_for(request: Request) -> str:

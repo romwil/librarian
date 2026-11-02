@@ -12,7 +12,8 @@ test.describe("fonts and CSP", () => {
     const response = await page.goto("/login");
     expect(response, "login document").toBeTruthy();
     const csp = response?.headers()["content-security-policy"] || "";
-    expect(csp).toContain("script-src 'self'");
+    expect(csp).toContain("script-src 'self' blob:");
+    expect(csp).toContain("worker-src 'self' blob:");
     expect(csp).toContain("frame-ancestors 'none'");
     expect(csp).not.toContain("fonts.googleapis.com");
     expect(csp).not.toContain("fonts.gstatic.com");

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
 import { humanError } from "../copy.js";
+import Alert from "./Alert.jsx";
 import {
   EPUB_READER_STYLES,
   comicSpreadMode,
@@ -12,10 +13,13 @@ import {
   readerEngine,
   readerFlow,
   readerOpenError,
+  readerTurnsPages,
   readerWheelDelta,
   readingFileName,
   scrollReader,
+  startReaderOpenTimer,
   turnReaderPage,
+  whenAborted,
   workDownloadUrl,
 } from "../reader.js";
 import {
@@ -34,7 +38,6 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
   const persistTimer = useRef(0);
   const [status, setStatus] = useState("Opening the volume…");
   const [error, setError] = useState("");
-  const [pdfUrl, setPdfUrl] = useState("");
   const [fixedLayout, setFixedLayout] = useState(false);
   const [chromeDim, setChromeDim] = useState(false);
   const reducedMotion = prefersReducedMotion();
@@ -93,7 +96,7 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
    * Those taps never reach the section document, so the stage itself turns.
    */
   function onComicPointerUp(event) {
-    if (engine !== "cbz") return;
+    if (!readerTurnsPages(engine)) return;
     if (event.button != null && event.button !== 0) return;
     if (event.target?.closest?.("a[href], input, textarea, select, label")) return;
     const side = comicSide(event);
@@ -107,7 +110,7 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
   }
 
   function onComicClick(event) {
-    if (engine !== "cbz") return;
+    if (!readerTurnsPages(engine)) return;
     if (turnedByPointer.current) {
       turnedByPointer.current = 0;
       return;
@@ -149,7 +152,7 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
 
   useEffect(() => {
     function onHostArrow(event) {
-      if (engine !== "cbz") return false;
+      if (!readerTurnsPages(engine)) return false;
       const side = hostReaderArrow(event);
       if (!side) return false;
       event.preventDefault();
@@ -170,7 +173,7 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
         event.stopPropagation();
         return;
       }
-      if (engine === "cbz") {
+      if (readerTurnsPages(engine)) {
         onHostArrow(event);
         return;
       }
@@ -194,7 +197,7 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
   }, [onClose, engine]);
 
   useEffect(() => {
-    if (engine !== "cbz") return undefined;
+    if (!readerTurnsPages(engine)) return undefined;
     const dialog = dialogRef.current;
     dialog?.focus({ preventScroll: true });
     return undefined;
@@ -204,8 +207,8 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
     const filesAtOpen = filesRef.current;
     const positionAtOpen = progressRef.current?.position || "";
     let cancelled = false;
-    let objectUrl = "";
     let view;
+    const openTimer = startReaderOpenTimer();
 
     async function open() {
       setError("");
@@ -214,10 +217,31 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
       if (!engine) {
         throw Object.assign(new Error("This file isn’t a readable EPUB, CBZ, or PDF."), { status: 422 });
       }
-      const response = await fetch(workDownloadUrl(work.id, { inline: true, fileId }), {
-        credentials: "include",
-        headers: { "X-Librarian": "1" },
-      });
+      if (engine === "pdf") {
+        const { openPdfVolume } = await import("../pdfReader.js");
+        if (cancelled || !stage.current) return;
+        view = await Promise.race([
+          openPdfVolume({
+            url: workDownloadUrl(work.id, { inline: true, fileId }),
+            container: stage.current,
+            position: positionAtOpen,
+            onRelocate: (detail) => persistRef.current(detail),
+            signal: openTimer.signal,
+          }),
+          whenAborted(openTimer.signal),
+        ]);
+        viewRef.current = view;
+        if (!cancelled) setStatus("");
+        return;
+      }
+      const response = await Promise.race([
+        fetch(workDownloadUrl(work.id, { inline: true, fileId }), {
+          credentials: "include",
+          headers: { "X-Librarian": "1" },
+          signal: openTimer.signal,
+        }),
+        whenAborted(openTimer.signal),
+      ]);
       if (!response.ok) {
         const detail = await response.text().catch(() => "");
         let message = "This volume could not be opened in the reading room.";
@@ -236,12 +260,6 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
       if (ext && ![".epub", ".cbz", ".pdf"].includes(ext)) {
         throw Object.assign(new Error("This file isn’t a readable EPUB, CBZ, or PDF."), { status: 422 });
       }
-      if (engine === "pdf") {
-        objectUrl = URL.createObjectURL(blob);
-        setPdfUrl(objectUrl);
-        setStatus("");
-        return;
-      }
       if (engine !== "epub" && engine !== "cbz") {
         throw Object.assign(new Error("This volume isn’t a readable EPUB, CBZ, or PDF."), { status: 422 });
       }
@@ -254,7 +272,7 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
       stage.current.replaceChildren(view);
       viewRef.current = view;
       const file = new File([blob], filename, { type: blob.type || "" });
-      await view.open(file);
+      await Promise.race([view.open(file), whenAborted(openTimer.signal)]);
       // Light page surface before first section paint (stored even if no doc yet).
       if (engine === "epub") view.renderer?.setStyles?.(EPUB_READER_STYLES);
       if (engine === "cbz") {
@@ -323,18 +341,22 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
         doc.addEventListener("touchmove", onTouchMove, { passive: false });
       });
       const lastLocation = positionAtOpen;
-      await view.init(lastLocation ? { lastLocation } : {});
+      await Promise.race([view.init(lastLocation ? { lastLocation } : {}), whenAborted(openTimer.signal)]);
       if (!cancelled) setStatus("");
     }
 
-    open().catch((err) => {
-      if (cancelled) return;
-      setStatus("");
-      setError(readerOpenError(err, err?.status) || humanError(err) || "This volume could not be opened in the reading room.");
-    });
+    open()
+      .catch((err) => {
+        if (cancelled) return;
+        setStatus("");
+        setError(readerOpenError(err, err?.status) || humanError(err) || "This volume could not be opened in the reading room.");
+      })
+      .finally(() => openTimer.stop());
 
     return () => {
       cancelled = true;
+      openTimer.controller.abort();
+      openTimer.stop();
       flushProgressRef.current();
       viewRef.current = null;
       try {
@@ -343,7 +365,6 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
         /* view may already be gone */
       }
       view?.remove?.();
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [work.id, engine, fileId]);
 
@@ -370,17 +391,18 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
           Close
         </button>
       </header>
-      {/* Comic stage click is paired with on-screen turn buttons and arrow keys. */}
-      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events -- see reader keyboard in this file */}
+      {/* Comic/PDF stage click is paired with on-screen turn buttons and arrow keys. */}
+      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- page-turn zones; keyboard is on the dialog */}
       <div
         className="reader-stage"
         data-engine={engine || undefined}
         data-testid="reader-stage"
-        onPointerUp={engine === "cbz" ? onComicPointerUp : undefined}
-        onClick={engine === "cbz" ? onComicClick : undefined}
+        onPointerUp={readerTurnsPages(engine) ? onComicPointerUp : undefined}
+        onClick={readerTurnsPages(engine) ? onComicClick : undefined}
+        aria-busy={status ? "true" : undefined}
       >
-        {pdfUrl ? <iframe title={work.title} src={pdfUrl} /> : <div className="reader-host" ref={stage} />}
-        {engine === "cbz" ? (
+        <div className="reader-host" ref={stage} />
+        {readerTurnsPages(engine) ? (
           <div className="reader-turns">
             <button
               type="button"
@@ -400,8 +422,12 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
             />
           </div>
         ) : null}
-        {status ? <p className="lede reader-status">{status}</p> : null}
-        {error ? <p className="alert reader-status">{error}</p> : null}
+        {status ? (
+          <p className="lede reader-status" role="status" aria-live="polite">
+            {status}
+          </p>
+        ) : null}
+        {error ? <Alert className="reader-status">{error}</Alert> : null}
       </div>
     </div>
   );
