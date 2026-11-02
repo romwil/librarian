@@ -704,6 +704,9 @@ a.chip {
   position: relative;
   overflow: hidden;
   background: #0c0907;
+  /* Foyer forces lights-down tokens; paint cream ink so inputs do not inherit
+     Lights Up body color (dark-on-dark) when the household lamp is paper. */
+  color: var(--text);
 }
 
 .lamp-shaft {
@@ -842,8 +845,26 @@ a.chip {
   border-radius: var(--radius);
   border: 1px solid var(--control-border);
   background: color-mix(in srgb, var(--bg) 55%, transparent);
+  /* Local --text — do not inherit body ink (foyer is dark under a Lights Up html). */
+  color: var(--text);
+  caret-color: var(--text);
   /* 16px floor — iOS Safari zooms the page on focus below this. */
   font-size: 16px;
+}
+.field input::placeholder,
+.field select::placeholder {
+  color: color-mix(in srgb, var(--muted) 85%, transparent);
+  opacity: 1;
+}
+/* Chrome/Safari autofill paints its own fill + -webkit-text-fill; keep token ink. */
+.field input:-webkit-autofill,
+.field input:-webkit-autofill:hover,
+.field input:-webkit-autofill:focus,
+.field input:-webkit-autofill:active {
+  -webkit-text-fill-color: var(--text);
+  caret-color: var(--text);
+  box-shadow: 0 0 0 1000px color-mix(in srgb, var(--bg) 82%, var(--surface)) inset;
+  transition: background-color 99999s ease-out;
 }
 .field input:focus,
 .field select:focus {

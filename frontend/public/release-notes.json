@@ -1,6 +1,23 @@
 {
-  "generated_at": "2026-11-02T16:49:09Z",
+  "generated_at": "2026-11-02T17:30:33Z",
   "releases": [
+    {
+      "version": "1.0.9",
+      "date": "2026-11-02",
+      "summary": "",
+      "highlights": [
+        "**Foyer login you can read.** Name and password keep cream ink on the dark glass (including autofill), and Tab walks Name → Password instead of the `?` tips. Confirm on Downloads is still the only way a download starts."
+      ],
+      "sections": [
+        {
+          "title": "Fixed",
+          "bullets": [
+            "**Foyer field contrast.** Inputs inherited Lights Up body ink while the foyer forced dark-room tokens — dark-on-dark typed text and password dots. Fields now use `--text` / `-webkit-text-fill-color` on the dark card.",
+            "**Foyer help tab order.** The `?` controls after Name / Password use `tabIndex={-1}` so Tab no longer lands between the fields."
+          ]
+        }
+      ]
+    },
     {
       "version": "1.0.8",
       "date": "2026-11-02",

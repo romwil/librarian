@@ -60,6 +60,18 @@ test("peek is a solid themed panel and the overflow grip uses ink", () => {
 test("foyer stays a dark room", () => {
   const foyer = readFileSync(join(root, "components/GlassDoor.jsx"), "utf8");
   assert.match(foyer, /data-theme="lights-down"/);
+  assert.match(stylesSrc, /\.foyer\s*\{[^}]*color:\s*var\(--text\)/);
+});
+
+test("field inputs use token ink and keep autofill fill readable", () => {
+  assert.match(stylesSrc, /\.field input,\s*\.field select\s*\{[^}]*color:\s*var\(--text\)/);
+  assert.match(stylesSrc, /\.field input:-webkit-autofill[\s\S]*?-webkit-text-fill-color:\s*var\(--text\)/);
+  assert.match(stylesSrc, /\.field input::placeholder[\s\S]*?color:\s*color-mix\(in srgb, var\(--muted\)/);
+});
+
+test("field help ? stays out of sequential tab order", () => {
+  const help = readFileSync(join(root, "components/FieldHelp.jsx"), "utf8");
+  assert.match(help, /className="help-q"[\s\S]*?tabIndex=\{-1\}/);
 });
 
 test("peek chrome is not a second banner landmark", () => {

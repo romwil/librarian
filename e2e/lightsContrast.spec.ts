@@ -40,6 +40,42 @@ test.describe("Lights Up / Lights Down contrast", () => {
     await expectReadable(page.getByText(/household's books, comics, and audiobooks/i));
   });
 
+  test("foyer login fields paint readable value ink and Tab skips help", async ({ page }) => {
+    await page.goto("/login");
+    const name = page.getByRole("textbox", { name: "Name" });
+    const password = page.getByLabel("Password", { exact: true });
+    await expect(name).toBeVisible();
+    await name.fill("owner");
+    await password.fill("secret-pass");
+
+    const nameInk = await name.evaluate((el) => {
+      const cs = getComputedStyle(el);
+      return {
+        color: cs.color,
+        fill: cs.getPropertyValue("-webkit-text-fill-color").trim() || cs.color,
+        caret: cs.caretColor,
+        token: cs.getPropertyValue("--text").trim(),
+      };
+    });
+    expect(nameInk.token).toBe("#f4ead6");
+    // Prefer fill when Chrome reports it; otherwise computed color.
+    const inkSample = nameInk.fill && nameInk.fill !== "none" ? nameInk.fill : nameInk.color;
+    expect(inkSample).toMatch(/^(?:rgb\(244,\s*234,\s*214\)|#f4ead6|rgba?\(244)/i);
+    await expectReadable(name);
+
+    const passInk = await password.evaluate((el) => {
+      const cs = getComputedStyle(el);
+      return cs.getPropertyValue("-webkit-text-fill-color").trim() || cs.color;
+    });
+    expect(passInk).toMatch(/^(?:rgb\(244,\s*234,\s*214\)|#f4ead6|rgba?\(244)/i);
+
+    await name.focus();
+    await page.keyboard.press("Tab");
+    await expect(password).toBeFocused();
+    await expect(page.getByRole("button", { name: "About Name" })).not.toBeFocused();
+    await expect(page.getByRole("button", { name: "About Password" })).not.toBeFocused();
+  });
+
   for (const lamp of LAMPS) {
     test.describe(lamp, () => {
       test.beforeEach(async ({ page }) => {
