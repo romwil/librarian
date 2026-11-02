@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import zipfile
 from pathlib import Path
@@ -92,19 +93,46 @@ def _cleanup_moved_source(source: Path, placed: List[str]) -> None:
     if not source.exists():
         return
     try:
-        source_key = str(source.resolve())
+        source_resolved = source.resolve()
+        source_key = str(source_resolved)
     except OSError:
+        source_resolved = source
         source_key = str(source)
+    # Never delete DATA_DIR (/config) — SQLite, session secret, settings, conversion cache.
+    data_dir_raw = (os.environ.get("DATA_DIR") or "").strip()
+    if data_dir_raw:
+        try:
+            data_dir = Path(data_dir_raw).expanduser().resolve()
+        except OSError:
+            data_dir = Path(data_dir_raw).expanduser()
+        if source_resolved == data_dir:
+            return
+        try:
+            data_dir.relative_to(source_resolved)
+            # Source is DATA_DIR or an ancestor of it — refuse the tree wipe.
+            return
+        except ValueError:
+            pass
     placed_keys = set()
+    placed_resolved: List[Path] = []
     for path in placed:
         try:
-            placed_keys.add(str(Path(path).resolve()))
+            resolved = Path(path).resolve()
+            placed_keys.add(str(resolved))
+            placed_resolved.append(resolved)
         except OSError:
             placed_keys.add(str(path))
     prefix = source_key.rstrip("/") + "/"
     # If the library dest is still under the source tree, leave staging alone.
     if any(key == source_key or key.startswith(prefix) for key in placed_keys):
         return
+    # Source must not be an ancestor of any destination (copy-on-lock left dest nested).
+    for dest in placed_resolved:
+        try:
+            dest.relative_to(source_resolved)
+            return
+        except ValueError:
+            continue
     if source.is_file():
         if source_key not in placed_keys:
             source.unlink(missing_ok=True)

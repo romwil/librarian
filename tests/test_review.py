@@ -235,6 +235,123 @@ def test_review_apply_no_payload_is_400(tmp_path, monkeypatch):
     assert "cannot invent" in resp.json()["detail"]
 
 
+def test_review_apply_refuses_data_dir_and_does_not_rmtree_secrets(tmp_path, monkeypatch):
+    """Regression: Apply with folder=DATA_DIR + kind=music must refuse and leave secrets."""
+    data_root = tmp_path / "data"
+    config = tmp_path / "config"
+    data_root.mkdir()
+    config.mkdir()
+    session_secret = config / "session.secret"
+    session_secret.write_text("super-secret-session", encoding="utf-8")
+    marker = config / "owner-marker.txt"
+    marker.write_text("do-not-delete", encoding="utf-8")
+    conv = config / "conversions" / "cache"
+    conv.mkdir(parents=True)
+    track = conv / "track.mp3"
+    track.write_bytes(b"ID3fakeaudio" * 40)
+
+    monkeypatch.setenv("LIBRARIAN_FS_ROOT", str(data_root))
+    monkeypatch.setenv("DATA_DIR", str(config))
+    settings = Settings(
+        books_root=str(data_root / "books"),
+        magazines_root=str(data_root / "magazines"),
+        comics_root=str(data_root / "comics"),
+        audiobooks_root=str(data_root / "audiobooks"),
+        incoming_music_root=str(data_root / "incoming"),
+        music_root=str(data_root / "music"),
+        complete_root=str(data_root / "usenet" / "complete"),
+    )
+    for root in (
+        settings.books_root,
+        settings.magazines_root,
+        settings.comics_root,
+        settings.audiobooks_root,
+        settings.incoming_music_root,
+        settings.music_root,
+        settings.complete_root,
+    ):
+        Path(root).mkdir(parents=True, exist_ok=True)
+
+    client, app = _client(config, monkeypatch, settings=settings)
+    db = app.state.db
+    work = db.upsert_work(
+        {
+            "kind": "music",
+            "title": "Evil Album",
+            "author": "Attacker",
+            "review_state": "needs_review",
+            "review_reason": "unknown_identity",
+            "folder_path": str(config),
+        }
+    )
+    resp = client.post(
+        f"/api/review/{work['id']}/apply",
+        json={
+            "title": "Evil Album",
+            "author": "Attacker",
+            "artist": "Attacker",
+            "album": "Evil Album",
+            "kind": "music",
+            "folder": str(config),
+        },
+    )
+    assert resp.status_code == 400
+    detail = resp.json()["detail"].lower()
+    assert "config" in detail or "outside" in detail or "/data" in detail
+    assert config.is_dir()
+    assert session_secret.read_text(encoding="utf-8") == "super-secret-session"
+    assert marker.read_text(encoding="utf-8") == "do-not-delete"
+    assert track.exists()
+    assert (config / "librarian.db").exists()
+    assert (config / "settings.json").exists()
+
+
+def test_review_apply_sab_complete_dump_still_moves(tmp_path, monkeypatch):
+    """Legitimate Sorting Apply under SAB complete keeps move_source cleanup."""
+    settings = Settings(
+        books_root=str(tmp_path / "books"),
+        magazines_root=str(tmp_path / "magazines"),
+        comics_root=str(tmp_path / "comics"),
+        audiobooks_root=str(tmp_path / "audiobooks"),
+        incoming_music_root=str(tmp_path / "incoming"),
+        music_root=str(tmp_path / "music"),
+        complete_root=str(tmp_path / "usenet" / "complete"),
+    )
+    client, app = _client(tmp_path, monkeypatch, settings=settings)
+    db = app.state.db
+    folder = tmp_path / "usenet" / "complete" / "downloads" / "Tolkien.Return"
+    folder.mkdir(parents=True)
+    payload = folder / "book.epub"
+    payload.write_bytes(b"epub-bytes")
+    work = db.upsert_work(
+        {
+            "kind": "book",
+            "title": "Mystery",
+            "review_state": "needs_review",
+            "review_reason": "unknown_identity",
+            "folder_path": str(folder),
+        }
+    )
+    resp = client.post(
+        f"/api/review/{work['id']}/apply",
+        json={
+            "title": "The Return of the King",
+            "author": "J. R. R. Tolkien",
+            "isbn": "9780000000000",
+            "kind": "book",
+            "folder": str(folder),
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["organized"] is True
+    assert not payload.exists()
+    assert not folder.exists()
+    stored = db.get_work(work["id"])
+    assert stored["review_state"] == "none"
+    assert stored["title"] == "The Return of the King"
+
+
 def test_review_apply_identity_organizes(tmp_path, monkeypatch):
     settings = Settings(
         books_root=str(tmp_path / "books"),

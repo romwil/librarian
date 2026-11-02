@@ -15,6 +15,16 @@
 - **Maintain indexer lanterns.** Lights Down no longer paints pale paper cards with tan status copy. Lantern names, weather sentences, and Mute sit on raised leather; an idle host is a hollow ring so flicker vs silent is not hue-only. Safe undo uses the same dark wash. Lights Up stays ink on paper.
 - **Library card text size.** Clicking Text size or the slider no longer closes the Library card. Ambient room layering had flattened the topbar under Hall, so the panel was visible through empty Hall and the click counted as outside; range thumb retargets onto `document` are hit-tested too.
 
+## [1.0.8] — 2026-11-02
+
+### Highlights
+
+- **Sorting Apply cannot delete `/config`.** Review Apply uses the same `/data` jail as ingest, refuses the config folder and library roots, and only removes SAB complete / watch dumps after a confident shelve. Confirm on Downloads is still the only way a download starts.
+
+### Fixed
+
+- **Review Apply path jail.** An owner/op (or XSS’d session) could POST `folder` at `DATA_DIR` with `kind=music`, force-shelve conversion-cache audio, and `rmtree` secrets, SQLite, and settings. Apply now gates with `confined_path` + protected roots, keeps `move_source` only under complete/watch, and never cleans up `DATA_DIR`.
+
 ## [1.0.7] — 2026-11-02
 
 ### Highlights
