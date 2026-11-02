@@ -1,6 +1,22 @@
 {
-  "generated_at": "2026-11-02T04:24:04Z",
+  "generated_at": "2026-11-02T04:43:30Z",
   "releases": [
+    {
+      "version": "1.0.6",
+      "date": "2026-11-02",
+      "summary": "",
+      "highlights": [
+        "**Large PDFs keep opening.** A 400MB comic shows opening progress and is given four minutes, so page 1 can paint instead of aborting at 90s. Confirm on Downloads is still the only way a download starts."
+      ],
+      "sections": [
+        {
+          "title": "Fixed",
+          "bullets": [
+            "**PDF splash timeout.** PDF.js still walks a broken xref by fetching the whole file; a progressive stream plus 2MB ranges plus a longer timer lets page 1 finish. Failure still replaces “Opening the volume…” with an alert."
+          ]
+        }
+      ]
+    },
     {
       "version": "1.0.5",
       "date": "2026-11-02",
