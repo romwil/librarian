@@ -139,6 +139,7 @@ describe("in-app reader", () => {
     assert.doesNotMatch(src, /createObjectURL/);
     assert.doesNotMatch(src, /<iframe/);
     assert.match(src, /startReaderOpenTimer/);
+    assert.match(src, /onPageReady/);
   });
 
   it("loads PDFs with 2MB ranges and a progressive stream so large files can finish", () => {

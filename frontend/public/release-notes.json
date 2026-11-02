@@ -1,6 +1,22 @@
 {
-  "generated_at": "2026-11-02T04:43:30Z",
+  "generated_at": "2026-11-02T04:58:22Z",
   "releases": [
+    {
+      "version": "1.0.7",
+      "date": "2026-11-02",
+      "summary": "",
+      "highlights": [
+        "**PDF page 1 is the open.** The Reading Room leaves “Opening the volume…” when the first page is labeled, not after a long raster. Confirm on Downloads is still the only way a download starts."
+      ],
+      "sections": [
+        {
+          "title": "Fixed",
+          "bullets": [
+            "**Splash stuck at 99%.** A 400MB comic had already painted page 1 while progress callbacks kept the overlay up and blocked page turns. Open returns when the page exists; raster can finish in the background."
+          ]
+        }
+      ]
+    },
     {
       "version": "1.0.6",
       "date": "2026-11-02",

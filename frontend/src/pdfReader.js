@@ -51,6 +51,7 @@ export async function openPdfVolume({
   position = "",
   onRelocate,
   onProgress,
+  onPageReady,
   signal,
 } = {}) {
   if (!container) throw new Error("This volume could not be opened in the reading room.");
@@ -94,6 +95,10 @@ export async function openPdfVolume({
   let pageNum = pdfPageFromPosition(position, pdf.numPages);
   let renderToken = 0;
   let closed = false;
+  let labeled;
+  const labeledPromise = new Promise((resolve) => {
+    labeled = resolve;
+  });
 
   async function show(page) {
     if (closed) return;
@@ -110,13 +115,18 @@ export async function openPdfVolume({
     canvas.style.width = `${canvas.width / dpr}px`;
     canvas.style.height = `${canvas.height / dpr}px`;
     canvas.setAttribute("aria-label", pageLabel(wanted, pdf.numPages));
+    labeled?.();
+    labeled = null;
+    onPageReady?.();
     await pdfPage.render({ canvasContext: canvas.getContext("2d", { alpha: false }), viewport }).promise;
     if (closed || token !== renderToken) return;
     pageNum = wanted;
     onRelocate?.(pdfPersistDetail(pageNum, pdf.numPages));
   }
 
-  await show(pageNum);
+  const firstShow = show(pageNum);
+  await Promise.race([labeledPromise, firstShow]);
+  firstShow.catch(() => {});
 
   const observer = new ResizeObserver(() => {
     void show(pageNum);
