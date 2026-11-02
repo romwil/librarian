@@ -15,6 +15,16 @@
 - **Maintain indexer lanterns.** Lights Down no longer paints pale paper cards with tan status copy. Lantern names, weather sentences, and Mute sit on raised leather; an idle host is a hollow ring so flicker vs silent is not hue-only. Safe undo uses the same dark wash. Lights Up stays ink on paper.
 - **Library card text size.** Clicking Text size or the slider no longer closes the Library card. Ambient room layering had flattened the topbar under Hall, so the panel was visible through empty Hall and the click counted as outside; range thumb retargets onto `document` are hit-tested too.
 
+## [1.0.10] — 2026-11-02
+
+### Highlights
+
+- **Guest vip hostname can sign in.** Settings → Public URL / `PUBLIC_BASE_URL` (and optional `LIBRARIAN_PUBLIC_ORIGINS`) joins the Origin allowlist for unsafe `/api`. Foreign Origins stay refused. Behind Cloudflare Tunnel set `LIBRARIAN_TRUST_PROXY_HEADERS=1` so Proto + Host match HTTPS.
+
+### Fixed
+
+- **Cross-origin request refused on vip login.** SPA at `https://librarian.automat.vip` posted with that Origin while the container saw LAN HTTP Host; login never reached auth. Allowlisted public origin + trusted Proto/Host fallback fix it without opening random sites.
+
 ## [1.0.9] — 2026-11-02
 
 ### Highlights

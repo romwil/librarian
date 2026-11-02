@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Optional, Tuple
+import os
+from pathlib import Path
+from typing import Optional, Set, Tuple
 from urllib.parse import urlparse
 
 from fastapi import Request
@@ -16,6 +18,7 @@ from librarian.proxy import trust_proxy_headers
 UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 HOUSEHOLD_REQUEST_HEADER = "x-librarian"
 HOUSEHOLD_REQUEST_VALUE = "1"
+_ENV_PUBLIC_ORIGINS = "LIBRARIAN_PUBLIC_ORIGINS"
 
 APP_CSP = (
     "default-src 'self'; "
@@ -58,10 +61,17 @@ def origin_parts(value: str) -> Optional[OriginParts]:
 
 
 def expected_origin(request: Request) -> Optional[OriginParts]:
-    """This request's origin. Trusted X-Forwarded-* only when proxy trust is on."""
+    """This request's origin. Trusted X-Forwarded-* only when proxy trust is on.
+
+    Cloudflare Tunnel often sets ``X-Forwarded-Proto: https`` while leaving
+    ``Host`` as the public hostname and omitting ``X-Forwarded-Host``. When
+    trust is on, Proto + Host is enough; do not require both forwarded fields.
+    """
     if trust_proxy_headers():
         proto = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip()
         host = (request.headers.get("x-forwarded-host") or "").split(",")[0].strip()
+        if not host:
+            host = (request.headers.get("host") or "").strip()
         if proto and host:
             parts = origin_parts(f"{proto}://{host}")
             if parts is not None:
@@ -78,12 +88,40 @@ def request_origin(request: Request) -> Optional[OriginParts]:
     return origin_parts(referer)
 
 
+def configured_public_origins(request: Request) -> Set[OriginParts]:
+    """Household public landing origins (Settings / env), never foreign sites.
+
+    ``public_base_url`` and ``LIBRARIAN_PUBLIC_ORIGINS`` name the guest-facing
+    hostname (e.g. Cloudflare Access vip). They do not disable Origin checks.
+    """
+    allowed: Set[OriginParts] = set()
+    raw = (os.environ.get(_ENV_PUBLIC_ORIGINS) or "").strip()
+    for piece in raw.split(","):
+        parts = origin_parts(piece.strip())
+        if parts is not None:
+            allowed.add(parts)
+    try:
+        data_dir = getattr(request.app.state, "data_dir", None)
+        if data_dir is not None:
+            from librarian.config import load_merged_settings
+
+            settings = load_merged_settings(Path(data_dir))
+            parts = origin_parts(str(getattr(settings, "public_base_url", "") or ""))
+            if parts is not None:
+                allowed.add(parts)
+    except Exception:
+        pass
+    return allowed
+
+
 def origin_allowed(request: Request) -> bool:
-    expected = expected_origin(request)
     got = request_origin(request)
-    if expected is None or got is None:
+    if got is None:
         return False
-    return expected == got
+    expected = expected_origin(request)
+    if expected is not None and expected == got:
+        return True
+    return got in configured_public_origins(request)
 
 
 def household_header_ok(request: Request) -> bool:

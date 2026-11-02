@@ -33,6 +33,8 @@ Session forging is trivial if `LIBRARIAN_SESSION_SECRET` is left at the public d
 
 `LIBRARIAN_TRUST_PROXY_HEADERS=1` is **opt-in, default off.** Set it only on the container that sits behind Caddy / NPM / a Cloudflare Tunnel that you control. Never on a laptop SSH tunnel.
 
+Guest-facing hostnames (Cloudflare Access vip, etc.) must also be named as the household public origin: Settings → Public URL / `PUBLIC_BASE_URL`, or extras via `LIBRARIAN_PUBLIC_ORIGINS`. Unsafe `/api` still requires a matching Origin (or that allowlist) plus `X-Librarian: 1` — foreign sites stay refused.
+
 ### Public household perimeter
 
 There is **no** `/api/auth/` prefix leak. Ingress matches **explicit method+path pairs** in `PUBLIC_HANDSHAKE_EXACT` (`librarian/auth.py`). If a route is not on this list, it needs a session.
@@ -81,7 +83,7 @@ SPA ──no session──► /login (foyer) or /join?token=
 ## Operator checklist
 
 1. **Do not expose bare `8793` to the internet.** Put TLS on Caddy/NPM/Cloudflare Tunnel in front. The accepted bind (`0.0.0.0`) stays until **Hub reverse-proxy-only** is the exit (S3 / P3-MED-02).
-2. Set **`LIBRARIAN_TRUST_PROXY_HEADERS=1` only behind that trusted proxy.** Untrusted `X-Forwarded-*` is ignored for client IP, rate limits, `Secure` cookies, and any “this is HTTPS” decision.
+2. Set **`LIBRARIAN_TRUST_PROXY_HEADERS=1` only behind that trusted proxy.** Untrusted `X-Forwarded-*` is ignored for client IP, rate limits, `Secure` cookies, and any “this is HTTPS” decision. Set **`PUBLIC_BASE_URL`** (or Settings → Public URL) to the guest hostname so Origin allowlisting matches the landing; optional **`LIBRARIAN_PUBLIC_ORIGINS`** for extra same-app Origins only.
 3. Set **`LIBRARIAN_SESSION_SECRET`** to a long random value (or accept auto-generated secret under Config). Invite HMACs use this secret. Never commit it. The public development default is refused.
 4. Set **`LIBRARIAN_OWNER_PASSWORD`** (≥ 8) in the Unraid template / `.env`. Do not log it.
 5. Keep NZBFinder / SAB / Hardcover / NYT Books / Comic Vine keys out of git and out of backups you share. `settings.json` is `0600`.
