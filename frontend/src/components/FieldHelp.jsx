@@ -28,6 +28,7 @@ export default function FieldHelp({ label, children }) {
       <button
         type="button"
         className="help-q"
+        tabIndex={-1}
         aria-label={`About ${label}`}
         aria-expanded={open}
         aria-controls={tipId}

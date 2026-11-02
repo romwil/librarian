@@ -15,6 +15,17 @@
 - **Maintain indexer lanterns.** Lights Down no longer paints pale paper cards with tan status copy. Lantern names, weather sentences, and Mute sit on raised leather; an idle host is a hollow ring so flicker vs silent is not hue-only. Safe undo uses the same dark wash. Lights Up stays ink on paper.
 - **Library card text size.** Clicking Text size or the slider no longer closes the Library card. Ambient room layering had flattened the topbar under Hall, so the panel was visible through empty Hall and the click counted as outside; range thumb retargets onto `document` are hit-tested too.
 
+## [1.0.9] — 2026-11-02
+
+### Highlights
+
+- **Foyer login you can read.** Name and password keep cream ink on the dark glass (including autofill), and Tab walks Name → Password instead of the `?` tips. Confirm on Downloads is still the only way a download starts.
+
+### Fixed
+
+- **Foyer field contrast.** Inputs inherited Lights Up body ink while the foyer forced dark-room tokens — dark-on-dark typed text and password dots. Fields now use `--text` / `-webkit-text-fill-color` on the dark card.
+- **Foyer help tab order.** The `?` controls after Name / Password use `tabIndex={-1}` so Tab no longer lands between the fields.
+
 ## [1.0.8] — 2026-11-02
 
 ### Highlights
