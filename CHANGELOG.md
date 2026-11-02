@@ -15,6 +15,16 @@
 - **Maintain indexer lanterns.** Lights Down no longer paints pale paper cards with tan status copy. Lantern names, weather sentences, and Mute sit on raised leather; an idle host is a hollow ring so flicker vs silent is not hue-only. Safe undo uses the same dark wash. Lights Up stays ink on paper.
 - **Library card text size.** Clicking Text size or the slider no longer closes the Library card. Ambient room layering had flattened the topbar under Hall, so the panel was visible through empty Hall and the click counted as outside; range thumb retargets onto `document` are hit-tested too.
 
+## [1.0.4] — 2026-11-02
+
+### Highlights
+
+- **PDF first page.** A 400MB comic PDF paints page 1 from HTTP ranges instead of streaming the whole file in 64KB slices. Confirm on Downloads is still the only way a download starts.
+
+### Fixed
+
+- **Opening the volume on large PDFs.** PDF.js `disableStream` plus 2MB range chunks — the sequential stream from byte 0 was competing with hundreds of 64KB ranges, so Safari sat on the splash for minutes.
+
 ## [1.0.2] — 2026-11-01
 
 ### Highlights

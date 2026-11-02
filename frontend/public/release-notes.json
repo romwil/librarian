@@ -1,6 +1,22 @@
 {
-  "generated_at": "2026-11-02T03:58:00Z",
+  "generated_at": "2026-11-02T04:22:15Z",
   "releases": [
+    {
+      "version": "1.0.4",
+      "date": "2026-11-02",
+      "summary": "",
+      "highlights": [
+        "**PDF first page.** A 400MB comic PDF paints page 1 from HTTP ranges instead of streaming the whole file in 64KB slices. Confirm on Downloads is still the only way a download starts."
+      ],
+      "sections": [
+        {
+          "title": "Fixed",
+          "bullets": [
+            "**Opening the volume on large PDFs.** PDF.js `disableStream` plus 2MB range chunks — the sequential stream from byte 0 was competing with hundreds of 64KB ranges, so Safari sat on the splash for minutes."
+          ]
+        }
+      ]
+    },
     {
       "version": "1.0.2",
       "date": "2026-11-01",

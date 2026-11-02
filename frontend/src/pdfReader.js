@@ -1,5 +1,20 @@
 /** PDF.js helpers. The worker stays a same-origin hashed asset (`script-src 'self'`). */
 
+/** Bytes per HTTP range. 64KB default + streaming from byte 0 storms a 400MB comic. */
+export const PDF_RANGE_CHUNK_SIZE = 2 * 1024 * 1024;
+
+/** Range-only load: skip the sequential stream so page 1 does not wait on the whole file. */
+export const PDF_LOAD_OPTIONS = {
+  withCredentials: true,
+  httpHeaders: { "X-Librarian": "1" },
+  isEvalSupported: false,
+  disableAutoFetch: true,
+  disableStream: true,
+  disableRange: false,
+  rangeChunkSize: PDF_RANGE_CHUNK_SIZE,
+  verbosity: 0,
+};
+
 export function pdfPageFromPosition(position, pageCount = 0) {
   const n = Number.parseInt(String(position || ""), 10);
   if (!Number.isFinite(n) || n < 1) return 1;
@@ -40,13 +55,7 @@ export async function openPdfVolume({
   pdfjs.GlobalWorkerOptions.workerSrc = workerMod.default;
   const task = pdfjs.getDocument({
     url,
-    withCredentials: true,
-    httpHeaders: { "X-Librarian": "1" },
-    isEvalSupported: false,
-    disableAutoFetch: true,
-    disableStream: false,
-    disableRange: false,
-    verbosity: 0,
+    ...PDF_LOAD_OPTIONS,
   });
   const abort = () => {
     try {

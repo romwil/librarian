@@ -32,7 +32,12 @@ import {
   workDownloadUrl,
   workReaderPath,
 } from "./reader.js";
-import { pdfPageFromPosition, pdfPersistDetail } from "./pdfReader.js";
+import {
+  PDF_LOAD_OPTIONS,
+  PDF_RANGE_CHUNK_SIZE,
+  pdfPageFromPosition,
+  pdfPersistDetail,
+} from "./pdfReader.js";
 
 describe("in-app reader", () => {
   it("opens EPUB, CBZ, and magazine PDF on the work page — not Calibre-web", () => {
@@ -131,6 +136,14 @@ describe("in-app reader", () => {
     assert.doesNotMatch(src, /createObjectURL/);
     assert.doesNotMatch(src, /<iframe/);
     assert.match(src, /startReaderOpenTimer/);
+  });
+
+  it("loads PDFs with range requests, not a full-file stream from byte 0", () => {
+    assert.equal(PDF_LOAD_OPTIONS.disableStream, true);
+    assert.equal(PDF_LOAD_OPTIONS.disableRange, false);
+    assert.equal(PDF_LOAD_OPTIONS.disableAutoFetch, true);
+    assert.equal(PDF_LOAD_OPTIONS.rangeChunkSize, 2 * 1024 * 1024);
+    assert.equal(PDF_RANGE_CHUNK_SIZE, 2 * 1024 * 1024);
   });
 
   it("deep-links peek Open onto the work page reader", () => {
