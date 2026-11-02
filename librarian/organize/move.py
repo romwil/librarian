@@ -16,15 +16,51 @@ from librarian.metadata import apply_audio_tags_in_folder, comicinfo_xml
 
 
 def _copy_into(src: Path, dest: Path, *, move: bool = False) -> Path:
-    dest.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+    except PermissionError as error:
+        raise PermissionError(
+            error.errno,
+            error.strerror,
+            str(dest.parent),
+            None,
+            str(dest),
+        ) from error
     if dest.exists() and dest.resolve() != src.resolve():
         raise FileExistsError(str(dest))
-    if dest.resolve() != src.resolve():
-        if move:
-            shutil.move(str(src), str(dest))
-        else:
+    if dest.resolve() == src.resolve():
+        return dest
+    if not move:
+        shutil.copy2(src, dest)
+        return dest
+    try:
+        shutil.move(str(src), str(dest))
+        return dest
+    except PermissionError:
+        # shutil.move may already have copied onto a writable shelf, then failed
+        # unlinking a SAB complete file (uid-0 nested extract, mode 755). Keep the
+        # shelf copy so Apply is not a false books-root PUID lock.
+        if dest.exists() and dest.resolve() != src.resolve() and dest.stat().st_size > 0:
+            try:
+                src.unlink()
+            except OSError:
+                pass
+            return dest
+        try:
             shutil.copy2(src, dest)
-    return dest
+        except PermissionError as copy_error:
+            raise PermissionError(
+                copy_error.errno,
+                copy_error.strerror,
+                getattr(copy_error, "filename", None) or str(src),
+                None,
+                str(dest),
+            ) from copy_error
+        try:
+            src.unlink()
+        except OSError:
+            pass
+        return dest
 
 
 def _inject_comicinfo(cbz: Path, identity: Dict[str, Any], guid: str) -> None:

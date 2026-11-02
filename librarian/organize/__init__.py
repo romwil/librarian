@@ -125,6 +125,9 @@ from librarian.organize.review import (
     COLLISION_APPLY_ERROR as COLLISION_APPLY_ERROR,
 )
 from librarian.organize.review import (
+    COMPLETE_APPLY_ERROR as COMPLETE_APPLY_ERROR,
+)
+from librarian.organize.review import (
     EXTRA_FILES_NO_MATCH_APPLY_ERROR as EXTRA_FILES_NO_MATCH_APPLY_ERROR,
 )
 from librarian.organize.review import (
@@ -1083,7 +1086,7 @@ def apply_review(
             move_source=True,
         )
     except PermissionError as error:
-        raise ValueError(_permission_apply_error(error)) from error
+        raise ValueError(_permission_apply_error(error, settings)) from error
     if result.get("skipped_duplicate"):
         # Shelf already holds the same bytes (possibly under Calibre filenames).
         # Remove this Review slip; keep the shelved catalog row.
@@ -1180,7 +1183,7 @@ def _peel_matched_extra_files(
                 move_source=True,
             )
         except PermissionError as error:
-            raise ValueError(_permission_apply_error(error)) from error
+            raise ValueError(_permission_apply_error(error, settings)) from error
     except Exception:
         # Best-effort restore so the dump stays intact for a retry.
         for path in moved:

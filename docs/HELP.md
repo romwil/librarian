@@ -78,7 +78,7 @@ A **hold slip** (or just **slip**) is a download (or Add-to-shelves dump) that i
 | **Missing folder** | Path not on disk for this container — fix **SAB complete root** in Settings so `/downloads` maps under `/data`, paste the real folder, or Skip |
 | **Identity / kind / extras / convert** | Fill or confirm the fields, then Apply |
 | **Collision** | Destination already taken — Skip keeps the shelf copy; Apply will not overwrite (change identity or folder first) |
-| **Shelf locked (PUID)** | Author folder under books root owned by another uid (often 1000 after Calibre migrate) — host `chown -R 99:100` on `library/books` (match container PUID), then Apply again. Maintain repeats this tip. |
+| **Shelf locked (PUID)** | Author folder under the **matching library root** (books, audiobooks, comics, …) owned by another uid (often 1000 after Calibre migrate) — host `chown -R 99:100` on that root (match container PUID), then Apply again. Maintain repeats this tip. A locked **file under SAB complete** (`…/usenet/complete/downloads/…`) is not the books root — Apply copies onto a writable shelf and leaves the download if it cannot move it. |
 
 **About `…/complete/downloads/…`:** that path is normal when SAB’s complete root is `…/complete` and the job used a **downloads** category. It is not a doubled map by itself.
 

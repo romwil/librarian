@@ -15,6 +15,16 @@
 - **Maintain indexer lanterns.** Lights Down no longer paints pale paper cards with tan status copy. Lantern names, weather sentences, and Mute sit on raised leather; an idle host is a hollow ring so flicker vs silent is not hue-only. Safe undo uses the same dark wash. Lights Up stays ink on paper.
 - **Library card text size.** Clicking Text size or the slider no longer closes the Library card. Ambient room layering had flattened the topbar under Hall, so the panel was visible through empty Hall and the click counted as outside; range thumb retargets onto `document` are hit-tested too.
 
+## [1.0.1] — 2026-11-02
+
+### Highlights
+
+- **Sorting Apply tells the truth about a locked folder.** Audiobooks from SAB complete are copied onto a writable shelf even when a nested extract is owned by root. The pink error names the audiobooks root or the complete file — not the books root.
+
+### Fixed
+
+- Review **Apply** no longer reports `PUID ownership under the books root` when `os.rename` fails on a file under `/data/usenet/complete/downloads/…`. Nested uid-0 `755` extracts stay in complete; the shelf copy is kept. A truly locked library root names that root (audiobooks, books, comics, …) as the locked path.
+
 ## [1.0.0] — 2026-10-31
 
 ### Highlights

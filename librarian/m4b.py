@@ -272,7 +272,7 @@ def maybe_remux_audiobook_folder(
                 runner=run,
                 work_dir=Path(folder) / ".m4b-work",
             )
-        except RuntimeError as error:
+        except (RuntimeError, OSError) as error:
             logger.info("M4B remux skipped: %s", error)
             return {"remuxed": False, "path": "", "reason": str(error)}
         # Purge staging sources only after validate — keep dest.

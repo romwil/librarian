@@ -252,6 +252,29 @@ describe("reading room copy", () => {
     );
   });
 
+  it("does not call a SAB complete file a books-root PUID lock", () => {
+    const complete =
+      "Couldn't move this download onto the shelf — a file in SAB complete is locked. " +
+      "The library shelf itself is writable. Fix permissions on the complete folder, then Apply again. " +
+      "Locked path: /data/usenet/complete/downloads/102.Minutes/01-05.102.Minutes.mp3";
+    assert.equal(humanError({ status: 400, message: complete }), complete);
+    assert.doesNotMatch(humanError({ status: 400, message: complete }), /under the books root/);
+    assert.match(
+      humanError({
+        status: 500,
+        message: `[Errno 13] Permission denied: "/data/usenet/complete/downloads/Elvis/Careless.Love.m4b"`,
+      }),
+      /SAB complete/,
+    );
+    assert.doesNotMatch(
+      humanError({
+        status: 500,
+        message: `[Errno 13] Permission denied: "/data/usenet/complete/downloads/Elvis/Careless.Love.m4b"`,
+      }),
+      /books root/,
+    );
+  });
+
   it("says a forgotten password is not a join link", () => {
     assert.match(FIELD_HELP.loginPassword, /Ask whoever runs the library to send a reset/);
     assert.match(FIELD_HELP.loginPassword, /separate account/);

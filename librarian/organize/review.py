@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from librarian.config import Settings
 from librarian.db import Database
@@ -58,17 +58,138 @@ PERMISSION_APPLY_ERROR = (
 )
 
 
+COMPLETE_APPLY_ERROR = (
+    "Couldn't move this download onto the shelf — a file in SAB complete is locked. "
+    "The library shelf itself is writable. Fix permissions on the complete folder, "
+    "then Apply again."
+)
+
+
 EXTRA_FILES_NO_MATCH_APPLY_ERROR = (
     "Could not match a file in this dump to the confirmed title/author/ISBN. "
     "Adjust the fields to match a filename here, or Skip."
 )
 
 
-def _permission_apply_error(error: BaseException) -> str:
-    """Surface the locked path when PermissionError carries a filename."""
-    path = getattr(error, "filename", None)
-    if path:
-        return f"{PERMISSION_APPLY_ERROR} Locked path: {path}"
+_LIBRARY_ROOT_FIELDS = (
+    ("books_root", "books root"),
+    ("audiobooks_root", "audiobooks root"),
+    ("comics_root", "comics root"),
+    ("magazines_root", "magazines root"),
+    ("incoming_music_root", "incoming music root"),
+    ("music_root", "music library"),
+)
+
+
+def _is_under(path: Path, root: str) -> bool:
+    raw = str(root or "").strip()
+    if not raw:
+        return False
+    try:
+        resolved = Path(path).resolve()
+        base = Path(raw).resolve()
+        return resolved == base or resolved.is_relative_to(base)
+    except (OSError, ValueError, RuntimeError):
+        prefix = str(Path(raw)).rstrip("/") + "/"
+        text = str(path)
+        return text == str(Path(raw)) or text.startswith(prefix)
+
+
+def _looks_like_complete(path: Path) -> bool:
+    text = str(path).replace("\\", "/")
+    return "/usenet/complete/" in text or "/complete/downloads/" in text
+
+
+def _permission_paths(error: BaseException) -> List[Path]:
+    out: List[Path] = []
+    seen = set()
+    for attr in ("filename", "filename2"):
+        value = getattr(error, attr, None)
+        if not value:
+            continue
+        text = str(value)
+        if text in seen:
+            continue
+        seen.add(text)
+        out.append(Path(text))
+    return out
+
+
+def _existing_dir(path: Path) -> Optional[Path]:
+    cursor = Path(path)
+    try:
+        if cursor.exists() and cursor.is_file():
+            cursor = cursor.parent
+    except OSError:
+        cursor = cursor.parent
+    while True:
+        try:
+            if cursor.exists() and cursor.is_dir():
+                return cursor
+        except OSError:
+            pass
+        if cursor.parent == cursor:
+            return None
+        cursor = cursor.parent
+
+
+def _dir_writable(path: Path) -> Optional[bool]:
+    directory = _existing_dir(path)
+    if directory is None:
+        return None
+    probe = directory / ".librarian-write-probe"
+    try:
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink(missing_ok=True)
+        return True
+    except PermissionError:
+        return False
+    except OSError:
+        return None
+
+
+def _shelf_lock_message(root_label: str, locked: str) -> str:
+    return (
+        "Couldn't write into the library shelf — a folder is locked "
+        f"(PUID ownership under the {root_label}). Fix permissions, then Apply again. "
+        f"Locked path: {locked}"
+    )
+
+
+def _permission_apply_error(
+    error: BaseException,
+    settings: Optional[Settings] = None,
+) -> str:
+    """Name the real lock: library shelf vs SAB complete, kind root vs books root."""
+    paths = _permission_paths(error)
+    complete_root = str(getattr(settings, "complete_root", "") or "") if settings else ""
+    shelf_hits: List[Tuple[Path, str]] = []
+    complete_hits: List[Path] = []
+    for path in paths:
+        if settings:
+            for field, label in _LIBRARY_ROOT_FIELDS:
+                root = str(getattr(settings, field, "") or "")
+                if _is_under(path, root):
+                    shelf_hits.append((path, label))
+                    break
+        if _is_under(path, complete_root) or _looks_like_complete(path):
+            complete_hits.append(path)
+
+    unwritable_shelf = [
+        (path, label) for path, label in shelf_hits if _dir_writable(path) is False
+    ]
+    if unwritable_shelf:
+        path, label = unwritable_shelf[0]
+        return _shelf_lock_message(label, str(path))
+    if complete_hits:
+        return f"{COMPLETE_APPLY_ERROR} Locked path: {complete_hits[0]}"
+    if shelf_hits:
+        path, label = shelf_hits[0]
+        return _shelf_lock_message(label, str(path))
+    if paths:
+        if _looks_like_complete(paths[0]):
+            return f"{COMPLETE_APPLY_ERROR} Locked path: {paths[0]}"
+        return f"{PERMISSION_APPLY_ERROR} Locked path: {paths[0]}"
     return PERMISSION_APPLY_ERROR
 
 
