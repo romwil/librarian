@@ -82,7 +82,13 @@ from librarian.identify import (
 )
 from librarian.identity.isbn import canonical_isbn13
 from librarian.identity.resolve import resolve_work
-from librarian.ingest import enqueue_ingest, list_ingest_targets
+from librarian.ingest import (
+    PathDenied,
+    enqueue_ingest,
+    gate_staging_path,
+    list_ingest_targets,
+    staging_move_source_allowed,
+)
 from librarian.kinds import KIND_AUDIOBOOK, KIND_BOOK, KIND_COMIC, KIND_MAGAZINE, KIND_MUSIC
 from librarian.llm import (
     LLM_FAIL_COPY,
@@ -1053,6 +1059,13 @@ def apply_review(
     if not usable_folder(source):
         raise ValueError(MISSING_FOLDER_APPLY_ERROR)
     resolved = resolve_storage_path(source, settings.complete_root)
+    # Same /data jail + protected roots as ingest — never Apply (or rmtree) DATA_DIR.
+    try:
+        resolved = gate_staging_path(str(resolved), settings, must_exist=True)
+    except PathDenied as error:
+        raise ValueError(str(error)) from error
+    # Destructive source cleanup only for SAB complete / watch dumps.
+    move_source = staging_move_source_allowed(resolved, settings)
     merged = {
         "id": work["id"],
         "title": work.get("title"),
@@ -1083,7 +1096,7 @@ def apply_review(
             apply=True,
             identity_overrides=merged,
             force=True,
-            move_source=True,
+            move_source=move_source,
         )
     except PermissionError as error:
         raise ValueError(_permission_apply_error(error, settings)) from error

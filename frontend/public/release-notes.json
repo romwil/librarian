@@ -1,6 +1,22 @@
 {
-  "generated_at": "2026-11-02T04:58:22Z",
+  "generated_at": "2026-11-02T16:49:09Z",
   "releases": [
+    {
+      "version": "1.0.8",
+      "date": "2026-11-02",
+      "summary": "",
+      "highlights": [
+        "**Sorting Apply cannot delete `/config`.** Review Apply uses the same `/data` jail as ingest, refuses the config folder and library roots, and only removes SAB complete / watch dumps after a confident shelve. Confirm on Downloads is still the only way a download starts."
+      ],
+      "sections": [
+        {
+          "title": "Fixed",
+          "bullets": [
+            "**Review Apply path jail.** An owner/op (or XSS’d session) could POST `folder` at `DATA_DIR` with `kind=music`, force-shelve conversion-cache audio, and `rmtree` secrets, SQLite, and settings. Apply now gates with `confined_path` + protected roots, keeps `move_source` only under complete/watch, and never cleans up `DATA_DIR`."
+          ]
+        }
+      ]
+    },
     {
       "version": "1.0.7",
       "date": "2026-11-02",

@@ -232,7 +232,10 @@ def test_loose_comic_images_convert_and_cover(tmp_path):
     assert work["series_index"] == "1"
 
 
-def test_review_persists_source_folder_and_apply_uses_identity(tmp_path):
+def test_review_persists_source_folder_and_apply_uses_identity(tmp_path, monkeypatch):
+    monkeypatch.setenv("LIBRARIAN_FS_ROOT", str(tmp_path))
+    monkeypatch.setenv("DATA_DIR", str(tmp_path / "config"))
+    (tmp_path / "config").mkdir()
     folder = tmp_path / "complete" / "Mystery.Release"
     folder.mkdir(parents=True)
     (folder / "book.epub").write_bytes(b"epub")
@@ -262,7 +265,10 @@ def test_review_persists_source_folder_and_apply_uses_identity(tmp_path):
     assert dest.parent.parent.name == "Stephen King"
 
 
-def test_apply_review_no_payload_raises(tmp_path):
+def test_apply_review_no_payload_raises(tmp_path, monkeypatch):
+    monkeypatch.setenv("LIBRARIAN_FS_ROOT", str(tmp_path))
+    monkeypatch.setenv("DATA_DIR", str(tmp_path / "config"))
+    (tmp_path / "config").mkdir()
     folder = tmp_path / "empty"
     folder.mkdir()
     db = Database(tmp_path / "librarian.db")
@@ -294,7 +300,10 @@ def test_apply_review_no_payload_raises(tmp_path):
         )
 
 
-def test_apply_review_empty_folder_does_not_scan_cwd(tmp_path):
+def test_apply_review_empty_folder_does_not_scan_cwd(tmp_path, monkeypatch):
+    monkeypatch.setenv("LIBRARIAN_FS_ROOT", str(tmp_path))
+    monkeypatch.setenv("DATA_DIR", str(tmp_path / "config"))
+    (tmp_path / "config").mkdir()
     db = Database(tmp_path / "librarian.db")
     work = db.upsert_work(
         {"kind": "book", "title": "Mystery", "review_state": "needs_review", "review_reason": "no_payload"}
@@ -304,7 +313,10 @@ def test_apply_review_empty_folder_does_not_scan_cwd(tmp_path):
     assert MISSING_FOLDER_APPLY_ERROR
 
 
-def test_apply_review_complete_root_remap(tmp_path):
+def test_apply_review_complete_root_remap(tmp_path, monkeypatch):
+    monkeypatch.setenv("LIBRARIAN_FS_ROOT", str(tmp_path))
+    monkeypatch.setenv("DATA_DIR", str(tmp_path / "config"))
+    (tmp_path / "config").mkdir()
     host = tmp_path / "downloads" / "books" / "King"
     host.mkdir(parents=True)
     (host / "book.epub").write_bytes(b"epub")

@@ -39,6 +39,10 @@ LIBRARY_SHELF_REFUSAL = "That path is already on a library shelf. Scan the shelv
 COMPLETE_ROOT_REFUSAL = (
     "That's the downloader complete folder. Point at a finished dump inside it, not the folder itself."
 )
+DATA_DIR_REFUSAL = (
+    "That path is the library config folder — Apply and Add cannot shelve or delete it."
+)
+DATA_FS_ROOT_REFUSAL = "Point at a finished dump inside /data, not the whole /data tree."
 INGEST_NO_PAYLOAD_ERROR = "Nothing to identify in here — empty or only junk files."
 INGEST_UNPACK_STUCK_ERROR = "Unpack did not finish; archives are still in this folder."
 INGEST_MISSING_FOLDER_ERROR = "That path is gone — it moved or was removed."
@@ -759,12 +763,20 @@ def _resolve_maybe(path: Path) -> Path:
         return path
 
 
+def _data_dir_path() -> Path:
+    """Resolved DATA_DIR (/config on Automat). Secrets + SQLite live here — never an Apply source."""
+    return _resolve_maybe(Path(os.environ.get("DATA_DIR") or "/config").expanduser())
+
+
 def protected_path_refusal(path: Path, settings: Settings) -> Optional[str]:
-    """Household English when ingest would hit a Settings root or SAB complete folder."""
+    """Household English when ingest/Apply would hit DATA_DIR, a Settings root, or SAB complete."""
     try:
         resolved = path.resolve()
     except OSError:
         resolved = path
+    data_dir = _data_dir_path()
+    if resolved == data_dir:
+        return DATA_DIR_REFUSAL
     for field in MEDIA_ROOT_FIELDS:
         raw = str(getattr(settings, field) or "").strip()
         if not raw:
@@ -790,6 +802,62 @@ def protected_path_refusal(path: Path, settings: Settings) -> Optional[str]:
             # Finished dumps under complete are allowed; only the root itself is refused.
             pass
     return None
+
+
+def gate_staging_path(raw: str, settings: Settings, *, must_exist: bool = True) -> Path:
+    """Jail for Review Apply: under /data (or complete/watch), not DATA_DIR, not a protected root.
+
+    Complete/watch are listed explicitly so host→container remaps and pytest layouts that set
+    ``complete_root`` still jail correctly when the dump is the intended staging tree.
+    """
+    roots: List[Path] = [data_fs_root()]
+    for field in ("complete_root", "watch_root"):
+        value = str(getattr(settings, field) or "").strip()
+        if value:
+            roots.append(Path(value).expanduser())
+    target = _resolve_under_roots(raw, roots, must_exist=must_exist)
+    try:
+        resolved = target.resolve()
+    except OSError as error:
+        raise PathDenied("Path is outside /data") from error
+    if resolved == data_fs_root():
+        raise PathDenied(DATA_FS_ROOT_REFUSAL)
+    for field in ("complete_root", "watch_root"):
+        value = str(getattr(settings, field) or "").strip()
+        if not value:
+            continue
+        root = _resolve_maybe(Path(value).expanduser())
+        if resolved == root:
+            raise PathDenied(
+                COMPLETE_ROOT_REFUSAL
+                if field == "complete_root"
+                else "That's the watch folder root. Point at a dump inside it, not the folder itself."
+            )
+    refusal = protected_path_refusal(target, settings)
+    if refusal:
+        raise PathDenied(refusal)
+    return target
+
+
+def staging_move_source_allowed(path: Path, settings: Settings) -> bool:
+    """True only for dumps under SAB complete or watch — the only trees Apply may rmtree."""
+    try:
+        resolved = path.resolve()
+    except OSError:
+        resolved = path
+    for field in ("complete_root", "watch_root"):
+        raw = str(getattr(settings, field) or "").strip()
+        if not raw:
+            continue
+        root = _resolve_maybe(Path(raw).expanduser())
+        if resolved == root:
+            return False
+        try:
+            resolved.relative_to(root)
+            return True
+        except ValueError:
+            continue
+    return False
 
 
 def progress_ingest_job(db: Database, settings: Settings, job_id: str) -> Dict[str, Any]:
