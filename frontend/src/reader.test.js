@@ -29,6 +29,9 @@ import {
   readerTurnsPages,
   readingFileName,
   READER_OPEN_TIMEOUT_MESSAGE,
+  READER_OPEN_SPLASH,
+  READER_PDF_OPEN_TIMEOUT_MS,
+  readerOpenSplash,
   workDownloadUrl,
   workReaderPath,
 } from "./reader.js";
@@ -138,12 +141,17 @@ describe("in-app reader", () => {
     assert.match(src, /startReaderOpenTimer/);
   });
 
-  it("loads PDFs with range requests, not a full-file stream from byte 0", () => {
-    assert.equal(PDF_LOAD_OPTIONS.disableStream, true);
+  it("loads PDFs with 2MB ranges and a progressive stream so large files can finish", () => {
+    assert.equal(PDF_LOAD_OPTIONS.disableStream, false);
     assert.equal(PDF_LOAD_OPTIONS.disableRange, false);
     assert.equal(PDF_LOAD_OPTIONS.disableAutoFetch, true);
     assert.equal(PDF_LOAD_OPTIONS.rangeChunkSize, 2 * 1024 * 1024);
     assert.equal(PDF_RANGE_CHUNK_SIZE, 2 * 1024 * 1024);
+    assert.equal(READER_PDF_OPEN_TIMEOUT_MS, 240_000);
+    assert.ok(READER_PDF_OPEN_TIMEOUT_MS > 90_000);
+    assert.equal(readerOpenSplash(), READER_OPEN_SPLASH);
+    assert.equal(readerOpenSplash(50, 200), `${READER_OPEN_SPLASH} 25%`);
+    assert.equal(readerOpenSplash(200, 200), `${READER_OPEN_SPLASH} 99%`);
   });
 
   it("deep-links peek Open onto the work page reader", () => {

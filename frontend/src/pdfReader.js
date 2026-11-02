@@ -3,13 +3,16 @@
 /** Bytes per HTTP range. 64KB default + streaming from byte 0 storms a 400MB comic. */
 export const PDF_RANGE_CHUNK_SIZE = 2 * 1024 * 1024;
 
-/** Range-only load: skip the sequential stream so page 1 does not wait on the whole file. */
+/**
+ * 2MB ranges plus a progressive stream. `disableStream: true` alone made pdf.js
+ * fire every chunk at once (ObjectLoader fallback) and miss the open timeout.
+ */
 export const PDF_LOAD_OPTIONS = {
   withCredentials: true,
   httpHeaders: { "X-Librarian": "1" },
   isEvalSupported: false,
   disableAutoFetch: true,
-  disableStream: true,
+  disableStream: false,
   disableRange: false,
   rangeChunkSize: PDF_RANGE_CHUNK_SIZE,
   verbosity: 0,
@@ -47,6 +50,7 @@ export async function openPdfVolume({
   container,
   position = "",
   onRelocate,
+  onProgress,
   signal,
 } = {}) {
   if (!container) throw new Error("This volume could not be opened in the reading room.");
@@ -57,6 +61,9 @@ export async function openPdfVolume({
     url,
     ...PDF_LOAD_OPTIONS,
   });
+  if (onProgress) {
+    task.onProgress = (evt) => onProgress(evt);
+  }
   const abort = () => {
     try {
       task.destroy();

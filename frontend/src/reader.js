@@ -1,8 +1,20 @@
 export const READABLE_KINDS = ["book", "magazine", "comic"];
 export const READING_EXTS = [".epub", ".cbz", ".pdf"];
 export const READER_OPEN_TIMEOUT_MS = 90_000;
+/** Comic PDFs can be hundreds of MB; pdf.js may walk the whole xref before page 1. */
+export const READER_PDF_OPEN_TIMEOUT_MS = 240_000;
+export const READER_OPEN_SPLASH = "Opening the volume…";
 export const READER_OPEN_TIMEOUT_MESSAGE =
   "This volume took too long to open. Close and try again, or download it.";
+
+export function readerOpenSplash(loaded = 0, total = 0) {
+  const size = Number(total) || 0;
+  const n = Number(loaded) || 0;
+  if (size > 0 && n >= 0) {
+    return `${READER_OPEN_SPLASH} ${Math.min(99, Math.floor((n / size) * 100))}%`;
+  }
+  return READER_OPEN_SPLASH;
+}
 
 /** Paper under Foliate pages — Reading Room chrome stays dark; page text stays light. */
 export const EPUB_PAGE_SURFACE = "#faf6ee";

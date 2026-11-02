@@ -15,6 +15,16 @@
 - **Maintain indexer lanterns.** Lights Down no longer paints pale paper cards with tan status copy. Lantern names, weather sentences, and Mute sit on raised leather; an idle host is a hollow ring so flicker vs silent is not hue-only. Safe undo uses the same dark wash. Lights Up stays ink on paper.
 - **Library card text size.** Clicking Text size or the slider no longer closes the Library card. Ambient room layering had flattened the topbar under Hall, so the panel was visible through empty Hall and the click counted as outside; range thumb retargets onto `document` are hit-tested too.
 
+## [1.0.6] — 2026-11-02
+
+### Highlights
+
+- **Large PDFs keep opening.** A 400MB comic shows opening progress and is given four minutes, so page 1 can paint instead of aborting at 90s. Confirm on Downloads is still the only way a download starts.
+
+### Fixed
+
+- **PDF splash timeout.** PDF.js still walks a broken xref by fetching the whole file; a progressive stream plus 2MB ranges plus a longer timer lets page 1 finish. Failure still replaces “Opening the volume…” with an alert.
+
 ## [1.0.5] — 2026-11-02
 
 ### Highlights

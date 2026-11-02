@@ -13,6 +13,10 @@ import {
   readerEngine,
   readerFlow,
   readerOpenError,
+  readerOpenSplash,
+  READER_OPEN_SPLASH,
+  READER_OPEN_TIMEOUT_MS,
+  READER_PDF_OPEN_TIMEOUT_MS,
   readerTurnsPages,
   readerWheelDelta,
   readingFileName,
@@ -36,7 +40,7 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
   const turnedByPointer = useRef(0);
   const lastLoc = useRef(null);
   const persistTimer = useRef(0);
-  const [status, setStatus] = useState("Opening the volume…");
+  const [status, setStatus] = useState(READER_OPEN_SPLASH);
   const [error, setError] = useState("");
   const [fixedLayout, setFixedLayout] = useState(false);
   const [chromeDim, setChromeDim] = useState(false);
@@ -208,12 +212,14 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
     const positionAtOpen = progressRef.current?.position || "";
     let cancelled = false;
     let view;
-    const openTimer = startReaderOpenTimer();
+    const openTimer = startReaderOpenTimer(
+      engine === "pdf" ? READER_PDF_OPEN_TIMEOUT_MS : READER_OPEN_TIMEOUT_MS,
+    );
 
     async function open() {
       setError("");
       setFixedLayout(false);
-      setStatus("Opening the volume…");
+      setStatus(READER_OPEN_SPLASH);
       if (!engine) {
         throw Object.assign(new Error("This file isn’t a readable EPUB, CBZ, or PDF."), { status: 422 });
       }
@@ -226,6 +232,9 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
             container: stage.current,
             position: positionAtOpen,
             onRelocate: (detail) => persistRef.current(detail),
+            onProgress: ({ loaded, total } = {}) => {
+              if (!cancelled) setStatus(readerOpenSplash(loaded, total));
+            },
             signal: openTimer.signal,
           }),
           whenAborted(openTimer.signal),
