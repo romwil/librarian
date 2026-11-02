@@ -519,7 +519,11 @@ export function humanError(error, context = "", extras = {}) {
   if (/owner has not been seeded/i.test(raw)) return "The reading room is not seeded yet.";
   if (/work not found/i.test(raw)) return "That volume is not on these shelves.";
   // Apply / shelf write failures — keep guidance; don't reuse cover-only copy.
-  if (/couldn't write into the library shelf|PUID ownership/i.test(raw)) {
+  if (
+    /couldn't write into the library shelf|couldn't move this download|PUID ownership/i.test(
+      raw,
+    )
+  ) {
     return raw.replace(/ for the lamp/gi, "");
   }
   if (/\[Errno 13\]|Permission denied/i.test(raw)) {
@@ -527,6 +531,12 @@ export function humanError(error, context = "", extras = {}) {
       return (
         "Couldn't write cover art — a shelf folder is locked. " +
         "Enrich can keep going; covers may land under the cover cache."
+      );
+    }
+    if (/usenet\/complete|\/complete\/downloads/i.test(raw)) {
+      return (
+        "Couldn't move this download onto the shelf — a file in SAB complete is locked. " +
+        "The library shelf itself is writable. Fix permissions on the complete folder, then Apply again."
       );
     }
     return (

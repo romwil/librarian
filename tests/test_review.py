@@ -1188,6 +1188,57 @@ def test_review_apply_permission_error_is_400(tmp_path, monkeypatch):
     assert "Locked" in detail
 
 
+def test_review_apply_complete_file_lock_is_not_books_root(tmp_path, monkeypatch):
+    settings = Settings(
+        books_root=str(tmp_path / "books"),
+        magazines_root=str(tmp_path / "magazines"),
+        comics_root=str(tmp_path / "comics"),
+        audiobooks_root=str(tmp_path / "audiobooks"),
+        incoming_music_root=str(tmp_path / "incoming"),
+        music_root=str(tmp_path / "music"),
+        complete_root=str(tmp_path / "usenet" / "complete"),
+    )
+    Path(settings.audiobooks_root).mkdir(parents=True)
+    client, app = _client(tmp_path, monkeypatch, settings=settings)
+    db = app.state.db
+    folder = (
+        tmp_path
+        / "usenet"
+        / "complete"
+        / "downloads"
+        / "102.Minutes.Audio.book.MP3"
+    )
+    nested = folder / "102.Minutes.Audio.book.MP3"
+    nested.mkdir(parents=True)
+    src = nested / "01-05.102.Minutes.mp3"
+    src.write_bytes(b"mp3")
+    work = db.upsert_work(
+        {
+            "kind": "audiobook",
+            "title": "102 Minutes",
+            "author": "",
+            "review_state": "needs_review",
+            "review_reason": "unknown_identity",
+            "folder_path": str(folder),
+        }
+    )
+    dest = Path(settings.audiobooks_root) / "Unknown Author" / "102 Minutes" / src.name
+
+    def _boom(*_args, **_kwargs):
+        raise PermissionError(13, "Permission denied", str(src), None, str(dest))
+
+    monkeypatch.setattr("librarian.organize.organize_identified", _boom)
+    resp = client.post(
+        f"/api/review/{work['id']}/apply",
+        json={"title": "102 Minutes", "author": "", "kind": "audiobook", "folder": str(folder)},
+    )
+    assert resp.status_code == 400
+    detail = resp.json()["detail"]
+    assert "under the books root" not in detail
+    assert "SAB complete" in detail
+    assert str(src) in detail
+
+
 def test_review_list_includes_recommended_motion(tmp_path, monkeypatch):
     """Smart Holds desk: each slip names one recommended motion."""
     folder = tmp_path / "complete" / "stuck"

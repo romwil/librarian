@@ -1,6 +1,22 @@
 {
-  "generated_at": "2026-10-31T10:20:35Z",
+  "generated_at": "2026-11-02T03:42:49Z",
   "releases": [
+    {
+      "version": "1.0.1",
+      "date": "2026-11-02",
+      "summary": "",
+      "highlights": [
+        "**Sorting Apply tells the truth about a locked folder.** Audiobooks from SAB complete are copied onto a writable shelf even when a nested extract is owned by root. The pink error names the audiobooks root or the complete file — not the books root."
+      ],
+      "sections": [
+        {
+          "title": "Fixed",
+          "bullets": [
+            "Review **Apply** no longer reports `PUID ownership under the books root` when `os.rename` fails on a file under `/data/usenet/complete/downloads/…`. Nested uid-0 `755` extracts stay in complete; the shelf copy is kept. A truly locked library root names that root (audiobooks, books, comics, …) as the locked path."
+          ]
+        }
+      ]
+    },
     {
       "version": "1.0.0",
       "date": "2026-10-31",
