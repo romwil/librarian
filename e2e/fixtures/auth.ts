@@ -25,6 +25,17 @@ export async function dismissWhatsNewIfPresent(page: Page) {
   await expect(showHall).toHaveCount(0);
 }
 
+/** Switch the Library card lamp. Hall must already be signed in. */
+export async function setTheme(page: Page, name: "Lights Up" | "Lights Down") {
+  await page.getByRole("button", { name: /^Library card\b/ }).click();
+  const theme = page.getByRole("radiogroup", { name: "Theme" });
+  await theme.getByRole("radio", { name, exact: true }).click();
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.getAttribute("data-theme")))
+    .toBe(name === "Lights Up" ? "lights-up" : "lights-down");
+  await page.keyboard.press("Escape");
+}
+
 /** Log in as the seeded e2e owner and land on the Hall. */
 export async function loginAsOwner(page: Page, { dismissWhatsNew = true } = {}) {
   await page.goto("/login");

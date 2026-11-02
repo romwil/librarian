@@ -15,6 +15,18 @@
 - **Maintain indexer lanterns.** Lights Down no longer paints pale paper cards with tan status copy. Lantern names, weather sentences, and Mute sit on raised leather; an idle host is a hollow ring so flicker vs silent is not hue-only. Safe undo uses the same dark wash. Lights Up stays ink on paper.
 - **Library card text size.** Clicking Text size or the slider no longer closes the Library card. Ambient room layering had flattened the topbar under Hall, so the panel was visible through empty Hall and the click counted as outside; range thumb retargets onto `document` are hit-tested too.
 
+## [1.0.5] — 2026-11-02
+
+### Highlights
+
+- **Lights you can read.** Peek is a solid panel in both lamps — title and blurb no longer sit on a Hall photo wash. The ⋮ overflow grip stays visible in Lights Up. Foyer stays a dark room; the Reading Room wordmark keeps contrast. Confirm on Downloads is still the only way a download starts.
+
+### Fixed
+
+- **Peek overlay.** Cover wash is atmosphere only. Type, chips, and actions sit on `--surface-raised` in Lights Up and Lights Down.
+- **Overflow menu.** The ⋮ grip uses ink on raised paper (not cream-on-cream). Open items keep `--text` on `--surface-raised`.
+- **Lights Up type.** Work subtitle, synopsis, search status, Settings check labels, Maintain morning-brief, and part-set titles use `--text` / `--muted` instead of `--paper`.
+
 ## [1.0.4] — 2026-11-02
 
 ### Highlights
