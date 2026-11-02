@@ -15,6 +15,16 @@
 - **Maintain indexer lanterns.** Lights Down no longer paints pale paper cards with tan status copy. Lantern names, weather sentences, and Mute sit on raised leather; an idle host is a hollow ring so flicker vs silent is not hue-only. Safe undo uses the same dark wash. Lights Up stays ink on paper.
 - **Library card text size.** Clicking Text size or the slider no longer closes the Library card. Ambient room layering had flattened the topbar under Hall, so the panel was visible through empty Hall and the click counted as outside; range thumb retargets onto `document` are hit-tested too.
 
+## [1.0.7] — 2026-11-02
+
+### Highlights
+
+- **PDF page 1 is the open.** The Reading Room leaves “Opening the volume…” when the first page is labeled, not after a long raster. Confirm on Downloads is still the only way a download starts.
+
+### Fixed
+
+- **Splash stuck at 99%.** A 400MB comic had already painted page 1 while progress callbacks kept the overlay up and blocked page turns. Open returns when the page exists; raster can finish in the background.
+
 ## [1.0.6] — 2026-11-02
 
 ### Highlights

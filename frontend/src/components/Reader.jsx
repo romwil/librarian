@@ -226,6 +226,7 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
       if (engine === "pdf") {
         const { openPdfVolume } = await import("../pdfReader.js");
         if (cancelled || !stage.current) return;
+        let pageReady = false;
         view = await Promise.race([
           openPdfVolume({
             url: workDownloadUrl(work.id, { inline: true, fileId }),
@@ -233,7 +234,11 @@ export default function Reader({ work, files = [], fileId = "", progress = null,
             position: positionAtOpen,
             onRelocate: (detail) => persistRef.current(detail),
             onProgress: ({ loaded, total } = {}) => {
-              if (!cancelled) setStatus(readerOpenSplash(loaded, total));
+              if (!cancelled && !pageReady) setStatus(readerOpenSplash(loaded, total));
+            },
+            onPageReady: () => {
+              pageReady = true;
+              if (!cancelled) setStatus("");
             },
             signal: openTimer.signal,
           }),
