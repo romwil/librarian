@@ -12,6 +12,7 @@
   --text: #1c1612;
   --fg: #1c1612;
   --muted: #3a322c;
+  /* --paper / --gilt are materials (page, brass). Type uses --text, --muted, --gilt-text. */
   --paper: #f3ecdf;
   --gilt: #7a5424;
   --gilt-text: #6e6256;

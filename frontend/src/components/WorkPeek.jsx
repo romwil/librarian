@@ -288,12 +288,12 @@ export default function WorkPeek({ work, onClose, onRequest }) {
       >
         {washUrl ? <div className="peek-wash" aria-hidden="true" data-testid="peek-wash" /> : null}
         {washUrl ? <div className="peek-wash-scrim" aria-hidden="true" /> : null}
-        <header className="peek-head">
+        <div className="peek-head">
           <p className="kicker">{kind}</p>
           <button type="button" className="peek-close" aria-label="Close" ref={closeBtn} onClick={onClose}>
             ×
           </button>
-        </header>
+        </div>
         <div className="peek-body">
           <div className="peek-layout">
             <div

@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { dismissWhatsNewIfPresent, loginAsOwner } from "./fixtures/auth";
+import { mockPeekHall, PEEK_WORK } from "./fixtures/contrast";
 
 const WORK = {
   work: {
@@ -171,6 +172,22 @@ test.describe("axe-core", () => {
         await dismissWhatsNewIfPresent(page);
         await expect(page.getByRole("heading", { name: "Hall" })).toBeVisible();
         await assertAxe(page);
+      });
+
+      test("Hall peek overlay and overflow menu", async ({ page }) => {
+        await mockPeekHall(page);
+        await page.goto("/");
+        await dismissWhatsNewIfPresent(page);
+        await page.getByRole("button", { name: /^Revenge of the Tipping Point/ }).click();
+        const peek = page.getByRole("dialog", { name: PEEK_WORK.title });
+        await expect(peek).toBeVisible();
+        await assertAxe(page);
+        await peek.getByRole("button", { name: `Actions for ${PEEK_WORK.title}` }).click();
+        const menu = page.getByRole("menu", { name: `Actions for ${PEEK_WORK.title}` });
+        await expect(menu).toBeVisible();
+        await settleMotion(page);
+        const menuContrast = await new AxeBuilder({ page }).withRules(["color-contrast"]).analyze();
+        expect(menuContrast.violations, menuContrast.violations.map((v) => v.id).join(", ")).toEqual([]);
       });
 
       test("Search", async ({ page }) => {

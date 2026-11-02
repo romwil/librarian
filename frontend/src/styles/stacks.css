@@ -669,6 +669,14 @@ a.chip {
   transform: translateY(-1px);
   filter: brightness(1.06);
 }
+.cta:disabled,
+.cta[aria-disabled="true"] {
+  opacity: 0.55;
+  cursor: default;
+  pointer-events: none;
+  transform: none;
+  filter: none;
+}
 .cta.ghost {
   background: transparent;
   color: var(--text);
@@ -790,7 +798,8 @@ a.chip {
   padding: var(--space-7) var(--space-6);
   border: 1px solid color-mix(in srgb, var(--gilt) 22%, var(--border-subtle));
   border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  /* Opaque enough that lamp wash cannot bleach the wordmark. Foyer stays a dark room. */
+  background: color-mix(in srgb, var(--surface) 94%, #0c0907);
   backdrop-filter: blur(18px) saturate(1.1);
   box-shadow: 0 28px 70px rgba(0, 0, 0, 0.45);
 }
@@ -800,6 +809,7 @@ a.chip {
   font-size: var(--text-2xl);
   font-weight: 600;
   letter-spacing: -0.02em;
+  color: var(--text);
 }
 .glass .lede {
   margin: 0;
@@ -1043,52 +1053,40 @@ body:has(.peek) .topbar {
   transform: translateX(-50%);
   display: flex;
   flex-direction: column;
-  background: #241c14;
+  background: var(--surface-raised);
   border: 1px solid var(--border);
   border-radius: calc(var(--radius) + 4px);
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
   animation: peek-in var(--motion) forwards;
   isolation: isolate;
   overflow: hidden;
-  /* Always a night-library panel. Rematch cream/gilt type tokens so lights-up
-     ink (--text #1a1208 / --muted #5c4e3a) does not paint dark-on-dark. */
-  color-scheme: dark;
-  --text: #f4ead6;
-  --muted: #b5a48a;
-  --paper: #e8dcc4;
-  --gilt: #e4c078;
-  --accent: #c9954a;
-  --accent-2: #a87838;
-  --accent-soft: rgba(201, 149, 74, 0.16);
-  --accent-text: #1a1208;
-  --border-subtle: #3a2e22;
-  --border: #4a3c2c;
-  --surface: #1a1410;
-  --surface-2: #231b14;
-  --surface-raised: #2a2118;
-  --danger: #c47a6c;
-  --success: #7d9a78;
+  /* Solid panel in both lamps. Cover wash is atmosphere only — type sits on
+     --surface-raised, never on a Hall photo. */
   color: var(--text);
 }
 .peek-wash {
   position: absolute;
-  inset: -12%;
+  inset: -12% -12% 40% -12%;
   z-index: 0;
-  background-color: #1a2434;
+  background-color: var(--surface-2);
   background-image: var(--work-wash);
   background-size: cover;
   background-position: center;
-  filter: blur(42px) saturate(1.15);
+  filter: blur(42px) saturate(1.05);
   transform: scale(1.18);
+  opacity: 0.35;
   pointer-events: none;
 }
 .peek-wash-scrim {
   position: absolute;
   inset: 0;
   z-index: 0;
-  background:
-    linear-gradient(to top, #241c14 12%, color-mix(in srgb, #241c14 70%, transparent) 48%, transparent 82%),
-    linear-gradient(to right, color-mix(in srgb, #241c14 55%, transparent), transparent 60%);
+  background: linear-gradient(
+    to top,
+    var(--surface-raised) 46%,
+    color-mix(in srgb, var(--surface-raised) 94%, transparent) 72%,
+    color-mix(in srgb, var(--surface-raised) 82%, transparent) 100%
+  );
   pointer-events: none;
 }
 .peek.has-wash .peek-head,
@@ -1097,7 +1095,7 @@ body:has(.peek) .topbar {
   z-index: 1;
 }
 .peek.has-wash {
-  background: color-mix(in srgb, #241c14 88%, transparent);
+  background: var(--surface-raised);
 }
 .peek-head {
   display: flex;
@@ -1154,6 +1152,7 @@ body:has(.peek) .topbar {
   line-height: 1.1;
   letter-spacing: -0.03em;
   overflow-wrap: anywhere;
+  color: var(--text);
 }
 .peek .blurb {
   color: var(--muted);
@@ -1355,7 +1354,7 @@ button.cover {
   width: min(var(--hero-search-max), calc(100% - 2 * var(--gutter)));
   margin: 0 auto var(--space-5);
   text-align: center;
-  color: var(--paper);
+  color: var(--muted);
   font-size: var(--text-sm);
 }
 .kind-shelf-total {
@@ -1410,7 +1409,7 @@ button.cover {
   font-size: var(--text-lg);
   font-weight: 600;
   letter-spacing: -0.02em;
-  color: var(--paper);
+  color: var(--text);
 }
 .part-set-meta {
   margin: 0;
@@ -1477,7 +1476,7 @@ button.cover {
 }
 .part-label {
   font-size: var(--text-sm);
-  color: var(--paper);
+  color: var(--text);
 }
 .part-size,
 .part-alts {
@@ -2039,9 +2038,9 @@ button.cover {
   height: var(--tap-min);
   padding: 0;
   border-radius: 50%;
-  border: 1px solid color-mix(in srgb, var(--paper) 35%, transparent);
-  background: color-mix(in srgb, var(--bg) 72%, transparent);
-  color: var(--paper);
+  border: 1px solid var(--control-border);
+  background: var(--surface-raised);
+  color: var(--text);
   font-size: 18px;
   line-height: 1;
   cursor: pointer;
@@ -2052,7 +2051,7 @@ button.cover {
   outline: none;
 }
 .work-action-grip:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
