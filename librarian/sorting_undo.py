@@ -20,6 +20,7 @@ ACTION_LABELS = {
     "purge_duplicates": "Purge duplicate group",
     "purge_duplicate_group": "Purge duplicate group",
     "autopilot": "Autopilot file",
+    "isbn_auto_file": "ISBN auto-file",
 }
 
 
@@ -189,6 +190,11 @@ def restore_sorting_undo(db: Database, *, now: Optional[float] = None) -> Dict[s
             )
 
     db.run_write(_mark, label="restore_sorting_undo")
+    # BD-3 hybrid experiment: undoing an ISBN auto-file batch is the mis-shelve signal.
+    if restored and str(batch.get("action") or "") == "isbn_auto_file":
+        from librarian.isbn_auto_file import record_mis_shelve_undo
+
+        record_mis_shelve_undo(db, count=restored)
     return {
         "ok": True,
         "restored": restored,

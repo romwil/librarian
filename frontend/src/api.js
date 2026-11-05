@@ -235,7 +235,12 @@ export const api = {
   maintainGroomingUndoRestore: () => request("/maintain/grooming-undo", { method: "POST" }),
   maintainCalibreRenormalize: () => request("/maintain/calibre-renormalize"),
   maintainCalibreRenormalizeApply: () => request("/maintain/calibre-renormalize", { method: "POST" }),
-  queue: () => request("/queue"),
+  queue: ({ view = "actionable" } = {}) => {
+    const params = new URLSearchParams();
+    if (view) params.set("view", String(view));
+    const qs = params.toString();
+    return request(`/queue${qs ? `?${qs}` : ""}`);
+  },
   queueTick: () => request("/queue/tick", { method: "POST" }),
   confirmJob: (id) => request(`/queue/${id}/confirm`, { method: "POST" }),
   retryJob: (id) => request(`/queue/${id}/retry`, { method: "POST" }),

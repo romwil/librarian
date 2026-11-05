@@ -1186,6 +1186,23 @@ html[data-theme="lights-down"] .grooming-undo.is-available {
   overflow-x: hidden;
   max-width: 100%;
 }
+
+/* VIS-007 / A1: aligned reason + desk counts; Quiet hours stays secondary (UX-011). */
+.review-page .chip,
+.review-page .review-count,
+.review-page .holds-group-count,
+.review-page [data-testid="sorting-counts"],
+.review-page .review-desk-tally {
+  font-variant-numeric: tabular-nums;
+}
+.review-page .review-quiet-hours {
+  margin-top: var(--space-6);
+  max-width: 36rem;
+}
+.review-page .review-quiet-hours > summary {
+  color: var(--muted);
+  cursor: pointer;
+}
 .queue-job,
 .hold-slip,
 .holds-group {

@@ -10,16 +10,24 @@ test.describe("Queue", () => {
     await page.goto("/queue");
     await expect(page.getByRole("heading", { name: "Downloads" })).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId("queue-loading")).toHaveCount(0, { timeout: 30_000 });
-    // Fresh e2e DATA_DIR: empty queue copy (Visual State Triad — Empty).
-    await expect(page.getByText(/Nothing in flight/i)).toBeVisible();
+    // Fresh e2e DATA_DIR: empty actionable default (PRD-011).
+    await expect(page.getByTestId("queue-view-actionable")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("queue-empty")).toBeVisible();
+    await expect(page.getByText(/Nothing needs a decision/i)).toBeVisible();
   });
 
   test("Open Sorting opens the linked slip", async ({ page }) => {
-    await page.route("**/api/queue", async (route) => {
+    await page.route("**/api/queue**", async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.continue();
+        return;
+      }
       await route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
+          view: "actionable",
+          counts: { actionable: 1, active: 0, history: 0, all: 1 },
           jobs: [
             {
               id: "job-1",
@@ -77,11 +85,13 @@ test.describe("Queue", () => {
   });
 
   test("failed jobs are actionable and paths sit behind Details", async ({ page }) => {
-    await page.route("**/api/queue", async (route) => {
+    await page.route("**/api/queue**", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
+          view: "actionable",
+          counts: { actionable: 2, active: 0, history: 0, all: 2 },
           jobs: [
             {
               id: "job-fail",
@@ -126,5 +136,83 @@ test.describe("Queue", () => {
     expect(scrollWidth).toBeLessThanOrEqual(320 + 1);
     await page.getByRole("button", { name: "Try again" }).click();
     expect(retried).toEqual(["retry"]);
+  });
+
+  test("default view hides Arrived; bulk dismiss confirms count", async ({ page }) => {
+    const dismissed: string[] = [];
+    await page.route("**/api/queue**", async (route) => {
+      const url = new URL(route.request().url());
+      if (route.request().method() !== "GET") {
+        await route.continue();
+        return;
+      }
+      const view = url.searchParams.get("view") || "actionable";
+      const allJobs = [
+        {
+          id: "job-asked",
+          status: "asked",
+          title: "Confirm me",
+        },
+        {
+          id: "job-fail",
+          status: "failed",
+          title: "A miss",
+          error: "nzb gone",
+        },
+        {
+          id: "job-arrived",
+          status: "organized",
+          title: "Already home",
+        },
+        {
+          id: "job-active",
+          status: "downloading",
+          title: "In flight",
+        },
+      ];
+      const byView: Record<string, string[]> = {
+        actionable: ["asked", "failed", "review"],
+        active: ["queued", "downloading", "extracting", "identifying"],
+        history: ["organized"],
+        all: allJobs.map((j) => j.status),
+      };
+      const allowed = new Set(byView[view] || byView.actionable);
+      const jobs = allJobs.filter((j) => allowed.has(j.status));
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          view,
+          counts: { actionable: 2, active: 1, history: 1, all: 4 },
+          jobs,
+        }),
+      });
+    });
+    await page.route("**/api/queue/*/dismiss", async (route) => {
+      const id = route.request().url().split("/").slice(-2)[0];
+      dismissed.push(id);
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ job: { id, status: "skipped" } }),
+      });
+    });
+
+    await page.goto("/queue");
+    await dismissWhatsNewIfPresent(page);
+    await expect(page.getByTestId("queue-view-actionable")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("queue-job")).toHaveCount(2);
+    await expect(page.getByText("Already home")).toHaveCount(0);
+    await expect(page.getByText("In flight")).toHaveCount(0);
+
+    await page.getByTestId("queue-view-history").click();
+    await expect(page.getByText("Already home")).toBeVisible();
+    await expect(page.getByTestId("queue-bulk-dismiss")).toBeVisible();
+    await page.getByTestId("queue-bulk-dismiss").click();
+    await expect(page.getByTestId("queue-bulk-dismiss-dialog")).toBeVisible();
+    await expect(page.getByTestId("queue-bulk-dismiss-count")).toContainText("1 Arrived");
+    await expect(page.getByTestId("queue-bulk-dismiss-undo")).toContainText(/no Safe undo/i);
+    await page.getByTestId("queue-bulk-dismiss-confirm").click();
+    await expect.poll(() => dismissed).toEqual(["job-arrived"]);
   });
 });

@@ -144,6 +144,13 @@ Medium findings stay in the review doc; pick up opportunistically inside R\* lan
 
 ## 6. Later / blue sky
 
+### Post-360 Nov 4 residuals (Phase D gates)
+
+- [ ] **Desk single-route rewrite (BD-2 option 4 / PRD-012 / UX-001)** — **deferred.** Do **not** start the full Desk rewrite (Confirm / Sorting / Tend merge) until the BD-3 Sorting open-count SLO is green after its 30-day triage window (**day 0 = 2026-11-05 / 1.0.11**; evaluate **2026-12-05**), **or** the owner explicitly waives that gate. Educate-in-place (HELP + triage defaults) remains the Now path. Not the same ship as the ISBN auto-file experiment.
+- [x] **Hybrid ISBN auto-file experiment (BD-3 option 4)** — owner toggle `isbn_auto_file_enabled` (default **OFF**, triage-gated); books with valid ISBN + author + title may leave soft Sorting slips; audio/comics stay Sorting-first; 24h Sorting undo; House pulse filed/undo (mis-shelve) counters. Shipping the toggle **off** is not SLO satisfaction.
+- [ ] Owner MFA (SEC-009 / BD-5) — out this year while vip Access remains the edge.
+- [ ] Hub publish (BD-1 option 3) — only if public CA installers become an active milestone.
+
 - [ ] Hub `romwil/librarian` published (+ real pull-only rollout; not Automat path now). **Hub reverse-proxy-only** is the exit for the accepted `0.0.0.0:8793` bind (P3-MED-02 / S3); the listen address does not change before that path is the only one.
 - [ ] Full MusicBrainz / Open Library dumps for typeahead (v1 is catalog + optional bounded MB from owned artists)
 - [ ] OIDC / Plex sign-in (not v1)
@@ -154,6 +161,18 @@ Medium findings stay in the review doc; pick up opportunistically inside R\* lan
 ### Out of product / locked out
 
 Hub as the only ship path (today), NZBGet, Calibre plugins / USB sync / content-server skin, Movies/TV/XXX as Hall library kinds (extras are Find/SAB/arr only), Goodreads live OAuth (CSV shipped).
+
+**Product cut list (PRD-008 / post-360 Nov 4)** — enforce at roadmap review; do not ship:
+
+- Arr-style home KPIs / acquisition dashboard as the Hall experience
+- Public signup, marketplace, or social feed
+- Third-party analytics SDKs (House pulse stays on-box)
+- Silent SAB from Discover / Search
+- Calibre desktop clone as the product
+- New top-level owner app before Sorting SLO / Desk gates clear (Desk rewrite waits on BD-3 SLO green or owner waive — see Later residuals)
+- Owner MFA this year while vip Access remains the edge (BD-5)
+
+Detail + FAQ: [HELP.md](HELP.md#cut-list-not-this-product).
 
 ---
 

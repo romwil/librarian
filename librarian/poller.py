@@ -378,6 +378,7 @@ class JobPoller:
         return int(poll_rss_feeds(self.db, settings) or 0)
 
     def _run_repair(self, settings: Settings) -> int:
+        from librarian.isbn_auto_file import run_isbn_auto_file
         from librarian.organize import soft_repair_review_reasons
         from librarian.review_diagnosis import fill_review_diagnosis
         from librarian.sorting_autopilot import run_sorting_autopilot
@@ -385,7 +386,8 @@ class JobPoller:
         filled = int(fill_review_diagnosis(self.db, settings) or 0)
         repaired = int(soft_repair_review_reasons(self.db, settings) or 0)
         auto = run_sorting_autopilot(self.db, settings)
-        return filled + repaired + int(auto.get("changed") or 0)
+        isbn = run_isbn_auto_file(self.db, settings)
+        return filled + repaired + int(auto.get("changed") or 0) + int(isbn.get("filed") or 0)
 
     def _run_abs(self, settings: Settings) -> int:
         from librarian.audiobookshelf import match_audiobooks

@@ -120,6 +120,7 @@ export default function MaintainPage() {
   const [suggestNote, setSuggestNote] = useState("");
   const [suggesting, setSuggesting] = useState(false);
   const [shelfHealth, setShelfHealth] = useState(null);
+  const [shelfHealthLoading, setShelfHealthLoading] = useState(false);
   const [shelfHealthError, setShelfHealthError] = useState("");
   const [goodreads, setGoodreads] = useState("");
   const [importing, setImporting] = useState(false);
@@ -350,19 +351,31 @@ export default function MaintainPage() {
         });
     });
 
-    // Wave 3 — shelf health + Holds backlog counts (heavier).
+    // Wave 3 — shelf health + Holds backlog counts (cached/async on the server).
     later(160, () => {
-      api
-        .maintainShelfHealth()
-        .then((data) => {
-          if (cancelled) return;
-          setShelfHealth(data);
-          setShelfHealthError("");
-        })
-        .catch((err) => {
-          if (cancelled) return;
-          setShelfHealthError(humanError(err));
-        });
+      setShelfHealthLoading(true);
+
+      function loadShelfHealth(attempt) {
+        api
+          .maintainShelfHealth()
+          .then((data) => {
+            if (cancelled) return;
+            setShelfHealth(data);
+            setShelfHealthError("");
+            setShelfHealthLoading(false);
+            // Cold miss returns refreshing=true; soft-poll until the snapshot lands.
+            if (data?.refreshing && attempt < 30) {
+              later(2000, () => loadShelfHealth(attempt + 1));
+            }
+          })
+          .catch((err) => {
+            if (cancelled) return;
+            setShelfHealthError(humanError(err));
+            setShelfHealthLoading(false);
+          });
+      }
+
+      loadShelfHealth(0);
       api
         .review()
         .then((data) => {
@@ -1005,10 +1018,14 @@ export default function MaintainPage() {
           returnFocusRef={purgeButtonRef}
           testId="maintain-purge-shells-dialog"
         >
-          <p className="lede">
+          <p className="lede" data-testid="maintain-purge-shells-count-copy">
             This removes {Number(purgePreview?.would_purge ?? 0)} catalog{" "}
             {Number(purgePreview?.would_purge ?? 0) === 1 ? "row" : "rows"} with no file on the
-            shelf. A snapshot is taken first.
+            shelf.
+          </p>
+          <p className="muted" data-testid="maintain-purge-shells-undo">
+            Safe undo can restore purged shells for a few hours. A pre-purge database snapshot is
+            also taken first.
           </p>
           {Number(purgePreview?.on_shelves || 0) || Number(purgePreview?.with_progress || 0) ? (
             <p className="muted">
@@ -1251,15 +1268,27 @@ export default function MaintainPage() {
         </ConfirmDialog>
       </section>
 
-      <section className="maintain-section" id="maintain-shelf-health" data-testid="maintain-shelf-health">
+      <section
+        className="maintain-section"
+        id="maintain-shelf-health"
+        data-testid="maintain-shelf-health"
+        aria-busy={shelfHealthLoading || shelfHealth?.refreshing ? "true" : undefined}
+      >
         <p className="kicker">Shelves</p>
         <h2>Shelf health</h2>
         <p className="lede">
           Rescan library roots and fill thin metadata. Enrich skips volumes that are already full and starts with
           the emptiest. Job progress stays in the telemetry dock above. Paths and tokens live in Settings.
         </p>
-        {shelfHealth?.score ? <ShelfHealthPulse score={shelfHealth.score} /> : null}
-        {shelfHealth ? (
+        {shelfHealthLoading && !shelfHealth ? (
+          <p className="muted" data-testid="maintain-shelf-health-loading">
+            Checking the shelves…
+          </p>
+        ) : null}
+        {shelfHealth?.score && (shelfHealth.cached || !shelfHealth.refreshing) ? (
+          <ShelfHealthPulse score={shelfHealth.score} />
+        ) : null}
+        {shelfHealth && (shelfHealth.cached || !shelfHealth.refreshing) ? (
           <div className="shelf-health-report" data-testid="maintain-shelf-health-report">
             <p className="muted">
               {shelfHealth.ok
@@ -1292,6 +1321,11 @@ export default function MaintainPage() {
               </p>
             ) : null}
           </div>
+        ) : null}
+        {shelfHealth?.refreshing ? (
+          <p className="muted" data-testid="maintain-shelf-health-refreshing">
+            {shelfHealth.cached ? "Refreshing shelf weather…" : "Checking the shelves…"}
+          </p>
         ) : null}
         {shelfHealthError ? <p className="alert">{shelfHealthError}</p> : null}
         <div className="cta-row">

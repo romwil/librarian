@@ -245,7 +245,8 @@ def test_op_can_add_to_library(tmp_path, monkeypatch):
     assert status["status"] == "completed"
     assert int((status.get("result") or {}).get("shelved") or status.get("shelved") or 0) == 1
     assert not source.exists()
-    queue = client.get("/api/queue")
+    # Default Downloads view is actionable; shelved ingest lands in history.
+    queue = client.get("/api/queue", params={"view": "history"})
     assert queue.status_code == 200
     job = queue.json()["jobs"][0]
     assert job["payload"]["source"] == "ingest"

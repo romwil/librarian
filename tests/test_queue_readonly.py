@@ -144,8 +144,12 @@ def test_get_queue_does_not_ingest_watch_drop(tmp_path, monkeypatch):
 
     kicked = client.post("/api/queue/tick")
     assert kicked.status_code == 200
-    after = client.get("/api/queue")
+    # Watch ingest lands as Arrived — History / All, not the actionable default.
+    after = client.get("/api/queue", params={"view": "all"})
     assert after.status_code == 200
     assert not drop.exists()
     assert after.json()["jobs"]
     assert after.json()["jobs"][0]["payload"]["source"] == "watch"
+    history = client.get("/api/queue", params={"view": "history"})
+    assert history.status_code == 200
+    assert history.json()["jobs"]

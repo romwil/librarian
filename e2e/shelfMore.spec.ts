@@ -84,7 +84,8 @@ test.describe("More shelves", () => {
     await expect(page.getByRole("button", { name: /^Kept Volume/ })).toBeVisible();
     await expect(page.getByRole("search")).toBeVisible();
     await expect(page.getByRole("button", { name: "All", exact: true })).toHaveCount(0);
-    await expect(page.getByRole("heading", { name: "Name a shelf" })).toHaveCount(0);
+    // Empty named-shelf CTA (activation) — still no folded catalog list.
+    await expect(page.getByRole("heading", { name: "Name a shelf" })).toBeVisible();
     await expect(page.getByRole("button", { name: "More shelves" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /Bottom Catalog Book/ })).toHaveCount(0);
   });

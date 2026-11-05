@@ -5,8 +5,13 @@ from fastapi.testclient import TestClient
 from librarian.db import Database
 from librarian.rate_limit import clear_rate_limits
 from librarian.sessions import clear_session_secret_cache
-from librarian.suggest import refresh_suggest_cache
+from librarian.suggest import display_suggest_label, refresh_suggest_cache
 from librarian.web.app import create_app
+
+
+def test_display_suggest_label_strips_filename_debris():
+    assert display_suggest_label("/data/dump/(Born 1) - Born In Fire.epub") == "Born In Fire"
+    assert display_suggest_label("Clean Title") == "Clean Title"
 
 
 def _client(tmp_path, monkeypatch):

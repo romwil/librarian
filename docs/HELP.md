@@ -30,7 +30,7 @@ Optional Audiobookshelf URL and token (`AUDIOBOOKSHELF_URL` / `AUDIOBOOKSHELF_AP
 
 ## The Hall
 
-After sign-in you land on **The Hall**, not Settings. The hero is search (the stacks, not “then the world”). Rails below: **Continue** (volumes you opened), Recently added, Favorites, and New & noted. A chip row of kinds and named shelves (counts of one or more) opens Browse. Opening a work leaves a bookmark on Continue; **Finished** means you have read it and clears that bookmark. Finished is not a download status. Audiobook Listen writes the same Continue progress (file + seconds), so in-progress listens sit on the Continue rail beside books. The lamp keeps the page across remounts and Audiobookshelf sync.
+After sign-in you land on **The Hall**, not Settings. The hero is search (the stacks, not “then the world”). Rails below: **Continue** (volumes you opened), Recently added, Favorites, and New & noted. A chip row of kinds and named shelves (counts of one or more) opens Browse — **Music is not a Hall first-tier chip** (reach albums via Stacks, Search kind, or Promote). Owners see a bounded **Tend these** card that deep-links the same Maintain morning desk. When no named shelf has a volume yet, Hall offers starter names so you can create one in a couple of taps. Opening a work leaves a bookmark on Continue; **Finished** means you have read it and clears that bookmark. Finished is not a download status. Audiobook Listen writes the same Continue progress (file + seconds), so in-progress listens sit on the Continue rail beside books. The lamp keeps the page across remounts and Audiobookshelf sync.
 
 Chrome stays Hall / Search / Favorites / You. Downloads and Sorting are op links, not extra tabs. There is no Holds desk.
 
@@ -84,6 +84,18 @@ A **hold slip** (or just **slip**) is a download (or Add-to-shelves dump) that i
 
 **Apply** files a hold slip once the folder has media Librarian can read. **Skip** dismisses the slip without shelving.
 
+### Sorting shortcuts
+
+On Sorting, optional keyboard shortcuts (on by default; toggle on the page):
+
+| Key | Action |
+| --- | --- |
+| **j** | Next slip (expands the visible window or loads the next page when needed) |
+| **k** | Previous slip |
+| **x** | Open or close More on the focused slip |
+
+Keys are ignored while typing in a field. Library card → Accessibility links here too.
+
 ## Maintain
 
 Owners and ops keep the lamp healthy from **Maintain** (`/maintain`) — not Settings scan buttons alone.
@@ -118,7 +130,7 @@ The same terms live in-app at `/help` (`frontend/src/copy/glossary.js`).
 | **Sorting** | The owner desk at /review. Slips wait here. It is not a reader reservation. |
 | **Slip** | One Sorting item that needs identity or folder help before it can be filed. |
 | **Downloads** | The queue of fetches. Confirm is the only way SABnzbd starts. |
-| **Confirm** | The keeper step before a download. Product control — not a legal review. |
+| **Confirm** | The keeper step before a download. Product control — not a legal review. Owners may opt in to auto-confirm after Ask for allowlisted / healthy indexer hosts (Settings → Household); readers never auto-confirm. |
 | **Beyond the shelves** | Indexer search outside what the house already owns. Readers opt in with Ask the house. |
 | **Maintain** | Owner grooming: scan, enrich, backup, House pulse, shelf health. Credentials stay in Settings. |
 | **House pulse** | On-box household totals. Member reading figures hide until three people have a card. No analytics SDK. |
@@ -129,7 +141,7 @@ The same terms live in-app at `/help` (`frontend/src/copy/glossary.js`).
 
 ## OPDS
 
-Ebook apps can browse shelved books, magazines, and comics over OPDS 1.2. Open **Library card → Read in another app**, copy the catalog link (`/opds?token=`), and paste it into KOReader, Moon+ Reader, or Panels. The link lasts 180 days and is private to your card — anyone with it can browse the shelves. TLS waits on a real hostname; LAN HTTP guests are fine.
+Ebook apps can browse shelved books, magazines, and comics over OPDS 1.2. Open **Library card → Read in another app**, copy the catalog link (`/opds?token=`), and paste it into KOReader, Moon+ Reader, or Panels. The link lasts 180 days and is private to your card — anyone with it can browse the shelves. TLS waits on a real hostname; LAN HTTP guests are fine. Prefer OPDS over browser reading when you already live in KOReader or Panels.
 
 ## Indexers
 
@@ -141,7 +153,7 @@ Cards on The Hall are the *missing* set — honest holes between what you alread
 
 ## Music and audiobooks
 
-Music organizes into Incoming (`library/incoming-music`), then **Promote** moves the album into the Plexamp library at `/data/media/music`. Audiobooks never go there.
+Music organizes into Incoming (`library/incoming-music`), then **Promote** moves the album into the Plexamp library at `/data/media/music`. Audiobooks never go there. Music stays reachable from Stacks / Search / Promote — it is demoted off Hall first-tier chips so the reading room leads with books, magazines, comics, and audiobooks.
 
 **Listen** opens the Listening room on an audiobook work (HTML5 audio + Media Session, chapter skip when tags exist, Continue bookmark). Peek and the work page use **Listen** as the primary CTA — never Promote to Plexamp. **Open in player** appears when Audiobookshelf has matched the title (or when the audiobook target is ABS), or as a soft Plex handoff when that is the audiobook target. With Audiobookshelf configured but unmatched, the note stays honest. Progress pauses push to ABS when linked; opening Listen can pull a farther ABS position.
 
@@ -173,4 +185,73 @@ Owners can **Enrich the shelves** on Maintain, or **Enrich** on a book/audiobook
 
 ## Accessibility
 
-Skip to content, a visible focus ring, announced alerts, and overlays that keep keyboard focus are on. The first VoiceOver script (login, join, Read, Listen, Sorting) is [a11y/VOICEOVER.md](a11y/VOICEOVER.md). Owner steps before inviting anyone: [ops/INVITE_CHECKLIST.md](ops/INVITE_CHECKLIST.md).
+Skip to content, a visible focus ring, announced alerts, and overlays that keep keyboard focus are on. The first VoiceOver script (login, join, Read, Listen, Sorting) is [a11y/VOICEOVER.md](a11y/VOICEOVER.md). Owner steps before inviting anyone: [ops/INVITE_CHECKLIST.md](ops/INVITE_CHECKLIST.md). Sorting j / k / x: [Sorting shortcuts](#sorting-shortcuts).
+
+## What leaves this server
+
+Librarian is private-by-shape: no advertising SDK, no public signup, no third-party analytics. That is **not** the same as “nothing ever leaves the box.”
+
+When a **language-model key is on** (Settings → Language model), keepers’ identify / Review suggest, Bestsellers list naming, and Find / chase ranking may send **cover, filename, and title metadata** to the configured provider. Those calls never invent an ISBN. Library card → Privacy restates this from live config (`/api/privacy`). Settings shows the same outbound note while the key is present.
+
+**Beyond the shelves** (and Discover category feeds) send the **title you typed** to NZBFinder and any extra Newznab hosts — not your display name. Enrich may query Hardcover / Open Library with ISBN or title+author. Optional mail uses the address on notification prefs. Audiobookshelf and OPDS only see what you configured them for. Cloudflare Access (vip) sees identity at the edge before the foyer.
+
+Readers’ shelf Search stays local until they **Ask the house**. Confirm on Downloads is still the only way SABnzbd starts.
+
+## Sorting open-count SLO (BD-3)
+
+**Owner:** maintainer (household owner on Automat).
+
+**Ritual:** once a week, open Sorting (`/review`) and record the **open slip count** (All badge). Prefer the oldest reason group first.
+
+**Day 0:** **2026-11-05** — Phase A triage defaults live on Automat with **1.0.11**. Evaluate the 30-day window on **2026-12-05** (go/no-go for Desk rewrite, or owner waive).
+
+**Unacceptable after 30 days of Now triage:** median daily open **> 15**, **or** the open count never drops below **20** for **7 consecutive days**.
+
+Failing the SLO means prioritize identify quality, the shells ritual below, and/or the measured ISBN auto-file experiment (Settings → Household → **ISBN auto-file experiment**, default off) — **not** a Desk rewrite yet.
+
+**Desk rewrite (BD-2 option 4)** stays deferred until this SLO is green (or the owner explicitly waives). See [ROADMAP.md](ROADMAP.md#post-360-nov-4-residuals-phase-d-gates).
+
+**Shells are a separate Maintain ritual** — not part of this Sorting SLO. Unshelved catalog shells (Maintain → Purge shells) are purged on their own cadence with snapshot + typed confirm. Do not fold shell count into the Sorting open badge narrative.
+
+## Owner weekly checklist
+
+Keep this under ten bullets. Full edge/firewall steps live in [ops/AUTOMAT.md](ops/AUTOMAT.md).
+
+1. Confirm version on LAN: `docker exec librarian cat /app/.build-info` (never vip CDN).
+2. Maintain: poller alive; last integrity-checked backup < 24h.
+3. Downloads: no reader **Asked** slip older than 48h (actionable view).
+4. Sorting: record open count for the BD-3 SLO; clear or note the oldest reason group.
+5. Shells (separate): if Maintain offers purge-shells, schedule a snapshot + purge pass — not the Sorting number.
+6. Find lanterns: mute a sick host; do not delete config for a blip.
+7. Shelf permissions: no new PUID-locked root (host `chown` tip on Maintain — never `chmod 777`).
+8. Scan / enrich / ingest: finished or has an explicit recovery action.
+9. Glance release notes / What’s New for the running build.
+10. Monthly: copy `settings.json` + session secret separately from DB snapshots. Annually: restore drill on a **clone**.
+
+## FAQ
+
+**Kids / shared tablets (PRIV-005)?** Give each child or shared iPad a **reader** invite — not the owner password and not a shared owner session. Readers cannot open Settings, Sorting Apply, Downloads Confirm, or People. Prefer Cloudflare Access allowlists per person when using vip. Sign out on shared glass when done; owner can **Sign out everywhere** from Settings if a device was left signed in.
+
+**Vip vs LAN — who signs in where?** Members and remote keepers use `https://librarian.automat.vip` (Cloudflare Access / Workspace first, then Librarian foyer). Ops and agents use LAN `http://10.10.1.202:8793` for health and `.build-info`. Vip is not version truth. Edge checklist: [ops/AUTOMAT.md](ops/AUTOMAT.md#cloudflare-access--vlan--origin-checklist-sec-006).
+
+**Invite bounce or “can’t join”?** Access must allow the person **before** the invite redeem page. Inside Access, redeem a valid invite (7 days) and set a password ≥ 8. Agents do not mint invites — owner mints from People when ready. See [ops/INVITE_CHECKLIST.md](ops/INVITE_CHECKLIST.md).
+
+**Sorting still loud?** Filter by the top reason chip; Prefer low-confidence / oldest first. Weekly open count is the BD-3 metric above. Shells ≠ Sorting slips.
+
+**SAB / “missing folder” / Unauthorized fetch?** Set **SAB complete root** so `/downloads` maps under `/data`. Librarian pushes NZB via `addfile` — it does not ask SAB to fetch a naked `getnzb` URL. Fix the map, then Apply or Request again. Details under [Review / Sorting](#review--sorting).
+
+**Asked vs On the way vs Needs you vs Failed?** Asked waits for Confirm; On the way is fetching; Arrived is shelved; Needs you is Sorting (files here, identity unclear); Failed did not land. Confirm is the only SABnzbd start. Job words table: [Five job words](#five-job-words).
+
+## Cut list (not this product)
+
+Librarian stays a household **reading room**. Explicitly out for this arc (PRD-008):
+
+- No Arr-style home KPIs / acquisition dashboard as Hall
+- No public signup, marketplace, or social feed
+- No third-party analytics SDKs (House pulse stays on-box)
+- No silent SAB from Discover / Search
+- No Calibre desktop clone as the product
+- No Hub-only ship path until CA installers are a milestone (Automat = host `./docker-run.sh`)
+- No owner MFA this year (vip Access covers the edge; BD-5)
+
+Proposals that conflict need a leadership call — they do not silently enter the backlog.

@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { api } from "../api.js";
+import { suggestDisplayLabel } from "../lib/suggestLabel.js";
 
 const DEBOUNCE_MS = 180;
 const TYPEAHEAD_FIELDS = new Set(["author", "title", "series", "artist", "album", "year", "q"]);
@@ -151,7 +152,7 @@ export default function TypeaheadField({
                 pick(item);
               }}
             >
-              <span className="typeahead-value">{item.value}</span>
+              <span className="typeahead-value">{suggestDisplayLabel(item.label || item.value)}</span>
               {item.meta === "catalog" ? <span className="typeahead-meta">shelf</span> : null}
             </li>
           ))}

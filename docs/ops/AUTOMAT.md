@@ -2,7 +2,7 @@
 
 Task-first notes for the **Automat** Unraid host that runs Librarian. Audience: developers and Cursor agents working on this repo’s live stack — not generic install docs (see [DOCKER.md](../DOCKER.md)).
 
-Jump to: [LAN hosts](#lan-hosts-source-of-truth) · [Kit](#kit--appdata) · [First boot](#first-boot-env) · [Deploy](#deploy-now-on-host-build) · [Backups](#backups-and-restore) · [Audiobookshelf](#audiobookshelf) · [See also](#see-also)
+Jump to: [LAN hosts](#lan-hosts-source-of-truth) · [Public SSL / CF Access](#public-ssl--household-perimeter) · [Kit](#kit--appdata) · [First boot](#first-boot-env) · [Deploy](#deploy-now-on-host-build) · [Backups](#backups-and-restore) · [Audiobookshelf](#audiobookshelf) · [See also](#see-also)
 
 ---
 
@@ -35,7 +35,9 @@ docker exec librarian cat /app/.build-info
 
 ## Public SSL / household perimeter
 
-Members may later reach the library through a **user reverse proxy** (Caddy / NPM / Cloudflare Tunnel). That hostname is TLS + proxy, not an extra auth layer. Treat every inbound packet as hostile; follow [SECURITY.md](../SECURITY.md).
+**Lasting Automat edge (BD-1 option 2):** household production reach is `https://librarian.automat.vip` behind **Cloudflare Access** (Workspace IdP) + Tunnel, with guest Wi‑Fi on a separate VLAN that cannot route to `10.10.x.x`. Container bind stays `0.0.0.0:8793` (**Accepted** — see [SECURITY.md](../SECURITY.md) S3 / SEC-006). Hub reverse-proxy-only remains deferred until public CA installers are an active milestone — **do not invent** Hub `docker-release.sh` / pull-only `rollout.sh` as the current Automat path.
+
+Vip is TLS + Access + proxy — **not** version truth. Treat every inbound packet as hostile; follow [SECURITY.md](../SECURITY.md).
 
 | Topic | Automat note |
 |-------|----------------|
@@ -44,6 +46,25 @@ Members may later reach the library through a **user reverse proxy** (Caddy / NP
 | **Public URL** | When guests land on a vip hostname (e.g. Cloudflare Access → Tunnel → `:8793`), set `PUBLIC_BASE_URL=https://librarian.automat.vip` (or Settings → Public URL) so Origin checks allow that landing. Optional extras: `LIBRARIAN_PUBLIC_ORIGINS`. LAN `:8793` stays ops truth — vip is not version truth. |
 | **WAN** | Household auth is on from first boot. Spoofed forwarded proto/IP never unlocks a “trusted HTTPS” hop and never rotates the rate-limit key. Foreign Origins stay refused. |
 | **SAB** | Retriever URL is `http://downloader.sl` (LAN DNS). `docker-run.sh` pins that hostname when the Unraid host can resolve it. |
+
+### Cloudflare Access / VLAN / Origin checklist (SEC-006)
+
+Spot-verify once after edge changes; re-check after Access policy edits. Items marked **owner CF dashboard** need a read-only glance in Cloudflare Zero Trust — agents cannot close those from the kit alone.
+
+| # | Check | How / where | Owner CF dashboard? |
+|---|--------|-------------|---------------------|
+| **a** | Access application covers `librarian.automat.vip` with Workspace IdP | Zero Trust → Access → Applications; policy allows household Workspace identities (and any separate reader policy if used) | **Yes** |
+| **b** | No WAN DNAT to `10.10.1.202:8793` | Router / firewall: no public port-forward of bare 8793; only Tunnel/proxy hop reaches the container | No (host/firewall) |
+| **c** | Guest VLAN cannot route to library VLAN | Guest SSID clients must not reach `10.10.x.x`; vip is the remote/member path | No (network) |
+| **d** | Public URL / origins include vip | `.env` / Settings → Public URL = `https://librarian.automat.vip`; optional `LIBRARIAN_PUBLIC_ORIGINS` | No (kit) |
+| **e** | Trust-proxy headers only behind Tunnel | `LIBRARIAN_TRUST_PROXY_HEADERS=1` on Automat container behind Tunnel only — never on a laptop SSH tunnel | No (kit) |
+| **f** | CSRF through proxy still holds | Mutating `/api` from the vip origin still requires matching Origin (or allowlist) + `X-Librarian: 1`; foreign sites refused | No (smoke from vip session) |
+| **g** | Access session length + admin bypass intentional | Session duration, IdP MFA challenge, and any bypass / service-token paths are deliberate — not “temporary forever” | **Yes** |
+| **h** | Periodic Access audit-log glance | Owner ritual: skim Access logs for unexpected identities / countries / bypass use (weekly with [HELP weekly checklist](../HELP.md#owner-weekly-checklist)) | **Yes** |
+
+**Still needing owner CF dashboard verification (a, g, h):** Access app hostname + Workspace IdP binding; session/bypass policy intent; audit-log glance cadence. Kit/LAN items (b–f) can be confirmed from Unraid + Settings + a vip login smoke.
+
+After checklist changes: `curl -s http://10.10.1.202:8793/api/health` and `docker exec librarian cat /app/.build-info` — never vip CDN for version.
 
 ---
 
@@ -151,6 +172,20 @@ Do **not** stop Projectionist (`:8788`) or Smart Map (`:8790`) while deploying L
 
 ---
 
+## Poller kill criterion (ARCH-003)
+
+The in-process `JobPoller` stays one process with the API for household simplicity. Maintain
+exposes per-step last run / last error and readiness requires a live poller. **Do not split**
+poller / API / SQLite into a worker container unless **any two** of these occur within **30 days**:
+
+1. Poller dead or heartbeat stale **> 5 minutes**, twice.
+2. p95 API latency **> 2s** while jobs are active.
+3. One job crash restarts the whole service.
+4. Job recovery requires manual SQLite repair.
+
+Until then: keep host `./docker-run.sh`, watch Maintain jobs status, and treat a silent poller
+as an ops incident — not a redesign ticket.
+
 ## Backups and restore
 
 The poller takes a SQLite snapshot of the catalog nightly (first poll after a new local day) into
@@ -161,9 +196,49 @@ is taken with SQLite's online backup, passes `PRAGMA integrity_check` before it 
 Maintain → **Nightly backup** shows the last backup.
 
 `session_secret` and `settings.json` are **not** in a snapshot (they hold keys and API tokens).
-They stay in `/config`; copy them separately if you rebuild the host.
+They stay in `/config`; copy them separately if you rebuild the host. Every `save_settings` write
+sets `settings.json` to mode **`0600`** (PRIV-004 / SEC-005) — verify after kit sync:
 
-Restore (the container must be stopped so nothing writes while you swap the file):
+```bash
+stat -c '%a %n' /mnt/user/appdata/librarian/config/settings.json
+# expect: 600 …/settings.json
+stat -c '%a %n' /mnt/user/appdata/librarian/config/backups
+# expect: 700 …/backups
+ls -l /mnt/user/appdata/librarian/config/backups/librarian-*.db | head
+# expect: -rw------- (0600) on each snapshot
+```
+
+### ACL review (OPS-008 / PRIV-004)
+
+Who may read `/config` on the Unraid host? Restrict to the maintainer account and the Docker
+user the container runs as. Do **not** share the appdata kit over guest SMB with write access.
+Nightly snapshots omit secrets on purpose — treat a copied `settings.json` as credential material.
+
+### Restore drill (log once per year or before a major upgrade)
+
+Practice on a **clone**, never the live Automat catalog first. Record the drill in the household
+ops log (date, clone path, who ran it, duration, result). Target: under 60 minutes.
+
+```bash
+# 1) Clone kit (example — adjust destination)
+rsync -a /mnt/user/appdata/librarian/ /mnt/user/appdata/librarian-restore-drill/
+cd /mnt/user/appdata/librarian-restore-drill
+
+# 2) Stop only the drill container if you started one; leave prod :8793 alone.
+# 3) Swap DB from a known-good snapshot:
+mv config/librarian.db config/librarian.db.broken
+rm -f config/librarian.db-wal config/librarian.db-shm
+cp config/backups/librarian-YYYY-MM-DD.db config/librarian.db
+chmod 600 config/librarian.db
+
+# 4) Boot the drill kit (different name/port — never bind 8788/8790/8791/8792)
+# 5) curl health + spot-check Hall / Sorting counts
+# 6) Log: date, snapshot used, wall-clock minutes, pass/fail, notes
+```
+
+### Live restore (only when recovering Automat)
+
+The container must be stopped so nothing writes while you swap the file:
 
 ```bash
 cd /mnt/user/appdata/librarian
@@ -288,9 +363,10 @@ In Librarian Settings set `komga_url`, `komga_api_key`, and `komga_library_id` (
 ## See also
 
 - [INVITE_CHECKLIST.md](INVITE_CHECKLIST.md) — owner steps before first real invites (Public URL, Sorting morning, shells, mail off)
+- [HELP.md](../HELP.md) — weekly owner checklist, BD-3 Sorting SLO, vip/Access FAQ, cut list, LLM outbound disclosure
 - [VOICEOVER.md](../a11y/VOICEOVER.md) — first VoiceOver script (login, join, Read, Listen, Sorting)
 - [DOCKER.md](../DOCKER.md) — volumes, PUID/PGID, extra_hosts
-- [SECURITY.md](../SECURITY.md) — handshake, proxy trust, cookies
+- [SECURITY.md](../SECURITY.md) — handshake, proxy trust, cookies, Accepted bind + Automat-edge
 - [automat-media-contract.md](../automat-media-contract.md) — shared `/data/media` roots with Smart Map
 - [LIBRARY_MIGRATE.md](LIBRARY_MIGRATE.md) — library/* cutover + Calibre blend
 - [CATALOG.md](CATALOG.md) — canonical works, duplicate merge after snapshot, shell owner pass

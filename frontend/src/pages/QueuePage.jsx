@@ -9,11 +9,19 @@ import {
   PAGE_TITLE_DOWNLOADS,
   QUEUE_SAB_BODY,
   QUEUE_SAB_TITLE,
-  emptyQueueCopy,
   humanError,
   queueNeedsYouHelp,
 } from "../copy.js";
 import useDocumentTitle from "../hooks/useDocumentTitle.js";
+import {
+  DEFAULT_QUEUE_VIEW,
+  bulkDismissConfirmCopy,
+  dismissibleQueueJobs,
+  emptyQueueViewCopy,
+  normalizeQueueView,
+  queueCounts,
+  queueViewLabel,
+} from "../queueDesk.js";
 
 function isUnpackStuck(job) {
   const reason = String(job?.review_reason || "").trim();
@@ -28,17 +36,24 @@ function jobPath(job) {
 
 export default function QueuePage() {
   const [jobs, setJobs] = useState([]);
+  const [counts, setCounts] = useState(queueCounts());
+  const [view, setView] = useState(DEFAULT_QUEUE_VIEW);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [pendingSab, setPendingSab] = useState(null);
+  const [pendingBulk, setPendingBulk] = useState(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
   useDocumentTitle(PAGE_TITLE_DOWNLOADS);
 
-  function reload() {
+  function reload(nextView = view) {
+    const key = normalizeQueueView(nextView);
     setLoading(true);
     api
-      .queue()
+      .queue({ view: key })
       .then((data) => {
         setJobs(data.jobs || []);
+        setCounts(queueCounts(data.counts));
+        setView(normalizeQueueView(data.view || key));
         setError("");
         setLoading(false);
       })
@@ -48,22 +63,90 @@ export default function QueuePage() {
       });
   }
 
-  useEffect(reload, []);
+  useEffect(() => {
+    reload(DEFAULT_QUEUE_VIEW);
+    // Default Downloads open on Needs decision (PRD-011).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function chooseView(next) {
+    const key = normalizeQueueView(next);
+    if (key === view) return;
+    setView(key);
+    reload(key);
+  }
+
+  async function runBulkDismiss(targets) {
+    if (!targets?.length || bulkBusy) return;
+    setBulkBusy(true);
+    setError("");
+    try {
+      for (const job of targets) {
+        await api.dismissJob(job.id);
+      }
+      setPendingBulk(null);
+      reload(view);
+    } catch (err) {
+      setError(humanError(err));
+      reload(view);
+    } finally {
+      setBulkBusy(false);
+    }
+  }
 
   const listed = sortQueueNeedsYouFirst(jobs);
   const hasNeedsYou = listed.some((job) => job.status === "review");
+  const dismissible = dismissibleQueueJobs(listed);
+  const bulkCopy = bulkDismissConfirmCopy(dismissible);
+  const emptyCopy = emptyQueueViewCopy(view);
 
   return (
     <div className="admin-room page-settle queue-page" data-density="compact">
       <p className="kicker">Downloads</p>
       <h1>Downloads</h1>
       <p className="lede">Asked slips, SAB jobs, and volumes being filed. Living chips live on Find cards.</p>
+      <div className="chip-row" role="group" aria-label="Downloads view" data-testid="queue-view-filters">
+        {["actionable", "active", "history", "all"].map((key) => {
+          const n = counts[key] ?? 0;
+          const label = queueViewLabel(key);
+          return (
+            <button
+              key={key}
+              type="button"
+              className="chip"
+              aria-pressed={view === key}
+              onClick={() => chooseView(key)}
+              data-testid={`queue-view-${key}`}
+            >
+              {label}
+              {n > 0 ? ` (${n})` : ""}
+            </button>
+          );
+        })}
+      </div>
+      {dismissible.length > 0 ? (
+        <div className="cta-row compact">
+          <button
+            type="button"
+            className="cta outline compact"
+            onClick={() => setPendingBulk(dismissible)}
+            disabled={bulkBusy}
+            data-testid="queue-bulk-dismiss"
+          >
+            Dismiss {dismissible.length} terminal
+          </button>
+        </div>
+      ) : null}
       {hasNeedsYou ? <p className="empty-note" data-testid="queue-needs-you-help">{queueNeedsYouHelp()}</p> : null}
       {error ? <Alert>{error}</Alert> : null}
       {loading ? (
         <WarmLoad message="Warming the lamp on Downloads…" testId="queue-loading" />
       ) : null}
-      {!loading && !jobs.length ? <p className="empty-note">{emptyQueueCopy()}</p> : null}
+      {!loading && !jobs.length ? (
+        <p className="empty-note" data-testid="queue-empty">
+          {emptyCopy}
+        </p>
+      ) : null}
       <ul className="stack">
         {!loading
           ? listed.map((job) => {
@@ -76,6 +159,7 @@ export default function QueuePage() {
               const reviewTo = job.work_id ? `/review?work=${encodeURIComponent(job.work_id)}` : "/review";
               const unpack = isUnpackStuck(job);
               const actionableFail = job.status === "failed" || job.status === "skipped";
+              const canDismissArrived = job.status === "organized";
               return (
                 <li key={job.id} className="card queue-job" data-testid="queue-job" data-status={job.status || ""}>
                   <strong className="queue-job-title">{job.title || job.nzo_id || job.id}</strong>
@@ -105,11 +189,7 @@ export default function QueuePage() {
                   ) : null}
                   {job.status === "asked" ? (
                     <div className="cta-row">
-                      <button
-                        type="button"
-                        className="cta"
-                        onClick={() => setPendingSab(job)}
-                      >
+                      <button type="button" className="cta" onClick={() => setPendingSab(job)}>
                         Queue to SAB
                       </button>
                       <button
@@ -118,7 +198,7 @@ export default function QueuePage() {
                         onClick={() =>
                           api
                             .dismissJob(job.id)
-                            .then(reload)
+                            .then(() => reload(view))
                             .catch((err) => setError(humanError(err)))
                         }
                       >
@@ -134,7 +214,7 @@ export default function QueuePage() {
                         onClick={() =>
                           api
                             .retryJob(job.id)
-                            .then(reload)
+                            .then(() => reload(view))
                             .catch((err) => setError(humanError(err)))
                         }
                       >
@@ -146,9 +226,26 @@ export default function QueuePage() {
                         onClick={() =>
                           api
                             .dismissJob(job.id)
-                            .then(reload)
+                            .then(() => reload(view))
                             .catch((err) => setError(humanError(err)))
                         }
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  ) : null}
+                  {canDismissArrived ? (
+                    <div className="cta-row">
+                      <button
+                        type="button"
+                        className="cta outline"
+                        onClick={() =>
+                          api
+                            .dismissJob(job.id)
+                            .then(() => reload(view))
+                            .catch((err) => setError(humanError(err)))
+                        }
+                        data-testid="queue-dismiss-arrived"
                       >
                         Dismiss
                       </button>
@@ -169,7 +266,7 @@ export default function QueuePage() {
           if (!job?.id) return;
           api
             .confirmJob(job.id)
-            .then(reload)
+            .then(() => reload(view))
             .catch((err) => setError(humanError(err)));
         }}
         onCancel={() => setPendingSab(null)}
@@ -178,6 +275,21 @@ export default function QueuePage() {
         <p>
           {pendingSab?.title ? `This starts a download for ${pendingSab.title}. ` : null}
           {QUEUE_SAB_BODY}
+        </p>
+      </ConfirmDialog>
+      <ConfirmDialog
+        open={Boolean(pendingBulk?.length)}
+        title={bulkCopy.title}
+        confirmLabel={bulkCopy.confirmLabel}
+        busy={bulkBusy}
+        onConfirm={() => runBulkDismiss(pendingBulk)}
+        onCancel={() => setPendingBulk(null)}
+        testId="queue-bulk-dismiss-dialog"
+        confirmTestId="queue-bulk-dismiss-confirm"
+      >
+        <p data-testid="queue-bulk-dismiss-count">{bulkCopy.body}</p>
+        <p className="muted" data-testid="queue-bulk-dismiss-undo">
+          {bulkCopy.undoReminder}
         </p>
       </ConfirmDialog>
     </div>

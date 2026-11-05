@@ -514,6 +514,104 @@ export function purgeDuplicatesProgressSummary(status) {
   return `${head}${mid}${tail}` || "Purging duplicates…";
 }
 
+/**
+ * Cursor page size for GET /api/review (backend default is also 25).
+ * Collapsed slips ≈ 2 focusables each → first paint stays under ~100 with chrome.
+ */
+export const SORTING_PAGE_LIMIT = 25;
+
+/**
+ * Max hold-slip cards mounted within the loaded page (DOM / AT budget).
+ * j/k expands this window (or cursor-loads) so the next slip can mount and keep focus.
+ */
+export const SORTING_VISIBLE_WINDOW = 12;
+
+/**
+ * Default Sorting reason chip: prefer low_confidence when present, else top count.
+ * Empty string means All (no countable reasons).
+ */
+export function defaultSortingReason(countsByReason = {}) {
+  const entries = Object.entries(countsByReason || {})
+    .map(([reason, count]) => [String(reason || "").trim(), Number(count) || 0])
+    .filter(([reason, count]) => reason && count > 0);
+  if (!entries.length) return "";
+  if (entries.some(([reason]) => reason === "low_confidence")) return "low_confidence";
+  entries.sort((a, b) => Number(b[1]) - Number(a[1]) || String(a[0]).localeCompare(String(b[0])));
+  return entries[0][0];
+}
+
+/** Slice loaded slips for the first-paint DOM budget. */
+export function windowSortingSlips(works = [], { limit = SORTING_VISIBLE_WINDOW } = {}) {
+  const list = Array.isArray(works) ? works : [];
+  const cap = Math.max(1, Number(limit) || SORTING_VISIBLE_WINDOW);
+  if (list.length <= cap) return { visible: list, hiddenCount: 0 };
+  return { visible: list.slice(0, cap), hiddenCount: list.length - cap };
+}
+
+/**
+ * Polite live-region copy when the Sorting reason filter changes.
+ * Keep short — competes with other status regions on the desk.
+ */
+export function sortingFilterAnnounce({ reason = "", count = 0 } = {}) {
+  const n = Math.max(0, Number(count) || 0);
+  const slips = n === 1 ? "1 slip" : `${n} slips`;
+  const key = String(reason || "").trim();
+  if (!key) return `All reasons, ${slips}`;
+  return `${key.replace(/_/g, " ")}, ${slips}`;
+}
+
+/**
+ * Pure j/k step across the loaded pile + visible window + optional cursor page.
+ * Returns the next focus id and whether to expand the window or call load-more first.
+ */
+export function sortingJkStep({
+  direction = "next",
+  activeId = "",
+  loadedIds = [],
+  visibleCap = SORTING_VISIBLE_WINDOW,
+  hasMoreCursor = false,
+} = {}) {
+  const ids = Array.isArray(loadedIds) ? loadedIds.filter(Boolean) : [];
+  if (!ids.length) return { focusId: "" };
+  const cap = Math.max(1, Number(visibleCap) || SORTING_VISIBLE_WINDOW);
+  const idx = activeId && ids.includes(activeId) ? ids.indexOf(activeId) : -1;
+
+  if (direction === "prev") {
+    const want = idx <= 0 ? 0 : idx - 1;
+    return { focusId: ids[want] };
+  }
+
+  if (idx < 0) return { focusId: ids[0] };
+  if (idx + 1 < ids.length) {
+    const want = idx + 1;
+    const focusId = ids[want];
+    if (want >= cap) {
+      return {
+        focusId,
+        expandTo: Math.max(cap + SORTING_VISIBLE_WINDOW, want + 1),
+      };
+    }
+    return { focusId };
+  }
+  if (hasMoreCursor) {
+    return { focusId: activeId || ids[idx], loadMore: true };
+  }
+  return { focusId: ids[idx] };
+}
+
+/** Confirm copy for desk-wide Purge duplicates (Review bulk bar). */
+export function purgeDuplicatesConfirmCopy({ backlog = 0 } = {}) {
+  const n = Math.max(0, Number(backlog) || 0);
+  const slips = n === 1 ? "1 Review slip" : `${n} Review slips`;
+  return {
+    title: n ? `Purge duplicates across ${slips}?` : "Purge duplicates on Sorting?",
+    body:
+      "Librarian dismisses slips whose content is already on the shelf, or exact duplicate slips of each other (keeps one). " +
+      "Download folders stay on disk. Use Undo on Sorting when available if this was a mistake.",
+    confirmLabel: n ? `Purge duplicates (${n})` : "Purge duplicates",
+  };
+}
+
 /** Desk pile order — bulk-clearable returns first, then stuck unpacks, then identity piles. */
 export const REVIEW_REASON_GROUP_ORDER = [
   "ready_to_file",

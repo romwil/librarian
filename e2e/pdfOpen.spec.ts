@@ -71,7 +71,6 @@ test("a PDF opens past the splash and turns a page", async ({ page }) => {
   await reader.getByRole("button", { name: "Next page" }).click();
   await expect(reader.getByRole("img", { name: "Page 2 of 2" })).toBeVisible({ timeout: 10_000 });
 
-  await reader.focus();
-  await page.keyboard.press("ArrowLeft");
+  await reader.getByRole("button", { name: "Previous page" }).click();
   await expect(reader.getByRole("img", { name: "Page 1 of 2" })).toBeVisible({ timeout: 10_000 });
 });

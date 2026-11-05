@@ -1,6 +1,28 @@
 {
-  "generated_at": "2026-11-02T18:10:32Z",
+  "generated_at": "2026-11-05T05:13:49Z",
   "releases": [
+    {
+      "version": "1.0.11",
+      "date": "2026-11-05",
+      "summary": "",
+      "highlights": [
+        "**Sorting desk calms down.** Opens on the top open reason, windows long lists with j/k, and purge / delete ask for a typed count. BD-3 Sorting open-count SLO day 0 is **2026-11-05** on Automat.",
+        "**Downloads opens actionable.** Asked / Failed / Needs you is the default view with Active, History, and All one tap away; bulk dismiss confirms the count.",
+        "**Maintain shelf-health stays soft.** SWR cache keeps the shell painting; `aria-busy` while a snapshot refreshes.",
+        "**Hall activation.** Owner tend card deep-links Maintain; empty named shelves offer ≤2-step starters; Music leaves first-tier Hall chips (BD-4 — still on Stacks / Search / Promote).",
+        "**Trust / ops.** Settings LLM outbound disclosure; Cloudflare Access checklist in AUTOMAT; HELP weekly checklist + vip FAQ; House pulse records confirm/ask events.",
+        "**Opt-in experiments stay off.** Op auto-confirm (BD-6) and ISBN auto-file default **OFF** with Settings kill switches. Confirm on Downloads is still the only silent-SAB-free path for readers."
+      ],
+      "sections": [
+        {
+          "title": "Fixed",
+          "bullets": [
+            "**Queue history after ingest.** Tests and clients that need shelved jobs use `view=history` / `all` now that actionable is the default.",
+            "**Poller status fixtures.** Blank maintainer ABS/SAB env so unit status steps stay `off` when `.env` is present."
+          ]
+        }
+      ]
+    },
     {
       "version": "1.0.10",
       "date": "2026-11-02",

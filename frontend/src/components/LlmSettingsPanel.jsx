@@ -1,6 +1,7 @@
 import { FieldLabel } from "./FieldHelp.jsx";
 import {
   applyRecommendedModel,
+  llmOutboundDisclosure,
   llmStatusCopy,
   normalizeProviderId,
   providerCatalog,
@@ -22,6 +23,7 @@ export default function LlmSettingsPanel({ settings, onChange }) {
   const keySet = Boolean(settings?.llm_api_key_set) || Boolean(String(settings?.llm_api_key || "").trim());
   const keySource = settings?.llm_api_key_source || profiles[provider]?.key_source || "";
   const status = llmStatusCopy(settings);
+  const outbound = llmOutboundDisclosure(settings);
 
   function patch(partial) {
     const next = { ...settings, ...partial };
@@ -59,6 +61,11 @@ export default function LlmSettingsPanel({ settings, onChange }) {
         {keySet && keySource === "env" ? " · key from environment" : null}
         {keySet && keySource === "settings" ? " · key saved in Settings" : null}
       </p>
+      {outbound ? (
+        <p className="callout" data-testid="llm-outbound-disclosure" role="note">
+          {outbound}
+        </p>
+      ) : null}
 
       <div className="field">
         <FieldLabel htmlFor="setting-llm_provider" label="Provider" help="Switching remembers each provider’s key, model, and base URL." />

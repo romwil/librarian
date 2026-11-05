@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useOutletContext } from "react-router-dom";
 import { api } from "../api.js";
 import { browseHref } from "../browse.js";
+import HallShelfEmpty from "../components/HallShelfEmpty.jsx";
+import HallTendCard from "../components/HallTendCard.jsx";
 import QueryForm from "../components/QueryForm.jsx";
 import Rail from "../components/Rail.jsx";
 import WarmLoad from "../components/WarmLoad.jsx";
@@ -81,7 +83,9 @@ function HallRails({ owner, configured }) {
   const listening = continueRailItems(hall?.continue_listening);
   const recent = continueRailItems(hall?.whats_new);
   const favorites = continueRailItems(hall?.favorites);
+  const namedShelves = Array.isArray(hall?.named_shelves) ? hall.named_shelves : [];
   const chips = hallChipRow(hall || {});
+  const namedOnHall = namedShelves.some((shelf) => Number(shelf?.work_count || 0) >= 1);
 
   if (phase === "loading") {
     return <WarmLoad message="Warming the lamp on the Hall…" testId="hall-loading" />;
@@ -90,6 +94,7 @@ function HallRails({ owner, configured }) {
   return (
     <div className="hall-shelves" data-testid="hall-shelves">
       {loadError ? <p className="alert hall-alert">{loadError}</p> : null}
+      {owner ? <HallTendCard /> : null}
       {chips.length ? (
         <nav className="chip-row hall-chips" aria-label="Shelves" data-testid="hall-chips">
           {chips.map((chip) => (
@@ -99,6 +104,18 @@ function HallRails({ owner, configured }) {
             </Link>
           ))}
         </nav>
+      ) : null}
+      {!namedOnHall ? (
+        <HallShelfEmpty
+          shelves={namedShelves}
+          onCreated={(shelf) => {
+            if (!shelf) return;
+            setHall((prev) => ({
+              ...(prev || {}),
+              named_shelves: [...namedShelves.filter((row) => row?.id !== shelf.id), shelf],
+            }));
+          }}
+        />
       ) : null}
       {hall?.empty ? (
         <section className="empty-cta hall-empty" data-testid="hall-empty">

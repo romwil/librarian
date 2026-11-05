@@ -57,6 +57,10 @@ export const SORTING_NAV = "Sorting";
 export const DOWNLOADS_NAV = "Downloads";
 export const DESK_TAB = "Desk";
 export const JKX_SHORTCUTS_LABEL = "Keyboard shortcuts (j next, k previous, x more)";
+export const JKX_SHORTCUTS_HELP_HEADING = "Sorting shortcuts";
+export const JKX_SHORTCUTS_HELP =
+  "On Sorting, j moves to the next slip, k to the previous, and x opens More. Optional — turn them off on the Sorting page. Fields and text boxes ignore these keys.";
+export const JKX_SHORTCUTS_CARD_LINK = "Sorting shortcuts (j / k / x)";
 export const INVITE_OP_HELP =
   "A helper can tend Sorting and Downloads. They cannot change household settings, pause a card, or delete anyone.";
 export const INVITE_TTL_HELP = "Invites last 7 days. Copy the link once — the raw token is not stored.";

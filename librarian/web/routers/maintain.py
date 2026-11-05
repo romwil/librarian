@@ -55,8 +55,7 @@ from librarian.scan_progress import (
     read_scan_progress,
 )
 from librarian.screen_leftovers import screen_leftover_report
-from librarian.shelf_health import shelf_permission_report
-from librarian.shelf_health_score import assemble_shelf_health_score
+from librarian.shelf_health_cache import get_shelf_health_snapshot
 from librarian.split_mixed_kinds import count_mixed_kind_works, split_mixed_kind_works
 from librarian.split_mixed_kinds_progress import (
     SplitMixedKindsProgressReporter,
@@ -115,19 +114,13 @@ def register_maintain_routes(app: FastAPI, deps: WebDeps) -> None:
 
     @app.get("/api/maintain/shelf-health")
     def maintain_shelf_health(request: Request):
-        """Permission roots plus living pulse + one tend (weather, not KPI)."""
+        """Permission roots plus living pulse + one tend (weather, not KPI).
+
+        Served from a process-local SWR cache so Maintain never blocks on
+        filesystem probes or blend classification (PERF-002 / ARCH-002).
+        """
         require_role(current_user(request), "owner")
-        report = shelf_permission_report(settings())
-        extra = db.count_works(review_state="needs_review", review_reason=REVIEW_EXTRA)
-        shells = db.count_shell_works()
-        blends = count_mixed_kind_works(db)
-        score = assemble_shelf_health_score(
-            shelf_health=report,
-            extra_files=extra,
-            unshelved_shells=shells,
-            comic_book_blends=blends,
-        )
-        return {**report, "score": score}
+        return get_shelf_health_snapshot(db, settings())
 
     @app.get("/api/pulse")
     def house_pulse(request: Request):
@@ -137,9 +130,13 @@ def register_maintain_routes(app: FastAPI, deps: WebDeps) -> None:
 
     @app.get("/api/maintain/morning-brief")
     def maintain_morning_brief(request: Request):
-        """Owner morning desk: at most three tend items, ranked softly."""
+        """Owner morning desk: at most three tend items, ranked softly.
+
+        Locked-root + blend counts come from the shelf-health SWR snapshot so
+        this route stays under the Maintain paint budget.
+        """
         require_role(current_user(request), "owner")
-        health = shelf_permission_report(settings())
+        health = get_shelf_health_snapshot(db, settings())
         stuck: List[Dict[str, Any]] = []
         for job_id, label, href, reader in (
             ("scan", "Scan is walking the shelves", "#maintain-scan", read_scan_progress),
@@ -176,7 +173,10 @@ def register_maintain_routes(app: FastAPI, deps: WebDeps) -> None:
         # Holds desk = identity slips; extra-files are their own tend row.
         holds = max(0, int(needs) - int(extra))
         shells = db.count_shell_works()
-        blends = count_mixed_kind_works(db)
+        # Prefer cached blend signal; fall back to zero while the snapshot warms
+        # so morning-brief never re-runs the O(n) blend walk on the request path.
+        signals = (health.get("score") or {}).get("signals") or {}
+        blends = int(signals.get("comic_book_blends") or 0)
         brief = assemble_morning_brief(
             shelf_health=health,
             stuck_jobs=stuck,
@@ -186,6 +186,7 @@ def register_maintain_routes(app: FastAPI, deps: WebDeps) -> None:
             comic_book_blends=blends,
         )
         brief["screen_leftovers"] = screen_leftover_report(db)
+        brief["shelf_health_refreshing"] = bool(health.get("refreshing"))
         return brief
 
     @app.get("/api/maintain/jobs/status")

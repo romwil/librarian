@@ -485,6 +485,71 @@ export default function SettingsPage() {
                     placeholder="07:00"
                   />
                 </div>
+                <h2>Op auto-confirm</h2>
+                <p className="lede">
+                  After an owner or helper Asks, optionally confirm trusted indexer hosts straight to
+                  SABnzbd. Off by default. Readers never auto-confirm. Bulk confirm on Downloads stays.
+                </p>
+                <div className="field field-check">
+                  <label htmlFor="setting-op_auto_confirm_enabled">
+                    <input
+                      id="setting-op_auto_confirm_enabled"
+                      type="checkbox"
+                      checked={Boolean(settings.op_auto_confirm_enabled)}
+                      onChange={(e) => patch("op_auto_confirm_enabled", e.target.checked)}
+                      data-testid="setting-op-auto-confirm"
+                    />
+                    Allow op auto-confirm for trusted hosts
+                  </label>
+                </div>
+                <div className="field">
+                  <FieldLabel
+                    htmlFor="setting-op_auto_confirm_hosts"
+                    label="Allowlisted host ids"
+                    help="Comma-separated indexer host ids (for example nzbfinder). Bright lanterns also qualify when this is on."
+                  />
+                  <input
+                    id="setting-op_auto_confirm_hosts"
+                    type="text"
+                    value={
+                      Array.isArray(settings.op_auto_confirm_hosts)
+                        ? settings.op_auto_confirm_hosts.join(", ")
+                        : settings.op_auto_confirm_hosts || ""
+                    }
+                    onChange={(e) =>
+                      patch(
+                        "op_auto_confirm_hosts",
+                        e.target.value
+                          .split(/[,;]/)
+                          .map((part) => part.trim())
+                          .filter(Boolean),
+                      )
+                    }
+                    placeholder="nzbfinder"
+                    spellCheck={false}
+                    disabled={!settings.op_auto_confirm_enabled}
+                    data-testid="setting-op-auto-confirm-hosts"
+                  />
+                </div>
+                <h2>ISBN auto-file experiment</h2>
+                <p className="lede">
+                  Measured BD-3 hybrid: when on, Sorting soft slips that already have a valid ISBN plus
+                  author and title file as books. Audio and comics stay Sorting-first. Off by default.
+                  Undo from Sorting for 24 hours; undos show on Maintain House pulse as a mis-shelve
+                  signal.
+                </p>
+                <div className="field field-check">
+                  <label htmlFor="setting-isbn_auto_file_enabled">
+                    <input
+                      id="setting-isbn_auto_file_enabled"
+                      type="checkbox"
+                      checked={Boolean(settings.isbn_auto_file_enabled)}
+                      onChange={(e) => patch("isbn_auto_file_enabled", e.target.checked)}
+                      data-testid="setting-isbn-auto-file"
+                    />
+                    Auto-file ISBN-strong books from Sorting
+                  </label>
+                </div>
               </section>
             ) : null}
 
