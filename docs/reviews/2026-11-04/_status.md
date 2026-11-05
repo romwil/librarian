@@ -45,7 +45,7 @@
 ### Still thin / open gaps (honest)
 
 - PNG screenshots still sparse (MCP `browser_take_screenshot` timeouts); evidence is a11y snapshots + `file:line` + live routes.
-- Live axe / SR on `:8793` not completed (**A11Y-008** Suspected AA).
+- Live axe / SR on `:8793` not completed (**A11Y-008** Suspected AA). **Dated residual 2026-11-05:** mocked Playwright axe on **:8794** green for Hall / Search / Sorting / Downloads / Settings / Library card / overlays in Lights Up + Lights Down after 1.0.11; live owner axe on Automat **:8793** still open (capacity — do not claim AA Confirmed).
 - Reader-role session not walked (owner-only).
 - Cloudflare Access policies not exported/verified — owner-reported vip + VLAN used in **BD-1** / SEC.
 - `05_` / `08_` / `09_` / `10_` are rich vs prior stubs but shorter than Projectionist peak bags (~660–1200); Part A complete; further depth optional.
@@ -57,7 +57,7 @@ Full-platform 360 on Automat production Librarian. Review only — no app code, 
 ## Version truth (Automat LAN)
 - Host: `http://10.10.1.202:8793`
 - `GET /api/health` → `{"status":"ok"}`
-- `docker exec librarian cat /app/.build-info` → `1.0.10 built 2026-11-02T18:26:34Z rev 480eff0`
+- `docker exec librarian cat /app/.build-info` → was `1.0.10` / `480eff0` at review time; **shipped 1.0.11** / `d3ff4aa` 2026-11-05 (BD-3 day 0)
 - Owner session live during rewrite (Maintain morning desk: Sorting 27 + unshelved shells 5541; Sorting filters All 27 / low confidence 22; ~1021 a11y refs on `/review`)
 - Vip `https://librarian.automat.vip` is CF Access–gated — **not** version truth; treated as household edge for **BD-1** discussion only
 
