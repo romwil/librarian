@@ -219,6 +219,12 @@ Nightly snapshots omit secrets on purpose — treat a copied `settings.json` as 
 Practice on a **clone**, never the live Automat catalog first. Record the drill in the household
 ops log (date, clone path, who ran it, duration, result). Target: under 60 minutes.
 
+**Logged 2026-11-05 (1.0.11 ship):** ACL spot-check passed (`settings.json`/`librarian.db` `600`,
+`backups/` `700`, snapshots `600`). Latest nightly `librarian-2026-11-05.db` passed
+`PRAGMA integrity_check=ok` via a read-only throwaway container (prod `:8793` stayed up). Host
+note: `/config/backups/RESTORE_DRILL_LOG.md`. Full clone + sidecar boot on
+`librarian-restore-drill/` remains the annual owner ritual below — not skipped forever.
+
 ```bash
 # 1) Clone kit (example — adjust destination)
 rsync -a /mnt/user/appdata/librarian/ /mnt/user/appdata/librarian-restore-drill/
