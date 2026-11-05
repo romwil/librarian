@@ -3,6 +3,7 @@ import { describe, it } from "vitest";
 
 import {
   applyRecommendedModel,
+  llmOutboundDisclosure,
   normalizeProviderId,
   recommendedModelFor,
   stashActiveProfile,
@@ -50,5 +51,13 @@ describe("llmSettings provider memory", () => {
   it("applyRecommendedModel fills the recommended id", () => {
     const next = applyRecommendedModel({ llm_provider: "gemini", llm_model: "gemini-2.5-flash" });
     assert.equal(next.llm_model, "gemini-3.6-flash");
+  });
+
+  it("outbound disclosure appears only when a model key is on", () => {
+    assert.equal(llmOutboundDisclosure({ llm_api_key: "" }), "");
+    const body = llmOutboundDisclosure({ llm_provider: "openai", llm_api_key_set: true });
+    assert.match(body, /cover, filename, and title metadata/i);
+    assert.match(body, /openai/i);
+    assert.match(body, /never invents an ISBN/i);
   });
 });

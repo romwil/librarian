@@ -35,10 +35,89 @@ test.describe("Review / Sorting desk", () => {
     await expect(mobile.getByRole("link", { name: "You" })).toBeVisible();
   });
 
+  test("j/k retains focus when Show more expands the window", async ({ page }) => {
+    const slips = Array.from({ length: 14 }, (_, i) => ({
+      id: `win-${i}`,
+      title: `Window Slip ${i}`,
+      kind: "book",
+      author: "Ann Author",
+      review_reason: "low_confidence",
+      effective_reason: "low_confidence",
+      folder_diagnosis: { path_clear: true },
+      actions: { recommended_motion: "apply", find_query: `Window Slip ${i}` },
+    }));
+    await page.route(/\/api\/review(\?|$)/, async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.continue();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          works: slips,
+          llm_configured: false,
+          extra_files_count: 0,
+          needs_review_count: 14,
+          counts_by_reason: { low_confidence: 14 },
+        }),
+      });
+    });
+    await page.route("**/api/settings/quiet-hours", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ quiet_hours_enabled: false, active_now: false }),
+      });
+    });
+    await page.route("**/api/review/suggest-batch/status", async (route) => {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "idle" }) });
+    });
+    await page.route("**/api/review/bad-release-migration/status", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ status: "idle" }),
+      });
+    });
+    await page.route("**/api/review/purge-duplicates/status", async (route) => {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "idle" }) });
+    });
+    await page.route("**/api/review/reprocess-extra-files/status", async (route) => {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "idle" }) });
+    });
+
+    await page.goto("/review");
+    await dismissWhatsNewIfPresent(page);
+    await expect(page.getByTestId("hold-slip").first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("hold-slip")).toHaveCount(12);
+    await expect(page.getByTestId("sorting-show-more-window")).toBeVisible();
+    await expect(page.getByTestId("sorting-filter-live")).toContainText(/low confidence/i);
+
+    await page.keyboard.press("j");
+    await expect(page.locator('[data-testid="hold-slip"][data-focused="true"]')).toHaveAttribute(
+      "data-work-id",
+      "win-0",
+    );
+    for (let i = 0; i < 11; i += 1) {
+      await page.keyboard.press("j");
+    }
+    await expect(page.locator('[data-testid="hold-slip"][data-focused="true"]')).toHaveAttribute(
+      "data-work-id",
+      "win-11",
+    );
+    await page.keyboard.press("j");
+    await expect(page.getByTestId("hold-slip")).toHaveCount(14);
+    await expect(page.locator('[data-testid="hold-slip"][data-focused="true"]')).toHaveAttribute(
+      "data-work-id",
+      "win-12",
+    );
+  });
+
   test("populated Sorting groups slips by reason with one recommended motion", async ({
     page,
   }) => {
-    await page.route("**/api/review", async (route) => {
+    await page.route(/\/api\/review(\?|$)/, async (route) => {
       if (route.request().method() !== "GET") {
         await route.continue();
         return;
@@ -113,7 +192,7 @@ test.describe("Review / Sorting desk", () => {
     await page.goto("/review");
     await dismissWhatsNewIfPresent(page);
     await expect(page.getByRole("heading", { name: "Sorting", exact: true })).toBeVisible();
-    await expect(page.getByTestId("holds-desk-groups")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("hold-slip").first()).toBeVisible({ timeout: 30_000 });
 
     const groups = page.getByTestId("holds-group");
     await expect(groups).toHaveCount(3);
@@ -133,7 +212,7 @@ test.describe("Review / Sorting desk", () => {
 
   test("Smart re-grab and Request new version stay on the slip", async ({ page }) => {
     const calls: string[] = [];
-    await page.route("**/api/review", async (route) => {
+    await page.route(/\/api\/review(\?|$)/, async (route) => {
       if (route.request().method() !== "GET") {
         await route.continue();
         return;

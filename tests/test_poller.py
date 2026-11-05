@@ -497,6 +497,16 @@ def test_disable_poller_and_skip_boot_do_not_start(tmp_path, monkeypatch):
 
 def test_maintain_jobs_status_reports_poller_steps(tmp_path, monkeypatch):
     _clear_poll_env(monkeypatch)
+    # Blank (do not delenv): load_dotenv fills missing keys from maintainer .env.
+    for name in (
+        "AUDIOBOOKSHELF_URL",
+        "AUDIOBOOKSHELF_API_TOKEN",
+        "SABNZBD_URL",
+        "SABNZBD_API_KEY",
+        "NZBFINDER_URL",
+        "NZBFINDER_API_TOKEN",
+    ):
+        monkeypatch.setenv(name, "")
     with TestClient(create_app(tmp_path)) as client:
         login = client.post(
             "/api/auth/local/login",

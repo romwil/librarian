@@ -2,18 +2,21 @@
 
 ## [Unreleased]
 
-- Nightly backup: the poller snapshots the catalog into `config/backups` (7 daily + 4 weekly), runs `integrity_check` on each copy, writes files `0600`, and leaves `session_secret` and `settings.json` out. The database file is `0600` too. Maintain shows **Last backup**; the restore steps are in [AUTOMAT.md](docs/ops/AUTOMAT.md).
-- Cover art lands on the shelf more often: audiobooks keep square Audnexus jackets (Amazon CDN allowlisted, no HTML scrape), Comic Vine match downloads the issue image, and a scan without a sidecar extracts CBZ page 1 or embedded album art. Wikipedia stays atmosphere / last-resort, never a print jacket when a kind-specific provider can fill it. Cards only claim a cover when the file is still on disk.
-- Maintain **Indexer scorecard** keeps lantern weather and Mute, and now shows match rate by media type (books, audiobooks, comics, …) as compact chips after Find / Discover speak. Counts persist in SQLite.
-- Enrich the shelves skips volumes that already have author, blurb, year, cover, and genre, and looks up the emptiest titles first. Maintain reports how many were already full.
-- Settings can add **DrunkenSlug** as an extra Newznab host (URL preset, paste the API token). Find beyond merges those hits with NZBFinder. Classic Newznab XML/`o=json` is spoken on that host — not a second search stack.
-- Search Beyond Usenet cards say **Get**, then **Getting…**, then **Queued** (an Asked slip). Confirm on Downloads still sends SABnzbd. Failures restore Get with a short error.
-- Idle Search shows indexer **Discover** again — trending latest by category — with fielded search easy to reach. New & noted stays at `/noted`.
+## [1.0.11] — 2026-11-05
+
+### Highlights
+
+- **Sorting desk calms down.** Opens on the top open reason, windows long lists with j/k, and purge / delete ask for a typed count. BD-3 Sorting open-count SLO day 0 is **2026-11-05** on Automat.
+- **Downloads opens actionable.** Asked / Failed / Needs you is the default view with Active, History, and All one tap away; bulk dismiss confirms the count.
+- **Maintain shelf-health stays soft.** SWR cache keeps the shell painting; `aria-busy` while a snapshot refreshes.
+- **Hall activation.** Owner tend card deep-links Maintain; empty named shelves offer ≤2-step starters; Music leaves first-tier Hall chips (BD-4 — still on Stacks / Search / Promote).
+- **Trust / ops.** Settings LLM outbound disclosure; Cloudflare Access checklist in AUTOMAT; HELP weekly checklist + vip FAQ; House pulse records confirm/ask events.
+- **Opt-in experiments stay off.** Op auto-confirm (BD-6) and ISBN auto-file default **OFF** with Settings kill switches. Confirm on Downloads is still the only silent-SAB-free path for readers.
 
 ### Fixed
 
-- **Maintain indexer lanterns.** Lights Down no longer paints pale paper cards with tan status copy. Lantern names, weather sentences, and Mute sit on raised leather; an idle host is a hollow ring so flicker vs silent is not hue-only. Safe undo uses the same dark wash. Lights Up stays ink on paper.
-- **Library card text size.** Clicking Text size or the slider no longer closes the Library card. Ambient room layering had flattened the topbar under Hall, so the panel was visible through empty Hall and the click counted as outside; range thumb retargets onto `document` are hit-tested too.
+- **Queue history after ingest.** Tests and clients that need shelved jobs use `view=history` / `all` now that actionable is the default.
+- **Poller status fixtures.** Blank maintainer ABS/SAB env so unit status steps stay `off` when `.env` is present.
 
 ## [1.0.10] — 2026-11-02
 

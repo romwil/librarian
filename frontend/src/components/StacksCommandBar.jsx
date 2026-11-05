@@ -295,7 +295,7 @@ export default function StacksCommandBar({
         <summary className="stacks-name-shelf-toggle" role="button" data-testid="stacks-name-shelf">
           Name a shelf
         </summary>
-        <NamedShelves presence={shelfPresence} onChanged={onShelfNamed} />
+        <NamedShelves presence={shelfPresence} shelves={shelves} onChanged={onShelfNamed} />
       </details>
     </div>
   );

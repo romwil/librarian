@@ -17,9 +17,11 @@ Living brief for operators. Status values move between **Open**, **Mitigated**, 
 
 ### Trusted LAN
 
-Typical Unraid / Docker deploy on a private network. Neighbors on the same VLAN (or a compromised device) can hit `:8793`. Default bind stays all interfaces (`0.0.0.0:8793`, S3 / review **P3-MED-02**, **Accepted**). Keep the host on a trusted segment; do not port-forward bare 8793.
+Typical Unraid / Docker deploy on a private network. Neighbors on the same VLAN (or a compromised device) can hit `:8793`. Default bind stays all interfaces (`0.0.0.0:8793`, S3 / **SEC-006** / review **P3-MED-02**, **Accepted**). Keep the host on a trusted segment; do not port-forward bare 8793.
 
-**Exit for S3:** Hub reverse-proxy-only. When Hub `romwil/librarian` is the ship path, TLS on a reverse proxy you control (Caddy / NPM / Cloudflare Tunnel) is the only published way in; set `LIBRARIAN_TRUST_PROXY_HEADERS=1` only on that hop. This release does not change the container listen address.
+**Automat lasting edge (BD-1 option 2):** for this household, production reach is Cloudflare Access on `librarian.automat.vip` + guest VLAN isolation + Origin allowlist + opt-in proxy trust. Checklist: [ops/AUTOMAT.md](ops/AUTOMAT.md#cloudflare-access--vlan--origin-checklist-sec-006). Bind stays Accepted — Access does not change the listen address.
+
+**Product / CA installer exit (deferred):** Hub reverse-proxy-only when Hub `romwil/librarian` is an active milestone — TLS on a reverse proxy you control is then the published way in for installers; set `LIBRARIAN_TRUST_PROXY_HEADERS=1` only on that hop. Hub publish is **not** the current Automat path (host `./docker-run.sh` only).
 
 ### Guest / IoT Wi‑Fi
 
@@ -70,9 +72,9 @@ SPA ──no session──► /login (foyer) or /join?token=
 |----|----------|----------|-------------------|--------|---------------|
 | **S1** | Critical | Control-plane routes without a session. | Unauthenticated `curl` to Hall / settings / queue. | **Mitigated** | Explicit handshake allowlist; no `/api/auth/` wildcard. |
 | **S2** | Critical | Session secret fell back to a public default. | Forge `librarian_session` cookies for any `user_id`. | **Mitigated** | Public `librarian-dev-session-secret` refuses to start; empty env auto-generates under `/config/session_secret` (0600). Still set `LIBRARIAN_SESSION_SECRET` in production. |
-| **S3** | Critical | App binds `0.0.0.0:8793` in Docker. | Reach the control plane from any host interface / accidental WAN map. | **Accepted** (P3-MED-02, 0.5.22) | Bind unchanged. Exit is Hub reverse-proxy-only (TLS in front; proxy trust only there). Do not port-forward bare 8793. |
+| **S3** | Critical | App binds `0.0.0.0:8793` in Docker. | Reach the control plane from any host interface / accidental WAN map. | **Accepted** (P3-MED-02 / SEC-006, 0.5.22+) | Bind unchanged. Automat edge = CF Access + VLAN + Origin + trust-proxy ([AUTOMAT checklist](ops/AUTOMAT.md#cloudflare-access--vlan--origin-checklist-sec-006)). Hub reverse-proxy-only stays the deferred CA/installer exit. Do not port-forward bare 8793. |
 | **S9** | Medium | Session cookie `Secure` from spoofed proto. | Weaker cookie story; CSRF edge cases on a “HTTPS” lie. | **Mitigated** | `Secure` only on socket HTTPS or trusted forwarded proto. |
-| **S11** | Medium | Settings JSON stores indexer / SAB / Hardcover keys in plaintext under `/config`. | Read volume / backup → fleet credentials. | **Mitigated** | File mode `0600` on every save. Restrict who can mount `/config`. |
+| **S11** | Medium | Settings JSON stores indexer / SAB / Hardcover keys in plaintext under `/config`. | Read volume / backup → fleet credentials. | **Mitigated** | File mode `0600` on every save (`save_settings`). Restrict who can mount `/config`. Nightly DB snapshots omit `settings.json` / `session_secret`. ACL + restore drill: [ops/AUTOMAT.md](ops/AUTOMAT.md#backups-and-restore). |
 | **S13** | Low | Image historically ran as root. | Container breakout has root inside the image. | **Mitigated** | Entrypoint `chown`s `/config` and drops via `gosu` to `PUID`/`PGID` (Unraid 99/100). |
 | **S14** | High | Rate limiter trusted `X-Forwarded-For` on a direct LAN bind. | Rotate spoofed IPs to bypass login / invite throttles. | **Mitigated** | Ignore forwarded headers unless `LIBRARIAN_TRUST_PROXY_HEADERS=1`. |
 | **S15** | Medium | FastAPI `/docs` / OpenAPI without auth. | Map mutate endpoints from the LAN. | **Mitigated** | Docs disabled (`docs_url=None`). |
@@ -82,7 +84,7 @@ SPA ──no session──► /login (foyer) or /join?token=
 
 ## Operator checklist
 
-1. **Do not expose bare `8793` to the internet.** Put TLS on Caddy/NPM/Cloudflare Tunnel in front. The accepted bind (`0.0.0.0`) stays until **Hub reverse-proxy-only** is the exit (S3 / P3-MED-02).
+1. **Do not expose bare `8793` to the internet.** Put TLS + Access (or Caddy/NPM/Tunnel) in front. The accepted bind (`0.0.0.0`) stays (S3 / SEC-006). On Automat, follow the [CF Access checklist](ops/AUTOMAT.md#cloudflare-access--vlan--origin-checklist-sec-006). Hub reverse-proxy-only is the deferred installer exit — not today’s deploy path.
 2. Set **`LIBRARIAN_TRUST_PROXY_HEADERS=1` only behind that trusted proxy.** Untrusted `X-Forwarded-*` is ignored for client IP, rate limits, `Secure` cookies, and any “this is HTTPS” decision. Set **`PUBLIC_BASE_URL`** (or Settings → Public URL) to the guest hostname so Origin allowlisting matches the landing; optional **`LIBRARIAN_PUBLIC_ORIGINS`** for extra same-app Origins only.
 3. Set **`LIBRARIAN_SESSION_SECRET`** to a long random value (or accept auto-generated secret under Config). Invite HMACs use this secret. Never commit it. The public development default is refused.
 4. Set **`LIBRARIAN_OWNER_PASSWORD`** (≥ 8) in the Unraid template / `.env`. Do not log it.
@@ -111,6 +113,15 @@ WAL-safe catalog restore steps live in [ops/AUTOMAT.md](ops/AUTOMAT.md#backups-a
 | Audiobookshelf | `audiobookshelf_api_token` | Optional; Settings or `AUDIOBOOKSHELF_API_TOKEN` |
 
 **Honest limits.** Rotating a key here does not retroactively scrub it from old container logs, shell history, or prior backups.
+
+## Dependency audit (SEC-008)
+
+Quarterly maintainer ritual (calendar reminder on the Automat host):
+
+1. `cd` the Librarian kit / git checkout on the Mac.
+2. Python: `.venv/bin/pip list --outdated` (or `uv pip list --outdated`) — note CVEs in FastAPI/uvicorn/httpx/cryptography.
+3. Frontend: `cd frontend && npm outdated` — note react-router / vite majors only when intentional.
+4. Record date + “no action” or ticket links in the household ops log. No automatic Dependabot merge without a green pytest + `npm test` + `npm run build`.
 
 ## Related docs
 

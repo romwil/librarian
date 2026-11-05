@@ -154,17 +154,26 @@ def register_wanted_routes(app: FastAPI, deps: WebDeps) -> None:
     @app.post("/api/wanted")
     def wanted_add(payload: WantedAddPayload, request: Request, background: BackgroundTasks):
         require_role(request.state.user, "owner", "op")
+        user = request.state.user
         fields = payload.model_dump(exclude={"hit"})
         hit = payload.hit.model_dump() if payload.hit is not None else {}
         try:
             row = add_wanted(db, fields)
             if hit.get("guid", "").strip() and row.get("status") == "wanted":
-                asked = ask_wanted_hit(db, str(row["id"]), hit, settings=deps.settings())
+                asked = ask_wanted_hit(
+                    db,
+                    str(row["id"]),
+                    hit,
+                    settings=deps.settings(),
+                    role=str(user.get("role") or ""),
+                    actor_id=str(user.get("id") or ""),
+                )
                 row = db.get_wanted(str(row["id"])) or row
                 return {
                     "item": _public(row),
                     "outcome": asked.get("outcome"),
                     "job_id": asked.get("job_id"),
+                    "auto_confirmed": bool(asked.get("auto_confirmed")),
                 }
         except AlreadyShelved as error:
             raise HTTPException(
@@ -193,9 +202,15 @@ def register_wanted_routes(app: FastAPI, deps: WebDeps) -> None:
     @app.post("/api/wanted/{wanted_id}/ask")
     def wanted_ask(wanted_id: str, payload: WantedAskPayload, request: Request):
         require_role(request.state.user, "owner", "op")
+        user = request.state.user
         try:
             return ask_wanted_hit(
-                db, wanted_id, payload.model_dump(), settings=deps.settings()
+                db,
+                wanted_id,
+                payload.model_dump(),
+                settings=deps.settings(),
+                role=str(user.get("role") or ""),
+                actor_id=str(user.get("id") or ""),
             )
         except WantedError as error:
             status_code = 404 if str(error) == "Wanted row not found" else 400

@@ -2,14 +2,28 @@
 
 from __future__ import annotations
 
+import time
+
 from fastapi.testclient import TestClient
 
+from librarian.shelf_health_cache import clear_shelf_health_cache, wait_shelf_health_idle
 from librarian.shelf_health_score import (
     assemble_shelf_health_score,
     pulse_weather,
     shelf_health_score,
 )
 from librarian.web.app import create_app
+
+
+def _wait_shelf_health(client, timeout: float = 5.0) -> dict:
+    deadline = time.monotonic() + timeout
+    body = {}
+    while time.monotonic() < deadline:
+        body = client.get("/api/maintain/shelf-health").json()
+        if not body.get("refreshing"):
+            return body
+        time.sleep(0.05)
+    raise AssertionError(f"shelf-health stayed refreshing: {body}")
 
 
 def test_pulse_weather_calm_when_clear():
@@ -64,15 +78,16 @@ def test_assemble_reads_locked_count():
 
 
 def test_maintain_shelf_health_includes_score(tmp_path):
+    clear_shelf_health_cache()
     client = TestClient(create_app(tmp_path))
     login = client.post(
         "/api/auth/local/login",
         json={"username": "owner", "password": "password123"},
     )
     assert login.status_code == 200
-    response = client.get("/api/maintain/shelf-health")
-    assert response.status_code == 200
-    body = response.json()
+    assert client.get("/api/maintain/shelf-health").status_code == 200
+    assert wait_shelf_health_idle(timeout=5.0)
+    body = _wait_shelf_health(client)
     assert "roots" in body
     score = body["score"]
     assert score["pulse"] in {"calm", "stirring", "needs_you"}
@@ -83,3 +98,5 @@ def test_maintain_shelf_health_includes_score(tmp_path):
     assert "grade" not in score
     assert "percent" not in score
     assert "value" not in score
+    assert body["generated_at"]
+    assert body["cached"] is True

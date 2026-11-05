@@ -48,6 +48,28 @@ def _matches(needle: str, haystack: str) -> bool:
     return _fold(needle) in _fold(haystack)
 
 
+_FILE_EXT = re.compile(
+    r"\.(epub|pdf|mobi|azw3?|cbz|cbr|mp3|m4b|flac|nzb)$",
+    re.IGNORECASE,
+)
+
+
+def display_suggest_label(raw: Any) -> str:
+    """Soft display for typeahead — strip dump paths / extensions (UX-010)."""
+    text = _norm(raw)
+    if not text:
+        return ""
+    if "/" in text or "\\" in text:
+        text = re.split(r"[/\\]", text)[-1] or text
+    text = _FILE_EXT.sub("", text)
+    dashed = re.match(r"^\([^)]+\)\s*[-–—]\s*(.+)$", text)
+    if dashed:
+        right = _norm(dashed.group(1))
+        if right:
+            return right
+    return _norm(text) or _norm(raw)
+
+
 def _clip(values: Iterable[str], *, limit: int = MAX_CACHE_VALUES) -> List[str]:
     out: List[str] = []
     seen: Set[str] = set()
@@ -243,7 +265,7 @@ def suggest_items(
                 if fold in seen:
                     continue
                 seen.add(fold)
-                items.append({"value": value, "meta": "catalog"})
+                items.append({"value": value, "label": display_suggest_label(value), "meta": "catalog"})
                 if len(items) >= capped:
                     return items[:capped]
         if len(items) < capped:
@@ -255,7 +277,9 @@ def suggest_items(
                     if fold in seen:
                         continue
                     seen.add(fold)
-                    items.append({"value": value, "meta": "cache"})
+                    items.append(
+                        {"value": value, "label": display_suggest_label(value), "meta": "cache"}
+                    )
                     if len(items) >= capped:
                         break
                 if len(items) >= capped:
@@ -263,7 +287,10 @@ def suggest_items(
         return items[:capped]
 
     catalog = db.suggest_values(field=key, kind=kind_key, q=needle, limit=capped)
-    items = [{"value": value, "meta": "catalog"} for value in catalog]
+    items = [
+        {"value": value, "label": display_suggest_label(value), "meta": "catalog"}
+        for value in catalog
+    ]
     seen = {_fold(value) for value in catalog}
 
     if len(items) < capped:
@@ -274,7 +301,9 @@ def suggest_items(
             if fold in seen:
                 continue
             seen.add(fold)
-            items.append({"value": value, "meta": "cache"})
+            items.append(
+                {"value": value, "label": display_suggest_label(value), "meta": "cache"}
+            )
             if len(items) >= capped:
                 break
 
@@ -286,7 +315,9 @@ def suggest_items(
             if fold in seen:
                 continue
             seen.add(fold)
-            items.append({"value": value, "meta": "decade"})
+            items.append(
+                {"value": value, "label": display_suggest_label(value), "meta": "decade"}
+            )
             if len(items) >= capped:
                 break
 

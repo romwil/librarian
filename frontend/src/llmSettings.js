@@ -151,3 +151,15 @@ export function llmStatusCopy(settings) {
   }
   return "Add an API key to enable list naming, Review suggest, and search ranking.";
 }
+
+/** Plain-language outbound note when a model key is present (PRIV-003). */
+export function llmOutboundDisclosure(settings) {
+  const on = Boolean(settings?.llm_api_key_set) || Boolean(String(settings?.llm_api_key || "").trim());
+  if (!on) return "";
+  const provider = String(settings?.llm_provider || "").trim() || "the language model";
+  return (
+    `With this key on, identify, Sorting suggest, Bestsellers naming, and Find ranking may send ` +
+    `cover, filename, and title metadata to ${provider}. The model never invents an ISBN. ` +
+    `Beyond the shelves still sends typed titles to indexers. Library card → Privacy has the full notice.`
+  );
+}

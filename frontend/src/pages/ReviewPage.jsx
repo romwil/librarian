@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "../api.js";
 import { busyLabel, doneLabel, ticketStatusNote } from "../actionBusy.js";
+import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import HoldSlipCard from "../components/HoldSlipCard.jsx";
 import HoldsGroupActions from "../components/HoldsGroupActions.jsx";
 import JobProgress from "../components/JobProgress.jsx";
@@ -11,11 +12,14 @@ import useDocumentTitle from "../hooks/useDocumentTitle.js";
 import { requestBodyFromHit } from "../find.js";
 import { useProgressJob } from "../hooks/useProgressJob.js";
 import {
+  SORTING_PAGE_LIMIT,
+  SORTING_VISIBLE_WINDOW,
   applyBodyFromDraft,
   applySuggestionToDraft,
   badReleaseMigrationSummary,
   badReleaseMigrationVisible,
   bulkResultSummary,
+  defaultSortingReason,
   effectiveReviewReason,
   extraFilesReprocessIsRunning,
   extraFilesReprocessProgressPercent,
@@ -24,6 +28,7 @@ import {
   groupHoldSlipsByReason,
   holdsDeskLedeCopy,
   looksLikeDumpTitle,
+  purgeDuplicatesConfirmCopy,
   purgeDuplicatesIsRunning,
   purgeDuplicatesProgressPercent,
   purgeDuplicatesProgressSummary,
@@ -36,11 +41,14 @@ import {
   reviewProgressDwellRemainingMs,
   reviewPurgeProgressVisible,
   slipTriage,
+  sortingFilterAnnounce,
+  sortingJkStep,
   suggestBatchIsRunning,
   suggestBatchSummary,
   triageCountsFromWorks,
   extraFilesWorks,
   unpackStuckWorks,
+  windowSortingSlips,
 } from "../review.js";
 
 function migrationIsRunning(status) {
@@ -84,12 +92,20 @@ export default function ReviewPage() {
     }
   });
   const [reasonFilter, setReasonFilter] = useState("");
+  const [visibleCap, setVisibleCap] = useState(SORTING_VISIBLE_WINDOW);
+  const [activeSlipId, setActiveSlipId] = useState("");
+  const [filterLive, setFilterLive] = useState("");
+  const [purgeConfirmOpen, setPurgeConfirmOpen] = useState(false);
   const focusRef = useRef(null);
+  const purgeConfirmOpenerRef = useRef(null);
+  const reasonDefaultApplied = useRef(false);
+  const pendingJkRef = useRef(null);
   useDocumentTitle(PAGE_TITLE_SORTING);
   const autoMatchTried = useRef(new Set());
   const autoSuggestTried = useRef(new Set());
   const triageSeeded = useRef(new Set());
   const reloadRef = useRef(() => {});
+  const loadMoreRef = useRef(() => {});
 
   function applyDeskPayload(data, { append = false } = {}) {
     const next = data.items || data.works || [];
@@ -97,6 +113,16 @@ export default function ReviewPage() {
     setNextCursor(data.next_cursor || null);
     if (data.counts_by_reason && typeof data.counts_by_reason === "object") {
       setCountsByReason(data.counts_by_reason);
+      // A1: land on top reason (low_confidence first). Skip deep-link focus and re-seed after All.
+      if (!append && !reasonDefaultApplied.current && !focusId) {
+        reasonDefaultApplied.current = true;
+        const pick = defaultSortingReason(data.counts_by_reason);
+        if (pick) {
+          setReasonFilter((current) => current || pick);
+        }
+      }
+    } else if (!append && !reasonDefaultApplied.current) {
+      reasonDefaultApplied.current = true;
     }
     if (data.undo) setUndo(data.undo);
     if (data.extra_files_count != null) {
@@ -116,7 +142,7 @@ export default function ReviewPage() {
 
   function reload() {
     api
-      .review({ work: focusId, reason: reasonFilter })
+      .review({ work: focusId, reason: reasonFilter, limit: SORTING_PAGE_LIMIT })
       .then((data) => {
         const next = applyDeskPayload(data);
         setDrafts((prev) => {
@@ -147,13 +173,31 @@ export default function ReviewPage() {
 
   useEffect(reload, [focusId, reasonFilter]);
 
+  useEffect(() => {
+    setVisibleCap(SORTING_VISIBLE_WINDOW);
+    pendingJkRef.current = null;
+    // Keep deep-linked focus; otherwise clear keyboard selection on filter change.
+    setActiveSlipId(focusId || "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- seed from focusId only when the chip changes
+  }, [reasonFilter]);
+
+  useEffect(() => {
+    if (focusId) setActiveSlipId(focusId);
+  }, [focusId]);
+
   function loadMore() {
     if (!nextCursor) return;
     api
-      .review({ work: focusId, reason: reasonFilter, cursor: nextCursor })
+      .review({
+        work: focusId,
+        reason: reasonFilter,
+        cursor: nextCursor,
+        limit: SORTING_PAGE_LIMIT,
+      })
       .then((data) => applyDeskPayload(data, { append: true }))
       .catch((err) => setError(humanError(err)));
   }
+  loadMoreRef.current = loadMore;
 
   useEffect(() => {
     api
@@ -274,9 +318,16 @@ export default function ReviewPage() {
   });
 
   useEffect(() => {
-    if (!focusId || !works.length) return;
+    const targetId = activeSlipId || focusId;
+    if (!targetId || !works.length) return;
+    const focusIndex = works.findIndex((row) => row.id === targetId);
+    if (focusIndex < 0) return;
+    if (focusIndex >= visibleCap) {
+      setVisibleCap(focusIndex + 1);
+      return;
+    }
     focusRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [focusId, works]);
+  }, [focusId, activeSlipId, works, visibleCap]);
 
   // Re-render when a completed Clear/Purge meter should drop off after its dwell.
   useEffect(() => {
@@ -687,8 +738,19 @@ export default function ReviewPage() {
     return apply(work);
   }
 
+  function openPurgeConfirm() {
+    if (purgeRunning) return;
+    const backlog = Math.max(works.length, Number(reviewBacklog) || 0);
+    if (!backlog) {
+      setBulkNote("No Review slips to check for duplicates.");
+      return;
+    }
+    setPurgeConfirmOpen(true);
+  }
+
   async function bulkPurgeDuplicates() {
     if (purgeRunning) return;
+    setPurgeConfirmOpen(false);
     const visible = works.length;
     const backlog = Math.max(visible, Number(reviewBacklog) || 0);
     if (!backlog) {
@@ -775,12 +837,73 @@ export default function ReviewPage() {
   const purgePercent = showPurgeProgress ? purgeDuplicatesProgressPercent(purgeProgress) : null;
   const extraFilesStatusLine = showExtraFilesProgress ? extraFilesReprocessProgressSummary(extraFilesProgress) : "";
   const purgeStatusLine = showPurgeProgress ? purgeDuplicatesProgressSummary(purgeProgress) : "";
+  // Window mounted cards inside the cursor page so first paint stays lean.
+  // Group actions still see the full loaded pile; only the card list is sliced.
+  // j/k expands the window or cursor-loads so the next slip mounts without losing focus.
+  const { visible: windowedWorks, hiddenCount: windowHiddenCount } = windowSortingSlips(works, {
+    limit: visibleCap,
+  });
+  const windowedIds = new Set(windowedWorks.map((row) => row.id));
   const holdGroups = groupHoldSlipsByReason(works);
   const actingPileRemains =
     Boolean(groupNoteReason) && holdGroups.some((group) => group.reason === groupNoteReason);
   const reasonEntries = Object.entries(countsByReason).sort((a, b) => Number(b[1]) - Number(a[1]));
   const headerTotal = reasonEntries.reduce((sum, [, n]) => sum + Number(n || 0), 0);
-  const slipIds = holdGroups.flatMap((group) => group.works.map((row) => row.id));
+  const loadedSlipIds = works.map((row) => row.id);
+  const purgeConfirmCopy = purgeDuplicatesConfirmCopy({
+    backlog: Math.max(works.length, Number(reviewBacklog) || 0),
+  });
+
+  function applyJkFocus(id) {
+    if (!id) return;
+    setActiveSlipId(id);
+    requestAnimationFrame(() => {
+      document.querySelector(`[data-work-id="${CSS.escape(String(id))}"]`)?.scrollIntoView({
+        block: "nearest",
+      });
+    });
+  }
+
+  // After window expand or cursor load-more, land j/k on the pending slip.
+  useEffect(() => {
+    const pending = pendingJkRef.current;
+    if (!pending) return;
+    const loadedIds = works.map((row) => row.id);
+    const mountedIds = new Set(
+      windowSortingSlips(works, { limit: visibleCap }).visible.map((row) => row.id),
+    );
+    if (pending.kind === "focus" && mountedIds.has(pending.id)) {
+      pendingJkRef.current = null;
+      applyJkFocus(pending.id);
+      return;
+    }
+    if (pending.kind === "next-after-load") {
+      const fromIdx = loadedIds.indexOf(pending.fromId);
+      if (fromIdx >= 0 && fromIdx + 1 < loadedIds.length) {
+        const nextId = loadedIds[fromIdx + 1];
+        const nextIdx = fromIdx + 1;
+        if (nextIdx >= visibleCap) {
+          pendingJkRef.current = { kind: "focus", id: nextId };
+          setVisibleCap((cap) => Math.max(cap + SORTING_VISIBLE_WINDOW, nextIdx + 1));
+          return;
+        }
+        pendingJkRef.current = null;
+        applyJkFocus(nextId);
+        return;
+      }
+      if (!nextCursor) {
+        pendingJkRef.current = null;
+      }
+    }
+  }, [works, visibleCap, nextCursor]);
+
+  useEffect(() => {
+    if (loading) return;
+    const count = reasonFilter
+      ? Number(countsByReason[reasonFilter] ?? works.length) || 0
+      : Number(reviewBacklog) || works.length;
+    setFilterLive(sortingFilterAnnounce({ reason: reasonFilter, count }));
+  }, [reasonFilter, loading, reviewBacklog, countsByReason, works.length]);
 
   useEffect(() => {
     if (!jkxOn) return undefined;
@@ -791,21 +914,38 @@ export default function ReviewPage() {
       const key = event.key.toLowerCase();
       if (key !== "j" && key !== "k" && key !== "x") return;
       event.preventDefault();
-      const current = focusId && slipIds.includes(focusId) ? slipIds.indexOf(focusId) : 0;
-      if (key === "j") {
-        const next = slipIds[Math.min(slipIds.length - 1, current + 1)];
-        if (next) document.querySelector(`[data-work-id="${next}"]`)?.scrollIntoView({ block: "nearest" });
-      } else if (key === "k") {
-        const prev = slipIds[Math.max(0, current - 1)];
-        if (prev) document.querySelector(`[data-work-id="${prev}"]`)?.scrollIntoView({ block: "nearest" });
-      } else if (key === "x") {
-        const node = document.querySelector(`[data-work-id="${slipIds[current]}"] details`);
+      if (key === "x") {
+        const id = activeSlipId && loadedSlipIds.includes(activeSlipId) ? activeSlipId : loadedSlipIds[0];
+        if (!id) return;
+        const node = document.querySelector(`[data-work-id="${CSS.escape(String(id))}"] details`);
         if (node) node.open = !node.open;
+        return;
       }
+      const step = sortingJkStep({
+        direction: key === "j" ? "next" : "prev",
+        activeId: activeSlipId,
+        loadedIds: loadedSlipIds,
+        visibleCap,
+        hasMoreCursor: Boolean(nextCursor),
+      });
+      if (step.loadMore) {
+        pendingJkRef.current = {
+          kind: "next-after-load",
+          fromId: step.focusId || activeSlipId || loadedSlipIds[loadedSlipIds.length - 1] || "",
+        };
+        loadMoreRef.current();
+        return;
+      }
+      if (step.expandTo) {
+        pendingJkRef.current = { kind: "focus", id: step.focusId };
+        setVisibleCap(step.expandTo);
+        return;
+      }
+      if (step.focusId) applyJkFocus(step.focusId);
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [jkxOn, slipIds, focusId]);
+  }, [jkxOn, loadedSlipIds, activeSlipId, visibleCap, nextCursor]);
 
   return (
     <div className="admin-room review-page page-settle" data-density="compact">
@@ -816,23 +956,28 @@ export default function ReviewPage() {
         {reviewBacklog} {reviewBacklog === 1 ? "slip" : "slips"}
         {headerTotal && headerTotal !== reviewBacklog ? ` · ${headerTotal} in groups` : ""}
       </p>
+      <p className="sr-only" aria-live="polite" data-testid="sorting-filter-live">
+        {filterLive}
+      </p>
       {reasonEntries.length ? (
-        <div className="chip-row" role="group" aria-label="Filter by reason">
+        <div className="chip-row review-reason-chips" role="group" aria-label="Filter by reason">
           <button
             type="button"
             className={reasonFilter ? "chip" : "chip is-on"}
+            aria-pressed={!reasonFilter}
             onClick={() => setReasonFilter("")}
           >
-            All {reviewBacklog}
+            All <span className="review-count">{reviewBacklog}</span>
           </button>
           {reasonEntries.map(([reason, count]) => (
             <button
               key={reason || "other"}
               type="button"
               className={reasonFilter === reason ? "chip is-on" : "chip"}
+              aria-pressed={reasonFilter === reason}
               onClick={() => setReasonFilter(reason)}
             >
-              {reason.replace(/_/g, " ") || "other"} {count}
+              {reason.replace(/_/g, " ") || "other"} <span className="review-count">{count}</span>
             </button>
           ))}
         </div>
@@ -878,43 +1023,6 @@ export default function ReviewPage() {
           {ownedSlipNote}
         </p>
       ) : null}
-      {quiet ? (
-        <details className="more-settings" data-testid="review-quiet-hours">
-          <summary className="kicker">Quiet hours</summary>
-          <p className="muted">
-            {quiet.active_now ? "Active now — new unpacks wait for tonight." : "Inactive — Organize runs normally."}
-          </p>
-          <div className="field field-check">
-            <label>
-              <input
-                type="checkbox"
-                checked={Boolean(quiet.quiet_hours_enabled)}
-                onChange={(e) => saveQuiet({ quiet_hours_enabled: e.target.checked })}
-              />
-              Defer unpack / convert
-            </label>
-          </div>
-          <div className="cta-row compact">
-            <label className="field">
-              <span className="sr-only">Starts</span>
-              <input
-                value={quiet.quiet_hours_start || "22:00"}
-                onChange={(e) => setQuiet({ ...quiet, quiet_hours_start: e.target.value })}
-                onBlur={() => saveQuiet({ quiet_hours_start: quiet.quiet_hours_start })}
-              />
-            </label>
-            <label className="field">
-              <span className="sr-only">Ends</span>
-              <input
-                value={quiet.quiet_hours_end || "07:00"}
-                onChange={(e) => setQuiet({ ...quiet, quiet_hours_end: e.target.value })}
-                onBlur={() => saveQuiet({ quiet_hours_end: quiet.quiet_hours_end })}
-              />
-            </label>
-          </div>
-          {quietNote ? <p className="muted">{quietNote}</p> : null}
-        </details>
-      ) : null}
       {error ? <p className="alert">{error}</p> : null}
       <ReviewBulkBar
         show={showBulkRow}
@@ -930,7 +1038,7 @@ export default function ReviewPage() {
         purgeRunning={purgeRunning}
         reviewBacklog={reviewBacklog}
         slipCount={works.length}
-        onPurgeDuplicates={bulkPurgeDuplicates}
+        onPurgeDuplicates={openPurgeConfirm}
         lowConfidenceCount={lowConfidenceCount}
         triageRunning={triageRunning}
         triageProgress={triageProgress}
@@ -945,6 +1053,21 @@ export default function ReviewPage() {
         showExtraFilesProgress={showExtraFilesProgress}
         showPurgeProgress={showPurgeProgress}
       />
+      <ConfirmDialog
+        open={purgeConfirmOpen}
+        title={purgeConfirmCopy.title}
+        confirmLabel={purgeConfirmCopy.confirmLabel}
+        onConfirm={bulkPurgeDuplicates}
+        onCancel={() => setPurgeConfirmOpen(false)}
+        busy={purgeRunning}
+        returnFocusRef={purgeConfirmOpenerRef}
+        testId="review-purge-duplicates-dialog"
+      >
+        <p>{purgeConfirmCopy.body}</p>
+        <p data-testid="review-purge-duplicates-count">
+          Checking up to {Math.max(works.length, Number(reviewBacklog) || 0)} slips on the desk.
+        </p>
+      </ConfirmDialog>
       {showExtraFilesProgress ? (
         <JobProgress
           className="ingest-progress review-extra-files-progress"
@@ -1053,41 +1176,92 @@ export default function ReviewPage() {
               </div>
             </header>
             <ul className="stack holds-group-slips">
-              {group.works.map((work) => (
-                <HoldSlipCard
-                  key={work.id}
-                  work={work}
-                  draft={drafts[work.id] || fieldsFromWork(work)}
-                  focused={Boolean(focusId) && work.id === focusId}
-                  focusRef={focusRef}
-                  busyValue={busy[work.id]}
-                  slipError={errors[work.id] || ""}
-                  statusNote={ticketStatusNote(busy, actionNotes, work.id) || suggestNotes[work.id] || ""}
-                  matchBag={matchBags[work.id]}
-                  regrab={regrabs[work.id]}
-                  onPatch={(key, value) => patch(work.id, key, value)}
-                  onPrimary={() => runPrimary(work)}
-                  onApply={() => apply(work)}
-                  onSkip={() => skip(work)}
-                  onRepair={() => repair(work)}
-                  onRetry={() => retry(work)}
-                  onRetrieve={(intent) => retrieveRelease(work, intent)}
-                  onSuggest={() => suggestWithLlm(work)}
-                  onApplyAuthority={(candidate) => applyAuthorityMatch(work, candidate)}
-                  onRequestCandidate={(candidate) => requestRegrab(work, candidate)}
-                  onUseListedMatch={(row) => applyListedMatch(work, row)}
-                />
-              ))}
+              {group.works
+                .filter((work) => windowedIds.has(work.id))
+                .map((work) => (
+                  <HoldSlipCard
+                    key={work.id}
+                    work={work}
+                    draft={drafts[work.id] || fieldsFromWork(work)}
+                    focused={Boolean(activeSlipId) && work.id === activeSlipId}
+                    focusRef={focusRef}
+                    busyValue={busy[work.id]}
+                    slipError={errors[work.id] || ""}
+                    statusNote={ticketStatusNote(busy, actionNotes, work.id) || suggestNotes[work.id] || ""}
+                    matchBag={matchBags[work.id]}
+                    regrab={regrabs[work.id]}
+                    onPatch={(key, value) => patch(work.id, key, value)}
+                    onPrimary={() => runPrimary(work)}
+                    onApply={() => apply(work)}
+                    onSkip={() => skip(work)}
+                    onRepair={() => repair(work)}
+                    onRetry={() => retry(work)}
+                    onRetrieve={(intent) => retrieveRelease(work, intent)}
+                    onSuggest={() => suggestWithLlm(work)}
+                    onApplyAuthority={(candidate) => applyAuthorityMatch(work, candidate)}
+                    onRequestCandidate={(candidate) => requestRegrab(work, candidate)}
+                    onUseListedMatch={(row) => applyListedMatch(work, row)}
+                  />
+                ))}
             </ul>
           </section>
         ))}
       </div>
-      {nextCursor ? (
-        <div className="cta-row">
-          <button type="button" className="cta outline" onClick={loadMore} data-testid="sorting-load-more">
-            Load more
-          </button>
+      {windowHiddenCount || nextCursor ? (
+        <div className="cta-row" data-testid="sorting-paging">
+          {windowHiddenCount ? (
+            <button
+              type="button"
+              className="cta outline"
+              data-testid="sorting-show-more-window"
+              onClick={() => setVisibleCap((cap) => cap + SORTING_VISIBLE_WINDOW)}
+            >
+              Show more slips ({windowHiddenCount} on this page)
+            </button>
+          ) : null}
+          {nextCursor ? (
+            <button type="button" className="cta outline" onClick={loadMore} data-testid="sorting-load-more">
+              Load more
+            </button>
+          ) : null}
         </div>
+      ) : null}
+      {quiet ? (
+        <details className="more-settings review-quiet-hours" data-testid="review-quiet-hours">
+          <summary className="kicker">Quiet hours</summary>
+          <p className="muted">
+            {quiet.active_now ? "Active now — new unpacks wait for tonight." : "Inactive — Organize runs normally."}
+          </p>
+          <div className="field field-check">
+            <label>
+              <input
+                type="checkbox"
+                checked={Boolean(quiet.quiet_hours_enabled)}
+                onChange={(e) => saveQuiet({ quiet_hours_enabled: e.target.checked })}
+              />
+              Defer unpack / convert
+            </label>
+          </div>
+          <div className="cta-row compact">
+            <label className="field">
+              <span className="sr-only">Starts</span>
+              <input
+                value={quiet.quiet_hours_start || "22:00"}
+                onChange={(e) => setQuiet({ ...quiet, quiet_hours_start: e.target.value })}
+                onBlur={() => saveQuiet({ quiet_hours_start: quiet.quiet_hours_start })}
+              />
+            </label>
+            <label className="field">
+              <span className="sr-only">Ends</span>
+              <input
+                value={quiet.quiet_hours_end || "07:00"}
+                onChange={(e) => setQuiet({ ...quiet, quiet_hours_end: e.target.value })}
+                onBlur={() => saveQuiet({ quiet_hours_end: quiet.quiet_hours_end })}
+              />
+            </label>
+          </div>
+          {quietNote ? <p className="muted">{quietNote}</p> : null}
+        </details>
       ) : null}
     </div>
   );

@@ -83,7 +83,14 @@ async function mockSortingDesk(page: Page) {
       body: JSON.stringify({ status: "completed", total: 0, done: 0, returned: 0, left_on_desk: 0, failed: 0 }),
     }),
   );
-  await page.route("**/api/review", async (route) => {
+  await page.route("**/api/review/purge-duplicates/status", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "idle" }) }),
+  );
+  await page.route("**/api/review/reprocess-extra-files/status", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "idle" }) }),
+  );
+  // Glob `**/api/review` does not match `?limit=` (Phase A page size).
+  await page.route(/\/api\/review(\?|$)/, async (route) => {
     if (route.request().method() !== "GET") {
       await route.continue();
       return;
@@ -96,6 +103,7 @@ async function mockSortingDesk(page: Page) {
         llm_configured: false,
         extra_files_count: 0,
         needs_review_count: 2,
+        counts_by_reason: { low_confidence: 2 },
       }),
     });
   });
@@ -210,8 +218,31 @@ test.describe("axe-core", () => {
       });
 
       test("Sorting", async ({ page }) => {
+        await mockSortingDesk(page);
         await page.goto("/review");
         await expect(page.getByRole("heading", { name: "Sorting", exact: true })).toBeVisible();
+        await expect(page.getByTestId("hold-slip")).toHaveCount(2);
+        await assertAxe(page);
+      });
+
+      test("Downloads", async ({ page }) => {
+        await page.route("**/api/queue**", async (route) => {
+          if (route.request().method() !== "GET") {
+            await route.continue();
+            return;
+          }
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              view: "actionable",
+              jobs: [{ id: "job-asked", status: "asked", title: "Asked Volume" }],
+              counts: { actionable: 1, asked: 1, all: 1 },
+            }),
+          });
+        });
+        await page.goto("/queue");
+        await expect(page.getByRole("heading", { name: "Downloads" })).toBeVisible();
         await assertAxe(page);
       });
 
@@ -251,12 +282,18 @@ test.describe("axe-core", () => {
     });
 
     test("Queue to SAB confirm", async ({ page }) => {
-      await page.route("**/api/queue", async (route) => {
+      await page.route(/\/api\/queue(\?|$)/, async (route) => {
+        if (route.request().method() !== "GET") {
+          await route.continue();
+          return;
+        }
         await route.fulfill({
           status: 200,
           contentType: "application/json",
           body: JSON.stringify({
+            view: "actionable",
             jobs: [{ id: "job-asked", status: "asked", title: "Asked Volume" }],
+            counts: { actionable: 1, asked: 1, all: 1 },
           }),
         });
       });
@@ -363,6 +400,7 @@ test.describe("axe-core", () => {
 
     test("Sorting 320px", async ({ page }) => {
       await page.setViewportSize({ width: 320, height: 720 });
+      await mockSortingDesk(page);
       await page.goto("/review");
       await expect(page.getByRole("heading", { name: "Sorting", exact: true })).toBeVisible();
       await assertAxe(page);

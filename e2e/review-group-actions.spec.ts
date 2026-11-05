@@ -37,7 +37,7 @@ async function mockDesk(page: Page, initial: Slip[]) {
       body: JSON.stringify({ status: "completed", total: 0, done: 0, returned: 0, left_on_desk: 0, failed: 0 }),
     }),
   );
-  await page.route("**/api/review", async (route) => {
+  await page.route(/\/api\/review(\?|$)/, async (route) => {
     if (route.request().method() !== "GET") {
       await route.continue();
       return;
@@ -243,7 +243,7 @@ test.describe("Sorting group actions", () => {
           : { status: "completed", done: 2, total: 2, suggested: 2, trusted: 1, ambiguous: 1, failed: 0 };
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
     });
-    await page.route("**/api/review", async (route) => {
+    await page.route(/\/api\/review(\?|$)/, async (route) => {
       const settled = Math.min(2, polls);
       const works = slips.map((row, index) => {
         if (index >= settled) return row;

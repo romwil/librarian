@@ -153,6 +153,9 @@ class SettingsPayload(BaseModel):
     quiet_hours_start: Optional[str] = None
     quiet_hours_end: Optional[str] = None
     show_model_suggested_lists: Optional[bool] = None
+    op_auto_confirm_enabled: Optional[bool] = None
+    op_auto_confirm_hosts: Optional[List[str]] = None
+    isbn_auto_file_enabled: Optional[bool] = None
     mail: Optional[MailPayload] = None
 
 

@@ -631,8 +631,15 @@ def ask_wanted_hit(
     *,
     now: Optional[float] = None,
     settings: Any = None,
+    role: str = "",
+    actor_id: str = "",
 ) -> Dict[str, Any]:
-    """File one Asked slip for a hit the house picked. A second call does not enqueue."""
+    """File one Asked slip for a hit the house picked. A second call does not enqueue.
+
+    BD-6: owner/op may auto-confirm to SAB when Settings allow and the host is
+    allowlisted or a healthy lantern. Readers never auto-confirm. Poller-filed
+    slips never reach this path.
+    """
     from librarian.wanted import public_wanted
 
     moment = time.time() if now is None else float(now)
@@ -660,11 +667,44 @@ def ask_wanted_hit(
             "job_id": fresh.get("job_id"),
             "item": public_wanted(fresh),
         }
+    try:
+        from librarian.pulse import increment
+
+        increment(db, "asks_filed", count=1)
+    except Exception:  # noqa: BLE001
+        logger.exception("asks_filed pulse failed for wanted %s", row.get("id"))
+
+    auto = None
+    if settings is not None:
+        try:
+            from librarian.op_auto_confirm import maybe_auto_confirm_asked
+
+            auto = maybe_auto_confirm_asked(
+                db,
+                settings,
+                job,
+                role=role,
+                actor_id=actor_id or _text(job.get("requested_by")),
+                host_id=_text(hit.get("host_id")),
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("op auto-confirm check failed for wanted %s", row.get("id"))
+            auto = None
+    if auto is not None:
+        return {
+            "outcome": "auto_confirmed",
+            "note": "Confirmed for a trusted indexer — SABnzbd has the slip.",
+            "job_id": auto.get("id") or job.get("id"),
+            "job_status": auto.get("status"),
+            "item": public_wanted(db.get_wanted(str(row["id"])) or fresh),
+            "auto_confirmed": True,
+        }
     return {
         "outcome": "hit",
         "note": "A hit is on a slip",
         "job_id": job.get("id"),
         "item": public_wanted(fresh),
+        "auto_confirmed": False,
     }
 
 

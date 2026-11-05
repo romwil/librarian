@@ -12,6 +12,7 @@ import {
   CHANGE_PASSWORD,
   EXPORT_MY_CARD,
   FIELD_HELP,
+  JKX_SHORTCUTS_CARD_LINK,
   OPDS_COPIED,
   OPDS_COPY,
   OPDS_HEADING,
@@ -200,6 +201,13 @@ export default function CardPage() {
           Skip to content, a visible focus ring, announced alerts, and overlays that keep keyboard focus are on.
           A VoiceOver script for login, join, Read, Listen, and Sorting lives in the household Help docs.
         </p>
+        {user?.role === "owner" || user?.role === "op" ? (
+          <p className="lede">
+            <Link to="/help#sorting-shortcuts" data-testid="sorting-shortcuts-card-link">
+              {JKX_SHORTCUTS_CARD_LINK}
+            </Link>
+          </p>
+        ) : null}
       </section>
       <section className="card-panel" id="privacy" data-testid="privacy-panel">
         <p className="kicker">{PRIVACY_HEADING}</p>

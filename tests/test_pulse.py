@@ -9,9 +9,11 @@ from librarian.auth import hash_password
 from librarian.db import Database
 from librarian.pulse import (
     FORBIDDEN_COLUMNS,
+    ask_age_bucket,
     assemble_pulse,
     increment,
     metrics_columns,
+    normalize_dim,
     snapshot_pulse,
 )
 from librarian.rate_limit import clear_rate_limits
@@ -145,3 +147,20 @@ def test_no_third_party_analytics_in_frontend_manifest():
     text = Path("frontend/package.json").read_text(encoding="utf-8").lower()
     for marker in ANALYTICS_MARKERS:
         assert marker not in text
+
+
+def test_confirm_download_metric_and_ask_age_buckets(tmp_path):
+    assert ask_age_bucket(500) == "lt1m"
+    assert ask_age_bucket(120_000) == "lt1h"
+    assert ask_age_bucket(3_600_000 * 5) == "lt1d"
+    assert ask_age_bucket(86_400_000 * 2) == "gt1d"
+    assert normalize_dim("confirm_download", "book:lt1h") == "book:lt1h"
+    assert normalize_dim("confirm_download", "mystery:nope") == "other:lt1h"
+
+    db = Database(tmp_path / "librarian.db")
+    increment(db, "confirm_download", dim="book:lt1m", count=2, sum_ms=40)
+    pulse = assemble_pulse(db, data_dir=tmp_path)
+    assert pulse["confirm_download"]["value"] == 2
+    assert pulse["confirm_download"]["avg_ms"] == 20
+    assert pulse["analytics_hosts"] == 0
+    assert "google" not in str(pulse).lower()

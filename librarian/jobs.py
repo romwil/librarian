@@ -179,6 +179,12 @@ def enqueue_indexer_item(
             )
         except Exception:  # noqa: BLE001
             logger.exception("asked_confirm notice failed for job %s", job.get("id"))
+        try:
+            from librarian.pulse import increment
+
+            increment(db, "asks_filed", count=1)
+        except Exception:  # noqa: BLE001
+            logger.exception("asks_filed pulse failed for job %s", job.get("id"))
         return job
     return _queue_download(
         db,
@@ -198,7 +204,10 @@ def confirm_asked_job(
     *,
     sab: Optional[SABClient] = None,
     nzb: Optional[NZBFinderClient] = None,
+    record_pulse: bool = True,
 ) -> Dict[str, Any]:
+    import time
+
     job = db.get_job(job_id)
     if job is None:
         raise ValueError("Job not found")
@@ -206,7 +215,8 @@ def confirm_asked_job(
         raise ValueError("Job is not an asked slip")
     item = job.get("payload") or {}
     payload = dict(item) if isinstance(item, dict) else {}
-    return _queue_download(
+    started = time.perf_counter()
+    updated = _queue_download(
         db,
         settings,
         item=item if isinstance(item, dict) else {"title": job.get("title")},
@@ -216,6 +226,29 @@ def confirm_asked_job(
         nzb=nzb,
         job_id=job_id,
     )
+    if record_pulse:
+        try:
+            from librarian.pulse import ask_age_bucket, increment
+
+            elapsed_ms = int(max(0.0, (time.perf_counter() - started) * 1000))
+            age_ms = 0
+            try:
+                created = job.get("created_at")
+                if created is not None:
+                    age_ms = int(max(0.0, (time.time() - float(created)) * 1000))
+            except (TypeError, ValueError):
+                age_ms = 0
+            kind = str(updated.get("kind") or job.get("kind") or payload.get("kind") or "other")
+            increment(
+                db,
+                "confirm_download",
+                dim=f"{kind}:{ask_age_bucket(age_ms)}",
+                count=1,
+                sum_ms=elapsed_ms,
+            )
+        except Exception:  # noqa: BLE001 — pulse must never undo confirm
+            logger.exception("confirm_download pulse failed for job %s", job_id)
+    return updated
 
 
 def retry_failed_job(db: Database, job_id: str) -> Dict[str, Any]:
@@ -231,12 +264,32 @@ def retry_failed_job(db: Database, job_id: str) -> Dict[str, Any]:
     return updated
 
 
+# Downloads desk views (PRD-011). Skipped is hidden from filtered views — All only.
+QUEUE_VIEW_ACTIONABLE = frozenset({"asked", "failed", "review"})
+QUEUE_VIEW_ACTIVE = frozenset({"queued", "downloading", "extracting", "identifying"})
+QUEUE_VIEW_HISTORY = frozenset({"organized"})
+QUEUE_DISMISSIBLE = frozenset({"asked", "failed", "skipped", "organized"})
+QUEUE_VIEWS = ("actionable", "active", "history", "all")
+
+
+def queue_view_statuses(view: str) -> Optional[frozenset[str]]:
+    """Statuses for a Downloads view, or None for all jobs."""
+    key = str(view or "actionable").strip().lower() or "actionable"
+    if key == "all":
+        return None
+    if key == "active":
+        return QUEUE_VIEW_ACTIVE
+    if key == "history":
+        return QUEUE_VIEW_HISTORY
+    return QUEUE_VIEW_ACTIONABLE
+
+
 def dismiss_queue_job(db: Database, job_id: str) -> Dict[str, Any]:
-    """Mark a failed, skipped, or asked job skipped. Does not send SABnzbd."""
+    """Mark a terminal / asked job skipped. Does not send SABnzbd or touch active transfers."""
     job = db.get_job(job_id)
     if job is None:
         raise ValueError("Job not found")
-    if job["status"] not in ("failed", "skipped", "asked"):
+    if job["status"] not in QUEUE_DISMISSIBLE:
         raise ValueError("Job cannot be dismissed")
     updated = db.update_job(job_id, status="skipped")
     if updated is None:

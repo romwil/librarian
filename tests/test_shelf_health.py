@@ -2,13 +2,26 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 
 from librarian.config import Settings
 from librarian.shelf_health import CHOWN_COMMAND, shelf_permission_report
+from librarian.shelf_health_cache import clear_shelf_health_cache, wait_shelf_health_idle
 from librarian.web.app import create_app
+
+
+def _wait_shelf_health(client, timeout: float = 5.0) -> dict:
+    deadline = time.monotonic() + timeout
+    body = {}
+    while time.monotonic() < deadline:
+        body = client.get("/api/maintain/shelf-health").json()
+        if not body.get("refreshing"):
+            return body
+        time.sleep(0.05)
+    raise AssertionError(f"shelf-health stayed refreshing: {body}")
 
 
 def test_shelf_permission_report_marks_writable_roots(tmp_path):
@@ -56,6 +69,7 @@ def test_shelf_permission_report_counts_locked_roots(tmp_path, monkeypatch):
 
 
 def test_maintain_shelf_health_owner_only(tmp_path):
+    clear_shelf_health_cache()
     client = TestClient(create_app(tmp_path))
     response = client.get("/api/maintain/shelf-health")
     assert response.status_code == 401
@@ -66,7 +80,12 @@ def test_maintain_shelf_health_owner_only(tmp_path):
     assert login.status_code == 200
     response = client.get("/api/maintain/shelf-health")
     assert response.status_code == 200
-    body = response.json()
+    # Cold miss may warm asynchronously; wait for the snapshot.
+    assert wait_shelf_health_idle(timeout=5.0)
+    body = _wait_shelf_health(client)
     assert "roots" in body
     assert body["chown_command"] == CHOWN_COMMAND
     assert "chown" in body["chown_tip"]
+    assert body["cached"] is True
+    assert body["refreshing"] is False
+    assert body["generated_at"]

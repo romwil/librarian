@@ -19,6 +19,21 @@ describe("Hall chip row", () => {
     assert.match(chips[3].href, /shelf=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/);
   });
 
+  it("demotes music off Hall first-tier chips (BD-4)", () => {
+    const chips = hallChipRow({
+      kind_counts: { book: 2, music: 97, audiobook: 1 },
+      named_shelves: [],
+    });
+    assert.deepEqual(
+      chips.map((chip) => chip.label),
+      ["Books", "Audiobooks"],
+    );
+    assert.equal(
+      chips.some((chip) => chip.label === "Music"),
+      false,
+    );
+  });
+
   it("hides empty kinds", () => {
     assert.deepEqual(hallChipRow({ kind_counts: {}, named_shelves: [] }), []);
   });

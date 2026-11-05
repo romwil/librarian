@@ -25,9 +25,12 @@ METRIC_SET = frozenset(
     {
         "asks_filed",
         "confirms_waiting",
+        "confirm_download",
         "arrived",
         "search_run",
         "volumes_progress",
+        "isbn_auto_file",
+        "isbn_auto_file_undo",
         "other",
     }
 )
@@ -41,6 +44,11 @@ SEARCH_DIM_SET = frozenset(
         "",
     }
 )
+# confirm_download dims: ``{kind}:{ask-age bucket}`` — never titles or queries.
+CONFIRM_KIND_SET = frozenset(
+    {"book", "magazine", "comic", "audiobook", "music", "other", ""}
+)
+ASK_AGE_BUCKETS = ("lt1m", "lt1h", "lt1d", "gt1d")
 
 FORBIDDEN_COLUMNS = frozenset(
     {
@@ -79,10 +87,32 @@ def normalize_metric(raw: Any) -> str:
     return "other"
 
 
+def ask_age_bucket(age_ms: int) -> str:
+    """Bucket ask→confirm latency for on-box pulse (no free text)."""
+    ms = max(0, int(age_ms or 0))
+    if ms < 60_000:
+        return "lt1m"
+    if ms < 3_600_000:
+        return "lt1h"
+    if ms < 86_400_000:
+        return "lt1d"
+    return "gt1d"
+
+
 def normalize_dim(metric: str, raw: Any) -> str:
     cleaned = _text(raw).lower()
     if metric == "search_run":
         return cleaned if cleaned in SEARCH_DIM_SET else "other"
+    if metric == "confirm_download":
+        # Accept ``kind:bucket`` or a bare kind.
+        if ":" in cleaned:
+            kind, _, bucket = cleaned.partition(":")
+            kind_key = kind if kind in CONFIRM_KIND_SET else "other"
+            bucket_key = bucket if bucket in ASK_AGE_BUCKETS else "lt1h"
+            return f"{kind_key}:{bucket_key}"
+        if cleaned in CONFIRM_KIND_SET:
+            return f"{cleaned or 'other'}:lt1h"
+        return "other:lt1h"
     return ""
 
 
@@ -227,6 +257,31 @@ def _beyond_week(conn: Any, since_day: str) -> Dict[str, int]:
     return {"calls": _int_row(row, 0), "errors": _int_row(row, 1)}
 
 
+def _confirm_download_week(conn: Any, since_day: str) -> Dict[str, int]:
+    """Household confirm_download rollup for the pulse card (count + latency ms)."""
+    row = conn.execute(
+        """
+        SELECT COALESCE(SUM(count), 0), COALESCE(SUM(sum_ms), 0)
+        FROM metrics_daily
+        WHERE metric = 'confirm_download' AND day >= ?
+        """,
+        (since_day,),
+    ).fetchone()
+    return {"count": _int_row(row, 0), "sum_ms": _int_row(row, 1)}
+
+
+def _metric_week_count(conn: Any, metric: str, since_day: str) -> int:
+    row = conn.execute(
+        """
+        SELECT COALESCE(SUM(count), 0)
+        FROM metrics_daily
+        WHERE metric = ? AND day >= ?
+        """,
+        (metric, since_day),
+    ).fetchone()
+    return _int_row(row, 0)
+
+
 def _weather(
     *,
     beyond_rate: Optional[float],
@@ -274,9 +329,15 @@ def assemble_pulse(
         waiting = _confirms_waiting(conn)
         landed = _arrived(conn, since)
         beyond = _beyond_week(conn, since_day)
+        confirms = _confirm_download_week(conn, since_day)
+        isbn_filed = _metric_week_count(conn, "isbn_auto_file", since_day)
+        isbn_undo = _metric_week_count(conn, "isbn_auto_file_undo", since_day)
     calls = int(beyond["calls"])
     errors = int(beyond["errors"])
     rate = (errors / calls) if calls else None
+    confirm_n = int(confirms["count"])
+    confirm_ms = int(confirms["sum_ms"])
+    confirm_avg = int(confirm_ms / confirm_n) if confirm_n else None
     backup_stamp = last_backup_at(Path(data_dir)) if data_dir is not None else None
     age = _age_hours(backup_stamp, now=moment)
     suppressed = members < MEMBER_SUPPRESS_BELOW
@@ -291,6 +352,22 @@ def assemble_pulse(
         },
         "asks_filed": {"label": "Asks filed this week", "value": asks, "window": "7d"},
         "confirms_waiting": {"label": "Confirms waiting", "value": waiting},
+        "confirm_download": {
+            "label": "Confirms this week",
+            "value": confirm_n,
+            "sum_ms": confirm_ms,
+            "avg_ms": confirm_avg,
+            "display": (
+                "No confirms this week"
+                if confirm_n == 0
+                else (
+                    f"{confirm_n}"
+                    if confirm_avg is None
+                    else f"{confirm_n} · ~{confirm_avg} ms"
+                )
+            ),
+            "window": "7d",
+        },
         "arrived": {"label": "Arrived this week", "value": landed, "window": "7d"},
         "beyond_error_rate": {
             "label": "Beyond search errors this week",
@@ -298,6 +375,16 @@ def assemble_pulse(
             "errors": errors,
             "calls": calls,
             "display": "No beyond searches this week" if calls == 0 else f"{errors} of {calls}",
+        },
+        "isbn_auto_file": {
+            "label": "ISBN auto-filed this week",
+            "value": isbn_filed,
+            "window": "7d",
+        },
+        "isbn_auto_file_undo": {
+            "label": "ISBN auto-file undos (mis-shelve signal)",
+            "value": isbn_undo,
+            "window": "7d",
         },
         "snapshot_age": {
             "label": "Last backup",
@@ -355,10 +442,12 @@ def purge_metrics(db: Database, *, keep_days: int = METRICS_KEEP_DAYS, now: Opti
 
 
 __all__ = [
+    "ASK_AGE_BUCKETS",
     "FORBIDDEN_COLUMNS",
     "MEMBER_SUPPRESS_BELOW",
     "METRIC_SET",
     "METRICS_KEEP_DAYS",
+    "ask_age_bucket",
     "assemble_pulse",
     "increment",
     "set_metric",

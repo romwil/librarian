@@ -238,6 +238,11 @@ class Settings:
     quiet_hours_start: str = "22:00"
     quiet_hours_end: str = "07:00"
     show_model_suggested_lists: bool = False
+    # BD-6 · Op/owner auto-confirm after Ask — opt-in, default OFF.
+    op_auto_confirm_enabled: bool = False
+    op_auto_confirm_hosts: list = field(default_factory=list)
+    # BD-3 opt 4 · ISBN-strong book auto-file experiment — opt-in, default OFF.
+    isbn_auto_file_enabled: bool = False
     mail: MailSettings = field(default_factory=MailSettings)
 
     @classmethod
@@ -266,6 +271,16 @@ class Settings:
             )
         if "nzbfinder_muted" in filtered:
             filtered["nzbfinder_muted"] = _as_bool(filtered["nzbfinder_muted"])
+        if "op_auto_confirm_enabled" in filtered:
+            filtered["op_auto_confirm_enabled"] = _as_bool(filtered["op_auto_confirm_enabled"])
+        if "op_auto_confirm_hosts" in filtered:
+            from librarian.op_auto_confirm import normalize_allowlist
+
+            filtered["op_auto_confirm_hosts"] = normalize_allowlist(
+                filtered["op_auto_confirm_hosts"]
+            )
+        if "isbn_auto_file_enabled" in filtered:
+            filtered["isbn_auto_file_enabled"] = _as_bool(filtered["isbn_auto_file_enabled"])
         if "extra_indexers" in filtered:
             from librarian.indexers.hosts import normalize_extra_indexers
 

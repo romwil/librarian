@@ -641,6 +641,12 @@ def ask_from_search(
                 },
             }
         )
+        try:
+            from librarian.pulse import increment
+
+            increment(db, "asks_filed", count=1)
+        except Exception:  # noqa: BLE001
+            pass
     return {
         "item": public_wanted(row),
         "job": {"id": job.get("id"), "status": job.get("status")},

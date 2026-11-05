@@ -45,6 +45,13 @@ import {
   recommendedMotionCtaClass,
   recommendedMotionLabel,
   reviewReasonGroupLabel,
+  SORTING_PAGE_LIMIT,
+  SORTING_VISIBLE_WINDOW,
+  defaultSortingReason,
+  purgeDuplicatesConfirmCopy,
+  sortingFilterAnnounce,
+  sortingJkStep,
+  windowSortingSlips,
 } from "./review.js";
 
 const root = dirname(fileURLToPath(import.meta.url));
@@ -405,6 +412,73 @@ describe("review LLM suggest helpers", () => {
   });
 });
 
+describe("Sorting triage defaults and page window", () => {
+  it("prefers low_confidence then the top count for the default reason chip", () => {
+    assert.equal(defaultSortingReason({}), "");
+    assert.equal(defaultSortingReason({ collision: 3, unpack_stuck: 1 }), "collision");
+    assert.equal(
+      defaultSortingReason({ collision: 9, low_confidence: 2, extra_files: 4 }),
+      "low_confidence",
+    );
+    assert.equal(SORTING_PAGE_LIMIT, 25);
+    assert.equal(SORTING_VISIBLE_WINDOW, 12);
+  });
+
+  it("windows loaded slips for the first-paint DOM budget", () => {
+    const rows = Array.from({ length: 20 }, (_, i) => ({ id: `w${i}` }));
+    const sliced = windowSortingSlips(rows, { limit: 12 });
+    assert.equal(sliced.visible.length, 12);
+    assert.equal(sliced.hiddenCount, 8);
+    assert.deepEqual(
+      windowSortingSlips(rows.slice(0, 5)).visible.map((row) => row.id),
+      ["w0", "w1", "w2", "w3", "w4"],
+    );
+  });
+
+  it("announces filter changes and retains j/k across window expand and load-more", () => {
+    assert.equal(sortingFilterAnnounce({ reason: "", count: 40 }), "All reasons, 40 slips");
+    assert.equal(sortingFilterAnnounce({ reason: "low_confidence", count: 1 }), "low confidence, 1 slip");
+    const ids = Array.from({ length: 14 }, (_, i) => `w${i}`);
+    assert.deepEqual(sortingJkStep({ direction: "next", activeId: "w0", loadedIds: ids, visibleCap: 12 }), {
+      focusId: "w1",
+    });
+    assert.deepEqual(sortingJkStep({ direction: "next", activeId: "w11", loadedIds: ids, visibleCap: 12 }), {
+      focusId: "w12",
+      expandTo: 24,
+    });
+    assert.deepEqual(
+      sortingJkStep({
+        direction: "next",
+        activeId: "w13",
+        loadedIds: ids,
+        visibleCap: 24,
+        hasMoreCursor: true,
+      }),
+      { focusId: "w13", loadMore: true },
+    );
+    assert.deepEqual(sortingJkStep({ direction: "prev", activeId: "w3", loadedIds: ids, visibleCap: 12 }), {
+      focusId: "w2",
+    });
+    assert.match(reviewPageSrc, /sortingJkStep/);
+    assert.match(reviewPageSrc, /sortingFilterAnnounce/);
+    assert.match(reviewPageSrc, /data-testid="sorting-filter-live"/);
+    assert.match(reviewPageSrc, /aria-live="polite"/);
+    assert.match(reviewPageSrc, /activeSlipId/);
+    assert.match(reviewPageSrc, /pendingJkRef/);
+  });
+
+  it("names the Purge duplicates confirm count for Review", () => {
+    const copy = purgeDuplicatesConfirmCopy({ backlog: 17 });
+    assert.match(copy.title, /17 Review slips/);
+    assert.match(copy.confirmLabel, /17/);
+    assert.match(copy.body, /Undo/i);
+    assert.match(reviewPageSrc, /purgeDuplicatesConfirmCopy/);
+    assert.match(reviewPageSrc, /testId="review-purge-duplicates-dialog"/);
+    assert.match(reviewPageSrc, /data-testid="review-purge-duplicates-count"/);
+    assert.match(reviewPageSrc, /openPurgeConfirm/);
+  });
+});
+
 describe("ReviewPage loading", () => {
   it("shows a warming state while review loads, not empty bag", () => {
     assert.match(reviewPageSrc, /\[loading, setLoading\] = useState\(true\)/);
@@ -413,6 +487,15 @@ describe("ReviewPage loading", () => {
     assert.match(reviewPageSrc, /loading \? \(/);
     assert.match(reviewPageSrc, /!works\.length/);
     assert.match(reviewPageSrc, /\.finally\(\(\) => setLoading\(false\)\)/);
+  });
+
+  it("defaults Sorting to the top reason and pages with an explicit limit", () => {
+    assert.match(reviewPageSrc, /defaultSortingReason/);
+    assert.match(reviewPageSrc, /SORTING_PAGE_LIMIT/);
+    assert.match(reviewPageSrc, /windowSortingSlips/);
+    assert.match(reviewPageSrc, /data-testid="sorting-show-more-window"/);
+    assert.match(reviewPageSrc, /data-testid="review-quiet-hours"/);
+    assert.ok(reviewPageSrc.indexOf("holds-desk-groups") < reviewPageSrc.indexOf("review-quiet-hours"));
   });
 
   it("exposes Purge duplicates bulk control", () => {

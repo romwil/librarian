@@ -17,6 +17,8 @@ test("Hall keeps the hunt box and living rails, and leaves the catalog grid off 
   assert.equal(hallSrc.includes("CelebrationBanner"), false);
   assert.equal(hallSrc.includes("celebration-banner"), false);
   assert.equal(hallSrc.includes("NamedShelves"), false);
+  assert.match(hallSrc, /HallTendCard/);
+  assert.match(hallSrc, /HallShelfEmpty/);
   assert.equal(hallSrc.includes('title="Books"'), false);
   assert.match(hallSrc, /hero-search-block/);
   assert.match(hallSrc, /variant="hero"/);
@@ -49,6 +51,9 @@ test("Maintain is owner-only and houses grooming entry points", () => {
   assert.match(maintainSrc, /maintain-shelf-health/);
   assert.match(maintainSrc, /Shelf health/);
   assert.match(maintainSrc, /maintain-purge-shells-count/);
+  assert.match(maintainSrc, /maintain-purge-shells-count-copy/);
+  assert.match(maintainSrc, /maintain-purge-shells-undo/);
+  assert.match(maintainSrc, /Safe undo can restore purged shells/);
   assert.match(maintainSrc, /maintainPurgeShellsPreview/);
 });
 

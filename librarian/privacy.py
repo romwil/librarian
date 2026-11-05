@@ -23,8 +23,9 @@ def household_privacy_notice(settings: Any) -> Dict[str, Any]:
     provider = str(getattr(settings, "llm_provider", "") or "").strip() or "the language model"
     if llm_on:
         paragraphs.append(
-            f"When a keeper identifies a title, the cover and filename may be sent to {provider} "
-            "so the shelves can be named. Readers' search stays on the shelves unless they ask the house."
+            f"When a keeper identifies a title, suggests a Sorting name, names a Bestsellers list, "
+            f"or ranks Find hits, cover, filename, and title metadata may be sent to {provider}. "
+            "The model never invents an ISBN. Readers' search stays on the shelves unless they ask the house."
         )
     else:
         paragraphs.append(
@@ -40,6 +41,12 @@ def household_privacy_notice(settings: Any) -> Dict[str, Any]:
         paragraphs.append(
             "Search beyond the shelves queries the household indexer (and any extra Newznab hosts). "
             "Those hosts see the title you typed, not your name."
+        )
+    hardcover = bool(str(getattr(settings, "hardcover_api_token", "") or "").strip())
+    if hardcover:
+        paragraphs.append(
+            "Enrich may send ISBN or title and author to Hardcover (and Open Library as fallback) "
+            "to fill covers and series — never an invented ISBN."
         )
     if mail_configured(settings):
         paragraphs.append(

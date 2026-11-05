@@ -1,4 +1,8 @@
-/** Hall chip row: kinds with a count, then named shelves. */
+/** Hall chip row: kinds with a count, then named shelves.
+ *
+ * BD-4: Music is demoted off Hall first-tier chips. Reach it via Stacks,
+ * Search kind chips, Library card, or Promote — not the Hall chip row.
+ */
 
 import { browseHref } from "./browse.js";
 
@@ -10,7 +14,8 @@ export const KIND_CHIP_LABELS = {
   music: "Music",
 };
 
-const KIND_ORDER = ["book", "magazine", "comic", "audiobook", "music"];
+/** First-tier Hall kinds — music intentionally omitted (BD-4). */
+const KIND_ORDER = ["book", "magazine", "comic", "audiobook"];
 
 export function hallChipRow({ kind_counts = {}, named_shelves = [] } = {}) {
   const kinds = KIND_ORDER.map((kind) => ({

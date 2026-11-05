@@ -1,12 +1,13 @@
 import { useOutletContext } from "react-router-dom";
 import useDocumentTitle from "../hooks/useDocumentTitle.js";
-import { PAGE_TITLE_HELP } from "../copy.js";
+import { JKX_SHORTCUTS_HELP, JKX_SHORTCUTS_HELP_HEADING, PAGE_TITLE_HELP } from "../copy.js";
 import { glossaryForRole } from "../copy/glossary.js";
 
 export default function HelpPage() {
   const { user } = useOutletContext() || {};
   const role = user?.role || "reader";
   const terms = glossaryForRole(role);
+  const showSortingShortcuts = role === "owner" || role === "op";
   useDocumentTitle(PAGE_TITLE_HELP);
 
   return (
@@ -27,6 +28,13 @@ export default function HelpPage() {
           </div>
         ))}
       </dl>
+      {showSortingShortcuts ? (
+        <section className="card-panel" id="sorting-shortcuts" data-testid="sorting-shortcuts-help">
+          <p className="kicker">Desk</p>
+          <h2>{JKX_SHORTCUTS_HELP_HEADING}</h2>
+          <p className="lede">{JKX_SHORTCUTS_HELP}</p>
+        </section>
+      ) : null}
     </div>
   );
 }
