@@ -19,5 +19,8 @@ test.describe("Indexer scorecard", () => {
     await expect(page.getByTestId("indexer-lantern").first()).toBeVisible();
     // Mute only when a host is configured — e2e may have an idle primary lantern.
     await expect(page.getByTestId("indexer-lantern").first()).toContainText(/NZBFinder|Indexer|spoken|muted|steady|dark|flicker/i);
+    // A11Y-006 — weather is named in text, not flame hue alone.
+    await expect(page.getByTestId("indexer-lantern-weather").first()).toBeVisible();
+    await expect(page.getByTestId("indexer-lantern-weather").first()).toHaveText(/Bright|Dim|Dark|Muted|Idle/i);
   });
 });

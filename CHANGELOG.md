@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [1.0.12] — 2026-11-06
+
+### Highlights
+
+- **Sorting / Desk badge calm (PRD-005).** Chrome stays quiet at 0–5 open slips (clear mark or quiet dot); raw counts appear only above 5. Exact tally stays on the Library card → Sorting (N).
+- **Find lanterns + job words (A11Y-006).** Weather chips name Bright / Dim / Dark / Muted / Idle with shape marks; live job chips keep text + monochrome marks so hue is never required.
+- **Mobile 390 proof (UX-007).** Mocked Playwright covers Hall / Search / Sorting tab-bar usability and no two-axis page scroll at 390×844.
+- **Settings vs host `.env` (OPS-005).** Ownership table in AUTOMAT — Settings for routine config; `.env` for boot / trust / break-glass.
+- **Dependency audit cadence (SEC-008).** Dated pip/npm audit log in SECURITY with react-router 6.x moderate exception (RR7 scheduled; expires 2027-02-06).
+
 ## [1.0.11] — 2026-11-05
 
 ### Highlights

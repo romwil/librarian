@@ -63,6 +63,8 @@ Find and Queue speak household English. The downloader’s raw line (Verifying, 
 | **Needs you** | Something unexpected; open **Review** (unknown identify, extra files, convert fail, collision, missing *arr*, and so on). The files are here — the house isn’t sure how to shelve them. Not a Failed download. |
 | **Failed** | It did not land — missing files, a damaged archive, or unpack that never finished |
 
+Each job word ships as **text + a shape mark + optional color** so hue alone never carries status (A11Y-006). Find lantern weather uses the same rule: **Bright / Dim / Dark / Muted / Idle** labels beside the flame.
+
 Queue cards for **Needs you** show a short reason and **Open Sorting** (deep-link when the job already has a work). Paths sit behind **Details**. Failed and skipped jobs can **Try again** (returns to Asked — confirm still sends SABnzbd) or **Dismiss**. The title on the job is the title you asked for on Find. SABnzbd’s Usenet filename stays ops-only on Downloads.
 
 **Finished** is reading progress (you finished the book). **Promote** is for incoming music only: move the album into the Plexamp library. Those two words are not job chips.
@@ -212,6 +214,8 @@ Failing the SLO means prioritize identify quality, the shells ritual below, and/
 **Desk rewrite (BD-2 option 4)** stays deferred until this SLO is green (or the owner explicitly waives). See [ROADMAP.md](ROADMAP.md#post-360-nov-4-residuals-phase-d-gates).
 
 **Shells are a separate Maintain ritual** — not part of this Sorting SLO. Unshelved catalog shells (Maintain → Purge shells) are purged on their own cadence with snapshot + typed confirm. Do not fold shell count into the Sorting open badge narrative.
+
+**Chrome badge calm (PRD-005):** top-bar **Sorting** / phone **Desk** stay quiet at 0 (celebratory clear mark) and show a quiet dot for 1–5 open slips. The raw count appears in chrome only when open **> 5**. Exact tally is always one click away on the Library card → **Sorting (N)**.
 
 ## Owner weekly checklist
 

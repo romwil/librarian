@@ -6,6 +6,11 @@ import ProfileMenu from "./ProfileMenu.jsx";
 import InboxBadgeButton from "./InboxBadgeButton.jsx";
 import { DESK_TAB, DOWNLOADS_NAV, SKIP_TO_CONTENT, SORTING_NAV } from "../copy.js";
 import {
+  deskBadgeMode,
+  deskNavAriaLabel,
+  deskNavVisibleLabel,
+} from "../lib/deskBadge.js";
+import {
   applyUiFontStep,
   applyUiTheme,
   loadStoredUiFontStep,
@@ -14,6 +19,20 @@ import {
   normalizeUiTheme,
   persistUiFontStep,
 } from "../lib/uiPrefs.js";
+
+function DeskNavLabel({ base, count, testId }) {
+  const mode = deskBadgeMode(count);
+  const label = deskNavVisibleLabel(base, count);
+  return (
+    <span className={`desk-nav-label desk-nav-label-${mode}`} data-testid={testId} data-badge-mode={mode}>
+      <span className="desk-nav-text">{label}</span>
+      {mode === "quiet" ? <span className="desk-badge-dot" aria-hidden="true" data-testid="desk-badge-dot" /> : null}
+      {mode === "clear" ? (
+        <span className="desk-badge-clear" aria-hidden="true" data-testid="desk-badge-clear" title="Sorting clear" />
+      ) : null}
+    </span>
+  );
+}
 
 export default function AppChrome({ user, features, reviewCount = 0, inboxUnread = 0, children }) {
   const navigate = useNavigate();
@@ -68,8 +87,8 @@ export default function AppChrome({ user, features, reviewCount = 0, inboxUnread
     return () => window.removeEventListener("keydown", onKey);
   }, [navigate]);
 
-  const sortingLabel = reviewCount > 0 ? `${SORTING_NAV} ${reviewCount}` : SORTING_NAV;
-  const deskLabel = reviewCount > 0 ? `${DESK_TAB} ${reviewCount}` : DESK_TAB;
+  const sortingAria = deskNavAriaLabel(SORTING_NAV, reviewCount);
+  const deskAria = deskNavAriaLabel(DESK_TAB, reviewCount);
 
   return (
     <div className="room ambient-off" data-ambient="off">
@@ -112,8 +131,13 @@ export default function AppChrome({ user, features, reviewCount = 0, inboxUnread
             </NavLink>
           ) : null}
           {op ? (
-            <NavLink to="/review" className={({ isActive }) => (isActive ? "is-current" : undefined)} data-testid="holds-link">
-              {sortingLabel}
+            <NavLink
+              to="/review"
+              className={({ isActive }) => (isActive ? "is-current" : undefined)}
+              data-testid="holds-link"
+              aria-label={sortingAria}
+            >
+              <DeskNavLabel base={SORTING_NAV} count={reviewCount} testId="sorting-nav-label" />
             </NavLink>
           ) : null}
         </nav>
@@ -123,6 +147,7 @@ export default function AppChrome({ user, features, reviewCount = 0, inboxUnread
             user={user}
             owner={owner}
             op={op}
+            reviewCount={reviewCount}
             fontStep={fontStep}
             onFontStepChange={setFontStep}
             uiTheme={uiTheme}
@@ -148,8 +173,13 @@ export default function AppChrome({ user, features, reviewCount = 0, inboxUnread
           Favorites
         </Link>
         {op ? (
-          <NavLink to="/review" className={({ isActive }) => (isActive ? "is-current" : undefined)} data-testid="desk-tab">
-            {deskLabel}
+          <NavLink
+            to="/review"
+            className={({ isActive }) => (isActive ? "is-current" : undefined)}
+            data-testid="desk-tab"
+            aria-label={deskAria}
+          >
+            <DeskNavLabel base={DESK_TAB} count={reviewCount} testId="desk-nav-label" />
           </NavLink>
         ) : null}
         <NavLink to="/card" className={({ isActive }) => (isActive ? "is-current" : undefined)}>

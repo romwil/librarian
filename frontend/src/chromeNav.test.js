@@ -19,7 +19,8 @@ test("top nav is Hall, Stacks, Search, Favorites, and Wanted, with Downloads and
   assert.match(chromeSrc, />\s*Wanted\s*</);
   assert.match(chromeSrc, /DOWNLOADS_NAV/);
   assert.match(chromeSrc, /SORTING_NAV/);
-  assert.match(chromeSrc, /sortingLabel/);
+  assert.match(chromeSrc, /deskNavVisibleLabel|DeskNavLabel/);
+  assert.match(chromeSrc, /deskBadgeMode/);
   assert.doesNotMatch(chromeSrc, /Place a hold/);
   assert.equal(chromeSrc.includes(">Noted<"), false);
   assert.equal(chromeSrc.includes("Review bag"), false);
@@ -37,7 +38,8 @@ test("account menu holds theme, People, Maintain, and Settings", () => {
   assert.match(menuSrc, />\s*Maintain\s*</);
   assert.match(menuSrc, />\s*Settings\s*</);
   assert.match(menuSrc, />\s*Downloads\s*</);
-  assert.match(menuSrc, />\s*Sorting\s*</);
+  assert.match(menuSrc, /deskMenuSortingLabel/);
+  assert.match(menuSrc, /profile-sorting-link/);
   assert.equal(chromeSrc.includes("theme-toggle"), false);
   assert.equal(chromeSrc.includes("ambient-toggle"), false);
 });
@@ -80,9 +82,21 @@ test("phone tab bar is fixed to the viewport and the skip link is first in chrom
   assert.match(stylesSrc, /\.room > \.mobile-tabbar\s*\{[^}]*bottom:\s*0/s);
   assert.match(stylesSrc, /minmax\(0,\s*1fr\)/);
   assert.match(stylesSrc, /env\(safe-area-inset-bottom,\s*0px\)/);
+  assert.match(stylesSrc, /env\(safe-area-inset-top,\s*0px\)/);
   assert.match(stylesSrc, /scroll-padding-bottom:\s*var\(--mobile-tabbar-clearance\)/);
   assert.match(stylesSrc, /padding-bottom:\s*var\(--mobile-tabbar-clearance\)/);
   assert.match(stylesSrc, /min-height:\s*44px/);
+});
+
+test("phone Listen chrome clears the tabbar and grows thumb CTAs", () => {
+  const sheetSrc = readFileSync(join(root, "styles.css"), "utf8");
+  assert.match(sheetSrc, /mobile-native\.css/);
+  assert.match(stylesSrc, /body:has\(\.listen-room\)\s*\.mobile-tabbar/);
+  assert.match(stylesSrc, /\.listen-controls\s*\{[^}]*position:\s*fixed/s);
+  assert.match(stylesSrc, /\.work-hero\s+\.cta-row\[data-testid="work-primary"\]\s*\{[^}]*position:\s*fixed/s);
+  assert.match(stylesSrc, /@media \(max-width:\s*720px\)[\s\S]*\.cta\.compact[\s\S]*min-height:\s*var\(--tap-min\)/);
+  assert.match(stylesSrc, /@keyframes\s+listen-enter/);
+  assert.match(stylesSrc, /\.listen-room\s*\{[^}]*animation:\s*listen-enter/s);
 });
 
 test("search slash hint hides on coarse pointers", () => {

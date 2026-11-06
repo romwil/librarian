@@ -1041,6 +1041,43 @@ a.chip {
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
+/* A11Y-006 — job-word chips keep a monochrome mark + text (hue is optional). */
+.live-chip::before {
+  content: "";
+  display: inline-block;
+  width: 0.45rem;
+  height: 0.45rem;
+  margin-right: 0.3rem;
+  vertical-align: 0.05em;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.9;
+}
+.live-chip.is-asked::before {
+  border-radius: 1px;
+  transform: rotate(45deg) scale(0.9);
+}
+.live-chip.is-failed::before {
+  width: 0.45rem;
+  height: 0.2rem;
+  border-radius: 1px;
+}
+.live-chip.is-review::before {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px currentColor;
+}
+.live-chip.is-transit::before {
+  width: 0;
+  height: 0;
+  border-radius: 0;
+  background: transparent;
+  border-top: 0.22rem solid transparent;
+  border-bottom: 0.22rem solid transparent;
+  border-left: 0.38rem solid currentColor;
+}
+.live-chip.is-arrived::before {
+  border-radius: 50%;
+}
 
 .card .live-chip,
 .admin-room .live-chip {
@@ -1078,7 +1115,7 @@ body:has(.peek) .topbar {
   border: 1px solid var(--border);
   border-radius: calc(var(--radius) + 4px);
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
-  animation: peek-in var(--motion) forwards;
+  animation: peek-in var(--motion-ritual) forwards;
   isolation: isolate;
   overflow: hidden;
   /* Solid panel in both lamps. Cover wash is atmosphere only — type sits on
@@ -1306,6 +1343,7 @@ body:has(.peek) .topbar {
   white-space: nowrap;
   max-width: 100%;
 }
+
 
 .peek .cover {
   cursor: default;
