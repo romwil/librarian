@@ -323,7 +323,50 @@ def test_match_item_prefers_asin_then_isbn_then_title(tmp_path):
     assert by_isbn["id"] == "by-isbn"
     by_title = match_item({"title": "Dune", "author": "Herbert"}, items)
     assert by_title["id"] == "by-title"
-    assert match_item({"title": "Dune", "author": ""}, items) is None
+    # Empty/junk author: unique title core may match; ambiguous titles stay fail-closed.
+    assert match_item({"title": "Dune", "author": ""}, items)["id"] == "by-title"
+    assert match_item({"title": "Dune", "author": "^"}, items)["id"] == "by-title"
+    assert (
+        match_item(
+            {"title": "Shared", "author": ""},
+            [
+                {"id": "a", "media": {"metadata": {"title": "Shared", "authors": [{"name": "A"}]}}},
+                {"id": "b", "media": {"metadata": {"title": "Shared", "authors": [{"name": "B"}]}}},
+            ],
+        )
+        is None
+    )
+    # ABS often prefixes series — match the bare work title.
+    series = match_item(
+        {"title": "Ancillary Justice", "author": "^"},
+        [
+            {
+                "id": "series-prefix",
+                "media": {
+                    "metadata": {
+                        "title": "Imperial Radch, Book 1 - Ancillary Justice",
+                        "authors": [{"name": "Ann Leckie"}],
+                    }
+                },
+            }
+        ],
+    )
+    assert series["id"] == "series-prefix"
+    dashed_author = match_item(
+        {"title": "A Desolation Called Peace", "author": "- Arkady Martine"},
+        [
+            {
+                "id": "desolation",
+                "media": {
+                    "metadata": {
+                        "title": "Teixcalaan Series 2 - A Desolation Called Peace",
+                        "authors": [{"name": "Arkady Martine"}],
+                    }
+                },
+            }
+        ],
+    )
+    assert dashed_author["id"] == "desolation"
     # ABS library list payloads often ship authorName instead of authors[].
     by_author_name = match_item(
         {"title": "Uprooted", "author": "Naomi Novik"},

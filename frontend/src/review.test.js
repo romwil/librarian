@@ -48,9 +48,11 @@ import {
   SORTING_PAGE_LIMIT,
   SORTING_VISIBLE_WINDOW,
   defaultSortingReason,
+  pathClearCount,
   purgeDuplicatesConfirmCopy,
   sortingFilterAnnounce,
   sortingJkStep,
+  sortingOpenCountLogLine,
   windowSortingSlips,
 } from "./review.js";
 
@@ -438,6 +440,25 @@ describe("Sorting triage defaults and page window", () => {
   it("announces filter changes and retains j/k across window expand and load-more", () => {
     assert.equal(sortingFilterAnnounce({ reason: "", count: 40 }), "All reasons, 40 slips");
     assert.equal(sortingFilterAnnounce({ reason: "low_confidence", count: 1 }), "low confidence, 1 slip");
+    assert.match(
+      sortingOpenCountLogLine({
+        date: "2026-11-08",
+        version: "1.0.13",
+        rev: "abc1234",
+        all: 27,
+        topReason: "low_confidence",
+        topCount: 22,
+      }),
+      /\| \*\*2026-11-08\*\* \| \*\*1\.0\.13 \/ abc1234\*\* \| \*\*27\*\* \| \*\*low confidence 22\*\* \|/,
+    );
+    assert.equal(pathClearCount([]), 0);
+    assert.equal(
+      pathClearCount([
+        { kind: "book", folder_path: "/library/Author/Title", folder_diagnosis: { path_clear: true } },
+        { kind: "book", folder_path: "/tmp/dump" },
+      ]),
+      1,
+    );
     const ids = Array.from({ length: 14 }, (_, i) => `w${i}`);
     assert.deepEqual(sortingJkStep({ direction: "next", activeId: "w0", loadedIds: ids, visibleCap: 12 }), {
       focusId: "w1",
@@ -461,6 +482,9 @@ describe("Sorting triage defaults and page window", () => {
     });
     assert.match(reviewPageSrc, /sortingJkStep/);
     assert.match(reviewPageSrc, /sortingFilterAnnounce/);
+    assert.match(reviewPageSrc, /sortingOpenCountLogLine/);
+    assert.match(reviewPageSrc, /sorting-copy-week-log/);
+    assert.match(reviewPageSrc, /key === "a"/);
     assert.match(reviewPageSrc, /data-testid="sorting-filter-live"/);
     assert.match(reviewPageSrc, /aria-live="polite"/);
     assert.match(reviewPageSrc, /activeSlipId/);

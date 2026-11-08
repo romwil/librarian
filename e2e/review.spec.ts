@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { dismissWhatsNewIfPresent, loginAsOwner } from "./fixtures/auth";
 
-const JKX_LABEL = "Keyboard shortcuts (j next, k previous, x more)";
+const JKX_LABEL = "Keyboard shortcuts (j next, k previous, a apply, x more)";
 
 test.describe("Review / Sorting desk", () => {
   test.beforeEach(async ({ page }) => {

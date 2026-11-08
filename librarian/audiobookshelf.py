@@ -38,6 +38,59 @@ def _norm_name(value: Any) -> str:
     return re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
 
 
+_BOOK_N_PREFIX = re.compile(
+    r"^(.+?),\s*Book\s+\d+\s*[-–—:]\s*(.+)$",
+    re.IGNORECASE,
+)
+
+
+def _title_match_keys(value: Any) -> set[str]:
+    """Normed title keys: full, after last dash, series Book N suffix, long colon head."""
+    raw = _text(value)
+    if not raw:
+        return set()
+    keys: set[str] = set()
+    full = _norm_name(raw)
+    if full:
+        keys.add(full)
+    for sep in (" - ", " – ", " — "):
+        if sep in raw:
+            tail = _norm_name(raw.rsplit(sep, 1)[-1])
+            if tail:
+                keys.add(tail)
+    book_n = _BOOK_N_PREFIX.match(raw)
+    if book_n:
+        tail = _norm_name(book_n.group(2))
+        if tail:
+            keys.add(tail)
+    if ":" in raw:
+        head = _norm_name(raw.split(":", 1)[0])
+        # Long heads only — short ones like "book" collide.
+        if head and len(head) >= 8:
+            keys.add(head)
+    return keys
+
+
+def _author_is_usable(value: Any) -> bool:
+    """Reject empty / punctuation-only dump authors like ``^`` or ``-``."""
+    return len(_norm_name(value)) >= 3
+
+
+def _authors_match(work_author: Any, item_author_keys: set[str]) -> bool:
+    key = _norm_name(work_author)
+    if len(key) < 3:
+        return False
+    if key in item_author_keys:
+        return True
+    for other in item_author_keys:
+        if not other:
+            continue
+        shorter, longer = (key, other) if len(key) <= len(other) else (other, key)
+        if len(shorter) >= 5 and shorter in longer:
+            return True
+    return False
+
+
 def normalize_abs_url(base_url: str) -> str:
     raw = _text(base_url)
     if not raw:
@@ -135,12 +188,25 @@ class AudiobookshelfClient:
         return []
 
     def library_items(self, library_id: str) -> List[Dict[str, Any]]:
-        payload = self._get(f"api/libraries/{library_id}/items?limit=1000")
-        if isinstance(payload, dict) and isinstance(payload.get("results"), list):
-            return [row for row in payload["results"] if isinstance(row, dict)]
-        if isinstance(payload, list):
-            return [row for row in payload if isinstance(row, dict)]
-        return []
+        """Page ABS library items (500/page) so large libraries are not truncated."""
+        lib_id = _text(library_id)
+        if not lib_id:
+            return []
+        items: List[Dict[str, Any]] = []
+        page = 0
+        page_size = 500
+        while page < 40:
+            payload = self._get(f"api/libraries/{lib_id}/items?limit={page_size}&page={page}")
+            batch: List[Dict[str, Any]] = []
+            if isinstance(payload, dict) and isinstance(payload.get("results"), list):
+                batch = [row for row in payload["results"] if isinstance(row, dict)]
+            elif isinstance(payload, list):
+                batch = [row for row in payload if isinstance(row, dict)]
+            items.extend(batch)
+            if len(batch) < page_size:
+                break
+            page += 1
+        return items
 
     def audiobook_items(self) -> List[Dict[str, Any]]:
         items: List[Dict[str, Any]] = []
@@ -284,7 +350,12 @@ def _work_asins(work: Mapping[str, Any]) -> set[str]:
 
 
 def match_item(work: Dict[str, Any], items: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-    """ASIN, then ISBN, then exact author+title. Fail closed — no title-only guesses."""
+    """ASIN, then ISBN, then title cores (+ author when usable).
+
+    Title cores cover ABS series prefixes (``Series, Book 1 - Title``) and subtitles.
+    Junk authors (``^``, ``-``, empty) allow a match only when exactly one ABS item
+    shares a title core — still fail closed on ambiguous title-only piles.
+    """
     work_asins = _work_asins(work)
     if work_asins:
         for item in items:
@@ -295,23 +366,49 @@ def match_item(work: Dict[str, Any], items: List[Dict[str, Any]]) -> Optional[Di
         for item in items:
             if work_keys.intersection(_item_isbns(item)):
                 return item
-    title_key = _norm_name(work.get("title"))
-    author_key = _norm_name(work.get("author"))
-    if not title_key or not author_key:
+    title_keys = _title_match_keys(work.get("title"))
+    if not title_keys:
         return None
+    candidates: List[Dict[str, Any]] = []
     for item in items:
-        if _norm_name(_item_title(item)) != title_key:
-            continue
-        item_authors = {_norm_name(name) for name in _item_authors(item)}
-        if author_key in item_authors:
-            return item
+        item_keys = _title_match_keys(_item_title(item))
+        if title_keys.intersection(item_keys):
+            candidates.append(item)
+    if not candidates:
+        return None
+    if _author_is_usable(work.get("author")):
+        for item in candidates:
+            item_authors = {_norm_name(name) for name in _item_authors(item)}
+            if _authors_match(work.get("author"), item_authors):
+                return item
+        return None
+    if len(candidates) == 1:
+        return candidates[0]
     return None
 
 
+_ABS_CATALOG_LIMIT = 10000
+_UNMATCHED_SAMPLE = 24
+
+
 def abs_match_counts(db: Database) -> Dict[str, int]:
-    works = db.list_works(kind="audiobook", limit=500)
+    works = db.list_works(kind="audiobook", limit=_ABS_CATALOG_LIMIT)
     matched = sum(1 for row in works if _text(row.get("abs_item_id")))
-    return {"matched": matched, "audiobooks": len(works)}
+    audiobooks = len(works)
+    return {"matched": matched, "audiobooks": audiobooks, "unmatched": max(0, audiobooks - matched)}
+
+
+def _unmatched_sample(rows: Sequence[Mapping[str, Any]], *, limit: int = _UNMATCHED_SAMPLE) -> List[Dict[str, str]]:
+    sample: List[Dict[str, str]] = []
+    for row in rows[: max(0, int(limit))]:
+        sample.append(
+            {
+                "id": _text(row.get("id")),
+                "title": _text(row.get("title")),
+                "author": _text(row.get("author")),
+            }
+        )
+    return sample
 
 
 def match_audiobooks(
@@ -320,38 +417,82 @@ def match_audiobooks(
     *,
     client: Optional[AudiobookshelfClient] = None,
     force: bool = False,
+    scan_first: bool = False,
 ) -> Dict[str, Any]:
     """Match catalog audiobooks to ABS items. No token → no HTTP, no catalog load."""
     url = _text(getattr(settings, "audiobookshelf_url", ""))
     token = _text(getattr(settings, "audiobookshelf_api_token", ""))
     if not url or not token:
-        return {"matched": 0, "audiobooks": 0, "updated": 0, "called": False}
+        return {
+            "matched": 0,
+            "audiobooks": 0,
+            "updated": 0,
+            "called": False,
+            "unmatched": 0,
+            "unmatched_sample": [],
+        }
     counts = abs_match_counts(db)
-    works = db.list_works(kind="audiobook", limit=500)
+    works = db.list_works(kind="audiobook", limit=_ABS_CATALOG_LIMIT)
     unmatched = [row for row in works if not _text(row.get("abs_item_id"))]
     if not unmatched and not force:
-        return {**counts, "updated": 0, "called": False}
+        return {
+            **counts,
+            "updated": 0,
+            "called": False,
+            "unmatched": 0,
+            "unmatched_sample": [],
+        }
     own_client = client is None
     abs_client = client or AudiobookshelfClient(url, token)
     updated = 0
+    scanned: List[str] = []
+    still: List[Dict[str, Any]] = list(unmatched)
     try:
+        if scan_first:
+            try:
+                scanned = abs_client.scan_audiobook_libraries()
+            except AudiobookshelfError as error:
+                logger.info("ABS scan before match skipped: %s", error)
         items = abs_client.audiobook_items()
+        still = []
         for work in unmatched:
             hit = match_item(work, items)
             if hit is None:
+                still.append(work)
                 continue
             item_id = _text(hit.get("id"))
             if not item_id:
+                still.append(work)
                 continue
             db.upsert_work({**work, "abs_item_id": item_id})
             updated += 1
     except AudiobookshelfError as error:
         logger.info("ABS match skipped: %s", error)
-        return {**abs_match_counts(db), "updated": 0, "called": True, "error": str(error)}
+        leftover = [
+            row
+            for row in unmatched
+            if not _text((db.get_work(_text(row.get("id"))) or {}).get("abs_item_id"))
+        ]
+        return {
+            **abs_match_counts(db),
+            "updated": updated,
+            "called": True,
+            "error": str(error),
+            "unmatched": len(leftover),
+            "unmatched_sample": _unmatched_sample(leftover),
+            "scanned_libraries": scanned,
+        }
     finally:
         if own_client:
             abs_client.close()
-    return {**abs_match_counts(db), "updated": updated, "called": True}
+    return {
+        **abs_match_counts(db),
+        "updated": updated,
+        "called": True,
+        "unmatched": len(still),
+        "unmatched_sample": _unmatched_sample(still),
+        "scanned_libraries": scanned,
+    }
 
 
 def notify_abs_scan(
