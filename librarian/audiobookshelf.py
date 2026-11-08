@@ -42,6 +42,23 @@ _BOOK_N_PREFIX = re.compile(
     r"^(.+?),\s*Book\s+\d+\s*[-–—:]\s*(.+)$",
     re.IGNORECASE,
 )
+_TITLE_BRACKETS = re.compile(r"[\(\[\{][^\)\]\}]*[\)\]\}]")
+_EDITION_NOISE = re.compile(
+    r"\b("
+    r"unabridged|abridged|remastered|expanded|deluxe|anniversary|"
+    r"special\s+edition|limited\s+edition|collector'?s\s+edition|"
+    r"edition"
+    r")\b",
+    re.IGNORECASE,
+)
+_AUTHOR_TOKENS = re.compile(r"[a-z0-9]+")
+
+
+def _title_core(value: Any) -> str:
+    """Strip bracketed notes and edition noise (``(Unabridged)``, ``Deluxe Edition``)."""
+    text = _TITLE_BRACKETS.sub(" ", _text(value))
+    text = _EDITION_NOISE.sub(" ", text)
+    return " ".join(text.split())
 
 
 def _title_match_keys(value: Any) -> set[str]:
@@ -50,24 +67,29 @@ def _title_match_keys(value: Any) -> set[str]:
     if not raw:
         return set()
     keys: set[str] = set()
-    full = _norm_name(raw)
-    if full:
-        keys.add(full)
-    for sep in (" - ", " – ", " — "):
-        if sep in raw:
-            tail = _norm_name(raw.rsplit(sep, 1)[-1])
+    variants = [raw]
+    core = _title_core(raw)
+    if core and core.casefold() != raw.casefold():
+        variants.append(core)
+    for variant in variants:
+        full = _norm_name(variant)
+        if full:
+            keys.add(full)
+        for sep in (" - ", " – ", " — "):
+            if sep in variant:
+                tail = _norm_name(_title_core(variant.rsplit(sep, 1)[-1]))
+                if tail:
+                    keys.add(tail)
+        book_n = _BOOK_N_PREFIX.match(variant)
+        if book_n:
+            tail = _norm_name(_title_core(book_n.group(2)))
             if tail:
                 keys.add(tail)
-    book_n = _BOOK_N_PREFIX.match(raw)
-    if book_n:
-        tail = _norm_name(book_n.group(2))
-        if tail:
-            keys.add(tail)
-    if ":" in raw:
-        head = _norm_name(raw.split(":", 1)[0])
-        # Long heads only — short ones like "book" collide.
-        if head and len(head) >= 8:
-            keys.add(head)
+        if ":" in variant:
+            head = _norm_name(_title_core(variant.split(":", 1)[0]))
+            # Long heads only — short ones like "book" collide.
+            if head and len(head) >= 8:
+                keys.add(head)
     return keys
 
 
@@ -76,17 +98,63 @@ def _author_is_usable(value: Any) -> bool:
     return len(_norm_name(value)) >= 3
 
 
-def _authors_match(work_author: Any, item_author_keys: set[str]) -> bool:
+def _author_form(value: Any) -> Optional[tuple[str, str]]:
+    """``(lastname, given_initials)`` — ``R. F. Kuang`` / ``Rebecca F. Kuang`` → ``(kuang, rf)``."""
+    raw = _text(value)
+    if not raw:
+        return None
+    if "," in raw:
+        last, _, first = raw.partition(",")
+        last_parts = _AUTHOR_TOKENS.findall(last.lower())
+        first_parts = _AUTHOR_TOKENS.findall(first.lower())
+        if not last_parts:
+            return None
+        last_name = last_parts[0]
+        if len(last_name) < 2:
+            return None
+        initials = "".join(part[0] for part in first_parts if part)
+        return (last_name, initials)
+    parts = _AUTHOR_TOKENS.findall(raw.lower())
+    if not parts:
+        return None
+    last_name = parts[-1]
+    if len(last_name) < 2:
+        return None
+    initials = "".join(part[0] for part in parts[:-1] if part)
+    return (last_name, initials)
+
+
+def _author_forms_compatible(left: tuple[str, str], right: tuple[str, str]) -> bool:
+    if left[0] != right[0]:
+        return False
+    a, b = left[1], right[1]
+    if not a or not b:
+        return False
+    # Require multi-initial agreement (rf ↔ rf, rf ↔ r). A lone shared first
+    # initial (John/Jane Smith → j) is too weak even with a title gate.
+    shorter, longer = (a, b) if len(a) <= len(b) else (b, a)
+    return len(longer) >= 2 and longer.startswith(shorter)
+
+
+def _authors_match(work_author: Any, item_author_names: Sequence[Any]) -> bool:
     key = _norm_name(work_author)
     if len(key) < 3:
         return False
-    if key in item_author_keys:
+    item_keys = {_norm_name(name) for name in item_author_names if _text(name)}
+    if key in item_keys:
         return True
-    for other in item_author_keys:
+    for other in item_keys:
         if not other:
             continue
         shorter, longer = (key, other) if len(key) <= len(other) else (other, key)
         if len(shorter) >= 5 and shorter in longer:
+            return True
+    work_form = _author_form(work_author)
+    if work_form is None:
+        return False
+    for name in item_author_names:
+        other_form = _author_form(name)
+        if other_form and _author_forms_compatible(work_form, other_form):
             return True
     return False
 
@@ -173,8 +241,11 @@ class AudiobookshelfClient:
             return None
         try:
             return response.json()
-        except ValueError as error:
-            raise AudiobookshelfError("Audiobookshelf returned non-JSON") from error
+        except ValueError:
+            # ABS library scan returns 200 text/plain "OK". Success with a non-JSON
+            # body is still success — callers that need objects check isinstance.
+            return None
+
 
     def _get(self, path: str, *, allow_404: bool = False) -> Any:
         return self._request("GET", path, allow_404=allow_404)
@@ -378,8 +449,7 @@ def match_item(work: Dict[str, Any], items: List[Dict[str, Any]]) -> Optional[Di
         return None
     if _author_is_usable(work.get("author")):
         for item in candidates:
-            item_authors = {_norm_name(name) for name in _item_authors(item)}
-            if _authors_match(work.get("author"), item_authors):
+            if _authors_match(work.get("author"), _item_authors(item)):
                 return item
         return None
     if len(candidates) == 1:

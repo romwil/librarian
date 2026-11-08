@@ -76,6 +76,28 @@ def test_trigger_scan_posts_libraries():
     assert not any("lib-podcasts" in path for _method, path in seen if _method == "POST")
 
 
+def test_trigger_scan_accepts_plain_ok_body():
+    """Live ABS returns 200 text/plain 'OK' — must not raise non-JSON."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/api/libraries"):
+            return httpx.Response(
+                200,
+                json={"libraries": [{"id": "lib-books", "mediaType": "book"}]},
+            )
+        return httpx.Response(200, content=b"OK", headers={"content-type": "text/plain"})
+
+    client = AudiobookshelfClient(
+        "http://abs.local",
+        "secret-abs",
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        assert client.scan_audiobook_libraries() == ["lib-books"]
+    finally:
+        client.close()
+
+
 def test_notify_abs_scan_fail_soft_and_skip():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(500)
@@ -378,6 +400,56 @@ def test_match_item_prefers_asin_then_isbn_then_title(tmp_path):
         ],
     )
     assert by_author_name["id"] == "by-author-name"
+    # ABS often appends (Unabridged) / edition noise to the title.
+    unabridged = match_item(
+        {"title": "Spinning Silver", "author": "Naomi Novik"},
+        [
+            {
+                "id": "silver",
+                "media": {
+                    "metadata": {
+                        "title": "Spinning Silver (Unabridged)",
+                        "authors": [{"name": "Naomi Novik"}],
+                    }
+                },
+            }
+        ],
+    )
+    assert unabridged["id"] == "silver"
+    # Initialisms vs expanded given names (catalog Rebecca F. Kuang ↔ ABS R. F. Kuang).
+    kuang = match_item(
+        {"title": "The Poppy War", "author": "Rebecca F. Kuang"},
+        [
+            {
+                "id": "poppy",
+                "media": {
+                    "metadata": {
+                        "title": "The Poppy War",
+                        "authors": [{"name": "R. F. Kuang"}],
+                    }
+                },
+            }
+        ],
+    )
+    assert kuang["id"] == "poppy"
+    # Same last name + only a shared single initial must not collide across titles.
+    assert (
+        match_item(
+            {"title": "Unique Work", "author": "John Smith"},
+            [
+                {
+                    "id": "jane",
+                    "media": {
+                        "metadata": {
+                            "title": "Unique Work",
+                            "authors": [{"name": "Jane Smith"}],
+                        }
+                    },
+                }
+            ],
+        )
+        is None
+    )
 
     db = Database(tmp_path / "librarian.db")
     work = db.upsert_work(

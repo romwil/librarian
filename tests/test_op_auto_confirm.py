@@ -16,7 +16,6 @@ from librarian.op_auto_confirm import (
 from librarian.wanted import add_wanted
 from librarian.wanted_search import ask_wanted_hit
 
-
 NZB_XML = b'<?xml version="1.0"?><nzb xmlns="http://www.newzbin.com/DTD/2003/nzb"></nzb>'
 
 
@@ -49,8 +48,8 @@ def test_should_auto_confirm_default_off_and_readers_never():
 
 
 def test_ask_wanted_auto_confirms_allowlisted_host(tmp_path, monkeypatch):
-    from librarian.sabnzbd import SABClient
     from librarian.nzbfinder import NZBFinderClient
+    from librarian.sabnzbd import SABClient
 
     db = Database(tmp_path / "librarian.db")
     owner = db.create_local_user(
