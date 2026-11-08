@@ -16,7 +16,6 @@ from librarian.isbn_auto_file import (
 from librarian.pulse import assemble_pulse, increment
 from librarian.sorting_undo import public_undo, restore_sorting_undo
 
-
 VALID_ISBN = "9780143127741"
 
 
