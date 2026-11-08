@@ -41,8 +41,10 @@ import {
   reviewProgressDwellRemainingMs,
   reviewPurgeProgressVisible,
   slipTriage,
+  pathClearCount,
   sortingFilterAnnounce,
   sortingJkStep,
+  sortingOpenCountLogLine,
   suggestBatchIsRunning,
   suggestBatchSummary,
   triageCountsFromWorks,
@@ -56,8 +58,9 @@ function migrationIsRunning(status) {
 }
 
 export default function ReviewPage() {
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const focusId = String(params.get("work") || "").trim();
+  const reasonFromUrl = String(params.get("reason") || "").trim();
   const [works, setWorks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [drafts, setDrafts] = useState({});
@@ -84,6 +87,8 @@ export default function ReviewPage() {
   const [nextCursor, setNextCursor] = useState(null);
   const [countsByReason, setCountsByReason] = useState({});
   const [undo, setUndo] = useState(null);
+  const [buildStamp, setBuildStamp] = useState(null);
+  const [logCopied, setLogCopied] = useState("");
   const [jkxOn, setJkxOn] = useState(() => {
     try {
       return localStorage.getItem("librarian.sorting.jkx") !== "off";
@@ -91,15 +96,16 @@ export default function ReviewPage() {
       return true;
     }
   });
-  const [reasonFilter, setReasonFilter] = useState("");
+  const [reasonFilter, setReasonFilter] = useState(() => reasonFromUrl);
   const [visibleCap, setVisibleCap] = useState(SORTING_VISIBLE_WINDOW);
   const [activeSlipId, setActiveSlipId] = useState("");
   const [filterLive, setFilterLive] = useState("");
   const [purgeConfirmOpen, setPurgeConfirmOpen] = useState(false);
   const focusRef = useRef(null);
   const purgeConfirmOpenerRef = useRef(null);
-  const reasonDefaultApplied = useRef(false);
+  const reasonDefaultApplied = useRef(Boolean(reasonFromUrl));
   const pendingJkRef = useRef(null);
+  const applyRef = useRef(() => {});
   useDocumentTitle(PAGE_TITLE_SORTING);
   const autoMatchTried = useRef(new Set());
   const autoSuggestTried = useRef(new Set());
@@ -174,10 +180,26 @@ export default function ReviewPage() {
   useEffect(reload, [focusId, reasonFilter]);
 
   useEffect(() => {
+    api
+      .status()
+      .then((data) => setBuildStamp(data || null))
+      .catch(() => setBuildStamp(null));
+  }, []);
+
+  useEffect(() => {
     setVisibleCap(SORTING_VISIBLE_WINDOW);
     pendingJkRef.current = null;
     // Keep deep-linked focus; otherwise clear keyboard selection on filter change.
     setActiveSlipId(focusId || "");
+    // Persist reason chip in the URL so refresh / share keeps the triage pile.
+    const next = new URLSearchParams(params);
+    if (reasonFilter) next.set("reason", reasonFilter);
+    else next.delete("reason");
+    if (focusId) next.set("work", focusId);
+    const nextQs = next.toString();
+    if (nextQs !== params.toString()) {
+      setParams(next, { replace: true });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- seed from focusId only when the chip changes
   }, [reasonFilter]);
 
@@ -407,6 +429,7 @@ export default function ReviewPage() {
       /* note already set */
     }
   }
+  applyRef.current = apply;
 
   async function skip(work) {
     try {
@@ -912,8 +935,14 @@ export default function ReviewPage() {
       const tag = String(event.target?.tagName || "").toLowerCase();
       if (tag === "input" || tag === "textarea" || event.target?.isContentEditable) return;
       const key = event.key.toLowerCase();
-      if (key !== "j" && key !== "k" && key !== "x") return;
+      if (key !== "j" && key !== "k" && key !== "x" && key !== "a") return;
       event.preventDefault();
+      if (key === "a") {
+        const id = activeSlipId && loadedSlipIds.includes(activeSlipId) ? activeSlipId : loadedSlipIds[0];
+        const work = works.find((row) => row.id === id);
+        if (work) applyRef.current(work);
+        return;
+      }
       if (key === "x") {
         const id = activeSlipId && loadedSlipIds.includes(activeSlipId) ? activeSlipId : loadedSlipIds[0];
         if (!id) return;
@@ -945,7 +974,7 @@ export default function ReviewPage() {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [jkxOn, loadedSlipIds, activeSlipId, visibleCap, nextCursor]);
+  }, [jkxOn, loadedSlipIds, activeSlipId, visibleCap, nextCursor, works]);
 
   return (
     <div className="admin-room review-page page-settle" data-density="compact">
@@ -955,7 +984,44 @@ export default function ReviewPage() {
       <p className="muted" data-testid="sorting-counts" role="status">
         {reviewBacklog} {reviewBacklog === 1 ? "slip" : "slips"}
         {headerTotal && headerTotal !== reviewBacklog ? ` · ${headerTotal} in groups` : ""}
+        {pathClearCount(works) ? ` · ${pathClearCount(works)} path-clear` : ""}
       </p>
+      <div className="cta-row compact" data-testid="sorting-bd3-ritual">
+        <button
+          type="button"
+          className="cta outline compact"
+          data-testid="sorting-copy-week-log"
+          onClick={async () => {
+            const entries = Object.entries(countsByReason)
+              .map(([reason, count]) => [String(reason || "").trim(), Number(count) || 0])
+              .filter(([, count]) => count > 0)
+              .sort((a, b) => Number(b[1]) - Number(a[1]) || String(a[0]).localeCompare(String(b[0])));
+            const [topReason, topCount] = entries[0] || ["", 0];
+            const line = sortingOpenCountLogLine({
+              version: buildStamp?.version || "",
+              rev: buildStamp?.rev || "",
+              all: reviewBacklog,
+              topReason,
+              topCount,
+            });
+            try {
+              await navigator.clipboard.writeText(line);
+              setLogCopied("Week log copied — paste into HELP BD-3 table.");
+            } catch {
+              setLogCopied(line);
+            }
+          }}
+        >
+          Copy week log
+        </button>
+        {logCopied ? (
+          <p className="muted" role="status" data-testid="sorting-week-log-note">
+            {logCopied}
+          </p>
+        ) : (
+          <p className="muted">BD-3 ritual: copy All + top reason for the HELP open-count table.</p>
+        )}
+      </div>
       <p className="sr-only" aria-live="polite" data-testid="sorting-filter-live">
         {filterLive}
       </p>

@@ -477,9 +477,9 @@ def register_maintain_routes(app: FastAPI, deps: WebDeps) -> None:
         return finished
 
     @app.post("/api/settings/abs-match")
-    def abs_match_settings(request: Request):
+    def abs_match_settings(request: Request, scan: bool = False):
         require_role(request.state.user, "owner")
-        return match_audiobooks(db, settings(), force=True)
+        return match_audiobooks(db, settings(), force=True, scan_first=bool(scan))
 
     @app.post("/api/settings/scan")
     def scan_settings(request: Request):

@@ -253,7 +253,8 @@ export const api = {
   people: () => request("/people"),
   promote: (id) => request(`/music/${id}/promote`, { method: "POST" }),
   pingIndexer: () => request("/indexers/ping", { method: "POST" }),
-  absMatch: () => request("/settings/abs-match", { method: "POST" }),
+  absMatch: ({ scan = false } = {}) =>
+    request(`/settings/abs-match${scan ? "?scan=1" : ""}`, { method: "POST" }),
   rssFeeds: () => request("/rss"),
   saveRss: (body) => request("/rss", { method: "POST", body: JSON.stringify(body) }),
   updateRss: (id, body) => request(`/rss/${id}`, { method: "PUT", body: JSON.stringify(body) }),

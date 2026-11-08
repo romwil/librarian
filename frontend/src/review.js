@@ -561,6 +561,38 @@ export function sortingFilterAnnounce({ reason = "", count = 0 } = {}) {
 }
 
 /**
+ * One clipboard line for the BD-3 weekly open-count ritual (HELP table).
+ * Keeps All + top reason; shells stay off this line.
+ */
+export function sortingOpenCountLogLine({
+  date = "",
+  version = "",
+  rev = "",
+  all = 0,
+  topReason = "",
+  topCount = 0,
+  notes = "",
+} = {}) {
+  const when = String(date || "").trim() || new Date().toISOString().slice(0, 10);
+  const build = [String(version || "").trim(), String(rev || "").trim()].filter(Boolean).join(" / ");
+  const automat = build || "Automat";
+  const total = Math.max(0, Number(all) || 0);
+  const reason = String(topReason || "").trim().replace(/_/g, " ");
+  const reasonCount = Math.max(0, Number(topCount) || 0);
+  const top =
+    reason && reasonCount
+      ? `${reason} ${reasonCount}`
+      : reason || (total ? "n/a" : "clear");
+  const note = String(notes || "").trim() || "Shells ≠ SLO.";
+  return `| **${when}** | **${automat}** | **${total}** | **${top}** | ${note} |`;
+}
+
+/** Path-clear slips in a loaded pile — Accept the clear ones can file these. */
+export function pathClearCount(works = []) {
+  return (works || []).filter((row) => slipRowIsPathClear(row)).length;
+}
+
+/**
  * Pure j/k step across the loaded pile + visible window + optional cursor page.
  * Returns the next focus id and whether to expand the window or call load-more first.
  */

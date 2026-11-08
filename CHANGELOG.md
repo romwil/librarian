@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [1.0.13] — 2026-11-08
+
+### Highlights
+
+- **BD-3 Sorting burn-down tools.** Copy week log for the HELP open-count ritual, reason chips stay in the URL, path-clear tally on the desk, and keyboard **a** applies the focused slip (with j/k/x).
+- **ABS Match leftovers.** Title cores cover series prefixes and junk authors (`^` / empty) when the ABS hit is unique; Settings shows unmatched samples and offers **Scan library, then match**.
+
 ## [1.0.12] — 2026-11-06
 
 ### Highlights

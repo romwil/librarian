@@ -189,7 +189,7 @@ Owners can **Enrich the shelves** on Maintain, or **Enrich** on a book/audiobook
 
 ## Accessibility
 
-Skip to content, a visible focus ring, announced alerts, and overlays that keep keyboard focus are on. The first VoiceOver script (login, join, Read, Listen, Sorting) is [a11y/VOICEOVER.md](a11y/VOICEOVER.md). Owner steps before inviting anyone: [ops/INVITE_CHECKLIST.md](ops/INVITE_CHECKLIST.md). Sorting j / k / x: [Sorting shortcuts](#sorting-shortcuts).
+Skip to content, a visible focus ring, announced alerts, and overlays that keep keyboard focus are on. The first VoiceOver script (login, join, Read, Listen, Sorting) is [a11y/VOICEOVER.md](a11y/VOICEOVER.md). Owner steps before inviting anyone: [ops/INVITE_CHECKLIST.md](ops/INVITE_CHECKLIST.md). Sorting j / k / a / x: [Sorting shortcuts](#sorting-shortcuts).
 
 ## What leaves this server
 
@@ -239,7 +239,7 @@ Owner and self-delete of the owner card are refused. Readers ask the owner to pa
 
 **Owner:** maintainer (household owner on Automat).
 
-**Ritual:** once a week, open Sorting (`/review`) and record the **open slip count** (All badge). Prefer the oldest reason group first.
+**Ritual:** once a week, open Sorting (`/review`) and record the **open slip count** (All badge). Prefer the oldest reason group first. Sorting’s **Copy week log** button puts an All + top-reason markdown row on the clipboard for the table below.
 
 **Day 0:** **2026-11-05** — Phase A triage defaults live on Automat with **1.0.11**. Evaluate the 30-day window on **2026-12-05** (go/no-go for Desk rewrite, or owner waive).
 

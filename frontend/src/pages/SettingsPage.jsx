@@ -400,6 +400,7 @@ export default function SettingsPage() {
                 {absMatch ? (
                   <p className="muted" data-testid="abs-match-count">
                     {absMatch.matched} of {absMatch.audiobooks} audiobooks matched to the player
+                    {Number(absMatch.unmatched) > 0 ? ` · ${absMatch.unmatched} still unmatched` : ""}
                   </p>
                 ) : null}
                 <div className="cta-row">
@@ -413,11 +414,20 @@ export default function SettingsPage() {
                       setMatching(true);
                       try {
                         const data = await api.absMatch();
-                        setAbsMatch({ matched: data.matched, audiobooks: data.audiobooks });
+                        setAbsMatch({
+                          matched: data.matched,
+                          audiobooks: data.audiobooks,
+                          unmatched: data.unmatched,
+                          unmatched_sample: data.unmatched_sample || [],
+                        });
                         setAbsNote(
-                          data.called
-                            ? `Matched ${data.updated} more · ${data.matched} of ${data.audiobooks} on the player`
-                            : "Add an Audiobookshelf URL and token, then match.",
+                          data.error
+                            ? humanError(data.error)
+                            : data.called
+                              ? `Matched ${data.updated} more · ${data.matched} of ${data.audiobooks} on the player${
+                                  data.unmatched ? ` · ${data.unmatched} still unmatched` : ""
+                                }`
+                              : "Add an Audiobookshelf URL and token, then match.",
                         );
                       } catch (err) {
                         setAbsNote(humanError(err));
@@ -428,8 +438,57 @@ export default function SettingsPage() {
                   >
                     Match Audiobookshelf
                   </ThinkingButton>
+                  <ThinkingButton
+                    type="button"
+                    className="cta outline"
+                    busy={matching}
+                    disabled={!settings.audiobookshelf_api_token_set}
+                    data-testid="settings-abs-scan-match"
+                    onClick={async () => {
+                      setAbsNote("");
+                      setMatching(true);
+                      try {
+                        const data = await api.absMatch({ scan: true });
+                        setAbsMatch({
+                          matched: data.matched,
+                          audiobooks: data.audiobooks,
+                          unmatched: data.unmatched,
+                          unmatched_sample: data.unmatched_sample || [],
+                        });
+                        const scanned = (data.scanned_libraries || []).length;
+                        setAbsNote(
+                          data.error
+                            ? humanError(data.error)
+                            : data.called
+                              ? `Scanned ${scanned || "ABS"} · matched ${data.updated} more · ${data.matched} of ${data.audiobooks} on the player${
+                                  data.unmatched ? ` · ${data.unmatched} still unmatched` : ""
+                                }`
+                              : "Add an Audiobookshelf URL and token, then match.",
+                        );
+                      } catch (err) {
+                        setAbsNote(humanError(err));
+                      } finally {
+                        setMatching(false);
+                      }
+                    }}
+                  >
+                    Scan library, then match
+                  </ThinkingButton>
                 </div>
-                {absNote ? <p className={/Matched /.test(absNote) ? "muted" : "alert"}>{absNote}</p> : null}
+                {absNote ? <p className={/Matched |Scanned /.test(absNote) ? "muted" : "alert"}>{absNote}</p> : null}
+                {Array.isArray(absMatch?.unmatched_sample) && absMatch.unmatched_sample.length ? (
+                  <ul className="muted" data-testid="abs-unmatched-sample" aria-label="Unmatched audiobooks sample">
+                    {absMatch.unmatched_sample.slice(0, 12).map((row) => (
+                      <li key={row.id || `${row.title}-${row.author}`}>
+                        {row.title || "Untitled"}
+                        {row.author ? ` — ${row.author}` : ""}
+                      </li>
+                    ))}
+                    {Number(absMatch.unmatched) > absMatch.unmatched_sample.length ? (
+                      <li>…and {Number(absMatch.unmatched) - absMatch.unmatched_sample.length} more</li>
+                    ) : null}
+                  </ul>
+                ) : null}
               </section>
             ) : null}
 

@@ -255,16 +255,30 @@ def test_abs_match_by_isbn_and_no_token_makes_no_calls(tmp_path):
     abs_client.close()
 
 
-def test_abs_title_only_does_not_match(tmp_path):
+def test_abs_title_only_matches_unique_not_ambiguous(tmp_path):
+    """Junk/empty author may match a unique ABS title core; never when two share it."""
     db = Database(tmp_path / "librarian.db")
-    work = db.upsert_work({"kind": "audiobook", "title": "Dune", "author": ""})
+    unique = db.upsert_work({"kind": "audiobook", "title": "Dune", "author": ""})
+    ambiguous = db.upsert_work({"kind": "audiobook", "title": "Shared", "author": "^"})
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/api/libraries"):
             return httpx.Response(200, json={"libraries": [{"id": "lib-1", "mediaType": "book"}]})
         return httpx.Response(
             200,
-            json={"results": [{"id": "abs-dune", "media": {"metadata": {"title": "Dune", "authors": []}}}]},
+            json={
+                "results": [
+                    {"id": "abs-dune", "media": {"metadata": {"title": "Dune", "authors": []}}},
+                    {
+                        "id": "shared-a",
+                        "media": {"metadata": {"title": "Shared", "authors": [{"name": "A"}]}},
+                    },
+                    {
+                        "id": "shared-b",
+                        "media": {"metadata": {"title": "Shared", "authors": [{"name": "B"}]}},
+                    },
+                ]
+            },
         )
 
     abs_client = AudiobookshelfClient("http://abs.example", "tok", transport=httpx.MockTransport(handler))
@@ -273,7 +287,8 @@ def test_abs_title_only_does_not_match(tmp_path):
         Settings(audiobookshelf_url="http://abs.example", audiobookshelf_api_token="tok"),
         client=abs_client,
     )
-    assert db.get_work(work["id"])["abs_item_id"] in (None, "")
+    assert db.get_work(unique["id"])["abs_item_id"] == "abs-dune"
+    assert db.get_work(ambiguous["id"])["abs_item_id"] in (None, "")
     abs_client.close()
 
 
