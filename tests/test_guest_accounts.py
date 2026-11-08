@@ -192,6 +192,9 @@ def test_export_is_own_card_only(tmp_path, monkeypatch):
     payload = bundle.json()
     assert payload["user"]["display_name"] == "export-me"
     assert "password_hash" not in payload["user"]
+    assert payload.get("export_version") == 1
+    assert isinstance(payload.get("generated_at"), (int, float))
+    assert isinstance(payload.get("checklist"), list) and payload["checklist"]
     dumped = str(payload)
     assert "password123" not in dumped
     assert "owner" not in payload["user"]["display_name"]

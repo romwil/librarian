@@ -2,7 +2,7 @@
 
 Task-first notes for the **Automat** Unraid host that runs Librarian. Audience: developers and Cursor agents working on this repo’s live stack — not generic install docs (see [DOCKER.md](../DOCKER.md)).
 
-Jump to: [LAN hosts](#lan-hosts-source-of-truth) · [Public SSL / CF Access](#public-ssl--household-perimeter) · [Kit](#kit--appdata) · [First boot](#first-boot-env) · [Deploy](#deploy-now-on-host-build) · [Backups](#backups-and-restore) · [Audiobookshelf](#audiobookshelf) · [See also](#see-also)
+Jump to: [LAN hosts](#lan-hosts-source-of-truth) · [Public SSL / CF Access](#public-ssl--household-perimeter) · [Kit](#kit--appdata) · [First boot](#first-boot-env) · [Settings vs `.env`](#settings-vs-host-env-ops-005) · [Deploy](#deploy-now-on-host-build) · [Backups](#backups-and-restore) · [Audiobookshelf](#audiobookshelf) · [See also](#see-also)
 
 ---
 
@@ -109,6 +109,22 @@ rsync -az --delete \
 ## First-boot env
 
 Seed `/mnt/user/appdata/librarian/.env` **on the host** from the operator. Do not invent production passwords in git.
+
+### Settings vs host `.env` (OPS-005)
+
+Prefer **Settings** (owner UI) for routine library and integration values. Use host **`.env` / Unraid template** only for boot, deploy trust, and break-glass secrets. Do **not** SSH-edit `/config/settings.json` for day-to-day changes — the UI writes that file (`0600`).
+
+| Concern | Own it in | Notes |
+|---------|-----------|-------|
+| Owner username / password seed | Host `.env` | First boot + lockout recovery; rotating env password updates the **same** username |
+| `LIBRARIAN_SESSION_SECRET` | Host `.env` (or auto `/config/session_secret`) | Never commit; public `librarian-dev-session-secret` is refused |
+| `LIBRARIAN_TRUST_PROXY_HEADERS` | Host `.env` | Opt-in **only** behind Tunnel/Caddy/NPM — never a laptop SSH tunnel |
+| `PUID` / `PGID` / `TZ` | Host `.env` / container | Deploy identity; not a Settings field |
+| Public URL / Origin allowlist | Settings → Public URL **or** `PUBLIC_BASE_URL` / `LIBRARIAN_PUBLIC_ORIGINS` | VIP guest landings; LAN `:8793` stays ops truth |
+| Library roots, SAB URL/key, indexer hosts/tokens, quiet hours, LLM, ABS, mail | **Settings** | Env fills blanks until you save; after save, `settings.json` wins for that key |
+| Break-glass when UI is down | Host `.env` + restart | Re-seed secrets / trust flags; then reopen Settings to confirm |
+
+See also [DOCKER.md](../DOCKER.md) (env fill vs Settings win) and [SECURITY.md](../SECURITY.md) (secret inventory).
 
 Required:
 

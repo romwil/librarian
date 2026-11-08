@@ -116,16 +116,23 @@ WAL-safe catalog restore steps live in [ops/AUTOMAT.md](ops/AUTOMAT.md#backups-a
 
 ## Dependency audit (SEC-008)
 
-Quarterly maintainer ritual (calendar reminder on the Automat host):
+Quarterly maintainer ritual (calendar reminder on the Automat host) **and** on each `1.0.x` release candidate:
 
 1. `cd` the Librarian kit / git checkout on the Mac.
-2. Python: `.venv/bin/pip list --outdated` (or `uv pip list --outdated`) — note CVEs in FastAPI/uvicorn/httpx/cryptography.
-3. Frontend: `cd frontend && npm outdated` — note react-router / vite majors only when intentional.
-4. Record date + “no action” or ticket links in the household ops log. No automatic Dependabot merge without a green pytest + `npm test` + `npm run build`.
+2. Python: `.venv/bin/pip list --outdated` (or `uv pip list --outdated`) — note CVEs in FastAPI/uvicorn/httpx/cryptography. Prefer `pip-audit` when installed.
+3. Frontend: `cd frontend && npm outdated` and `npm audit --omit=dev` — note react-router / vite majors only when intentional.
+4. Record date + disposition below (or ticket links). High/Critical findings block release unless an **expiring exception** is logged. No automatic Dependabot merge without a green pytest + `npm test` + `npm run build`. Audit output must never include secrets.
+
+### Audit log
+
+| Date | Tools | Findings | Disposition | Exception expiry | Owner |
+|------|-------|----------|-------------|------------------|-------|
+| 2026-11-06 | `pip list --outdated`; `npm outdated`; `npm audit --omit=dev` | Python: routine minor/patch drift (incl. FastAPI/uvicorn/starlette) — no High/Critical advisory run this pass (`pip-audit` not installed). Frontend: **2 moderate** in `react-router` / `react-router-dom` 6.x (GHSA-wrjc-x8rr-h8h6 open-redirect; GHSA-337j-9hxr-rhxg SSR hydrate constructor). Fix path is force-upgrade to react-router **7.x** (breaking). | **Accept temporarily** — SPA is client-routed (no SSR hydrate path); open-redirect risk is low for household Origin-locked app. Do **not** `npm audit fix --force` on this patch. Schedule deliberate RR7 bump + triad. | **2027-02-06** | maintainer |
 
 ## Related docs
 
-- [ops/AUTOMAT.md](ops/AUTOMAT.md) — kit path, LAN truth, first-boot env
+- [HELP.md](HELP.md#your-card-export-isolation-and-deletion) — export field checklist, progress isolation, pause/delete cascade (PRIV-002 / 007 / 009)
+- [ops/AUTOMAT.md](ops/AUTOMAT.md) — kit path, LAN truth, first-boot env, Settings vs `.env` (OPS-005)
 - [DOCKER.md](DOCKER.md) — volumes, PUID/PGID
 - [ops/AUTOMAT.md](ops/AUTOMAT.md#backups-and-restore) — nightly snapshots and restore
 - [TESTING.md](TESTING.md) — handshake + proxy fail-closed tests

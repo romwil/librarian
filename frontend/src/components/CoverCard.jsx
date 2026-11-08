@@ -273,9 +273,26 @@ export default function CoverCard({ work, onRequest, badge, beyond = false, role
               {favorite ? "In Favorites" : "Favorite"}
             </button>
             {detailLoading ? <span className="work-action-label">Warming the lamp…</span> : null}
+            {detail && canListen && playerLink?.href ? (
+              <a
+                className="work-action-item"
+                href={playerLink.href}
+                target="_blank"
+                rel="noreferrer"
+                data-testid="rail-open-player"
+              >
+                {Number(menuWork.progress) > 0
+                  ? "Continue listening"
+                  : playerLink.label || "Open in player"}
+              </a>
+            ) : null}
             {detail && canListen ? (
               <Link className="work-action-item" to={workListenPath(work.id)}>
-                {Number(menuWork.progress) > 0 ? "Continue listening" : "Listen"}
+                {playerLink?.href
+                  ? "Listen in Librarian"
+                  : Number(menuWork.progress) > 0
+                    ? "Continue listening"
+                    : "Listen"}
               </Link>
             ) : null}
             {detail && canRead ? (
@@ -290,11 +307,6 @@ export default function CoverCard({ work, onRequest, badge, beyond = false, role
                 rel="noreferrer"
               >
                 {readLabel}
-              </a>
-            ) : null}
-            {detail && canListen && playerLink?.href ? (
-              <a className="work-action-item" href={playerLink.href} target="_blank" rel="noreferrer">
-                {playerLink.label || "Open in player"}
               </a>
             ) : null}
             {detail && komgaLink?.href ? (

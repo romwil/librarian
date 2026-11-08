@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, it } from "vitest";
 import {
   formatMatchPercent,
@@ -6,12 +9,15 @@ import {
   lanternPresence,
   lanternStatsModel,
   lanternWeather,
+  lanternWeatherLabel,
   scorecardLanterns,
   scorecardPresence,
 } from "./lib/indexerScorecard.js";
 import { readStyles } from "./test/styles.js";
 
+const root = dirname(fileURLToPath(import.meta.url));
 const stylesSrc = readStyles();
+const scorecardSrc = readFileSync(join(root, "components/IndexerScorecard.jsx"), "utf8");
 
 function hexToRgb(hex) {
   const h = hex.replace("#", "");
@@ -43,6 +49,17 @@ describe("indexerScorecard", () => {
     assert.equal(lanternWeather({ muted: true }), "muted");
     assert.equal(lanternWeather({ weather: "<script>" }), "idle");
     assert.equal(lanternWeather(null), "idle");
+  });
+
+  it("names lantern weather in plain text (A11Y-006)", () => {
+    assert.equal(lanternWeatherLabel({ weather: "bright" }), "Bright");
+    assert.equal(lanternWeatherLabel({ weather: "dim" }), "Dim");
+    assert.equal(lanternWeatherLabel({ weather: "dark" }), "Dark");
+    assert.equal(lanternWeatherLabel({ muted: true }), "Muted");
+    assert.equal(lanternWeatherLabel({}), "Idle");
+    assert.match(scorecardSrc, /indexer-lantern-weather/);
+    assert.match(scorecardSrc, /lanternWeatherLabel/);
+    assert.match(stylesSrc, /\.indexer-lantern-weather-mark/);
   });
 
   it("prefers server presence and stays warm on hostile payloads", () => {

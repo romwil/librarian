@@ -1,0 +1,62 @@
+{
+  "captured_at": "2026-11-06T04:45:00Z",
+  "ticket": "PERF-003",
+  "base_url": "http://10.10.1.202:8793",
+  "method": "npx lighthouse --only-categories=performance",
+  "thresholds_note": "Baseline only \u2014 fail later releases on unexplained >10% LCP regression vs median of these artifacts.",
+  "runs": [
+    {
+      "artifact": "2026-11-06-hall-390.json",
+      "requested_url": "http://10.10.1.202:8793/",
+      "final_url": "http://10.10.1.202:8793/",
+      "form_factor": "mobile",
+      "performance_score": 1,
+      "lcp_ms": 942.903,
+      "inp_ms": null,
+      "cls": 0,
+      "tbt_ms": 0,
+      "transfer_bytes": 354235,
+      "auth_note": "headless without session cookie \u2014 foyer/login shell if redirected; use scripts/capture-lighthouse.mjs with COOKIE for signed-in Hall/Search"
+    },
+    {
+      "artifact": "2026-11-06-hall-desktop.json",
+      "requested_url": "http://10.10.1.202:8793/",
+      "final_url": "http://10.10.1.202:8793/",
+      "form_factor": "desktop",
+      "performance_score": 1,
+      "lcp_ms": 464.858,
+      "inp_ms": null,
+      "cls": 0,
+      "tbt_ms": 0,
+      "transfer_bytes": 354235,
+      "auth_note": "headless without session cookie \u2014 foyer/login shell if redirected; use scripts/capture-lighthouse.mjs with COOKIE for signed-in Hall/Search"
+    },
+    {
+      "artifact": "2026-11-06-search-390.json",
+      "requested_url": "http://10.10.1.202:8793/search",
+      "final_url": "http://10.10.1.202:8793/search",
+      "form_factor": "mobile",
+      "performance_score": 1,
+      "lcp_ms": 935.232,
+      "inp_ms": null,
+      "cls": 0,
+      "tbt_ms": 0,
+      "transfer_bytes": 354235,
+      "auth_note": "headless without session cookie \u2014 foyer/login shell if redirected; use scripts/capture-lighthouse.mjs with COOKIE for signed-in Hall/Search"
+    },
+    {
+      "artifact": "2026-11-06-search-desktop.json",
+      "requested_url": "http://10.10.1.202:8793/search",
+      "final_url": "http://10.10.1.202:8793/search",
+      "form_factor": "desktop",
+      "performance_score": 1,
+      "lcp_ms": 264.46,
+      "inp_ms": null,
+      "cls": 0,
+      "tbt_ms": 0,
+      "transfer_bytes": 354235,
+      "auth_note": "headless without session cookie \u2014 foyer/login shell if redirected; use scripts/capture-lighthouse.mjs with COOKIE for signed-in Hall/Search"
+    }
+  ],
+  "owner_session_vitals": "2026-11-06-owner-session-vitals.json"
+}

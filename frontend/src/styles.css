@@ -1,8 +1,8 @@
 /* Librarian — warm paper by default. Literata for titles, Source Sans for UI.
    One accent, on the primary action. Dark theme is opt-in.
 
-   Import order is the cascade. Chrome is last: `.room > *` and the topbar /
-   tab-bar restores must win over same-specificity rules in every room. */
+   Import order is the cascade. Chrome restores topbar / tab-bar after room
+   stacking; mobile-native is last so phone safe-area / Listen docks win. */
 
 @import "./styles/fonts.css";
 @import "./styles/motion.css";
@@ -12,3 +12,4 @@
 @import "./styles/reader.css";
 @import "./styles/owner.css";
 @import "./styles/chrome.css";
+@import "./styles/mobile-native.css";

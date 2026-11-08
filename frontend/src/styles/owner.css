@@ -517,15 +517,80 @@ html[data-theme="lights-down"] .indexer-scorecard {
   box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--muted) 85%, var(--border));
   opacity: 1;
 }
-.indexer-lantern-muted .indexer-lantern-flame,
-.indexer-lantern.is-muted .indexer-lantern-flame {
-  background: color-mix(in srgb, var(--muted) 50%, transparent);
-  opacity: 0.4;
+.indexer-lantern-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.45rem 0.65rem;
 }
 .indexer-lantern-name {
   margin: 0;
   font-weight: 600;
   color: var(--lantern-ink);
+}
+.indexer-lantern-weather {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--gilt) 35%, var(--border));
+  color: var(--lantern-ink);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1.2;
+}
+.indexer-lantern-weather-mark {
+  display: inline-block;
+  width: 0.55rem;
+  height: 0.55rem;
+  flex: 0 0 auto;
+  /* Shape — not hue — carries weather in monochrome (A11Y-006). */
+  background: currentColor;
+  opacity: 0.85;
+}
+.indexer-lantern-weather-bright .indexer-lantern-weather-mark,
+.indexer-lantern-weather-mark[data-mark="bright"] {
+  border-radius: 50%;
+}
+.indexer-lantern-weather-dim .indexer-lantern-weather-mark,
+.indexer-lantern-weather-mark[data-mark="dim"] {
+  border-radius: 2px;
+  transform: rotate(45deg) scale(0.85);
+  opacity: 0.7;
+}
+.indexer-lantern-weather-dark .indexer-lantern-weather-mark,
+.indexer-lantern-weather-mark[data-mark="dark"] {
+  border-radius: 1px;
+  width: 0.55rem;
+  height: 0.2rem;
+  opacity: 0.55;
+}
+.indexer-lantern-weather-muted .indexer-lantern-weather-mark,
+.indexer-lantern-weather-mark[data-mark="muted"] {
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px currentColor;
+  opacity: 0.55;
+}
+.indexer-lantern-weather-idle .indexer-lantern-weather-mark,
+.indexer-lantern-weather-mark[data-mark="idle"] {
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px currentColor;
+  border-style: dashed;
+  opacity: 0.45;
+}
+.indexer-lantern-muted .indexer-lantern-flame,
+.indexer-lantern.is-muted .indexer-lantern-flame {
+  /* Dashed hollow — distinct from idle ring without hue. */
+  background: transparent;
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--muted) 70%, var(--border));
+  opacity: 0.55;
+  border-radius: 2px;
 }
 .indexer-lantern-presence {
   margin: 0.15rem 0 0;

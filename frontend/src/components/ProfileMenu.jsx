@@ -2,6 +2,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api.js";
 import { useAnchoredPopover } from "../hooks/useAnchoredPopover.js";
 import { pointerEventInsideNode } from "../lib/pointerInside.js";
+import { deskMenuSortingLabel } from "../lib/deskBadge.js";
 import {
   FONT_STEP_MAX,
   applyUiFontStep,
@@ -29,6 +30,7 @@ export default function ProfileMenu({
   onThemeChange,
   owner = false,
   op = false,
+  reviewCount = 0,
 }) {
   const navigate = useNavigate();
   // Range thumbs retarget onto document, so outside-dismiss hit-tests the pointer.
@@ -179,8 +181,13 @@ export default function ProfileMenu({
                   </Link>
                 ) : null}
                 {op ? (
-                  <Link to="/review" className="profile-menu-link" onClick={() => setOpen(false)}>
-                    Sorting
+                  <Link
+                    to="/review"
+                    className="profile-menu-link"
+                    onClick={() => setOpen(false)}
+                    data-testid="profile-sorting-link"
+                  >
+                    {deskMenuSortingLabel(reviewCount)}
                   </Link>
                 ) : null}
                 {op ? (

@@ -324,6 +324,17 @@ def test_match_item_prefers_asin_then_isbn_then_title(tmp_path):
     by_title = match_item({"title": "Dune", "author": "Herbert"}, items)
     assert by_title["id"] == "by-title"
     assert match_item({"title": "Dune", "author": ""}, items) is None
+    # ABS library list payloads often ship authorName instead of authors[].
+    by_author_name = match_item(
+        {"title": "Uprooted", "author": "Naomi Novik"},
+        [
+            {
+                "id": "by-author-name",
+                "media": {"metadata": {"title": "Uprooted", "authorName": "Naomi Novik"}},
+            }
+        ],
+    )
+    assert by_author_name["id"] == "by-author-name"
 
     db = Database(tmp_path / "librarian.db")
     work = db.upsert_work(

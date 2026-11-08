@@ -45,7 +45,7 @@
 ### Still thin / open gaps (honest)
 
 - PNG screenshots still sparse (MCP `browser_take_screenshot` timeouts); evidence is a11y snapshots + `file:line` + live routes.
-- Live axe / SR on `:8793` not completed (**A11Y-008** Suspected AA). **Dated residual 2026-11-05:** mocked Playwright axe on **:8794** green for Hall / Search / Sorting / Downloads / Settings / Library card / overlays in Lights Up + Lights Down after 1.0.11; live owner axe on Automat **:8793** still open (capacity — do not claim AA Confirmed).
+- **A11Y-008 closed 2026-11-06 (axe process bar):** live owner-session axe on Automat **:8793** / **1.0.11** / **d3ff4aa** — Login + Hall / Search / Sorting / Settings × Lights Up + Lights Down → **0** critical/serious (also 0 moderate/minor). Artifact: [`a11y-008-live-axe-2026-11-06.json`](a11y-008-live-axe-2026-11-06.json). Mocked **:8794** remains green. **VoiceOver / NVDA / 200% zoom / text-spacing still aspirational** — do **not** claim full WCAG AA Confirmed; axe serious=0 closes the process ticket only.
 - Reader-role session not walked (owner-only).
 - Cloudflare Access policies not exported/verified — owner-reported vip + VLAN used in **BD-1** / SEC.
 - `05_` / `08_` / `09_` / `10_` are rich vs prior stubs but shorter than Projectionist peak bags (~660–1200); Part A complete; further depth optional.
@@ -61,9 +61,13 @@ Full-platform 360 on Automat production Librarian. Review only — no app code, 
 - Owner session live during rewrite (Maintain morning desk: Sorting 27 + unshelved shells 5541; Sorting filters All 27 / low confidence 22; ~1021 a11y refs on `/review`)
 - Vip `https://librarian.automat.vip` is CF Access–gated — **not** version truth; treated as household edge for **BD-1** discussion only
 
+### BD-3 weekly ritual (post–1.0.11)
+
+**Logged 2026-11-05 (1.0.11 / `d3ff4aa`, day 0 / week 1):** Sorting open **All 27**, top reason **low confidence 22** (also audnexus unmatched 2, unknown identity 2, missing folder 1) via owner session on `:8793` + `GET /api/review`. Shells ≠ Sorting SLO. Canonical table: [HELP.md · Sorting open-count SLO](../../HELP.md#sorting-open-count-slo-bd-3). Evaluate **2026-12-05**.
+
 ## Handoff notes
 - **Start / target:** Automat LAN only. Port **8793**.
 - **Auth:** Owner session in interactive browser; do not invent invites.
 - **Deploy path:** Host `./docker-run.sh` only; Hub deferred pending **BD-1**.
 - **Big decisions:** Six ADRs in `31_`; `DecisionRequired=yes` on SEC-006 (BD-1), PRD-012/UX-001 (BD-2), SEC-009 (BD-5). Maintainer WR note on CF Access captured under BD-1; formal **Decided.** lines still open.
-- **Next human step:** Record BD decisions (especially BD-1 / BD-3 / BD-6); execute Now roadmap without Desk rewrite.
+- **Next human step:** Continue BD-3 weekly open-count ritual; A11Y-008 live axe / restore drill when capacity; no Desk rewrite before **2026-12-05**.

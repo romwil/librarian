@@ -1,0 +1,172 @@
+/* Phone native-feel — Hall / work / Listen chrome.
+   Owned by the mobile workstream; keep ABS handoff edits out of this file. */
+
+/* Top bar clears the notch when viewport-fit=cover is on. */
+.topbar {
+  min-height: var(--topbar-h);
+  height: calc(var(--topbar-h) + env(safe-area-inset-top, 0px));
+  padding: env(safe-area-inset-top, 0px) var(--gutter) 0;
+}
+
+/* Listening room — hide phone tabbar so transport owns the thumb zone. */
+body:has(.listen-room) .mobile-tabbar {
+  visibility: hidden;
+  pointer-events: none;
+}
+body:has(.listen-room) {
+  padding-bottom: 0;
+}
+
+.reader-head {
+  padding: max(var(--space-3), env(safe-area-inset-top, 0px)) var(--gutter) var(--space-3);
+}
+
+/* Listening room enter — calm rise (springy, not bounce). */
+@keyframes listen-enter {
+  from {
+    opacity: 0;
+    transform: translateY(0.55rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.listen-room {
+  animation: listen-enter var(--motion-settle) both;
+}
+
+.listen-room .listen-panel {
+  animation: soft-enter var(--motion-settle) both;
+  animation-delay: 50ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .listen-room,
+  .listen-room .listen-panel {
+    animation: none !important;
+  }
+}
+
+@media (max-width: 720px) {
+  html:has(.mobile-tabbar) {
+    scroll-padding-top: calc(var(--topbar-h) + env(safe-area-inset-top, 0px));
+  }
+
+  /* Compact CTAs read as desktop pills on a phone — grow to thumb size. */
+  .cta.compact {
+    min-height: var(--tap-min);
+    min-width: var(--tap-min);
+    padding: 10px 14px;
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    box-sizing: border-box;
+  }
+
+  .peek .cta-row.compact > .cta,
+  .peek-actions > .cta,
+  .peek .cta-row.compact > a.cta,
+  .peek-actions > a.cta {
+    min-height: var(--tap-min);
+    padding: 10px 14px;
+  }
+
+  /* Shorter hero + fixed thumb dock for Listen / Open in player / Read. */
+  .work-hero {
+    min-height: min(48vh, 380px);
+    padding: max(var(--space-6), env(safe-area-inset-top, 0px)) var(--gutter) var(--space-5);
+  }
+  .work-hero h1 {
+    font-size: clamp(1.85rem, 9vw, 2.75rem);
+    max-width: 18ch;
+  }
+  .work-hero .cta-row[data-testid="work-primary"] {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: var(--mobile-tabbar-clearance);
+    z-index: 45;
+    margin: 0;
+    padding: 0.65rem max(12px, env(safe-area-inset-left, 0px)) 0.7rem
+      max(12px, env(safe-area-inset-right, 0px));
+    gap: var(--space-2);
+    background: color-mix(in srgb, var(--surface) 92%, transparent);
+    backdrop-filter: blur(14px);
+    border-top: 1px solid var(--border-subtle);
+    box-shadow: 0 -10px 28px color-mix(in srgb, #000 22%, transparent);
+  }
+  .work-hero .cta-row[data-testid="work-primary"] > .cta,
+  .work-hero .cta-row[data-testid="work-primary"] > a.cta {
+    min-height: var(--tap-min);
+    padding: 10px 16px;
+    font-size: 12px;
+  }
+  .work-hero .cta-row[data-testid="work-primary"] > .muted {
+    display: none;
+  }
+  .work-page {
+    padding-bottom: calc(var(--mobile-tabbar-clearance) + 4.5rem);
+  }
+}
+
+@media (max-width: 640px) {
+  .listen-stage {
+    align-items: stretch;
+    justify-content: flex-start;
+    overflow: auto;
+    padding: var(--space-4) var(--gutter) calc(7.5rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Thumb-reach transport — fixed above the home indicator while Listen is open. */
+  .listen-controls {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 310;
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    padding: 10px max(var(--gutter), env(safe-area-inset-left, 0px))
+      calc(10px + env(safe-area-inset-bottom, 0px)) max(var(--gutter), env(safe-area-inset-right, 0px));
+    background: color-mix(in srgb, var(--surface) 94%, transparent);
+    backdrop-filter: blur(14px);
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .listen-controls .cta {
+    min-height: var(--tap-min);
+    min-width: var(--tap-min);
+    padding: 10px 12px;
+    font-size: 12px;
+  }
+
+  .listen-controls .cta[data-testid="listen-toggle"] {
+    flex: 1 1 6.5rem;
+    max-width: 10rem;
+    font-size: 13px;
+  }
+
+  .listen-external {
+    margin-top: var(--space-5);
+    margin-bottom: var(--space-2);
+  }
+
+  .listen-external .cta {
+    min-height: var(--tap-min);
+    display: inline-flex;
+    align-items: center;
+    padding: 10px 16px;
+  }
+
+  .listen-chapters .chip,
+  .listen-files .file-list-open {
+    min-height: var(--tap-min);
+    display: inline-flex;
+    align-items: center;
+  }
+}

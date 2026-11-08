@@ -56,7 +56,7 @@ const AUDIO = {
 
 const LINKED = {
   ...AUDIO,
-  work: { ...AUDIO.work, id: "linked-1" },
+  work: { ...AUDIO.work, id: "linked-1", abs_item_id: "already-linked" },
   listen: {
     can_listen: true,
     player: { href: ABS_HREF, label: "Open in player", provider: "audiobookshelf" },
@@ -168,6 +168,9 @@ describe("Work page editions and listen", () => {
     const listen = await screen.findByTestId("work-listen");
     assert.equal(listen.tagName, "A");
     assert.equal(listen.getAttribute("href"), ABS_HREF);
+    const onPlayer = await screen.findByTestId("work-on-player");
+    assert.equal(onPlayer.tagName, "A");
+    assert.equal(onPlayer.getAttribute("href"), ABS_HREF);
     assert.equal(screen.getByTestId("where").textContent, "/works/linked-1");
   });
 });

@@ -2,6 +2,7 @@ import {
   lanternPresence,
   lanternStatsModel,
   lanternWeather,
+  lanternWeatherLabel,
   scorecardLanterns,
   scorecardPresence,
 } from "../lib/indexerScorecard.js";
@@ -116,9 +117,19 @@ export default function IndexerScorecard({
                 data-weather={weather}
                 style={{ "--settle-i": String(index) }}
               >
-                <span className="indexer-lantern-flame" aria-hidden="true" />
+                <span className="indexer-lantern-flame" aria-hidden="true" data-weather={weather} />
                 <div className="indexer-lantern-copy">
-                  <p className="indexer-lantern-name">{row.name || "Indexer"}</p>
+                  <div className="indexer-lantern-heading">
+                    <p className="indexer-lantern-name">{row.name || "Indexer"}</p>
+                    <span
+                      className={`indexer-lantern-weather indexer-lantern-weather-${weather}`}
+                      data-testid="indexer-lantern-weather"
+                      data-weather={weather}
+                    >
+                      <span className="indexer-lantern-weather-mark" aria-hidden="true" data-mark={weather} />
+                      {lanternWeatherLabel(row)}
+                    </span>
+                  </div>
                   <p className="indexer-lantern-presence">{lanternPresence(row)}</p>
                   <LanternStats row={row} showExtra={showExtra} />
                 </div>

@@ -2,6 +2,15 @@
 
 export const LANTERN_ORDER = ["bright", "dim", "dark", "muted", "idle"];
 
+/** Plain-language weather words — never rely on flame hue alone (A11Y-006). */
+export const LANTERN_WEATHER_LABELS = {
+  bright: "Bright",
+  dim: "Dim",
+  dark: "Dark",
+  muted: "Muted",
+  idle: "Idle",
+};
+
 export const HOUSEHOLD_KIND_ORDER = ["book", "magazine", "comic", "audiobook", "music"];
 
 export const KIND_LABELS = {
@@ -18,6 +27,11 @@ export function lanternWeather(row) {
   if (LANTERN_ORDER.includes(weather)) return weather;
   if (row?.muted) return "muted";
   return "idle";
+}
+
+export function lanternWeatherLabel(row) {
+  const weather = lanternWeather(row);
+  return LANTERN_WEATHER_LABELS[weather] || LANTERN_WEATHER_LABELS.idle;
 }
 
 export function lanternPresence(row) {
