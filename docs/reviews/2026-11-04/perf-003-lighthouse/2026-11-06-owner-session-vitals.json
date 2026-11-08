@@ -1,0 +1,29 @@
+{
+  "captured_at": "2026-11-06T04:50:00Z",
+  "ticket": "PERF-003",
+  "method": "cursor-ide-browser CDP PerformanceObserver (buffered LCP) on Automat owner session",
+  "base_url": "http://10.10.1.202:8793",
+  "note": "Signed-in Hall/Search. Complements headless Lighthouse JSON (which may paint foyer/shell without cookie).",
+  "runs": [
+    {
+      "route": "hall",
+      "path": "/",
+      "viewport": { "w": 390, "h": 844 },
+      "lcp_ms": 4124,
+      "lcp_size": 21395,
+      "fcp_ms": 1048,
+      "cls": 0,
+      "auth": "owner-session"
+    },
+    {
+      "route": "search",
+      "path": "/search",
+      "viewport": { "w": 390, "h": 844 },
+      "lcp_ms": 736,
+      "lcp_size": 4718,
+      "fcp_ms": 408,
+      "cls": 0,
+      "auth": "owner-session"
+    }
+  ]
+}

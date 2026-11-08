@@ -26,7 +26,7 @@ Discover and Find stay on household reading kinds: books, magazines, comics, aud
 
 Owners and ops can subscribe to a Newznab RSS (Find or Settings) for one Librarian kind. New items wait as **Asked** slips on Downloads — confirm before SABnzbd. Librarian does not silently download a whole feed.
 
-Optional Audiobookshelf URL and token (`AUDIOBOOKSHELF_URL` / `AUDIOBOOKSHELF_API_TOKEN`) in Settings match catalog audiobooks by ISBN, then author and title. Set **Audiobook target** to Audiobookshelf to prefer that handoff. After an audiobook shelves, Librarian asks ABS to scan (fail-soft). Matched titles sync listen progress both ways when you open Listen or pause/persist — without wiping a better local bookmark. That is a quiet **On the player** link, not a new admin skin, and it does not send audiobooks to the Plexamp music library. Plex remains the default audiobook target until you change it.
+Optional Audiobookshelf URL and token (`AUDIOBOOKSHELF_URL` / `AUDIOBOOKSHELF_API_TOKEN`) in Settings match catalog audiobooks by ASIN, then ISBN, then author and title. Set **Audiobook target** to Audiobookshelf to prefer that handoff. After an audiobook shelves, Librarian asks ABS to scan (fail-soft). Matched titles sync listen progress both ways when you open Listen or pause/persist — without wiping a better local bookmark. **On the player** and **Open in player** are the same deep-link to the household ABS item (`http://10.10.1.202:13378/item/…` on Automat LAN) — not a new admin skin, and they do not send audiobooks to the Plexamp music library. Off-LAN vip (`librarian.automat.vip`) cannot reach LAN `:13378` without Tailscale or a later public ABS hostname; in-app Listen still works. Plex remains the default audiobook target until you change it.
 
 ## The Hall
 
@@ -159,6 +159,8 @@ Music organizes into Incoming (`library/incoming-music`), then **Promote** moves
 
 **Listen** opens the Listening room on an audiobook work (HTML5 audio + Media Session, chapter skip when tags exist, Continue bookmark). Peek and the work page use **Listen** as the primary CTA — never Promote to Plexamp. **Open in player** appears when Audiobookshelf has matched the title (or when the audiobook target is ABS), or as a soft Plex handoff when that is the audiobook target. With Audiobookshelf configured but unmatched, the note stays honest. Progress pauses push to ABS when linked; opening Listen can pull a farther ABS position.
 
+Phone Safari already uses `viewport-fit=cover` with a fixed bottom tab bar and Listening-room transport that clears the home indicator. There is **no web app manifest / Add to Home Screen icon pack** yet — installability stays a documented gap until the household asks for it.
+
 On a **book** work page (and peek when the detail has loaded), Librarian surfaces a companion audiobook when the same ISBN, title+author, or series index is already on the shelves (**Audiobook on the shelves** → Listen), or offers **Find audiobook** with kind=audiobook and title/author/ISBN prefilled. Books, comics, and magazines use **Read** for the in-browser reader (not Open); audiobooks keep Listen.
 
 Plex has **no** dedicated Audiobooks library type. Point a Plex **Music** library (named e.g. “Audiobooks”) at `audiobooks_root` (`/data/media/library/audiobooks`), enable store track progress / long-form, and use Plexamp speed + skip on that library. Folder layout is `{Author}/{Title}/`, or `{Author}/{Series}/Book N - Title/` when the book is in a series. Organize writes `metadata.json`, `desc.txt`, `reader.txt`, and `cover.jpg` beside the audio for Audiobookshelf. Keep audiobooks out of the music library root. When an Audiobookshelf URL and token are set, that player is the recommended listen target; unmatched titles still play in Librarian. Hide Finished on music — albums are not “read.” Shared Automat folder ownership and the Plex Music filename rule: [automat-media-contract.md](automat-media-contract.md). Library cutover from old flat `/data/media/books`: [ops/LIBRARY_MIGRATE.md](ops/LIBRARY_MIGRATE.md).
@@ -199,6 +201,40 @@ When a **language-model key is on** (Settings → Language model), keepers’ id
 
 Readers’ shelf Search stays local until they **Ask the house**. Confirm on Downloads is still the only way SABnzbd starts.
 
+## Your card: export, isolation, and deletion
+
+**Progress stays on your card.** Continue, Finished, Favorites, private shelves, and Inbox rows are keyed to the signed-in member. A shared shelf can show its volumes to the household; it never exposes another card’s reading place. Contract tests: PRIV-002 / PRIV-007 / PRIV-009 (`librarian/privacy.py` registry + `tests/test_privacy_rights.py`).
+
+### Export checklist (`GET /api/auth/export`)
+
+Library card → Export downloads **your** stores only. Schema version and a field checklist travel with the JSON.
+
+| Included | Excluded (with reason) |
+| --- | --- |
+| Card identity (id, display name, role, dates, disabled) | Password hash — secrets never export |
+| Prefs (ambient + nested UI / notification prefs) | Sessions (IP / UA) — revoke on pause/delete, not portable |
+| Progress (work, place, fraction) | Password-reset tokens — one-time security artifacts |
+| Owned shelves + shelf items | Celebrations seen — ephemeral UI |
+| Whispers you authored | Digest mail queue — transient; Inbox covers delivered copy |
+| Inbox notifications | Invites you minted or redeemed — household ops |
+| | Jobs / asks as requester — queue history stays; identity detaches on delete |
+| | Security-event subject/actor ids — audit anonymized, not exported |
+| | Nightly catalog snapshots — age out ≤ 35 days; not in the live export |
+| | Indexer / SAB / LLM / session secrets — host settings, never member-portable |
+
+Other members’ private data never appears. Export is logged as a security event without storing the bundle contents.
+
+### Pause vs delete (owner People desk)
+
+| Action | Live database | What remains |
+| --- | --- | --- |
+| **Pause (disable)** | Card marked disabled; **all sessions revoked** | Rows stay until delete or re-enable |
+| **Delete** | Removes prefs, progress, owned shelves/items, whispers, celebrations, Inbox + digest queue, sessions, resets; deletes the user row | Pending invites that person minted are **revoked**; redeemed-by pointer **detached**; job `requested_by` cleared; security-event user/actor ids **nulled** (events kept) |
+| **Snapshots** | Unchanged at delete time | Nightly SQLite copies may still hold the member until the **35-day** retention window ages out |
+| **Providers** | n/a | Cloudflare Access / mail / indexer / ABS copies follow operator or provider terms — not rewritten by delete |
+
+Owner and self-delete of the owner card are refused. Readers ask the owner to pause or delete. The in-app Privacy notice restates live-vs-snapshot deletion.
+
 ## Sorting open-count SLO (BD-3)
 
 **Owner:** maintainer (household owner on Automat).
@@ -214,6 +250,15 @@ Failing the SLO means prioritize identify quality, the shells ritual below, and/
 **Desk rewrite (BD-2 option 4)** stays deferred until this SLO is green (or the owner explicitly waives). See [ROADMAP.md](ROADMAP.md#post-360-nov-4-residuals-phase-d-gates).
 
 **Shells are a separate Maintain ritual** — not part of this Sorting SLO. Unshelved catalog shells (Maintain → Purge shells) are purged on their own cadence with snapshot + typed confirm. Do not fold shell count into the Sorting open badge narrative.
+
+### Weekly open-count log
+
+Record **All** + **top reason** from LAN Sorting (`http://10.10.1.202:8793/review` or `GET /api/review` as owner). Shells stay off this table.
+
+| Date | Automat | All | Top reason | Notes |
+|---|---|---:|---|---|
+| **2026-11-05** (day 0 / week 1) | **1.0.11** / `d3ff4aa` | **27** | **low confidence 22** | Owner session + `GET /api/review`: also audnexus unmatched 2, unknown identity 2, missing folder 1. Shells ≠ SLO. |
+
 
 **Chrome badge calm (PRD-005):** top-bar **Sorting** / phone **Desk** stay quiet at 0 (celebratory clear mark) and show a quiet dot for 1–5 open slips. The raw count appears in chrome only when open **> 5**. Exact tally is always one click away on the Library card → **Sorting (N)**.
 

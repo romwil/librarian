@@ -1,0 +1,134 @@
+{
+  "host": "http://10.10.1.202:8793",
+  "started": "2026-11-06T04:39:08.453Z",
+  "buildProbe": null,
+  "results": [
+    {
+      "route": "login",
+      "path": "/login",
+      "theme": null,
+      "impacts": {
+        "critical": 0,
+        "serious": 0,
+        "moderate": 0,
+        "minor": 0,
+        "other": 0
+      },
+      "violations": []
+    },
+    {
+      "route": "hall",
+      "path": "/",
+      "theme": "Lights Up",
+      "impacts": {
+        "critical": 0,
+        "serious": 0,
+        "moderate": 0,
+        "minor": 0,
+        "other": 0
+      },
+      "violations": []
+    },
+    {
+      "route": "search",
+      "path": "/search",
+      "theme": "Lights Up",
+      "impacts": {
+        "critical": 0,
+        "serious": 0,
+        "moderate": 0,
+        "minor": 0,
+        "other": 0
+      },
+      "violations": []
+    },
+    {
+      "route": "sorting",
+      "path": "/review",
+      "theme": "Lights Up",
+      "impacts": {
+        "critical": 0,
+        "serious": 0,
+        "moderate": 0,
+        "minor": 0,
+        "other": 0
+      },
+      "violations": []
+    },
+    {
+      "route": "settings",
+      "path": "/settings",
+      "theme": "Lights Up",
+      "impacts": {
+        "critical": 0,
+        "serious": 0,
+        "moderate": 0,
+        "minor": 0,
+        "other": 0
+      },
+      "violations": []
+    },
+    {
+      "route": "hall",
+      "path": "/",
+      "theme": "Lights Down",
+      "impacts": {
+        "critical": 0,
+        "serious": 0,
+        "moderate": 0,
+        "minor": 0,
+        "other": 0
+      },
+      "violations": []
+    },
+    {
+      "route": "search",
+      "path": "/search",
+      "theme": "Lights Down",
+      "impacts": {
+        "critical": 0,
+        "serious": 0,
+        "moderate": 0,
+        "minor": 0,
+        "other": 0
+      },
+      "violations": []
+    },
+    {
+      "route": "sorting",
+      "path": "/review",
+      "theme": "Lights Down",
+      "impacts": {
+        "critical": 0,
+        "serious": 0,
+        "moderate": 0,
+        "minor": 0,
+        "other": 0
+      },
+      "violations": []
+    },
+    {
+      "route": "settings",
+      "path": "/settings",
+      "theme": "Lights Down",
+      "impacts": {
+        "critical": 0,
+        "serious": 0,
+        "moderate": 0,
+        "minor": 0,
+        "other": 0
+      },
+      "violations": []
+    }
+  ],
+  "health": {
+    "status": "ok"
+  },
+  "finished": "2026-11-06T04:39:44.783Z",
+  "seriousOrCriticalTotal": 0,
+  "verdict": "PASS_AXE_SERIOUS_ZERO",
+  "buildInfo": "1.0.11 built 2026-11-05T05:19:55Z rev d3ff4aa",
+  "method": "Playwright AxeBuilder against http://10.10.1.202:8793 owner session; settleMotion + ambient off; no API mocks",
+  "scope": "Login; Hall/Search/Sorting/Settings \u00d7 Lights Up + Lights Down",
+  "note": "Zero violations (critical/serious/moderate/minor). Closes A11Y-008 axe process bar per residual plan ambiguity #3; VoiceOver/NVDA/200%/text-spacing remain aspirational \u2014 do not claim full WCAG AA Confirmed."
+}

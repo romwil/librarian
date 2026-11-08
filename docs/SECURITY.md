@@ -132,7 +132,7 @@ Quarterly maintainer ritual (calendar reminder on the Automat host) **and** on e
 ## Related docs
 
 - [HELP.md](HELP.md#your-card-export-isolation-and-deletion) — export field checklist, progress isolation, pause/delete cascade (PRIV-002 / 007 / 009)
-- [ops/AUTOMAT.md](ops/AUTOMAT.md) — kit path, LAN truth, first-boot env
+- [ops/AUTOMAT.md](ops/AUTOMAT.md) — kit path, LAN truth, first-boot env, Settings vs `.env` (OPS-005)
 - [DOCKER.md](DOCKER.md) — volumes, PUID/PGID
 - [ops/AUTOMAT.md](ops/AUTOMAT.md#backups-and-restore) — nightly snapshots and restore
 - [TESTING.md](TESTING.md) — handshake + proxy fail-closed tests

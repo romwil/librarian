@@ -347,7 +347,21 @@ export default function WorkPeek({ work, onClose, onRequest }) {
                 {catalog.music_state === "incoming" ? <span className="chip">Incoming</span> : null}
                 {isInboundJob(catalog.job_status) ? <span className="chip">On the way</span> : null}
                 {fileCount > 1 ? <span className="chip">{fileCount} files</span> : null}
-                {catalog.abs_item_id ? <span className="chip">On the player</span> : null}
+                {catalog.abs_item_id &&
+                playerLink?.provider === "audiobookshelf" &&
+                playerLink?.href ? (
+                  <a
+                    className="chip"
+                    href={String(playerLink.href)}
+                    target="_blank"
+                    rel="noreferrer"
+                    data-testid="peek-on-player"
+                  >
+                    On the player
+                  </a>
+                ) : catalog.abs_item_id ? (
+                  <span className="chip">On the player</span>
+                ) : null}
               </div>
               {beyond && catalog.title && catalog.title !== displayTitle ? (
                 <p className="peek-raw muted" data-testid="peek-raw-title">

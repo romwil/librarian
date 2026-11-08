@@ -225,7 +225,13 @@ def _item_authors(item: Dict[str, Any]) -> List[str]:
                 name = _text(author)
             if name:
                 names.append(name)
-    author = _text(meta.get("author") or item.get("author"))
+    # ABS library list payloads often omit `authors[]` and only set authorName.
+    author = _text(
+        meta.get("author")
+        or meta.get("authorName")
+        or item.get("author")
+        or item.get("authorName")
+    )
     if author:
         names.append(author)
     return names

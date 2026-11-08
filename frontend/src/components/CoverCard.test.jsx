@@ -118,6 +118,39 @@ describe("CoverCard footer", () => {
     assert.equal(screen.queryByTestId("stacks-card-footer"), null);
   });
 
+  it("prefers Open in player on Continue listening when the title is ABS-linked", async () => {
+    const audio = {
+      id: "audio-linked",
+      kind: "audiobook",
+      title: "Long Listen",
+      author: "N. Arrator",
+      progress: 40,
+    };
+    const absHref = "http://10.10.1.202:13378/item/already-linked";
+    globalThis.fetch = async (input) => {
+      const url = String(input);
+      if (url.includes("/auth/me")) return json({ user: { role: "reader" } });
+      if (url.includes("/works/")) {
+        return json({
+          work: { ...audio, abs_item_id: "already-linked" },
+          can_download: true,
+          listen: {
+            can_listen: true,
+            player: { href: absHref, label: "Open in player", provider: "audiobookshelf" },
+          },
+          files: [{ id: "m4b", filename: "book.m4b", on_disk: true }],
+        });
+      }
+      return json({});
+    };
+    renderCard(audio, { cardMode: "stacks", showActions: true });
+    await userEvent.click(screen.getByRole("button", { name: /Actions for/ }));
+    const player = await screen.findByTestId("rail-open-player");
+    assert.equal(player.getAttribute("href"), absHref);
+    assert.equal(player.textContent.trim(), "Continue listening");
+    assert.ok(screen.getByRole("link", { name: "Listen in Librarian" }));
+  });
+
   it("keeps Read and Download in the grip, and a cover click still opens the peek", async () => {
     renderCard({ ...book, title: "<script>alert(1)</script>", author: "Nikole Hannah-Jones" }, { cardMode: "stacks" });
     const footer = screen.getByTestId("stacks-card-footer");

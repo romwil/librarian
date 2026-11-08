@@ -389,7 +389,19 @@ export default function WorkPage() {
             {isInboundJob(work.job_status) ? <span className="chip">On the way</span> : null}
             {data.file_count > 1 ? <span className="chip">{data.file_count} files</span> : null}
             {data.favorite ? <span className="chip is-on">Favorites</span> : null}
-            {work.abs_item_id ? <span className="chip">On the player</span> : null}
+            {work.abs_item_id && absListenHref ? (
+              <a
+                className="chip"
+                href={absListenHref}
+                target="_blank"
+                rel="noreferrer"
+                data-testid="work-on-player"
+              >
+                On the player
+              </a>
+            ) : work.abs_item_id ? (
+              <span className="chip">On the player</span>
+            ) : null}
           </div>
           <h1>{work.title}</h1>
           <p className="work-sub">
