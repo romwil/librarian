@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [1.0.14] — 2026-11-08
+
+### Highlights
+
+- **ABS Match normalization.** Strip `(Unabridged)` / edition noise from title keys, and treat author initialisms as aliases (`Rebecca F. Kuang` ↔ `R. F. Kuang`) so Scan-then-match can link the live Automat leftovers.
+- **ABS library scan accepts plain OK.** Live Audiobookshelf returns `200 text/plain OK` on scan; that is success now instead of `non-JSON` aborting scan-first match.
+
 ## [1.0.13] — 2026-11-08
 
 ### Highlights
