@@ -2,14 +2,20 @@ import { expect, test } from "@playwright/test";
 import { loginAsOwner } from "./fixtures/auth";
 
 test.describe("Search lanes", () => {
-  test("delayed beyond still shows local covers under a second", async ({ page }) => {
+  test("local covers paint before any beyond fetch; CTA starts beyond", async ({ page }) => {
+    let beyondHits = 0;
     await loginAsOwner(page);
     await page.route("**/api/search/beyond**", async (route) => {
-      await new Promise((resolve) => setTimeout(resolve, 2500));
+      beyondHits += 1;
+      await new Promise((resolve) => setTimeout(resolve, 400));
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ beyond: [], public_domain: [], beyond_error: null }),
+        body: JSON.stringify({
+          beyond: [{ title: "Dune NZB", guid: "g-dune", kind: "book" }],
+          public_domain: [],
+          beyond_error: null,
+        }),
       });
     });
     await page.route(/\/api\/search(\?|$)/, async (route) => {
@@ -41,6 +47,20 @@ test.describe("Search lanes", () => {
       timeout: 1000,
     });
     expect(Date.now() - started).toBeLessThan(1000);
+    expect(beyondHits).toBe(0);
+    await expect(page.getByRole("button", { name: "Search beyond the shelves" })).toBeVisible();
+    await expect(page.getByTestId("search-beyond")).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Search beyond the shelves" }).click();
+    await expect(page.getByTestId("search-beyond")).toBeVisible();
+    await expect(page.getByTestId("search-beyond")).toHaveAttribute("aria-busy", "true");
+    await expect(page.getByTestId("skeleton-rail")).toBeVisible();
+    await expect(page.getByTestId("search-status")).toContainText(/looking beyond/i);
+    await expect(page.getByRole("button", { name: /^Dune NZB/ }).first()).toBeVisible({
+      timeout: 5000,
+    });
+    await expect(page.getByTestId("search-beyond")).toHaveAttribute("aria-busy", "false");
+    expect(beyondHits).toBe(1);
   });
 
   test("reader submit stays on the shelf and offers Ask the house", async ({ page }) => {
@@ -77,6 +97,7 @@ test.describe("Search lanes", () => {
     await page.goto("/search?q=dune");
     await expect(page.getByRole("button", { name: /^Dune on the shelf/ }).first()).toBeVisible();
     await expect(page.getByRole("button", { name: "Ask the house" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Search beyond the shelves" })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Beyond the shelves" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Discover" })).toHaveCount(0);
   });

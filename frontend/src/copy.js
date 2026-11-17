@@ -213,7 +213,7 @@ export const SLIP_ACTION_HELP = {
   skip: "Leave this slip without grabbing a release or unpacking the folder.",
 };
 
-export const FIND_BEYOND_CTA = "Find beyond the shelves";
+export const FIND_BEYOND_CTA = "Search beyond the shelves";
 
 /** Search door to New & noted — trending books and the bestseller list. */
 export const TRENDING_BOOKS_LABEL = "Trending books";
@@ -418,13 +418,24 @@ export function searchIdleHint(kind = "") {
   return "Type a title, author, ISBN, or series.";
 }
 
-export function searchStatusLine({ q = "", kind = "", localCount = 0, phase = "idle" } = {}) {
+export function searchStatusLine({
+  q = "",
+  kind = "",
+  localCount = 0,
+  beyondCount = 0,
+  phase = "idle",
+} = {}) {
   const query = String(q || "").trim();
   if (!query) return searchIdleHint(kind);
   const kindBit = kind ? ` · ${kind}` : "";
   const head = `searched ${query}${kindBit}`;
   if (phase === "local") return `${head} · looking on the shelves…`;
   if (phase === "error") return `${head} · the shelves could not be searched`;
+  if (phase === "beyond") return `${head} · looking beyond…`;
+  if (phase === "beyond_error") return `${head} · beyond could not be reached`;
+  if (phase === "done" && beyondCount > 0) {
+    return `${head} · ${localCount} on shelves · ${beyondCount} beyond`;
+  }
   return `${head} · ${localCount} on shelves`;
 }
 

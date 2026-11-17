@@ -4,16 +4,16 @@ import {
   ASK_THE_HOUSE,
   DISCLOSURE_STORAGE_KEY,
   beyondDisclosureBody,
+  canSearchBeyond,
   rememberDisclosure,
   readerSawDisclosure,
-  shouldAutoBeyond,
 } from "./searchLanes.js";
 
 describe("search lanes", () => {
-  it("auto-beyonds owner and op only", () => {
-    assert.equal(shouldAutoBeyond("owner"), true);
-    assert.equal(shouldAutoBeyond("op"), true);
-    assert.equal(shouldAutoBeyond("reader"), false);
+  it("offers beyond to owner and op only — never auto", () => {
+    assert.equal(canSearchBeyond("owner"), true);
+    assert.equal(canSearchBeyond("op"), true);
+    assert.equal(canSearchBeyond("reader"), false);
   });
 
   it("names indexer, model, and public-domain sites in the disclosure", () => {

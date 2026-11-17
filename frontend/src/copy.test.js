@@ -115,14 +115,20 @@ describe("reading room copy", () => {
       /searched stephen king · looking on the shelves/,
     );
     assert.equal(
-      searchStatusLine({ q: "stephen king", kind: "book", localCount: 2, phase: "done" }),
+      searchStatusLine({ q: "stephen king", kind: "book", localCount: 2, phase: "done_local" }),
       "searched stephen king · book · 2 on shelves",
     );
     assert.match(searchStatusLine({ q: "dune", localCount: 1, phase: "error" }), /the shelves could not be searched/);
+    assert.match(searchStatusLine({ q: "dune", phase: "beyond" }), /looking beyond/);
+    assert.equal(
+      searchStatusLine({ q: "dune", kind: "book", localCount: 1, beyondCount: 3, phase: "done" }),
+      "searched dune · book · 1 on shelves · 3 beyond",
+    );
+    assert.match(searchStatusLine({ q: "dune", phase: "beyond_error" }), /beyond could not be reached/);
   });
 
-  it("summarizes Find beyond the shelves without mixing in local hits", () => {
-    assert.equal(FIND_BEYOND_CTA, "Find beyond the shelves");
+  it("summarizes Search beyond the shelves without mixing in local hits", () => {
+    assert.equal(FIND_BEYOND_CTA, "Search beyond the shelves");
     assert.equal(DISCOVER_CTA, "What's trending");
     assert.equal(TRENDING_BOOKS_LABEL, "Trending books");
     assert.equal(findStatusLine({ q: "" }), "Peruse trending on the indexers, or name a title to find.");

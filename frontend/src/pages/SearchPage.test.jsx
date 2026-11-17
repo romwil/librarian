@@ -93,6 +93,7 @@ describe("Search prefill", () => {
 describe("Search Discover", () => {
   it("stays collapsed and does not call discover until Discover is expanded", async () => {
     renderSearch("/search?kind=audiobook");
+    assert.ok(screen.getByTestId("search-idle-cluster"));
     const door = screen.getByRole("link", { name: "New & noted" });
     assert.equal(door.getAttribute("href"), "/noted");
     assert.equal(screen.queryByRole("link", { name: "Trending books" }), null);
@@ -163,12 +164,14 @@ function renderRole(role, path = "/search?q=dune") {
 }
 
 describe("Search lanes", () => {
-  it("owner auto-beyonds after local, without beyond=1 on the shelf call", async () => {
+  it("owner stays local until Search beyond CTA — no silent beyond fetch", async () => {
     renderSearch("/search?q=dune");
     await waitFor(() => assert.ok(searchCalls().length));
-    await waitFor(() => assert.ok(beyondCalls().length));
     assert.equal(new URL(searchCalls()[0], "http://localhost").searchParams.get("beyond"), null);
-    assert.match(beyondCalls()[0], /\/api\/search\/beyond/);
+    assert.equal(beyondCalls().length, 0);
+    const cta = await screen.findByRole("button", { name: "Search beyond the shelves" });
+    assert.ok(cta);
+    assert.equal(screen.queryByTestId("search-beyond"), null);
   });
 
   it("reader submit never hits beyond and offers Ask the house", async () => {
@@ -176,12 +179,13 @@ describe("Search lanes", () => {
     await waitFor(() => assert.ok(searchCalls().length));
     assert.ok(await screen.findByRole("button", { name: "Ask the house" }));
     assert.equal(beyondCalls().length, 0);
+    assert.equal(screen.queryByRole("button", { name: "Search beyond the shelves" }), null);
     assert.equal(screen.queryByRole("heading", { name: "Beyond the shelves" }), null);
     assert.equal(screen.queryByText(/NZBFinder/i), null);
     assert.equal(screen.queryByRole("button", { name: "Discover" }), null);
   });
 
-  it("keeps local covers visible while beyond is still looking", async () => {
+  it("shows skeleton and keeps local covers while beyond is looking after CTA", async () => {
     let releaseBeyond;
     const pending = new Promise((resolve) => {
       releaseBeyond = resolve;
@@ -208,9 +212,16 @@ describe("Search lanes", () => {
     renderSearch("/search?q=dune");
     const localCovers = await screen.findAllByRole("button", { name: /Dune on the shelf/ });
     assert.ok(localCovers.length);
-    assert.equal(beyondCalls().length, 1);
+    assert.equal(beyondCalls().length, 0);
+    await userEvent.click(screen.getByRole("button", { name: "Search beyond the shelves" }));
+    await waitFor(() => assert.equal(beyondCalls().length, 1));
+    const beyond = screen.getByTestId("search-beyond");
+    assert.equal(beyond.getAttribute("aria-busy"), "true");
+    assert.ok(screen.getByTestId("skeleton-rail"));
+    assert.match(screen.getByTestId("search-status").textContent || "", /looking beyond/);
     assert.equal(screen.queryByText("Dune NZB"), null);
     releaseBeyond();
     assert.ok((await screen.findAllByRole("button", { name: /Dune NZB/ })).length);
+    assert.equal(screen.getByTestId("search-beyond").getAttribute("aria-busy"), "false");
   });
 });
