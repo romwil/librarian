@@ -6,7 +6,8 @@ export const DISCLOSURE_TITLE = "Ask the house?";
 export const DISCLOSURE_STAY = "Stay on the shelves";
 export const DISCLOSURE_STORAGE_KEY = "librarian.searchBeyondDisclosure";
 
-export function shouldAutoBeyond(role) {
+/** Keepers may offer indexer beyond — never auto-fire. */
+export function canSearchBeyond(role) {
   return role === "owner" || role === "op";
 }
 

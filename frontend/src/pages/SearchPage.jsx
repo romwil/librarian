@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useOutletContext, useSearchParams } from "react-router-dom";
 import { api } from "../api.js";
 import { saveBeyondGet } from "../beyondGet.js";
@@ -10,6 +10,7 @@ import SearchModeControl, { normalizeSearchMode } from "../components/SearchMode
 import { ThinkingButton } from "../components/Thinking.jsx";
 import {
   FIELD_HELP,
+  FIND_BEYOND_CTA,
   PAGE_TITLE_SEARCH,
   beyondSearchCopy,
   discoverStatusLine,
@@ -44,10 +45,10 @@ import {
   DISCLOSURE_STAY,
   DISCLOSURE_TITLE,
   beyondDisclosureBody,
+  canSearchBeyond,
   rememberDisclosure,
   readerSawDisclosure,
   searchFieldParams,
-  shouldAutoBeyond,
 } from "../searchLanes.js";
 
 function fieldsFromState(draft, kind, advanced) {
@@ -133,7 +134,18 @@ export default function SearchPage() {
   const [asked, setAsked] = useState("");
   const [askOpen, setAskOpen] = useState(false);
   const [askBusy, setAskBusy] = useState(false);
-  const keeper = shouldAutoBeyond(user?.role);
+  const [phone, setPhone] = useState(false);
+  const beyondGen = useRef(0);
+  const keeper = canSearchBeyond(user?.role);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return undefined;
+    const mq = window.matchMedia("(max-width: 720px)");
+    const sync = () => setPhone(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
 
   useEffect(() => {
     const bag = snapshotFindFields(
@@ -160,6 +172,7 @@ export default function SearchPage() {
 
   useEffect(() => {
     if (!composed) {
+      beyondGen.current += 1;
       setResult({ local: [], beyond: [], public_domain: [], beyond_error: "" });
       setPhase("idle");
       setError("");
@@ -167,6 +180,7 @@ export default function SearchPage() {
       return undefined;
     }
     let alive = true;
+    beyondGen.current += 1;
     setPhase("local");
     setError("");
     setAsked("");
@@ -196,28 +210,7 @@ export default function SearchPage() {
           beyond_error: "",
           beyond_disclosure: data.beyond_disclosure || {},
         });
-        if (!keeper) {
-          setPhase("done");
-          return;
-        }
-        setPhase("beyond");
-        return api.searchBeyond(searchRequestQuery(bag), extras).then(
-          (beyond) => {
-            if (!alive) return;
-            setResult((prev) => ({
-              ...prev,
-              beyond: beyond.beyond || [],
-              public_domain: beyond.public_domain || [],
-              beyond_error: beyond.beyond_error || "",
-            }));
-            setPhase("done");
-          },
-          (err) => {
-            if (!alive) return;
-            setResult((prev) => ({ ...prev, beyond_error: humanError(err) }));
-            setPhase("done");
-          },
-        );
+        setPhase(keeper ? "done_local" : "done");
       })
       .catch((err) => {
         if (!alive) return;
@@ -228,6 +221,14 @@ export default function SearchPage() {
       alive = false;
     };
   }, [composed, fields.q, fields.kind, mode, fields.author, fields.title, fields.isbn, fields.series, fields.year, fields.issue, fields.artist, fields.album, keeper]);
+
+  useEffect(() => {
+    if (phase !== "beyond") return;
+    const node = document.getElementById("beyond");
+    if (typeof node?.scrollIntoView === "function") {
+      node.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [phase]);
 
   useEffect(() => {
     if (!discoverOpen) return undefined;
@@ -367,12 +368,49 @@ export default function SearchPage() {
     fileAsk();
   }
 
+  async function runBeyond() {
+    if (!keeper || !composed) return;
+    const gen = ++beyondGen.current;
+    setPhase("beyond");
+    setError("");
+    const bag = snapshotFindFields(
+      fields.q,
+      fields.kind,
+      fields.author,
+      fields.title,
+      fields.isbn,
+      fields.series,
+      fields.issue,
+      fields.artist,
+      fields.album,
+      fields.year,
+    );
+    const extras = searchFieldParams(bag, { mode });
+    try {
+      const beyond = await api.searchBeyond(searchRequestQuery(bag), extras);
+      if (gen !== beyondGen.current) return;
+      setResult((prev) => ({
+        ...prev,
+        beyond: beyond.beyond || [],
+        public_domain: beyond.public_domain || [],
+        beyond_error: beyond.beyond_error || "",
+      }));
+      setPhase(beyond.beyond_error ? "beyond_error" : "done");
+    } catch (err) {
+      if (gen !== beyondGen.current) return;
+      setResult((prev) => ({ ...prev, beyond_error: humanError(err) }));
+      setPhase("beyond_error");
+    }
+  }
+
   const status = searchStatusLine({
     q: searchRequestQuery(fields),
     kind: composed ? fields.kind : kind,
     localCount: result.local?.length || 0,
+    beyondCount: result.beyond?.length || 0,
     phase,
   });
+  const beyondExpanded = phase === "beyond" || phase === "done" || phase === "beyond_error";
   const suggestions = didYouMeanList(result);
   const forgiveNote = didYouMeanPresence(suggestions);
   const counts = countSearchFacets(result);
@@ -446,6 +484,39 @@ export default function SearchPage() {
     setDiscoverOpen(true);
   }
 
+  function renderFacets() {
+    return (
+      <aside className="search-facets" aria-label="Filters">
+        {fields.kind ? null : (
+          <FacetGroup
+            legend="Format"
+            options={FORMAT_FACETS}
+            value={facet.format}
+            onChange={(format) => setFacet((prev) => ({ ...prev, format }))}
+            counts={counts.formats}
+          />
+        )}
+        <FacetGroup
+          legend="Where"
+          options={keeper ? WHERE_FACETS : WHERE_FACETS.filter(([key]) => key === "shelf")}
+          value={facet.where}
+          onChange={(where) => setFacet((prev) => ({ ...prev, where }))}
+          counts={counts.where}
+          always
+        />
+        {yearEntries.length ? (
+          <FacetGroup
+            legend="Year"
+            options={yearOptions}
+            value={facet.year}
+            onChange={(year) => setFacet((prev) => ({ ...prev, year }))}
+            counts={yearCounts}
+          />
+        ) : null}
+      </aside>
+    );
+  }
+
   function renderDiscoverFeed() {
     return (
       <section
@@ -517,62 +588,41 @@ export default function SearchPage() {
         kindHelp={FIELD_HELP.searchKind}
         advancedSummary="More ways to search"
         showKindChips
-        advancedOpen
         kinds={kindOptions}
       />
       {!composed ? (
-        <>
+        <div className="search-idle-cluster" data-testid="search-idle-cluster">
           <p className="search-noted-door muted" data-testid="noted-door">
-            <Link to="/noted">New & noted</Link>
+            <Link to="/noted" className="cta outline">
+              New & noted
+            </Link>
           </p>
           {keeper ? (
-            <>
-              <div className="discover-launch">
-                <button
-                  type="button"
-                  className="cta outline"
-                  data-testid="discover-toggle"
-                  aria-expanded={discoverOpen}
-                  aria-controls="discover-panel"
-                  onClick={toggleDiscover}
-                >
-                  Discover
-                </button>
-              </div>
-              {discoverOpen ? renderDiscoverFeed() : null}
-            </>
+            <div className="discover-launch">
+              <button
+                type="button"
+                className="cta outline"
+                data-testid="discover-toggle"
+                aria-expanded={discoverOpen}
+                aria-controls="discover-panel"
+                onClick={toggleDiscover}
+              >
+                Discover
+              </button>
+            </div>
           ) : null}
-        </>
+          {discoverOpen ? renderDiscoverFeed() : null}
+        </div>
       ) : (
         <div className="search-with-facets">
-          <aside className="search-facets" aria-label="Filters">
-            {fields.kind ? null : (
-              <FacetGroup
-                legend="Format"
-                options={FORMAT_FACETS}
-                value={facet.format}
-                onChange={(format) => setFacet((prev) => ({ ...prev, format }))}
-                counts={counts.formats}
-              />
-            )}
-            <FacetGroup
-              legend="Where"
-              options={keeper ? WHERE_FACETS : WHERE_FACETS.filter(([key]) => key === "shelf")}
-              value={facet.where}
-              onChange={(where) => setFacet((prev) => ({ ...prev, where }))}
-              counts={counts.where}
-              always
-            />
-            {yearEntries.length ? (
-              <FacetGroup
-                legend="Year"
-                options={yearOptions}
-                value={facet.year}
-                onChange={(year) => setFacet((prev) => ({ ...prev, year }))}
-                counts={yearCounts}
-              />
-            ) : null}
-          </aside>
+          {phone ? (
+            <details className="search-facets-fold" data-testid="search-facets-fold">
+              <summary className="search-facets-summary">Filters</summary>
+              {renderFacets()}
+            </details>
+          ) : (
+            renderFacets()
+          )}
           <div className="search-results">
             <SearchModeControl mode={activeMode} onMode={onMode} />
             <p className="search-status" aria-live="polite" data-testid="search-status">
@@ -609,75 +659,106 @@ export default function SearchPage() {
               role={user?.role}
             />
             {keeper ? (
-            <section id="beyond" className="search-beyond" data-testid="search-beyond">
-              <h2>Beyond the shelves</h2>
-              {result.beyond_error && beyondCopy.ownerDetail ? (
-                <p className="alert" data-testid="search-beyond-error">
-                  {beyondCopy.empty} {beyondCopy.ownerDetail}
-                </p>
-              ) : result.beyond_error ? (
-                <p className="alert" data-testid="search-beyond-error">
-                  {beyondCopy.empty}
-                </p>
-              ) : null}
-              <Rail
-                title="Beyond the shelves"
-                kicker="NZBFinder and extra indexers"
-                items={beyondItems}
-                empty={
-                  phase === "local" || phase === "beyond"
-                    ? "Looking beyond the shelves…"
-                    : beyondCopy.empty
-                }
-                beyond
-                onRequest={request}
-                role={user?.role}
-              />
-              <div className="public-domain-lane" data-testid="public-domain-lane">
-                <p className="kicker">Public domain</p>
-                {(filtered.public_domain || []).length ? (
-                  <ul>
-                    {(filtered.public_domain || []).map((edition) => (
-                      <li key={`${edition.source}-${edition.id || edition.download_url}`}>
-                        <span>
-                          {edition.title}
-                          {edition.author ? ` · ${edition.author}` : ""} ·{" "}
-                          {edition.source === "standard_ebooks" ? "Standard Ebooks" : "Project Gutenberg"}
-                        </span>
-                        {edition.shelved ? (
-                          <span>On the shelf</span>
+              <>
+                {phase === "done_local" ? (
+                  <section className="search-beyond-offer" data-testid="search-beyond-offer">
+                    <p className="lede">Not finding it on these shelves?</p>
+                    <button
+                      type="button"
+                      className="cta"
+                      data-testid="search-beyond-cta"
+                      onClick={runBeyond}
+                    >
+                      {FIND_BEYOND_CTA}
+                    </button>
+                  </section>
+                ) : null}
+                {beyondExpanded ? (
+                  <section
+                    id="beyond"
+                    className="search-beyond is-expanded"
+                    data-testid="search-beyond"
+                    aria-busy={phase === "beyond"}
+                  >
+                    <h2>Beyond the shelves</h2>
+                    {phase === "beyond" ? (
+                      <SkeletonRail label="Looking beyond the shelves…" />
+                    ) : null}
+                    {result.beyond_error && beyondCopy.ownerDetail ? (
+                      <p className="alert" data-testid="search-beyond-error">
+                        {beyondCopy.empty} {beyondCopy.ownerDetail}
+                      </p>
+                    ) : result.beyond_error ? (
+                      <p className="alert" data-testid="search-beyond-error">
+                        {beyondCopy.empty}
+                      </p>
+                    ) : null}
+                    {phase !== "beyond" ? (
+                      <Rail
+                        title="Beyond the shelves"
+                        kicker="NZBFinder and extra indexers"
+                        items={beyondItems}
+                        empty={beyondCopy.empty}
+                        beyond
+                        onRequest={request}
+                        role={user?.role}
+                      />
+                    ) : null}
+                    {phase !== "beyond" ? (
+                      <div className="public-domain-lane" data-testid="public-domain-lane">
+                        <p className="kicker">Public domain</p>
+                        {(filtered.public_domain || []).length ? (
+                          <ul>
+                            {(filtered.public_domain || []).map((edition) => (
+                              <li key={`${edition.source}-${edition.id || edition.download_url}`}>
+                                <span>
+                                  {edition.title}
+                                  {edition.author ? ` · ${edition.author}` : ""} ·{" "}
+                                  {edition.source === "standard_ebooks"
+                                    ? "Standard Ebooks"
+                                    : "Project Gutenberg"}
+                                </span>
+                                {edition.shelved ? (
+                                  <span>On the shelf</span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="cta compact"
+                                    onClick={() => shelveEdition(edition)}
+                                  >
+                                    Shelve
+                                  </button>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
                         ) : (
-                          <button type="button" className="cta compact" onClick={() => shelveEdition(edition)}>
-                            Shelve
-                          </button>
+                          <p className="muted">No public-domain edition matches this search.</p>
                         )}
-                      </li>
-                    ))}
-                  </ul>
+                      </div>
+                    ) : null}
+                  </section>
+                ) : null}
+              </>
+            ) : (
+              <div className="search-ask-house" data-testid="search-ask-house">
+                <p className="lede">{ASK_THE_HOUSE_PROMPT}</p>
+                {asked ? (
+                  <p className="search-status" role="status">
+                    The owner will look. Nothing downloads until they confirm.
+                  </p>
                 ) : (
-                  <p className="muted">No public-domain edition matches this search.</p>
+                  <button type="button" className="cta" onClick={onAskHouse}>
+                    {ASK_THE_HOUSE}
+                  </button>
                 )}
               </div>
-            </section>
-            ) : (
-            <div className="search-ask-house" data-testid="search-ask-house">
-              <p className="lede">{ASK_THE_HOUSE_PROMPT}</p>
-              {asked ? (
-                <p className="search-status" role="status">
-                  The owner will look. Nothing downloads until they confirm.
-                </p>
-              ) : (
-                <button type="button" className="cta" onClick={onAskHouse}>
-                  {ASK_THE_HOUSE}
-                </button>
-              )}
-            </div>
             )}
             {keeper ? (
-            <details className="discover-fold" onToggle={onDiscoverFold}>
-              <summary className="kicker">Discover</summary>
-              {discoverOpen ? renderDiscoverFeed() : null}
-            </details>
+              <details className="discover-fold" onToggle={onDiscoverFold}>
+                <summary className="kicker">Discover</summary>
+                {discoverOpen ? renderDiscoverFeed() : null}
+              </details>
             ) : null}
           </div>
         </div>

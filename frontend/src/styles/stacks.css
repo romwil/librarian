@@ -414,14 +414,56 @@
 .hero-search-form {
   text-align: center;
 }
+.search-idle-cluster {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+  margin: var(--space-5) auto var(--space-8);
+  padding: 0 var(--gutter);
+  width: min(var(--hero-search-max, 36rem), 100%);
+}
 .search-noted-door {
   margin: 0;
-  padding: 0 var(--gutter);
+  padding: 0;
   font-size: var(--text-sm);
   text-align: center;
 }
 .search-noted-door a {
   color: var(--fg);
+  text-decoration: none;
+}
+.search-beyond-offer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  margin: var(--space-5) var(--gutter) var(--space-6);
+  padding: var(--space-5) var(--space-4);
+  text-align: center;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-raised) 80%, transparent);
+}
+.search-beyond-offer .lede {
+  margin: 0;
+  color: var(--muted);
+}
+.search-beyond.is-expanded {
+  scroll-margin-top: calc(var(--topbar-h, 3rem) + env(safe-area-inset-top, 0px) + 0.5rem);
+}
+.search-facets-fold {
+  margin: 0 var(--gutter) var(--space-4);
+}
+.search-facets-summary {
+  min-height: var(--tap-min);
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+  cursor: pointer;
+}
+.search-facets-fold .search-facets {
+  padding: var(--space-3) 0 0;
 }
 .search-with-facets {
   display: grid;
@@ -1567,7 +1609,14 @@ button.cover {
 .discover-launch {
   display: flex;
   justify-content: center;
-  margin: var(--space-4) auto var(--space-6);
+  margin: 0;
+}
+.search-idle-cluster .discover-launch .cta,
+.search-idle-cluster .search-noted-door .cta,
+.search-beyond-offer .cta {
+  min-height: var(--tap-min);
+  min-width: 11rem;
+  padding: 10px 18px;
 }
 .discover-pager {
   display: flex;

@@ -170,3 +170,84 @@ body:has(.listen-room) {
     align-items: center;
   }
 }
+
+/* Cohesive phone shell — Hall / Search / Favorites / Desk / Work (1.1.0). */
+@media (max-width: 720px) {
+  .search-page,
+  .hall-page,
+  .browse-page,
+  .review-page,
+  .work-page {
+    padding-bottom: calc(var(--mobile-tabbar-clearance) + var(--space-4));
+  }
+
+  .hall-chips.chip-row {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    gap: var(--space-2);
+    padding-inline: var(--gutter);
+    margin-inline: calc(-1 * var(--gutter));
+    scrollbar-width: none;
+  }
+  .hall-chips.chip-row::-webkit-scrollbar {
+    display: none;
+  }
+  .hall-chips .chip {
+    flex: 0 0 auto;
+    min-height: var(--tap-min);
+    padding: 10px 14px;
+  }
+
+  .search-idle-cluster {
+    margin-bottom: calc(var(--space-6) + 0.5rem);
+    gap: var(--space-5);
+  }
+  .search-idle-cluster .cta,
+  .search-beyond-offer .cta,
+  .search-ask-house .cta {
+    min-height: var(--tap-min);
+    width: min(100%, 18rem);
+  }
+  .search-beyond.is-expanded {
+    animation: soft-enter var(--motion-settle) both;
+    border-top: 1px solid var(--border-subtle);
+    padding-top: var(--space-4);
+    margin-top: var(--space-2);
+  }
+  .search-facets-summary {
+    min-height: var(--tap-min);
+  }
+
+  .browse-page .browse-toolbar a,
+  .browse-page .browse-toolbar .cta,
+  .browse-page .chip,
+  .review-page .cta,
+  .card-page .cta,
+  .library-card .cta {
+    min-height: var(--tap-min);
+  }
+
+  .rail-track {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+
+  /* Lights Up / Down — keep paper/lamp surfaces readable on phone chrome. */
+  .mobile-tabbar {
+    background: color-mix(in srgb, var(--surface) 94%, transparent);
+  }
+  html[data-theme="lights-down"] .mobile-tabbar {
+    background: color-mix(in srgb, var(--surface) 90%, #000 10%);
+  }
+  html[data-theme="lights-down"] .search-beyond-offer {
+    background: color-mix(in srgb, var(--surface-raised) 70%, #000 12%);
+  }
+}
+
+@media (max-width: 720px) and (prefers-reduced-motion: reduce) {
+  .search-beyond.is-expanded {
+    animation: none !important;
+  }
+}

@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-11-17
+
+### Highlights
+
+- **Search beyond, on purpose.** Local Stacks results paint first. Keepers get an explicit **Search beyond the shelves** CTA — no silent auto-beyond. Beyond expands with skeleton, live status, and `aria-busy`.
+- **Phone-native shell.** Safe-area topbar/tabbar, 44px taps, Hall chip scroll without page X-scroll, collapsed advanced search + facet disclosure on phone, clearer idle Discover / New & noted cluster, Work thumb dock — Lights Up and Lights Down.
+
 ## [1.0.14] — 2026-11-08
 
 ### Highlights

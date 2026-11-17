@@ -113,7 +113,9 @@ describe("Search beyond Get wiring", () => {
     assert.match(searchSrc, /onRequest=\{request\}/);
     assert.match(searchSrc, /saveBeyondGet/);
     assert.match(searchSrc, /data-testid="discover-panel"/);
-    assert.match(searchSrc, /advancedOpen/);
+    assert.match(searchSrc, /search-beyond-cta/);
+    assert.match(searchSrc, /FIND_BEYOND_CTA/);
+    assert.equal(searchSrc.includes("advancedOpen"), false);
     assert.match(searchSrc, /findKindOptions/);
     assert.equal(searchSrc.includes("api.requestItem"), false);
     assert.match(cardSrc, /getBeyond/);

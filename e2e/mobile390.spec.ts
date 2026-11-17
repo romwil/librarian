@@ -6,6 +6,7 @@ import { dismissWhatsNewIfPresent, loginAsOwner } from "./fixtures/auth";
  * Mocked e2e on :8794; not a substitute for live Automat visual QA.
  */
 const PHONE = { width: 390, height: 844 };
+const NARROW = { width: 320, height: 568 };
 
 async function assertNoTwoAxisPageScroll(page: import("@playwright/test").Page) {
   const fit = await page.evaluate(() => {
@@ -20,7 +21,10 @@ async function assertNoTwoAxisPageScroll(page: import("@playwright/test").Page) 
   expect(fit.scrollWidth).toBeLessThanOrEqual(fit.innerWidth + 1);
 }
 
-async function assertMobileTabBarUsable(page: import("@playwright/test").Page) {
+async function assertMobileTabBarUsable(
+  page: import("@playwright/test").Page,
+  width = PHONE.width,
+) {
   const mobile = page.getByRole("navigation", { name: "Mobile" });
   await expect(mobile).toBeVisible();
   await expect(mobile.getByRole("link", { name: "Hall", exact: true })).toBeVisible();
@@ -30,7 +34,13 @@ async function assertMobileTabBarUsable(page: import("@playwright/test").Page) {
   await expect(mobile.getByRole("link", { name: "You", exact: true })).toBeVisible();
   const box = await mobile.boundingBox();
   expect(box).toBeTruthy();
-  expect(box!.width).toBeLessThanOrEqual(PHONE.width + 1);
+  expect(box!.width).toBeLessThanOrEqual(width + 1);
+  expect(box!.height).toBeGreaterThanOrEqual(44);
+}
+
+async function assertTapMin(locator: import("@playwright/test").Locator) {
+  const box = await locator.boundingBox();
+  expect(box).toBeTruthy();
   expect(box!.height).toBeGreaterThanOrEqual(44);
 }
 
@@ -56,6 +66,63 @@ test.describe("Mobile 390 proof (UX-007)", () => {
     });
     await assertMobileTabBarUsable(page);
     await assertNoTwoAxisPageScroll(page);
+    const noted = page.getByRole("link", { name: "New & noted" });
+    await expect(noted).toBeVisible();
+    await assertTapMin(noted);
+    const discover = page.getByRole("button", { name: "Discover" });
+    await expect(discover).toBeVisible();
+    await assertTapMin(discover);
+  });
+
+  test("Search beyond CTA expands with busy skeleton at 390", async ({ page }) => {
+    await page.route("**/api/search/beyond**", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          beyond: [{ title: "Phone Beyond Hit", guid: "g-phone", kind: "book" }],
+          public_domain: [],
+          beyond_error: null,
+        }),
+      });
+    });
+    await page.route(/\/api\/search(\?|$)/, async (route) => {
+      if (route.request().url().includes("/api/search/beyond")) {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          local: [{ id: "w-phone", title: "Phone Shelf Hit", author: "Ann", kind: "book" }],
+          beyond: [],
+          public_domain: [],
+        }),
+      });
+    });
+    await page.goto("/search?q=phone");
+    await dismissWhatsNewIfPresent(page);
+    await expect(page.getByRole("button", { name: /^Phone Shelf Hit/ }).first()).toBeVisible();
+    const cta = page.getByRole("button", { name: "Search beyond the shelves" });
+    await expect(cta).toBeVisible();
+    await assertTapMin(cta);
+    await cta.click();
+    await expect(page.getByTestId("search-beyond")).toHaveAttribute("aria-busy", "true");
+    await expect(page.getByTestId("skeleton-rail")).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Phone Beyond Hit/ }).first()).toBeVisible();
+    await assertMobileTabBarUsable(page);
+    await assertNoTwoAxisPageScroll(page);
+  });
+
+  test("320 smoke — Search tab bar and idle cluster", async ({ page }) => {
+    await page.setViewportSize(NARROW);
+    await page.goto("/search");
+    await dismissWhatsNewIfPresent(page);
+    await assertMobileTabBarUsable(page, NARROW.width);
+    await assertNoTwoAxisPageScroll(page);
+    await expect(page.getByTestId("search-idle-cluster")).toBeVisible();
   });
 
   test("Sorting selected actions stay in view at 390", async ({ page }) => {
