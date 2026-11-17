@@ -4,10 +4,6 @@ import { dismissWhatsNewIfPresent, loginAsOwner } from "./fixtures/auth";
 /**
  * Library card panel must stay fully usable — not clipped under the sticky
  * topbar or past the viewport bottom. Desktop + phone (390).
- *
- * The panel itself must fit in the viewport (placement + max-height). Owner
- * links may live in a scrollable panel; scroll each into view before checking
- * its box — layout boxes of overflowed children can sit past the viewport.
  */
 
 async function openLibraryCard(page: import("@playwright/test").Page) {
@@ -15,37 +11,27 @@ async function openLibraryCard(page: import("@playwright/test").Page) {
   await expect(page.getByRole("dialog", { name: "Library card" })).toBeVisible();
 }
 
-async function assertPanelFitsViewport(page: import("@playwright/test").Page) {
-  const viewport = page.viewportSize()!;
+async function assertOwnerMenuUsable(page: import("@playwright/test").Page) {
   const panel = page.getByRole("dialog", { name: "Library card" });
-  const box = await panel.boundingBox();
-  expect(box, "panel box").toBeTruthy();
-  expect(box!.y, "panel top").toBeGreaterThanOrEqual(0);
-  expect(box!.y + box!.height, "panel bottom").toBeLessThanOrEqual(viewport.height + 1);
-  expect(box!.x, "panel left").toBeGreaterThanOrEqual(0);
-  expect(box!.x + box!.width, "panel right").toBeLessThanOrEqual(viewport.width + 1);
-}
+  const panelBox = await panel.boundingBox();
+  expect(panelBox).toBeTruthy();
+  const view = page.viewportSize()!;
+  expect(panelBox!.y).toBeGreaterThanOrEqual(0);
+  expect(panelBox!.y + panelBox!.height).toBeLessThanOrEqual(view.height + 1);
+  expect(panelBox!.x).toBeGreaterThanOrEqual(0);
+  expect(panelBox!.x + panelBox!.width).toBeLessThanOrEqual(view.width + 1);
 
-async function assertOwnerLinksReachable(page: import("@playwright/test").Page) {
-  const viewport = page.viewportSize()!;
-  const panel = page.getByRole("dialog", { name: "Library card" });
-  const names = ["Settings", "People", "Downloads", "Logout"] as const;
-  for (const name of names) {
-    const link =
+  for (const name of ["Settings", "People", "Downloads", "Logout"]) {
+    const target =
       name === "Logout" ? panel.getByRole("button", { name }) : panel.getByRole("link", { name });
-    await link.scrollIntoViewIfNeeded();
-    await expect(link).toBeVisible();
-    const box = await link.boundingBox();
-    expect(box, `${name} should have a box`).toBeTruthy();
-    expect(box!.y, `${name} top`).toBeGreaterThanOrEqual(0);
-    expect(box!.y + box!.height, `${name} bottom`).toBeLessThanOrEqual(viewport.height + 1);
+    await target.scrollIntoViewIfNeeded();
+    await expect(target).toBeVisible();
+    await expect(target).toBeInViewport();
   }
   const sorting = panel.getByTestId("profile-sorting-link");
   await sorting.scrollIntoViewIfNeeded();
   await expect(sorting).toBeVisible();
-  const sortingBox = await sorting.boundingBox();
-  expect(sortingBox).toBeTruthy();
-  expect(sortingBox!.y + sortingBox!.height).toBeLessThanOrEqual(viewport.height + 1);
+  await expect(sorting).toBeInViewport();
 }
 
 test.describe("Library card profile menu placement", () => {
@@ -55,8 +41,7 @@ test.describe("Library card profile menu placement", () => {
     await page.goto("/");
     await dismissWhatsNewIfPresent(page);
     await openLibraryCard(page);
-    await assertPanelFitsViewport(page);
-    await assertOwnerLinksReachable(page);
+    await assertOwnerMenuUsable(page);
   });
 
   test("390 owner menu keeps Settings through Logout in viewport", async ({ page }) => {
@@ -65,7 +50,6 @@ test.describe("Library card profile menu placement", () => {
     await page.goto("/");
     await dismissWhatsNewIfPresent(page);
     await openLibraryCard(page);
-    await assertPanelFitsViewport(page);
-    await assertOwnerLinksReachable(page);
+    await assertOwnerMenuUsable(page);
   });
 });
