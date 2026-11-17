@@ -76,14 +76,18 @@ export function useAnchoredPopover({
     const handleKey = (event) => {
       if (event.key === "Escape") setOpen(false);
     };
+    const popover = popoverRef.current;
     const stopIfInside = (event) => {
-      if (eventInside(event, root)) event.stopPropagation();
+      // Cover a portaled panel (ProfileMenu) as well as in-tree popovers.
+      if (eventInside(event, root) || eventInside(event, popover)) event.stopPropagation();
     };
     if (stopInsidePropagation) {
       // React 18 delegates at #root, so a React stopPropagation still lets a
-      // document listener see the event. A native listener on the root does not.
+      // document listener see the event. A native listener on the root/popover does not.
       root?.addEventListener("pointerdown", stopIfInside);
       root?.addEventListener("mousedown", stopIfInside);
+      popover?.addEventListener("pointerdown", stopIfInside);
+      popover?.addEventListener("mousedown", stopIfInside);
     }
     if (closeOnOutside) document.addEventListener(outsideEvent, handleOutside);
     if (closeOnEscape) document.addEventListener("keydown", handleKey);
@@ -91,6 +95,8 @@ export function useAnchoredPopover({
       if (stopInsidePropagation) {
         root?.removeEventListener("pointerdown", stopIfInside);
         root?.removeEventListener("mousedown", stopIfInside);
+        popover?.removeEventListener("pointerdown", stopIfInside);
+        popover?.removeEventListener("mousedown", stopIfInside);
       }
       if (closeOnOutside) document.removeEventListener(outsideEvent, handleOutside);
       if (closeOnEscape) document.removeEventListener("keydown", handleKey);

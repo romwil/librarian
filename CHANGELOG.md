@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [1.1.1] — 2026-11-17
+
+### Highlights
+
+- **Library card stays on screen.** The owner ProfileMenu portals with viewport-aware flip/clamp (same anchored-popover pattern as title actions) so Settings, People, Sorting, Downloads, and Logout stay visible under the sticky topbar — with a scrollable max-height safety net on phone.
+
 ## [1.1.0] — 2026-11-17
 
 ### Highlights

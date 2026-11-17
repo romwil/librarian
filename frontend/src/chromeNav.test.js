@@ -53,6 +53,15 @@ test("Library card text-size slider stays inside dismiss hit-testing", () => {
   assert.match(menuSrc, /Text size/);
 });
 
+test("Library card panel portals with viewport-aware placement", () => {
+  assert.match(menuSrc, /createPortal/);
+  assert.match(menuSrc, /placeProfileMenu/);
+  assert.match(menuSrc, /anchorSelector:\s*"\.profile-menu-trigger"/);
+  assert.match(stylesSrc, /\.profile-menu-panel\s*\{[^}]*position:\s*fixed/s);
+  assert.match(stylesSrc, /\.profile-menu-panel\s*\{[^}]*overflow-y:\s*auto/s);
+  assert.match(stylesSrc, /\.profile-menu-panel\s*\{[^}]*max-height:\s*calc\(100dvh/s);
+});
+
 test("topbar stacks above Hall so the Library card panel can receive clicks", () => {
   assert.match(stylesSrc, /\.room > \.topbar\s*\{[^}]*z-index:\s*200/s);
   assert.match(stylesSrc, /\.room > \*\s*\{[^}]*z-index:\s*1/s);

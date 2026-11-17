@@ -1,6 +1,8 @@
+import { createPortal } from "react-dom";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api.js";
 import { useAnchoredPopover } from "../hooks/useAnchoredPopover.js";
+import { placeProfileMenu } from "../lib/profileMenu.js";
 import { pointerEventInsideNode } from "../lib/pointerInside.js";
 import { deskMenuSortingLabel } from "../lib/deskBadge.js";
 import {
@@ -21,6 +23,7 @@ const THEME_OPTIONS = [
 /**
  * Library card chip + anchored menu of personal prefs.
  * Sections: appearance → links → Logout last.
+ * Portaled + viewport-clamped so a sticky topbar cannot clip the panel.
  */
 export default function ProfileMenu({
   user,
@@ -34,11 +37,13 @@ export default function ProfileMenu({
 }) {
   const navigate = useNavigate();
   // Range thumbs retarget onto document, so outside-dismiss hit-tests the pointer.
-  const { open, setOpen, rootRef } = useAnchoredPopover({
+  const { open, setOpen, rootRef, popoverRef, popoverStyle } = useAnchoredPopover({
     outsideEvent: "pointerdown",
     closeOnEscape: true,
     eventInside: pointerEventInsideNode,
     stopInsidePropagation: true,
+    anchorSelector: ".profile-menu-trigger",
+    placement: placeProfileMenu,
   });
 
   async function handleLogout() {
@@ -76,6 +81,130 @@ export default function ProfileMenu({
     .toUpperCase();
   const showHouseholdLinks = owner || op;
 
+  const panel =
+    open && typeof document !== "undefined"
+      ? createPortal(
+          // Pointer stop keeps theme/slider clicks from dismissing the card.
+          // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
+          <div
+            id="library-card-panel"
+            className="profile-menu-panel"
+            ref={popoverRef}
+            role="dialog"
+            aria-label="Library card"
+            data-testid="profile-menu-panel"
+            style={popoverStyle || { visibility: "hidden" }}
+            onPointerDown={(event) => event.stopPropagation()}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <p className="profile-menu-meta">
+              {user.display_name}
+              <span>{roleLabel}</span>
+            </p>
+
+            <div className="profile-menu-section" data-testid="profile-theme-section">
+              <p className="profile-menu-section-label">Theme</p>
+              <div className="profile-chip-row" role="radiogroup" aria-label="Theme">
+                {THEME_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={uiTheme === option.value}
+                    className={`profile-chip${uiTheme === option.value ? " is-selected" : ""}`}
+                    data-testid={`profile-theme-${option.value}`}
+                    title={themePreferenceLabel(option.value)}
+                    onClick={() => handleThemePick(option.value)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <label className="profile-font-control" data-testid="profile-font-slider">
+              <span className="profile-font-label">
+                Text size
+                <span className="profile-font-value">{fontStep === 0 ? "Default" : `+${fontStep}`}</span>
+              </span>
+              <input
+                type="range"
+                min={0}
+                max={FONT_STEP_MAX}
+                step={1}
+                value={fontStep}
+                aria-valuemin={0}
+                aria-valuemax={FONT_STEP_MAX}
+                aria-valuenow={fontStep}
+                aria-label="Text size. Far left is the default size; slide right to enlarge."
+                onChange={handleFontChange}
+                onPointerDown={(event) => event.stopPropagation()}
+                onMouseDown={(event) => event.stopPropagation()}
+              />
+            </label>
+
+            <div className="profile-menu-section profile-menu-links">
+              <Link to="/card" className="profile-menu-link" onClick={() => setOpen(false)}>
+                Your library
+              </Link>
+              <Link to="/inbox" className="profile-menu-link" onClick={() => setOpen(false)}>
+                Inbox
+              </Link>
+              <Link to="/notifications" className="profile-menu-link" onClick={() => setOpen(false)}>
+                Notifications
+              </Link>
+              <Link to="/help" className="profile-menu-link" onClick={() => setOpen(false)}>
+                Help
+              </Link>
+              {showHouseholdLinks ? (
+                <>
+                  {owner ? (
+                    <Link to="/maintain" className="profile-menu-link" onClick={() => setOpen(false)}>
+                      Maintain
+                    </Link>
+                  ) : null}
+                  {owner ? (
+                    <Link to="/settings" className="profile-menu-link" onClick={() => setOpen(false)}>
+                      Settings
+                    </Link>
+                  ) : null}
+                  {op ? (
+                    <Link to="/people" className="profile-menu-link" onClick={() => setOpen(false)}>
+                      People
+                    </Link>
+                  ) : null}
+                  {op ? (
+                    <Link
+                      to="/review"
+                      className="profile-menu-link"
+                      onClick={() => setOpen(false)}
+                      data-testid="profile-sorting-link"
+                    >
+                      {deskMenuSortingLabel(reviewCount)}
+                    </Link>
+                  ) : null}
+                  {op ? (
+                    <Link to="/queue" className="profile-menu-link" onClick={() => setOpen(false)}>
+                      Downloads
+                    </Link>
+                  ) : null}
+                </>
+              ) : null}
+            </div>
+
+            <button
+              type="button"
+              className="profile-menu-link profile-menu-logout"
+              data-testid="logout-button"
+              onClick={handleLogout}
+            >
+              Logout
+            </button>
+          </div>,
+          document.body,
+        )
+      : null;
+
   return (
     <div className="profile-menu" ref={rootRef} data-testid="profile-menu">
       <button
@@ -92,123 +221,7 @@ export default function ProfileMenu({
         <span className="profile-menu-name">{user.display_name}</span>{" "}
         <span className="profile-menu-role">{roleLabel}</span>
       </button>
-      {open ? (
-        // Pointer stop keeps theme/slider clicks from dismissing the card.
-        // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
-        <div
-          id="library-card-panel"
-          className="profile-menu-panel"
-          role="dialog"
-          aria-label="Library card"
-          data-testid="profile-menu-panel"
-          onPointerDown={(event) => event.stopPropagation()}
-          onMouseDown={(event) => event.stopPropagation()}
-        >
-          <p className="profile-menu-meta">
-            {user.display_name}
-            <span>{roleLabel}</span>
-          </p>
-
-          <div className="profile-menu-section" data-testid="profile-theme-section">
-            <p className="profile-menu-section-label">Theme</p>
-            <div className="profile-chip-row" role="radiogroup" aria-label="Theme">
-              {THEME_OPTIONS.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={uiTheme === option.value}
-                  className={`profile-chip${uiTheme === option.value ? " is-selected" : ""}`}
-                  data-testid={`profile-theme-${option.value}`}
-                  title={themePreferenceLabel(option.value)}
-                  onClick={() => handleThemePick(option.value)}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <label className="profile-font-control" data-testid="profile-font-slider">
-            <span className="profile-font-label">
-              Text size
-              <span className="profile-font-value">{fontStep === 0 ? "Default" : `+${fontStep}`}</span>
-            </span>
-            <input
-              type="range"
-              min={0}
-              max={FONT_STEP_MAX}
-              step={1}
-              value={fontStep}
-              aria-valuemin={0}
-              aria-valuemax={FONT_STEP_MAX}
-              aria-valuenow={fontStep}
-              aria-label="Text size. Far left is the default size; slide right to enlarge."
-              onChange={handleFontChange}
-              onPointerDown={(event) => event.stopPropagation()}
-              onMouseDown={(event) => event.stopPropagation()}
-            />
-          </label>
-
-          <div className="profile-menu-section profile-menu-links">
-            <Link to="/card" className="profile-menu-link" onClick={() => setOpen(false)}>
-              Your library
-            </Link>
-            <Link to="/inbox" className="profile-menu-link" onClick={() => setOpen(false)}>
-              Inbox
-            </Link>
-            <Link to="/notifications" className="profile-menu-link" onClick={() => setOpen(false)}>
-              Notifications
-            </Link>
-            <Link to="/help" className="profile-menu-link" onClick={() => setOpen(false)}>
-              Help
-            </Link>
-            {showHouseholdLinks ? (
-              <>
-                {owner ? (
-                  <Link to="/maintain" className="profile-menu-link" onClick={() => setOpen(false)}>
-                    Maintain
-                  </Link>
-                ) : null}
-                {owner ? (
-                  <Link to="/settings" className="profile-menu-link" onClick={() => setOpen(false)}>
-                    Settings
-                  </Link>
-                ) : null}
-                {op ? (
-                  <Link to="/people" className="profile-menu-link" onClick={() => setOpen(false)}>
-                    People
-                  </Link>
-                ) : null}
-                {op ? (
-                  <Link
-                    to="/review"
-                    className="profile-menu-link"
-                    onClick={() => setOpen(false)}
-                    data-testid="profile-sorting-link"
-                  >
-                    {deskMenuSortingLabel(reviewCount)}
-                  </Link>
-                ) : null}
-                {op ? (
-                  <Link to="/queue" className="profile-menu-link" onClick={() => setOpen(false)}>
-                    Downloads
-                  </Link>
-                ) : null}
-              </>
-            ) : null}
-          </div>
-
-          <button
-            type="button"
-            className="profile-menu-link profile-menu-logout"
-            data-testid="logout-button"
-            onClick={handleLogout}
-          >
-            Logout
-          </button>
-        </div>
-      ) : null}
+      {panel}
     </div>
   );
 }
