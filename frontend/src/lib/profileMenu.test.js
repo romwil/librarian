@@ -30,14 +30,15 @@ describe("placeProfileMenu", () => {
     );
     assert.equal(style.top, "56px");
     assert.equal(style.left, "940px");
+    // 900 - 56 - 8
     assert.equal(style.maxHeight, "836px");
   });
 
-  it("clamps a tall owner panel into the viewport and sets maxHeight", () => {
+  it("keeps a tall owner panel below the chip with a scroll maxHeight", () => {
     const style = withView({ width: 1200, height: 500 }, () => placeProfileMenu(chip, tall));
-    // Prefer below (56) but 520px overflows 500 — pin to margin and scroll via maxHeight.
-    assert.equal(style.top, "8px");
-    assert.equal(style.maxHeight, "484px");
+    // Prefer below (56); spaceBelow = 500 - 56 - 8 = 436 → scroll inside that.
+    assert.equal(style.top, "56px");
+    assert.equal(style.maxHeight, "436px");
     assert.match(style.left, /^\d+(\.\d+)?px$/);
   });
 
@@ -46,9 +47,10 @@ describe("placeProfileMenu", () => {
     const style = withView({ width: 800, height: 700 }, () =>
       placeProfileMenu(lowChip, { width: 220, height: 200 }),
     );
-    // above = 620 - 8 - 200 = 412; below would overflow (656+8+200 > 692)
+    // spaceBelow = 700 - 664 - 8 = 28; spaceAbove = 620 - 16 = 604 → flip
     assert.equal(style.top, "412px");
     assert.equal(style.left, "80px");
+    assert.equal(style.maxHeight, "604px");
   });
 
   it("right-aligns and keeps a phone panel on-screen at 390", () => {
@@ -59,6 +61,7 @@ describe("placeProfileMenu", () => {
     assert.equal(style.top, "54px");
     // 378 - 260 = 118; still inside 390 - 8
     assert.equal(style.left, "118px");
+    // spaceBelow = 844 - 54 - 8
     assert.equal(style.maxHeight, "782px");
   });
 

@@ -31,15 +31,27 @@ export function placeProfileMenu(anchor, menu) {
   const anchorRight = finite(anchor?.right);
 
   const below = anchorBottom + margin;
-  const above = anchorTop - margin - menuHeight;
-  const overflowsBelow = below + menuHeight > viewH - margin;
-  const top =
-    overflowsBelow && above >= margin
-      ? Math.max(margin, Math.min(above, viewH - menuHeight - margin))
-      : Math.max(margin, Math.min(below, viewH - menuHeight - margin));
+  const spaceBelow = Math.max(0, viewH - below - margin);
+  const spaceAbove = Math.max(0, anchorTop - margin * 2);
+  // Prefer below the chip (topbar). Flip only when above clearly fits better.
+  const openBelow = menuHeight <= spaceBelow || spaceBelow >= spaceAbove;
+  let top;
+  let maxHeight;
+  if (openBelow) {
+    top = below;
+    maxHeight = Math.max(120, spaceBelow);
+    // If a short measured height still wouldn't fit, pin into the viewport.
+    if (top + Math.min(menuHeight, maxHeight) > viewH - margin) {
+      top = Math.max(margin, viewH - margin - Math.min(menuHeight, maxHeight));
+      maxHeight = Math.max(120, viewH - top - margin);
+    }
+  } else {
+    maxHeight = Math.max(120, spaceAbove);
+    const used = Math.min(menuHeight, maxHeight);
+    top = Math.max(margin, anchorTop - margin - used);
+  }
 
   const left = Math.max(margin, Math.min(anchorRight - menuWidth, viewW - menuWidth - margin));
-  const maxHeight = Math.max(120, viewH - top - margin);
 
   return {
     top: `${top}px`,
