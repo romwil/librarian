@@ -10,6 +10,17 @@ export function canManageWanted(role) {
   return role === "owner" || role === "op";
 }
 
+/** Search beyond / Discover / Get — keepers or readers with trusted_acquire. */
+export function canAcquireBeyond(userOrRole) {
+  if (userOrRole == null) return false;
+  if (typeof userOrRole === "string") {
+    return userOrRole === "owner" || userOrRole === "op";
+  }
+  const role = userOrRole.role;
+  if (role === "owner" || role === "op") return true;
+  return role === "reader" && Boolean(userOrRole.trusted_acquire);
+}
+
 function hidden() {
   return {
     show: false,
@@ -73,6 +84,7 @@ export function bookAvailability({ work = {}, audiobook = null, wanted = null, r
   if (!audio || audio.applicable === false) return hidden();
 
   const manage = canManageWanted(role);
+  const acquire = canAcquireBeyond(role);
   const readHref = workReaderPath(work.id);
   const downloadHref = workDownloadUrl(work.id);
   const shelved = audio.shelved || null;
@@ -129,7 +141,7 @@ export function bookAvailability({ work = {}, audiobook = null, wanted = null, r
     listenHref: "",
     searchHref: shelfSearchHref(work, find),
     findHref: audiobookFindHref(find),
-    canAdd: manage && !openRow,
+    canAdd: acquire && !openRow,
     canDismiss: manage && Boolean(openRow?.id),
     wantedId: openRow?.id || "",
     addBody: {
@@ -143,7 +155,7 @@ export function bookAvailability({ work = {}, audiobook = null, wanted = null, r
 }
 
 function beyondSaved({ work = {}, role = "reader" } = {}) {
-  const manage = canManageWanted(role);
+  const acquire = canAcquireBeyond(role);
   const asked = work.job_status === "asked" || work.wanted?.status === "asked";
   if (asked) {
     return {
@@ -178,9 +190,9 @@ function beyondSaved({ work = {}, role = "reader" } = {}) {
     ...hidden(),
     show: true,
     status: "Not on the shelf",
-    verb: manage ? "Get" : "Ask the house",
-    chip: manage ? "Get" : "Ask the house",
-    canAdd: manage,
+    verb: acquire ? "Get" : "Ask the house",
+    chip: acquire ? "Get" : "Ask the house",
+    canAdd: acquire,
     addBody: wantedBody(work),
   };
 }

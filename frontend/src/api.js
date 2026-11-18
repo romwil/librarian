@@ -62,6 +62,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ disabled }),
     }),
+  setTrustedAcquire: (userId, trustedAcquire) =>
+    request(`/people/${encodeURIComponent(userId)}/trusted-acquire`, {
+      method: "POST",
+      body: JSON.stringify({ trusted_acquire: Boolean(trustedAcquire) }),
+    }),
   deletePerson: (userId) => request(`/people/${encodeURIComponent(userId)}`, { method: "DELETE" }),
   hall: () => request("/hall"),
   libraryCard: () => request("/library-card"),

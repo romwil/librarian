@@ -64,6 +64,13 @@ _CSV_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
 REQUEST_ROLES = ("owner", "op", "reader")
 CONFIRM_ROLES = ("owner", "op")
 BEYOND_DEADLINE_SECONDS = 10.0
+
+
+def _user_can_beyond(user: Mapping[str, Any]) -> bool:
+    """Owner/op, or a reader with the trusted_acquire People flag."""
+    from librarian.auth import user_trusted_acquire
+
+    return user_trusted_acquire(user)
 BEYOND_CACHE_TTL_SECONDS = 10 * 60.0
 
 _BEYOND_CACHE: Dict[str, tuple[float, Dict[str, Any]]] = {}
@@ -452,7 +459,7 @@ def run_search(
         "search_trace": None,
         "beyond_disclosure": beyond_disclosure(settings()),
         "can_request": user["role"] in REQUEST_ROLES,
-        "can_beyond": user["role"] in CONFIRM_ROLES,
+        "can_beyond": _user_can_beyond(user),
     }
 
 
@@ -474,8 +481,8 @@ def run_search_beyond(
     year: str = "",
     mode: str = "",
 ) -> Dict[str, Any]:
-    """``GET /api/search/beyond``: indexers + public domain. Owner/op only."""
-    if user["role"] not in CONFIRM_ROLES:
+    """``GET /api/search/beyond``: indexers + public domain. Keepers + trusted readers."""
+    if not _user_can_beyond(user):
         raise ServiceError("Stay on the shelves, or Ask the house.", status_code=403)
     packed = _sought_payload(
         q=q,
@@ -509,7 +516,7 @@ def run_search_beyond(
             "can_request": user["role"] in REQUEST_ROLES,
             "cached": False,
         }
-    heuristic_only = user["role"] not in CONFIRM_ROLES
+    heuristic_only = not _user_can_beyond(user)
     cfg = settings()
     from librarian.indexers.hosts import enabled_hosts
 
@@ -576,7 +583,7 @@ def run_search_beyond(
         "candidates": public_indexer_hits(candidates),
         "rank_method": rank_method,
         "rank_reason": rank_reason,
-        "search_trace": search_trace if user["role"] in CONFIRM_ROLES else None,
+        "search_trace": search_trace if _user_can_beyond(user) else None,
         "can_request": user["role"] in REQUEST_ROLES,
         "cached": False,
     }
@@ -669,9 +676,9 @@ def discover_page(
     """One page of an indexer Discover feed.
 
     ``page`` is 1-based. A positive ``offset`` wins. The first page is offset 0.
-    Readers stay on the shelves; Discover is an indexer door for owner and op.
+    Keepers and trusted readers may open Discover; other readers stay on shelves.
     """
-    if user["role"] not in CONFIRM_ROLES:
+    if not _user_can_beyond(user):
         raise ServiceError("Stay on the shelves, or Ask the house.", status_code=403)
     feed_limit = resolve_feed_limit(cat=cat, limit=limit if limit else None)
     skip = resolve_discover_offset(offset=offset, page=page, limit=feed_limit)

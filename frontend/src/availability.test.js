@@ -125,6 +125,13 @@ describe("catalog status", () => {
     const reader = catalogStatus({ work: { title: "Dune", kind: "book" }, role: "reader", beyond: true });
     assert.equal(reader.verb, "Ask the house");
     assert.equal(reader.canAdd, false);
+    const trusted = catalogStatus({
+      work: { title: "Dune", kind: "book" },
+      role: { role: "reader", trusted_acquire: true },
+      beyond: true,
+    });
+    assert.equal(trusted.verb, "Get");
+    assert.equal(trusted.canAdd, true);
   });
 
   it("turns a saved Usenet pick into Queued or Asked", () => {

@@ -38,6 +38,7 @@ export default function WorkPeek({ work, onClose, onRequest }) {
   const panel = useRef(null);
   const closeBtn = useRef(null);
   const [role, setRole] = useState("reader");
+  const [actor, setActor] = useState({ role: "reader" });
   const [jobStatus, setJobStatus] = useState(work?.job_status || "");
   const [error, setError] = useState("");
   const [artFailed, setArtFailed] = useState(false);
@@ -74,7 +75,11 @@ export default function WorkPeek({ work, onClose, onRequest }) {
     if (!work) return undefined;
     api
       .me()
-      .then((data) => setRole(data.user?.role || "reader"))
+      .then((data) => {
+        const next = data.user || { role: "reader" };
+        setActor(next);
+        setRole(next.role || "reader");
+      })
       .catch(() => {});
     return undefined;
   }, [work]);
@@ -136,7 +141,7 @@ export default function WorkPeek({ work, onClose, onRequest }) {
     work: catalog,
     audiobook: detailMatches ? detail?.audiobook : null,
     wanted: wantedRow || (detailMatches ? detail?.wanted : null),
-    role,
+    role: actor,
     beyond,
   });
   const status = catalogStatus({
@@ -145,7 +150,7 @@ export default function WorkPeek({ work, onClose, onRequest }) {
       wanted: wantedRow || catalog.wanted,
       job_status: jobStatus || catalog.job_status,
     },
-    role,
+    role: actor,
     beyond,
   });
   const wantBody = availability.addBody || status.addBody;

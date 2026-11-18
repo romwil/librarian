@@ -1,7 +1,9 @@
 """BD-6 · Op/owner auto-confirm after Ask (opt-in, default OFF).
 
-Readers never auto-confirm. Discover/Search never silent-grab.
-Bulk human confirm on Downloads remains. Kill switch lives in Settings.
+Readers auto-confirm only with the People trusted_acquire flag.
+Discover/Search never silent-grab. Bulk human confirm on Downloads remains.
+Kill switch lives in Settings. Poller-filed slips may auto-confirm for
+permissioned askers (owner/op or flagged readers).
 """
 
 from __future__ import annotations
@@ -101,9 +103,17 @@ def should_auto_confirm(
     role: str,
     host_id: str,
     db: Any = None,
+    trusted_acquire: bool = False,
 ) -> bool:
-    """True only for owner/op with kill switch ON and an eligible host."""
-    if _text(role).lower() not in AUTO_CONFIRM_ROLES:
+    """True for owner/op, or a reader with trusted_acquire, when BD-6 allows."""
+    role_key = _text(role).lower()
+    if role_key in AUTO_CONFIRM_ROLES:
+        allowed = True
+    elif role_key == "reader" and trusted_acquire:
+        allowed = True
+    else:
+        allowed = False
+    if not allowed:
         return False
     if not op_auto_confirm_enabled(settings):
         return False
@@ -143,8 +153,9 @@ def maybe_auto_confirm_asked(
     role: str,
     actor_id: str = "",
     host_id: str = "",
+    trusted_acquire: bool = False,
 ) -> Optional[Dict[str, Any]]:
-    """After Ask: confirm to SAB when BD-6 carve-out matches. Else None."""
+    """After Ask (human or poller): confirm to SAB when BD-6 carve-out matches."""
     if not job or not _text(job.get("id")):
         return None
     payload = job.get("payload") if isinstance(job.get("payload"), dict) else {}
@@ -155,7 +166,13 @@ def maybe_auto_confirm_asked(
         or _text(payload.get("host_id"))
         or _text(job.get("host_id"))
     )
-    if not should_auto_confirm(settings, role=role, host_id=hid, db=db):
+    if not should_auto_confirm(
+        settings,
+        role=role,
+        host_id=hid,
+        db=db,
+        trusted_acquire=trusted_acquire,
+    ):
         return None
 
     from librarian.jobs import confirm_asked_job

@@ -10,10 +10,13 @@ import {
 } from "./searchLanes.js";
 
 describe("search lanes", () => {
-  it("offers beyond to owner and op only — never auto", () => {
+  it("offers beyond to owner, op, and trusted readers — never auto", () => {
     assert.equal(canSearchBeyond("owner"), true);
     assert.equal(canSearchBeyond("op"), true);
     assert.equal(canSearchBeyond("reader"), false);
+    assert.equal(canSearchBeyond({ role: "reader" }), false);
+    assert.equal(canSearchBeyond({ role: "reader", trusted_acquire: true }), true);
+    assert.equal(canSearchBeyond({ role: "owner", trusted_acquire: false }), true);
   });
 
   it("names indexer, model, and public-domain sites in the disclosure", () => {

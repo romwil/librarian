@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import Response
 
-from librarian.auth import require_role
+from librarian.auth import require_role, require_trusted_acquire
 from librarian.lists import chase_missing_items, file_missing_as_wanted
 from librarian.nyt_books import normalize_list_date
 from librarian.rate_limit import enforce_rate_limit
@@ -225,7 +225,7 @@ def register_search_routes(app: FastAPI, deps: WebDeps) -> None:
         offset: int = 0,
         page: int = 0,
     ):
-        require_role(request.state.user, "owner", "op")
+        require_trusted_acquire(request.state.user)
         with http_errors():
             return search_service.discover_page(
             settings(),
