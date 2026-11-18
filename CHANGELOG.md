@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [1.1.3] — 2026-11-17
+
+### Highlights
+
+- **New & noted cards match their status.** Matched titles keep On the shelf / Read / Download. Missing titles keep Find beyond + Add to Wanted. Redundant Search the shelves is gone, and phone cards sit tighter with less empty padding.
+
+### Fixed
+
+- Noted (and history) work cards no longer show Search the shelves or Find beyond on matched titles.
+- Mobile noted card density: shorter padding/gaps so two cards do not fill the viewport alone.
+
 ## [1.1.2] — 2026-11-17
 
 ### Highlights

@@ -4,7 +4,7 @@ import { api } from "../api.js";
 import NotedBookCard from "../components/NotedBookCard.jsx";
 import { Thinking, ThinkingButton } from "../components/Thinking.jsx";
 import { humanError } from "../copy.js";
-import { collapseNotedBooks, notedBookStatus, notedSearchHref, notedWorkHref, weekCountLabel } from "../noted.js";
+import { collapseNotedBooks, notedBookStatus, notedFindHref, notedWorkHref, weekCountLabel } from "../noted.js";
 
 const NYT_LISTS = [
   ["hardcover-fiction", "Hardcover Fiction"],
@@ -147,6 +147,7 @@ export default function NotedHistoryPage() {
             {books.map((book) => {
               const status = notedBookStatus(book);
               const href = status === "matched" ? notedWorkHref(book) : "";
+              const query = shelfQuery(book);
               return (
                 <NotedBookCard
                   key={book.key}
@@ -154,9 +155,11 @@ export default function NotedHistoryPage() {
                   status={STATUS_WORD[status]}
                   weeks={weekCountLabel(book.weekCount)}
                 >
-                  <Link className="cta outline compact" to={notedSearchHref(shelfQuery(book))} data-testid="noted-search">
-                    Search the shelves
-                  </Link>
+                  {status === "matched" ? null : (
+                    <Link className="cta outline compact" to={notedFindHref(query)} data-testid="noted-find">
+                      Find beyond
+                    </Link>
+                  )}
                   {href ? (
                     <Link className="cta compact" to={href} data-testid="noted-open">
                       Open

@@ -134,3 +134,63 @@ it("shows one card when the same title is listed twice", async () => {
   assert.equal(screen.getByRole("link", { name: "On the shelf" }).getAttribute("href"), "/works/work-buckeye");
   assert.equal(screen.queryByText(/audiobook/i), null);
 });
+
+it("shows status-matched actions and hides search/find on matched cards", async () => {
+  globalThis.fetch = async () => new Response(
+    JSON.stringify({
+      can_add: true,
+      lists: [{ id: "open-library-daily", label: "Open Library daily" }],
+      lanes: [{
+        id: "open-library-daily",
+        label: "Open Library daily",
+        items: [
+          {
+            title: "Atomic Habits",
+            author: "James Clear",
+            kind: "book",
+            status: "matched",
+            shelved: { id: "work-atomic" },
+          },
+          {
+            title: "Rich Dad, Poor Dad",
+            author: "Robert T. Kiyosaki",
+            kind: "book",
+            status: "missing",
+          },
+          {
+            title: "Already Wanted",
+            author: "A. Writer",
+            kind: "book",
+            status: "wanted",
+            wanted: true,
+          },
+        ],
+      }],
+    }),
+    { headers: { "content-type": "application/json" } },
+  );
+
+  render(<MemoryRouter><NotedPage /></MemoryRouter>);
+  await screen.findByText("Atomic Habits");
+
+  const matched = screen.getAllByTestId("noted-item").find((card) => card.getAttribute("data-status") === "matched");
+  const missing = screen.getAllByTestId("noted-item").find((card) => card.getAttribute("data-status") === "missing");
+  const wanted = screen.getAllByTestId("noted-item").find((card) => card.getAttribute("data-status") === "wanted");
+  assert.ok(matched);
+  assert.ok(missing);
+  assert.ok(wanted);
+
+  assert.equal(screen.queryByRole("link", { name: "Search the shelves" }), null);
+  assert.equal(matched.querySelector('[data-testid="noted-find"]'), null);
+  assert.ok(matched.querySelector('[data-testid="noted-shelf-book"]'));
+  assert.ok(matched.querySelector('[data-testid="noted-read-book"]'));
+  assert.ok(matched.querySelector('[data-testid="noted-download-book"]'));
+  assert.equal(matched.textContent.includes("Add to Wanted"), false);
+
+  assert.ok(missing.querySelector('[data-testid="noted-find"]'));
+  assert.ok(missing.querySelector('[data-testid="noted-want-book"]'));
+  assert.equal(missing.querySelector('[data-testid="noted-shelf-book"]'), null);
+
+  assert.ok(wanted.querySelector('[data-testid="noted-find"]'));
+  assert.equal(wanted.querySelector('[data-testid="noted-want-book"]'), null);
+});

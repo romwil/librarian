@@ -153,11 +153,12 @@ test("duplicate list rows collapse to one book and a week count", () => {
   assert.equal(books.filter((book) => book.title === "Buckeye")[0].status, "matched");
 });
 
-test("New & noted page searches, finds, and adds to Wanted", () => {
+test("New & noted page finds missing titles and opens matched ones", () => {
   assert.match(mainSrc, /path="noted"/);
   assert.match(pageSrc, /New & noted/);
-  assert.match(pageSrc, /Search the shelves/);
+  assert.equal(pageSrc.includes("Search the shelves"), false);
   assert.match(pageSrc, /Find beyond/);
+  assert.match(pageSrc, /!matched/);
   assert.match(pageSrc, /Add to Wanted/);
   assert.match(pageSrc, /On the shelf/);
   assert.match(pageSrc, />\s*Read\s*</);
