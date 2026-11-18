@@ -51,6 +51,8 @@ it("labels a history range as the household model", async () => {
   assert.equal(document.body.textContent.includes("2026-10-18"), false);
   assert.equal(screen.getByRole("link", { name: "Open" }).getAttribute("href"), "/works/work-model");
   assert.equal(screen.queryByRole("button", { name: "Add to Wanted" }), null);
+  assert.equal(screen.queryByRole("link", { name: "Search the shelves" }), null);
+  assert.equal(screen.queryByRole("link", { name: "Find beyond" }), null);
 });
 
 it("shows Thinking before a deferred range returns and aligns the form row", async () => {
@@ -180,8 +182,16 @@ it("collapses duplicate titles and keeps one action on the book", async () => {
   assert.equal(document.body.textContent.includes("1 week"), false);
   assert.ok(screen.getByRole("button", { name: "Add missing" }));
   assert.equal(screen.getAllByRole("button", { name: "Add to Wanted" }).length, 1);
+  assert.equal(screen.queryByRole("link", { name: "Search the shelves" }), null);
+  const missing = cards.find((card) => card.getAttribute("data-status") === "missing");
   const wanted = cards.find((card) => card.getAttribute("data-status") === "wanted");
+  const matched = cards.find((card) => card.getAttribute("data-status") === "matched");
+  assert.ok(missing);
   assert.ok(wanted);
+  assert.ok(matched);
+  assert.ok(missing.querySelector('[data-testid="noted-find"]'));
+  assert.ok(wanted.querySelector('[data-testid="noted-find"]'));
+  assert.equal(matched.querySelector('[data-testid="noted-find"]'), null);
   assert.equal(wanted.textContent.includes("Add to Wanted"), false);
   assert.equal(screen.getByRole("link", { name: "Open" }).getAttribute("href"), "/works/work-buckeye");
 

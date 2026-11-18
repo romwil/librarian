@@ -10,7 +10,6 @@ import {
   listFormatActions,
   notedBookStatus,
   notedFindHref,
-  notedSearchHref,
   notedWantedBody,
   weekCountLabel,
 } from "../noted.js";
@@ -87,7 +86,7 @@ export default function NotedPage() {
       <p className="kicker">Beyond the shelves</p>
       <h1>New & noted</h1>
       <p className="lede">
-        Trending books, bestseller lists, and what the indexers just posted. Search the shelves, find beyond, or add it to Wanted.
+        Trending books, bestseller lists, and what the indexers just posted. Open what you own, or find beyond and add the rest to Wanted.
       </p>
       <div className="chip-row" data-testid="noted-lists">
         {lists.map((list) => (
@@ -127,6 +126,7 @@ export default function NotedPage() {
                     : savedHere || notedBookStatus(item) === "wanted"
                       ? "Wanted"
                       : "Missing";
+                  const matched = status === "Matched";
                   return (
                     <NotedBookCard
                       key={`${activeLane.id}|${item.key}`}
@@ -135,12 +135,11 @@ export default function NotedPage() {
                       weeks={weekCountLabel(item.weekCount)}
                       testId="noted-item"
                     >
-                      <Link className="cta outline compact" to={notedSearchHref(item)} data-testid="noted-search">
-                        Search the shelves
-                      </Link>
-                      <Link className="cta outline compact" to={notedFindHref(item)} data-testid="noted-find">
-                        Find beyond
-                      </Link>
+                      {!matched ? (
+                        <Link className="cta outline compact" to={notedFindHref(item)} data-testid="noted-find">
+                          Find beyond
+                        </Link>
+                      ) : null}
                       {actions.map((action) => {
                         if (action.owned) {
                           return (
@@ -178,6 +177,7 @@ export default function NotedPage() {
                             </span>
                           );
                         }
+                        if (matched || status === "Wanted") return null;
                         if (!payload?.can_add) return null;
                         const key = itemKey(item, action.kind);
                         if (saved[key]) return null;
