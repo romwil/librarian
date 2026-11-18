@@ -41,6 +41,10 @@ class DisablePayload(BaseModel):
     disabled: bool = True
 
 
+class TrustedAcquirePayload(BaseModel):
+    trusted_acquire: bool = True
+
+
 class RequestPayload(BaseModel):
     title: str
     guid: str = ""

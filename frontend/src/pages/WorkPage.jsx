@@ -115,11 +115,11 @@ export default function WorkPage() {
     work,
     audiobook: data.audiobook,
     wanted: data.wanted,
-    role: user?.role || "reader",
+    role: user || user?.role || "reader",
   });
   const status = catalogStatus({
     work,
-    role: user?.role || "reader",
+    role: user || user?.role || "reader",
   });
   const readLabel = readerCtaLabel(work) || "Read";
   const verb = workPrimaryVerb({

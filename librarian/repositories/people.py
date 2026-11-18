@@ -257,6 +257,16 @@ class PeopleRepository(RepositoryBase):
                 )
         self.run_write(_write, label="set_user_disabled")
 
+    def set_user_trusted_acquire(self, user_id: str, trusted_acquire: bool) -> None:
+        def _write() -> Any:
+            with self._connect() as conn:
+                conn.execute(
+                    "UPDATE users SET trusted_acquire = ? WHERE id = ?",
+                    (1 if trusted_acquire else 0, user_id),
+                )
+
+        self.run_write(_write, label="set_user_trusted_acquire")
+
     def bump_session_epoch(self, user_id: str) -> int:
         def _write() -> Any:
             with self._connect() as conn:

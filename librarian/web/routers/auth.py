@@ -52,6 +52,7 @@ from librarian.web.schemas import (
     RedeemPayload,
     ResetRedeemPayload,
     RoleChangePayload,
+    TrustedAcquirePayload,
 )
 from librarian.web.status import is_ready, owner_status
 
@@ -406,6 +407,32 @@ def register_auth_routes(app: FastAPI, deps: WebDeps) -> None:
             kind="user_disable" if payload.disabled else "user_enable",
             user_id=user_id,
             actor_id=actor["id"],
+        )
+        fresh = db.get_user(user_id)
+        assert fresh is not None
+        return {"user": public_user(fresh, include_activity=True)}
+
+    @app.post("/api/people/{user_id}/trusted-acquire")
+    def set_trusted_acquire(user_id: str, payload: TrustedAcquirePayload, request: Request):
+        """Owner toggle: Search beyond + Get + BD-6 auto-confirm for a reader."""
+        actor = request.state.user
+        require_role(actor, "owner")
+        target = db.get_user(user_id)
+        if target is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        if str(target.get("role")) != "reader":
+            raise HTTPException(
+                status_code=400,
+                detail="Trusted acquire is only for readers (helpers already have it)",
+            )
+        enabled = bool(payload.trusted_acquire)
+        db.set_user_trusted_acquire(user_id, enabled)
+        invalidate_session_cache(user_id=user_id)
+        db.add_security_event(
+            kind="trusted_acquire_on" if enabled else "trusted_acquire_off",
+            user_id=user_id,
+            actor_id=actor["id"],
+            detail={"trusted_acquire": enabled},
         )
         fresh = db.get_user(user_id)
         assert fresh is not None

@@ -68,9 +68,11 @@ export default function CoverCard({ work, onRequest, badge, beyond = false, role
   // The grip is the cover's only new control. Gap/beyond cards aren't real
   // catalog rows yet — no GET /api/works/:id to lazy-load, no menu to show.
   const showActions = Boolean(work.id) && !isGap && !isBeyond;
+  const actor = typeof role === "object" && role ? role : { role: role || "reader" };
+  const roleKey = actor.role || "reader";
   const status = work.job_status || badge;
   const tone = isGap ? "" : jobChipTone(status);
-  const chip = isGap ? "" : status ? jobChipLabel(status, role) : "";
+  const chip = isGap ? "" : status ? jobChipLabel(status, roleKey) : "";
   const art = localCoverUrl(work);
   const [artFailed, setArtFailed] = useState(false);
   const hasArt = Boolean(art) && !artFailed;
@@ -89,7 +91,7 @@ export default function CoverCard({ work, onRequest, badge, beyond = false, role
   const availability = forListCard(
     bookAvailability({
       work: { ...work, wanted: wantedRow || work.wanted },
-      role,
+      role: actor,
       beyond,
     }),
   );
@@ -99,7 +101,7 @@ export default function CoverCard({ work, onRequest, badge, beyond = false, role
       wanted: wantedRow || work.wanted,
       job_status: queuedStatus || status,
     },
-    role,
+    role: actor,
     beyond,
   });
   const wantBody = availability.addBody || catalog.addBody;

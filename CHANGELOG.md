@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [1.1.2] — 2026-11-17
+
+### Highlights
+
+- **Trusted acquire for readers.** People keeps three roles; owners can trust a reader with one grant that unlocks Search beyond, Discover, and Get (Wanted ask) — still never Desk/Settings/Sorting, and never direct `/api/request` SAB. When household BD-6 auto-confirm is on and the host is eligible, that same grant covers human Ask-with-hit and poller-filed Asked slips.
+
+### Changes
+
+- Schema `trusted_acquire` on `users` (default off); `POST /api/people/{id}/trusted-acquire`; `/auth/me` and People list expose `trusted_acquire` / paired `can_search_beyond` + `can_auto_confirm`.
+- `op_auto_confirm.should_auto_confirm` accepts flagged readers; poller Asked path hooks BD-6 for permissioned askers.
+
 ## [1.1.1] — 2026-11-17
 
 ### Highlights

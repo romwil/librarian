@@ -98,12 +98,44 @@ def has_real_owner(db: Database) -> bool:
     return db.owner_count() > 0
 
 
+def user_trusted_acquire(user: Optional[Dict[str, Any]]) -> bool:
+    """Owner/op always; readers only when the People trusted-acquire flag is on.
+
+    One grant implies Search beyond + Discover + Get/Wanted ask + BD-6 auto-confirm
+    eligibility (household kill switch and host rules still apply).
+    """
+    if not user:
+        return False
+    role = str(user.get("role") or "").strip().lower()
+    if role in ("owner", "op"):
+        return True
+    if role != "reader":
+        return False
+    return bool(int(user.get("trusted_acquire") or 0))
+
+
+def require_trusted_acquire(user: Optional[Dict[str, Any]]) -> None:
+    """Auth + trusted-acquire gate for Search beyond / Discover / Get paths."""
+    require_role(user, "owner", "op", "reader")
+    if not user_trusted_acquire(user):
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=403, detail="Not allowed")
+
+
 def public_user(row: Dict[str, Any], *, include_activity: bool = False) -> Dict[str, Any]:
+    trusted = bool(int(row.get("trusted_acquire") or 0))
+    role = str(row.get("role") or "")
+    can_acquire = role in ("owner", "op") or (role == "reader" and trusted)
     payload = {
         "id": row["id"],
         "display_name": row["display_name"],
         "role": row["role"],
         "disabled": bool(int(row.get("disabled") or 0)),
+        "trusted_acquire": trusted,
+        # Always-both grant: beyond search and auto-confirm stay paired.
+        "can_search_beyond": can_acquire,
+        "can_auto_confirm": can_acquire,
     }
     if include_activity:
         payload["last_login_at"] = row.get("last_login_at")

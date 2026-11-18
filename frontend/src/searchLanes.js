@@ -6,9 +6,15 @@ export const DISCLOSURE_TITLE = "Ask the house?";
 export const DISCLOSURE_STAY = "Stay on the shelves";
 export const DISCLOSURE_STORAGE_KEY = "librarian.searchBeyondDisclosure";
 
-/** Keepers may offer indexer beyond — never auto-fire. */
-export function canSearchBeyond(role) {
-  return role === "owner" || role === "op";
+/** Keepers and trusted readers may offer indexer beyond — never auto-fire. */
+export function canSearchBeyond(userOrRole) {
+  if (userOrRole == null) return false;
+  if (typeof userOrRole === "string") {
+    return userOrRole === "owner" || userOrRole === "op";
+  }
+  const role = userOrRole.role;
+  if (role === "owner" || role === "op") return true;
+  return role === "reader" && Boolean(userOrRole.trusted_acquire);
 }
 
 export function beyondDisclosureBody({ indexers = [], model = "", publicDomain = [] } = {}) {

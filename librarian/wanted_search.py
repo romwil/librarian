@@ -410,13 +410,21 @@ def _walk_row(
                 "searched": True,
                 "calls": calls,
             }
+        _maybe_auto_confirm_poller_job(db, settings, job, hit)
+        confirmed = db.get_job(str(job.get("id") or ""))
+        job_status = str((confirmed or job).get("status") or "asked")
         return {
             "id": wanted_id,
-            "outcome": "hit",
+            "outcome": "auto_confirmed" if job_status != "asked" else "hit",
             "job_id": job.get("id"),
-            "note": "A hit is on a slip",
+            "note": (
+                "Confirmed for a trusted indexer — SABnzbd has the slip."
+                if job_status != "asked"
+                else "A hit is on a slip"
+            ),
             "searched": True,
             "calls": calls,
+            "auto_confirmed": job_status != "asked",
         }
     _note_miss(db, str(fresh["id"]), now=now, from_status="wanted")
     return {
@@ -633,12 +641,12 @@ def ask_wanted_hit(
     settings: Any = None,
     role: str = "",
     actor_id: str = "",
+    trusted_acquire: bool = False,
 ) -> Dict[str, Any]:
     """File one Asked slip for a hit the house picked. A second call does not enqueue.
 
-    BD-6: owner/op may auto-confirm to SAB when Settings allow and the host is
-    allowlisted or a healthy lantern. Readers never auto-confirm. Poller-filed
-    slips never reach this path.
+    BD-6: owner/op, or a reader with trusted_acquire, may auto-confirm to SAB when
+    Settings allow and the host is allowlisted or a healthy lantern.
     """
     from librarian.wanted import public_wanted
 
@@ -686,6 +694,7 @@ def ask_wanted_hit(
                 role=role,
                 actor_id=actor_id or _text(job.get("requested_by")),
                 host_id=_text(hit.get("host_id")),
+                trusted_acquire=trusted_acquire,
             )
         except Exception:  # noqa: BLE001
             logger.exception("op auto-confirm check failed for wanted %s", row.get("id"))
@@ -706,6 +715,42 @@ def ask_wanted_hit(
         "item": public_wanted(fresh),
         "auto_confirmed": False,
     }
+
+
+def _maybe_auto_confirm_poller_job(
+    db: Database,
+    settings: Any,
+    job: Mapping[str, Any],
+    hit: Mapping[str, Any],
+) -> None:
+    """BD-6 for poller-filed Asked slips when the asker is permissioned."""
+    if settings is None or not job:
+        return
+    asker_id = _text(job.get("requested_by"))
+    if not asker_id or asker_id.lower() == "wanted":
+        from librarian.notifications.loop import asker_for_wanted
+
+        payload = job.get("payload") if isinstance(job.get("payload"), dict) else {}
+        asker_id = _text(asker_for_wanted(db, str(payload.get("wanted_id") or "")))
+    if not asker_id:
+        return
+    user = db.get_user(asker_id)
+    if user is None:
+        return
+    try:
+        from librarian.op_auto_confirm import maybe_auto_confirm_asked
+
+        maybe_auto_confirm_asked(
+            db,
+            settings,
+            job,
+            role=str(user.get("role") or ""),
+            actor_id=str(user.get("id") or ""),
+            host_id=_text(hit.get("host_id")),
+            trusted_acquire=bool(int(user.get("trusted_acquire") or 0)),
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("poller auto-confirm check failed for job %s", job.get("id"))
 
 
 def poll_wanted(

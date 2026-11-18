@@ -136,7 +136,7 @@ export default function SearchPage() {
   const [askBusy, setAskBusy] = useState(false);
   const [phone, setPhone] = useState(false);
   const beyondGen = useRef(0);
-  const keeper = canSearchBeyond(user?.role);
+  const keeper = canSearchBeyond(user);
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.matchMedia) return undefined;
@@ -540,7 +540,7 @@ export default function SearchPage() {
                 work={item}
                 onRequest={request}
                 beyond
-                role={user?.role}
+                role={user || user?.role}
               />
             ))}
           </div>
@@ -656,7 +656,7 @@ export default function SearchPage() {
               kicker={phase === "local" ? "Searching…" : "Local catalog · click cover to peek"}
               items={filtered.local}
               empty={phase === "local" ? "Searching…" : localSearchEmpty(composed)}
-              role={user?.role}
+              role={user || user?.role}
             />
             {keeper ? (
               <>
@@ -701,7 +701,7 @@ export default function SearchPage() {
                         empty={beyondCopy.empty}
                         beyond
                         onRequest={request}
-                        role={user?.role}
+                        role={user || user?.role}
                       />
                     ) : null}
                     {phase !== "beyond" ? (

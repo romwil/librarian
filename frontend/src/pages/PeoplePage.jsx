@@ -112,6 +112,16 @@ export default function PeoplePage() {
     }
   }
 
+  async function setTrustedAcquire(person, trustedAcquire) {
+    setError("");
+    try {
+      await api.setTrustedAcquire(person.id, trustedAcquire);
+      await load();
+    } catch (err) {
+      setError(humanError(err));
+    }
+  }
+
   async function issueReset(person) {
     setError("");
     setResetLink("");
@@ -225,6 +235,7 @@ export default function PeoplePage() {
                 </strong>
                 <p className="muted">
                   {person.role}
+                  {person.role === "reader" && person.trusted_acquire ? " · trusted acquire" : ""}
                   {" · "}
                   {formatLastSignIn(person.last_login_at)}
                 </p>
@@ -239,6 +250,15 @@ export default function PeoplePage() {
                         Make reader
                       </button>
                     )}
+                    {person.role === "reader" ? (
+                      <button
+                        type="button"
+                        className="cta ghost"
+                        onClick={() => setTrustedAcquire(person, !person.trusted_acquire)}
+                      >
+                        {person.trusted_acquire ? "Revoke trusted acquire" : "Trust to acquire"}
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       className="cta ghost"
